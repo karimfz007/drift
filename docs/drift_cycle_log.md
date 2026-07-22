@@ -32,6 +32,8 @@
 | `tapArriveEpsilon` | 6 | C01+ | How close tap-to-move gets before stopping |
 | `joystickRadius` | 78 | C01+ | Thumb travel for full speed |
 | `joystickDeadzone` | 0.18 | C01+ | Fraction of the stick radius that reads as still |
+| `nodeTapSlack` | 34 | C01+ | Fat-finger forgiveness around a wood node — a difficulty number, not a decoration (D-026) |
+| `fireTapRadius` | 40 | C01+ | How close a tap must land to the fire to feed it (D-026) |
 
 *Rows marked **C01+** were added by C2 during the C01 build (D-019); the spec's behaviour could not be expressed without them. All are `[TUNE]` and provisional until playtest.*
 

@@ -38,7 +38,6 @@ const LOOK = {
     playerRadius: 15,
     driftwoodLength: 26,
     deadfallRadius: 20,
-    nodeTapSlack: 34,
     glowRings: 6,
     nightAlphaMax: 0.66,
     duskStart: 16.5,
@@ -301,7 +300,11 @@ export class IslandScene extends Scene {
         const hit = this.nodeAt(pointer.x, pointer.y);
 
         //  3. The fire: tap it to feed it.
-        if (!hit && state.fire.built && distance(pointer.x, pointer.y, state.fire.x, state.fire.y) < 40) {
+        if (
+            !hit &&
+            state.fire.built &&
+            distance(pointer.x, pointer.y, state.fire.x, state.fire.y) < TUNE.fireTapRadius
+        ) {
             this.tryFeedFire();
             return;
         }
@@ -355,7 +358,7 @@ export class IslandScene extends Scene {
         for (const view of this.nodeViews) {
             if (!view.node.available) continue;
             const d = distance(x, y, view.node.x, view.node.y);
-            if (d <= LOOK.deadfallRadius + LOOK.nodeTapSlack && d < bestDistance) {
+            if (d <= LOOK.deadfallRadius + TUNE.nodeTapSlack && d < bestDistance) {
                 best = view;
                 bestDistance = d;
             }

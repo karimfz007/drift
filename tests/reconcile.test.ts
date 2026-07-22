@@ -62,7 +62,7 @@ describe('reconcile — determinism', () => {
         }
     });
 
-    it('one long span equals many short spans over the same total time', () => {
+    it('composes: away in one call == the same time ticked frame by frame, while the floor is not in play', () => {
         const oneShot = reconcile(shelteredRun(), 40 * MINUTE).state;
 
         let stepped = shelteredRun();
@@ -73,6 +73,19 @@ describe('reconcile — determinism', () => {
         expect(stepped.warmth).toBeCloseTo(oneShot.warmth, 6);
         expect(stepped.fire.fuel).toBeCloseTo(oneShot.fire.fuel, 9);
         expect(stepped.gameHoursElapsed).toBeCloseTo(oneShot.gameHoursElapsed, 9);
+    });
+
+    it('clock and fuel compose exactly even when the floor does differ', () => {
+        //  The parts that are pure arithmetic must compose no matter what warmth does.
+        const oneShot = reconcile(freshRun(), 40 * MINUTE).state;
+
+        let stepped = freshRun();
+        for (let i = 0; i < 40; i++) {
+            stepped = reconcile(stepped, MINUTE).state;
+        }
+
+        expect(stepped.gameHoursElapsed).toBeCloseTo(oneShot.gameHoursElapsed, 9);
+        expect(stepped.fire.fuel).toBeCloseTo(oneShot.fire.fuel, 9);
     });
 
     it('never mutates the state it was given', () => {
@@ -174,6 +187,26 @@ describe('reconcile — warmth clamps', () => {
         expect(result.qualifiesForReport).toBe(true);
         expect(after.warmth).toBe(TUNE.warmthOfflineFloor);
         expect(result.floorHeld).toBe(true);
+    });
+
+    it('the floor is a rule about ABSENCE, not about elapsed time (D-025)', () => {
+        //  C3 audit of C01 found this divergence; D-025 makes it the intended rule rather
+        //  than an accident, and this test pins it so it cannot change unnoticed.
+        //
+        //  One 30-minute absence — a whole 12-hour night — so the floor protects them.
+        const away = reconcile(freshRun(), 30 * MINUTE).state;
+        expect(away.warmth).toBe(TUNE.warmthOfflineFloor);
+
+        //  The same 20 minutes spent watching the screen, ticked frame by frame: every
+        //  call is far below the report threshold, no floor, and the night takes it all.
+        //  The player was present the whole time and could have acted at any moment.
+        let present = freshRun();
+        for (let i = 0; i < 30 * MINUTE; i++) {
+            present = reconcile(present, 1).state;
+        }
+        expect(present.warmth).toBe(0);
+        expect(present.warmth).toBeLessThan(away.warmth);
+        expect(present.gameHoursElapsed).toBeCloseTo(away.gameHoursElapsed, 6);
     });
 
     it('never lifts warmth that was already below the floor', () => {

@@ -63,6 +63,11 @@ export const TUNE = {
     playerSpeed: 190,
     /** [TUNE] C01+ — world-pixel reach for interacting with a wood node. */
     interactRadius: 74,
+    /** [TUNE] C01+ — how far off a wood node a tap still counts as aimed at it.
+     *  Fat-finger forgiveness: this is a difficulty number, not a decoration. */
+    nodeTapSlack: 34,
+    /** [TUNE] C01+ — how close a tap must land to the fire to count as feeding it. */
+    fireTapRadius: 40,
     /** [TUNE] C01+ — pixels from the tapped destination at which tap-to-move stops. */
     tapArriveEpsilon: 6,
     /** [TUNE] C01+ — virtual joystick radius in screen pixels (thumb travel for full speed). */

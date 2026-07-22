@@ -212,7 +212,20 @@ async function main() {
     const loadMs = Date.now() - started;
     await sleep(1200);
 
-    check('loads and reaches a playable state', true, `${loadMs} ms (warm local server)`);
+    //  Assert something the page has to actually do, not a literal true.
+    const booted = await page.evaluate(() => {
+        const state = window.__drift?.state();
+        return {
+            hasState: !!state,
+            hasCanvas: !!document.querySelector('canvas'),
+            nodes: state?.nodes?.length ?? 0
+        };
+    });
+    check(
+        'loads and reaches a playable state',
+        booted.hasCanvas && booted.hasState && booted.nodes > 0,
+        `${loadMs} ms, ${booted.nodes} nodes on the island`
+    );
 
     const layout = await page.evaluate(() => {
         const canvas = document.querySelector('canvas');
@@ -230,24 +243,24 @@ async function main() {
 
     //  Touch coordinates must land where the game thinks they do, or every check below
     //  is measuring the wrong thing. Verify the mapping against Phaser's own transform.
-    const mapping = await page.evaluate(
-        ({ W, H }) => {
-            const canvas = document.querySelector('canvas');
-            const r = canvas.getBoundingClientRect();
-            const probe = [
-                [W / 2, H / 2],
-                [W - 148, 878]
-            ];
-            return probe.map(([wx, wy]) => {
-                const sx = r.left + (wx / W) * r.width;
-                const sy = r.top + (wy / H) * r.height;
-                //  Invert with Phaser's own scale manager numbers.
-                return { wx, wy, sx: Math.round(sx), sy: Math.round(sy) };
-            });
-        },
-        { W: WORLD.width, H: WORLD.height }
-    );
-    check('world→screen mapping resolved', mapping.length === 2, JSON.stringify(mapping));
+    //  Round-trip a probe point through the harness's mapping and back out through the
+    //  page's own inverse. If these disagree, every touch below lands somewhere the game
+    //  does not think it landed — which is exactly the bug that hid the dead buttons.
+    const probes = [[WORLD.width / 2, WORLD.height / 2], [WORLD.width - 148, 878], [120, 800]];
+    const mapping = [];
+    for (const [wx, wy] of probes) {
+        const screen = await toScreen(wx, wy);
+        const back = await page.evaluate(
+            ({ sx, sy, W, H }) => {
+                const r = document.querySelector('canvas').getBoundingClientRect();
+                return { wx: ((sx - r.left) / r.width) * W, wy: ((sy - r.top) / r.height) * H };
+            },
+            { sx: screen.x, sy: screen.y, W: WORLD.width, H: WORLD.height }
+        );
+        mapping.push({ wx, wy, backX: +back.wx.toFixed(1), backY: +back.wy.toFixed(1) });
+    }
+    const mappingExact = mapping.every((m) => Math.abs(m.backX - m.wx) < 1 && Math.abs(m.backY - m.wy) < 1);
+    check('world↔screen mapping round-trips within a pixel', mappingExact, JSON.stringify(mapping));
 
     await shot('01-cold-open');
 
@@ -393,6 +406,8 @@ async function main() {
 
     //  Gather in thumb-stick mode: steer to a driftwood, then tap it with the other hand.
     const target = moved.nodes.find((n) => n.available && n.kind === 'driftwood');
+    //  Never let coverage drop silently: a missing target is a failed check, not a skip.
+    check('a driftwood node is left to test thumb-stick gathering with', !!target);
     if (target) {
         for (let i = 0; i < 8; i++) {
             const state = await live();
@@ -411,6 +426,8 @@ async function main() {
             afterTake.inventory.wood > beforeTake.inventory.wood,
             `wood ${beforeTake.inventory.wood} → ${afterTake.inventory.wood}`
         );
+    } else {
+        check('the steel thread also works in thumb-stick mode', false, 'no node left to gather — coverage lost');
     }
 
     await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });

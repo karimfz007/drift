@@ -43,6 +43,12 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
 
     // Offline fairness (charter §II.10 / D-011): an absence long enough to earn a report
     // may sting, but it may not bottom the player out. The floor can never *raise* warmth.
+    //
+    // The gate is deliberately the length of THIS call, which makes the floor a rule about
+    // absence rather than about elapsed time (D-025): the frame loop calls this with
+    // millisecond spans, so a player sitting in front of the screen doing nothing gets the
+    // full consequence, while a player who closed the app gets the mercy. Presence is
+    // agency; absence is not. Cycle 02 confirms or overturns this when warmth gains stakes.
     const qualifiesForReport = elapsedRealSeconds >= morningReportMinRealSeconds;
     const lowerBound = qualifiesForReport ? Math.min(state.warmth, TUNE.warmthOfflineFloor) : 0;
 
