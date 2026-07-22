@@ -372,7 +372,7 @@ export class IslandScene extends Scene {
         const dx = node.x - state.player.x;
         const dy = node.y - state.player.y;
         const length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-        const stop = Math.max(0, length - TUNE.interactRadius * 0.6);
+        const stop = Math.max(0, length - TUNE.interactRadius * TUNE.approachStopFraction);
         return {
             x: state.player.x + (dx / length) * stop,
             y: state.player.y + (dy / length) * stop

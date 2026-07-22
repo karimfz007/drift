@@ -70,6 +70,9 @@ export const TUNE = {
     fireTapRadius: 40,
     /** [TUNE] C01+ — pixels from the tapped destination at which tap-to-move stops. */
     tapArriveEpsilon: 6,
+    /** [TUNE] C01+ — walking to a tapped node stops this far into the reach, so the
+     *  castaway ends up beside it rather than standing on it. */
+    approachStopFraction: 0.6,
     /** [TUNE] C01+ — virtual joystick radius in screen pixels (thumb travel for full speed). */
     joystickRadius: 78,
     /** [TUNE] C01+ — joystick deadzone as a fraction of its radius. */

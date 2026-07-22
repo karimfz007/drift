@@ -42,6 +42,24 @@ function stripComments(source) {
     return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
+/**
+ * Any `import(...)` or `require(...)` whose argument is not a plain string literal.
+ *
+ * A computed specifier — `import(parts.join(''))` — is real, working code that no static
+ * check can follow, so it is an escape hatch straight through the brain/body law. (Found
+ * by the C3 re-audit of Cycle 01, on the *first* version of this fix.) The brain has no
+ * legitimate use for one, so their mere presence is the violation.
+ */
+function unanalysableDynamicImports(source) {
+    const code = stripComments(source);
+    const literal = /^\s*['"][^'"]*['"]\s*$/;
+    const found = [];
+    for (const match of code.matchAll(/\b(?:import|require)\s*\(([^)]*)\)/g)) {
+        if (!literal.test(match[1])) found.push(match[0].trim());
+    }
+    return found;
+}
+
 /** Every module specifier a file imports, re-exports, or dynamically imports. */
 function importsOf(source) {
     const code = stripComments(source);
@@ -89,6 +107,13 @@ function visit(file, chain) {
 
     const source = readFileSync(file, 'utf8');
     const here = [...chain, show(file)];
+
+    for (const call of unanalysableDynamicImports(source)) {
+        violations.push({
+            why: `uses a dynamic import no static check can follow: \`${call}\``,
+            chain: [...here]
+        });
+    }
 
     for (const specifier of importsOf(source)) {
         if (FORBIDDEN_PACKAGES.some((pattern) => pattern.test(specifier))) {
