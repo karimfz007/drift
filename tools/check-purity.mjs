@@ -16,12 +16,14 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const brainDir = join(root, 'src', 'brain');
 const bodyDir = join(root, 'src', 'body');
+const requireFrom = createRequire(join(root, 'tools', 'check-purity.mjs'));
 
 /**
  * Rendering engines the brain may never reach, however indirectly.
@@ -95,6 +97,55 @@ function importsOf(source) {
     return [...specifiers].filter((s) => code.includes(s));
 }
 
+/**
+ * The REAL package a bare specifier points at, not the name the code typed.
+ *
+ * A specifier can lie: `import ... from 'x'` where package.json aliases `"x":
+ * "npm:@babylonjs/core"` loads Babylon under a clean name, straight past a forbidden-name
+ * list. (Found by the C3 audit of Cycle 02 — the third bypass of this check in three
+ * cycles, all the same shape: trusting the typed name.) So resolve the specifier to a
+ * file, walk up to its owning package.json, and return the `name` field it actually
+ * declares — which for an alias is the true package, `@babylonjs/core`. Returns null for
+ * Node built-ins and anything unresolvable.
+ */
+function realPackageName(specifier) {
+    //  The subpath (`@scope/pkg/foo/bar`) does not matter; the package identity does.
+    const parts = specifier.split('/');
+    const packageSpecifier = specifier.startsWith('@')
+        ? parts.slice(0, 2).join('/')
+        : parts[0];
+
+    let entry;
+    try {
+        entry = requireFrom.resolve(specifier);
+    } catch {
+        try {
+            //  Packages with no main/exports still resolve their own package.json.
+            entry = requireFrom.resolve(`${packageSpecifier}/package.json`);
+        } catch {
+            return null; // built-in, or genuinely not installed
+        }
+    }
+
+    //  Walk up from the resolved file to the nearest package.json and read its name.
+    let dir = dirname(entry);
+    while (dir.startsWith(root) || dir.includes(`${sep}node_modules${sep}`)) {
+        const manifest = join(dir, 'package.json');
+        if (existsSync(manifest)) {
+            try {
+                const name = JSON.parse(readFileSync(manifest, 'utf8')).name;
+                if (name) return name;
+            } catch {
+                /* unreadable manifest; keep walking up */
+            }
+        }
+        const parent = dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return null;
+}
+
 /** Resolve a relative specifier the way the bundler would. Returns null if unresolvable. */
 function resolveRelative(fromFile, specifier) {
     const base = resolve(dirname(fromFile), specifier);
@@ -132,17 +183,24 @@ function visit(file, chain) {
     }
 
     for (const specifier of importsOf(source)) {
-        if (FORBIDDEN_PACKAGES.some((pattern) => pattern.test(specifier))) {
-            violations.push({
-                why: `depends on '${specifier}'`,
-                chain: [...here, `→ '${specifier}'`]
-            });
+        if (!specifier.startsWith('.')) {
+            //  A bare specifier: judge it by the package it actually resolves to, not by
+            //  the name typed here — an alias can type anything (C3 audit, Cycle 02).
+            const forbiddenByText = FORBIDDEN_PACKAGES.some((pattern) => pattern.test(specifier));
+            const realName = realPackageName(specifier);
+            const forbiddenByIdentity =
+                realName !== null && FORBIDDEN_PACKAGES.some((pattern) => pattern.test(realName));
+
+            if (forbiddenByText || forbiddenByIdentity) {
+                const via = realName && realName !== specifier ? ` (resolves to '${realName}')` : '';
+                violations.push({
+                    why: `depends on a rendering engine`,
+                    chain: [...here, `→ '${specifier}'${via}`]
+                });
+            }
+            //  Otherwise a genuine third-party leaf; the dependency ledger governs those.
             continue;
         }
-
-        //  Bare specifiers other than the forbidden ones are third-party leaves; the
-        //  dependency ledger governs those, not this check.
-        if (!specifier.startsWith('.')) continue;
 
         const resolved = resolveRelative(file, specifier);
         if (!resolved) continue;

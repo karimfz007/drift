@@ -384,7 +384,7 @@ export class Game {
         feedFire(state);
         this.fire.flare();
         this.cues.play(CUES.collected);
-        this.floatText('+2 hours');
+        this.floatText(`+${TUNE.fireBurnGameHoursPerWood} hours`);
         session().persist(now());
         this.lastActivityAt = now();
     }

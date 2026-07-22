@@ -337,9 +337,11 @@ async function main() {
         afterDriftwood.inventory.wood >= 3,
         `wood ${afterDriftwood.inventory.wood}`
     );
+    //  "Within seconds" is the acceptance language; 8 s is a generous but honest reading of
+    //  it, not the 45 s that let the check pass without testing the claim (C3 audit, C02).
     check(
         'first wood lands within seconds of gaining control',
-        afterDriftwood.trace.msToFirstWood !== null && afterDriftwood.trace.msToFirstWood < 45_000,
+        afterDriftwood.trace.msToFirstWood !== null && afterDriftwood.trace.msToFirstWood < 8_000,
         `${afterDriftwood.trace.msToFirstWood} ms`
     );
     check('the walk was traced', afterDriftwood.trace.msToFirstMove !== null);
@@ -495,7 +497,17 @@ async function main() {
     await walkToward(moving.player.x - 6, moving.player.y + 4, 2.2);
     const frame = await fps();
 
-    if (software) {
+    //  A software renderer must be an explicit choice, never a silent one: on a GPU-less
+    //  CI runner plain `npm run smoke` would otherwise read an 8 fps SwiftShader number as
+    //  a real A3 verdict. If we are on software without --software having asked for it, that
+    //  is a failed run, not a passed check (C3 audit, Cycle 02).
+    if (software && !SOFTWARE) {
+        check(
+            'the frame-rate check ran on a real GPU',
+            false,
+            `renderer is ${renderer} — pass --software to accept a meaningless FPS number, or run where a GPU exists`
+        );
+    } else if (software) {
         check(
             'frame rate measured (SOFTWARE renderer — not a verdict on A3)',
             frame.samples > 60,

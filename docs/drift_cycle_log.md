@@ -153,7 +153,7 @@ The audit's value is not in doubt: the two defects that mattered — the purity 
 ---
 
 ## CYCLE 02 — "Boots on Sand"
-**Phase 1 · Tier: Opus-class · Status: OPEN · Opened 2026-07-22 · The 3D pivot cycle (D-027 … D-030)**
+**Phase 1 · Tier: Opus-class · Status: SHIPPED — audited PASS-WITH-NOTES, all notes fixed; awaiting PLAYTEST · Opened 2026-07-22 · Shipped 2026-07-23 · The 3D pivot cycle (D-027 … D-035)**
 
 **GOAL:** Prove The First Night in three dimensions on a phone — a real island underfoot, the same fire, the same honest absence — with the Cycle 01 brain running untouched.
 
@@ -183,6 +183,55 @@ The audit's value is not in doubt: the two defects that mattered — the purity 
 
 **TUNE INTRODUCED:** see ledger — rows marked C02.
 
-**AS-BUILT:** *(pending — C2 at SHIP)*
+**AS-BUILT** *(C2, 2026-07-23)*
 
-**AUDIT:** *(pending — C3)*
+**Play URL:** https://karimfz007.github.io/drift/ (now the 3D build)
+**2D laboratory:** https://karimfz007.github.io/drift/builds/c01/ (still live) · **This cycle:** `/builds/c02/` · **Tag:** `c02`
+
+**The headline: the pivot's central claim held, and it was measured, not asserted.**
+`git diff c01 -- src/brain tests` is **empty**. The entire renderer was replaced — Phaser out, Babylon in, 2D to 3D, screen pixels to metres — and the brain and its 67 tests came through byte-identical. The brain only ever asked for a distance on a plane; it never learned the world grew a dimension. That is the whole reason the architectural rule exists, and Cycle 02 is its proof.
+
+**Shipped vs. spec — everything in SCOPE IN shipped.**
+
+- **Stage 0 — Rebase.** `@babylonjs/core` 9.17.1 (Apache-2.0, exact-pinned, deep ES imports → 371 KB gzipped, near-identical to the Phaser build). Phaser removed. The purity check generalised from "no Phaser" to "no rendering engine", still transitive; the frozen 2D body deleted from `main` and preserved at tag `c01` and `/builds/c01/`. The smoke harness rebuilt for 3D (waits on a rendered frame, steers the virtual stick in world space, aims taps by projecting world→screen, probes the frame rate). Pipeline unchanged.
+- **Stage 1 — The island underfoot.** One authored low-poly island (~116 m across) generated at boot from `world.ts` — terrain from an analytic height field, thin-instanced treeline and rocks (two draw calls for the whole forest), sea, fog, and a sky driven by the **brain's** clock, so the light and the cold never disagree. Close third-person camera; left thumb to steer, drag to look, tap to reach.
+- **Stage 2 — The same fire, standing up.** Driftwood on the sand, deadfall at the treeline with a world-space progress ring, a campfire that is a real object with flame particles and a light pool, warmth visibly climbing. Six cues carried over, cold-open card, one contextual hint, the local trace extended with an FPS median. The morning report overlays a qualifying reopen.
+
+**Deviations and why**
+
+1. **Havok was not adopted, though Stage 0 names it** (D-031). ~1.4 MB of WASM against an 8 s cold-load budget, for nothing this cycle needs; the island height is analytic so ground-following is exact in one shared call, and reach is a distance check the brain already owns. Charter §II.10's own rule decides it. Adoption trigger named: the first system needing real dynamics — Cycle 03's building, or the first threat that moves.
+2. **The HUD and panels are DOM over the canvas** (D-032), not engine-drawn: crisp at any pixel ratio, free for the GPU, accessible, and it keeps the frame budget for the island. A `window.__driftScene` debug handle also ships — more surface than Cycle 01's save accessor, kept because it turned two silent rendering bugs into five-minute diagnoses.
+3. **The FPS median is traced beside the save** (D-033), in its own localStorage key, because A1 forbids touching the brain's `TraceState`.
+4. **Spatial TUNE constants changed units** (px → m); `playerSpeed`, `tapArriveEpsilon`, `approachStopFraction` retired with the 2D body.
+
+**Four rendering bugs the screenshots caught that reading the code did not:** vertex-colour alpha silently moving the island into the transparent pass; inverted winding leaving the beach back-face culled (an invisible ground under the camera); vertical-fixed FOV narrowing to ~26° on a portrait phone; and `manualEmitCount` latching so the ignition burst killed the flame it announced. Every one was invisible to the code and obvious in a picture — which is the case for the device harness and its `__driftScene` handle.
+
+**Acceptance checks — all met**
+
+- **A1** Zero diffs under `/src/brain` and `/tests` vs `c01`; 67 tests green. The pivot's claim, checked mechanically.
+- **A2** Purity green, CI-enforced, transitive — and hardened again after audit (below): it now judges a bare specifier by the real package it resolves to, so an npm alias cannot smuggle a renderer past a name list.
+- **A3** Cold 4G load **1.9 s** (budget 8 s); median **95–111 FPS** on a real GPU (floor 30); no pinch/zoom trap; tab-switch survives with the clock running. The harness refuses to read a software-renderer FPS as a real verdict.
+- **A4** The 3D steel thread on-device: walk → gather (both interactions) → build and light the fire → warmth recovers in the firelight → 3 real minutes away → reopen → report matching `tune.ts` to 1e-6 for the time that actually passed.
+- **A5** Main URL is the 3D build; `/builds/c02/` archived; `c02` tag pushed; the 2D laboratory still live at `/builds/c01/`; this note appended.
+- **A6** The thread completes with stick + drag + tap; look sensitivity persists across a reload.
+- **A7** First wood ~4 s from control; every action confirmed in the world (target halo, world-space hold ring, ember burst, light pool) as well as audibly; the lit fire reads as sanctuary; the idle hint fires; the trace records the run including the FPS median.
+
+**Automated done-checks:** `npm run done-checks` (purity → types → 67 tests) and `npm run smoke` (**37 device checks** on a real GPU; `npm run smoke -- https://karimfz007.github.io/drift/`).
+
+**Known gaps — the honest list**
+
+- The screenshots are the only record of *feel*, and cannot tell the director whether being there feels like being there — or whether the frame rate holds on **his** phone rather than this desktop GPU. That is the third gate, and the one the whole cycle is really asking about (the `fpsFloorMedian` watch item / Godot hatch, D-028).
+- Placeholder art throughout: the castaway is a capsule, the trees are cones, the audio is non-positional.
+- Ten single-use wood nodes; the island cannot be farmed and is not meant to be yet.
+- No character animation — the capsule slides and turns, it does not walk.
+- iOS untested (Android-first, D-015). The offline floor still protects absence not idleness (D-025/D-035), unchanged because warmth still has no stakes this cycle.
+
+**AUDIT** *(C3, 2026-07-23 — fresh-context agent in the repo, per Ops §4)*
+
+**VERDICT: PASS-WITH-NOTES.**
+
+A1–A7 all verified independently: C3 confirmed the zero brain-diff mechanically, ran every command itself, drove the deployed build with its own smoke run (37/37, cold 4G 1.9 s, median 95.5 FPS on a real GPU; and separately under `--software` to confirm the harness labels the meaningless number rather than passing it), read the screenshots, and satisfied itself the brain tests assert real invariants rather than tautologies. Constitutional checks all upheld. All three declared deviations (D-031/D-032/D-033) examined and accepted, D-031 (no Havok) judged "the best-reasoned of the three, holds up under scrutiny — verified no Havok/WASM anywhere in source or `dist/`".
+
+**One blocking defect: a third bypass of the purity check** — an npm alias (`"x": "npm:@babylonjs/core"`) let a brain file import a renderer under a clean name, past the forbidden-name list. Same root cause as Cycle 01's two bypasses: trusting the typed name. **Fixed at the root** (D-034): the check now resolves every bare specifier to the file it loads and judges the real declared package name; all four bypass classes reproduced and confirmed caught. Two notes fixed (hard-coded `+2 hours` feedback; a 45 s "within seconds" threshold), plus a guard added so the harness fails rather than silently reads a software-renderer FPS. **D-025's carried-forward risk** — which C3 rightly noted had travelled into Cycle 02 unlogged — is now an explicit on-the-record deferral (D-035): the revisit condition (a vital with real stakes) still has not arrived.
+
+C3's standing note for the next cycle: the allow-list-by-string design is inherently gameable; the real-identity resolution now in place is the sturdier version it asked for. The audit's value, again, was in the one defect invisible to reading the code — the constitutional check that guards the whole architecture had a hole, for the third cycle running, and now has the fix that closes the *class* rather than the instance.
