@@ -414,7 +414,6 @@ export class IslandScene extends Scene {
         view.ring.setVisible(false);
 
         this.cues.play(view.node.kind === 'driftwood' ? CUES.pickup : CUES.collected);
-        if (view.node.kind === 'deadfall') this.cues.play(CUES.pickup);
         this.spawnMotes(view.node.x, view.node.y, PALETTE.driftwood, 5);
         this.floatText(view.node.x, view.node.y, `+${gained} wood`);
 

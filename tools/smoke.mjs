@@ -443,6 +443,31 @@ async function main() {
     check('the save on disk matches the live run', saved && saved.state.fire.built === afterHide.fire.built);
     await shot('09-after-tab-switch');
 
+    // ---- A3: cold load on a throttled 4G connection ----------------------
+
+    console.log('\nA3 — cold load on 4G');
+
+    const cold = await browser.newPage();
+    await cold.setViewport({ width: 412, height: 915, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const cdp = await cold.createCDPSession();
+    await cdp.send('Network.enable');
+    await cdp.send('Network.clearBrowserCache');
+    //  A realistic mid-band 4G link, not the optimistic lab profile.
+    await cdp.send('Network.emulateNetworkConditions', {
+        offline: false,
+        latency: 70,
+        downloadThroughput: (4 * 1024 * 1024) / 8,
+        uploadThroughput: (1 * 1024 * 1024) / 8
+    });
+
+    const coldStart = Date.now();
+    await cold.goto(URL_UNDER_TEST, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await cold.waitForFunction(() => !!document.querySelector('canvas'), { timeout: 60_000 });
+    const coldMs = Date.now() - coldStart;
+    await cold.close();
+
+    check('first load on a cold 4G connection is under 5 s', coldMs <= 5000, `${coldMs} ms`);
+
     // ---- Hygiene ---------------------------------------------------------
 
     console.log('\nHygiene');

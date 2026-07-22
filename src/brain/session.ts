@@ -46,7 +46,8 @@ export class Session {
 
         const session = new Session(repo, state);
         const report = composeMorningReport(result, state);
-        if (report) session.state.trace.steelThreadComplete = state.fire.built;
+        //  Seeing a report with a fire standing is the thread closing. Never un-closes.
+        if (report && state.fire.built) session.state.trace.steelThreadComplete = true;
         session.persist(nowMs);
 
         return { session, report, isNewRun: false };
