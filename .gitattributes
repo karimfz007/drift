@@ -1,0 +1,7 @@
+# One line ending everywhere, so the CI reproducibility check compares like with like.
+* text=auto eol=lf
+
+# Generated audio must round-trip byte-for-byte (see .github/workflows/ci.yml).
+*.wav binary
+*.png binary
+*.ico binary

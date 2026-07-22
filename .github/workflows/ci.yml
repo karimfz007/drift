@@ -1,0 +1,41 @@
+name: done-checks
+
+# The automated half of the definition of done (Ops v1.2 §3, gate 1).
+# The brain-purity check runs first, on purpose: it is the constitutional one.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Brain purity — zero Phaser under /src/brain
+        run: npm run purity
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Brain tests
+        run: npm test
+
+      - name: Placeholder audio is reproducible from source
+        run: |
+          npm run gen:audio
+          git diff --exit-code -- public/assets/audio
+
+      - name: Production build
+        run: npm run build
