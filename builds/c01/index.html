@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="theme-color" content="#0b1220" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="The First Night — you wash ashore at dusk. Cold is coming." />
+    <title>The First Night</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: #05080f;
+            overflow: hidden;
+            /* A3: no pinch/zoom traps, no double-tap zoom, no pull-to-refresh. */
+            touch-action: none;
+            overscroll-behavior: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
+
+        /*  No flex centering here: Phaser's ScaleManager owns the canvas margins, and
+            centering it twice pushes the canvas off-centre — which silently moves every
+            touch target away from where the game thinks it is. */
+        #game-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        #boot-splash {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6f7f96;
+            letter-spacing: 0.35em;
+            font-size: 12px;
+            text-transform: uppercase;
+            pointer-events: none;
+            transition: opacity 400ms ease;
+        }
+    </style>
+  <script type="module" crossorigin src="./assets/index-CF2Ea1mj.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/phaser-Cze9071j.js">
+</head>
+
+<body>
+    <div id="game-container"></div>
+    <div id="boot-splash">The First Night</div>
+</body>
+
+</html>

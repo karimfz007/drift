@@ -326,6 +326,16 @@ async function main() {
     );
     check('the HUD reports the fire as shelter', warmed.fire.built && warmed.fire.fuel > 0);
 
+    //  A7: one contextual hint appears after idleHintSeconds of nothing happening.
+    const hintsBefore = await page.evaluate(() => window.__drift.hints().shown);
+    await sleep(12_500);
+    const hintsAfter = await page.evaluate(() => window.__drift.hints());
+    check(
+        'the idle hint appears, and it is about where the player actually is',
+        hintsAfter.shown > hintsBefore && hintsAfter.last.length > 0,
+        `"${hintsAfter.last}"`
+    );
+
     // ---- A4: quit, wait, reopen, morning report --------------------------
 
     console.log('\nA4 — absence and the morning report');

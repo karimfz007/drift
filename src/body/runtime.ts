@@ -15,6 +15,9 @@ export const runtime = {
     isNewRun: true,
     /** True while a blocking overlay owns the screen. Read by the debug hook. */
     reportOpen: false,
+    /** How many contextual hints have been shown this session, and the latest one. */
+    hintsShown: 0,
+    lastHint: '',
     /** Epoch ms at which the player gained control. Null until the cold open is dismissed. */
     controlGrantedAtMs: null as number | null
 };
@@ -42,6 +45,7 @@ function installDebugHook(): void {
     (window as unknown as Record<string, unknown>).__drift = {
         state: () => runtime.session?.state ?? null,
         reportOpen: () => runtime.reportOpen,
+        hints: () => ({ shown: runtime.hintsShown, last: runtime.lastHint }),
         persist: () => runtime.session?.persist(now()),
         reset: () => localStorage.removeItem(SAVE_KEY)
     };

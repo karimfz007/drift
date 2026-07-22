@@ -134,7 +134,7 @@ export class IslandScene extends Scene {
             runtime.pendingReport = null;
             this.openReport(report);
         } else if (runtime.isNewRun) {
-            this.hint.show('Driftwood on the sand. Take it.', TUNE.hintVisibleSeconds);
+            this.showHint('Driftwood on the sand. Take it.', TUNE.hintVisibleSeconds);
         }
     }
 
@@ -464,7 +464,7 @@ export class IslandScene extends Scene {
         session().markFireLit(msSinceControl());
         session().persist(now());
         this.lastInteractionAtMs = now();
-        this.hint.show('Stay in the firelight. Warmth is coming back.', TUNE.hintVisibleSeconds);
+        this.showHint('Stay in the firelight. Warmth is coming back.', TUNE.hintVisibleSeconds);
     }
 
     private tryFeedFire(): void {
@@ -486,7 +486,7 @@ export class IslandScene extends Scene {
         this.cues.play(CUES.denied);
         this.cameras.main.shake(90, 0.003);
         const short = Math.max(0, TUNE.woodPerFire - state.inventory.wood);
-        this.hint.show(
+        this.showHint(
             state.fire.built
                 ? 'No wood left. Find more at the treeline.'
                 : `Not enough wood — ${short} more for a fire.`,
@@ -549,7 +549,7 @@ export class IslandScene extends Scene {
         this.consecutiveFailures += 1;
         this.cues.play(CUES.denied);
         if (this.consecutiveFailures >= 2) {
-            this.hint.show(message, TUNE.hintVisibleSeconds);
+            this.showHint(message, TUNE.hintVisibleSeconds);
             this.consecutiveFailures = 0;
         }
     }
@@ -713,7 +713,7 @@ export class IslandScene extends Scene {
         if (view.node.kind === 'driftwood') {
             this.collect(view);
         } else {
-            this.hint.show('Press and hold the deadfall to break it free.', TUNE.hintVisibleSeconds);
+            this.showHint('Press and hold the deadfall to break it free.', TUNE.hintVisibleSeconds);
         }
     }
 
@@ -906,13 +906,20 @@ export class IslandScene extends Scene {
         );
     }
 
+    /** One place that shows a hint, so the trace and the audit can both see it happen. */
+    private showHint(message: string, visibleSeconds: number): void {
+        runtime.hintsShown += 1;
+        runtime.lastHint = message;
+        this.hint.show(message, visibleSeconds);
+    }
+
     private stepIdleHint(): void {
         if (this.blocked) return;
         const idleFor = (now() - this.lastInteractionAtMs) / 1000;
         if (idleFor < TUNE.idleHintSeconds) return;
 
         this.lastInteractionAtMs = now();
-        this.hint.show(this.contextualHint(), TUNE.hintVisibleSeconds);
+        this.showHint(this.contextualHint(), TUNE.hintVisibleSeconds);
     }
 
     /** One hint, chosen for where the player actually is in the thread. */

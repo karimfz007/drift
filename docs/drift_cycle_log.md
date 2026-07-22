@@ -18,6 +18,22 @@
 | `woodPerFire` | 5 | C01 | Build cost of a campfire |
 | `fireBurnGameHoursPerWood` | 2 | C01 | 5-wood fire ≈ 10 game hours ≈ most of one night; adding a 6th covers it |
 | `morningReportMinRealMinutes` | 2 | C01 | Absence below this produces no report |
+| `gameHoursPerDay` | 24 | C01+ | Hours in a game day; kept explicit so the clock has no literals |
+| `startHourOfDay` | 18 | C01+ | The crash lands you at dusk |
+| `nightStartHour` | 18 | C01+ | Night begins (inclusive) |
+| `dayStartHour` | 6 | C01+ | Night ends — a 12-game-hour night |
+| `warmthOfflineFloor` | 15 | C01+ | **D-011 made concrete**: an absence that earns a report may sting but cannot bottom you out. Never raises warmth that was already lower |
+| `warmthLowThreshold` | 30 | C01+ | At or below, the HUD reads "freezing" and the cold vignette closes in |
+| `fireWarmthRadius` | 140 | C01+ | World px; inside it, warmth recovers |
+| `fireMaxFuel` | 12 | C01+ | The pit is a fire, not a woodshed |
+| `hintVisibleSeconds` | 6 | C01+ | How long one contextual hint stays up |
+| `playerSpeed` | 190 | C01+ | World px/second on foot |
+| `interactRadius` | 74 | C01+ | Reach for taking wood |
+| `tapArriveEpsilon` | 6 | C01+ | How close tap-to-move gets before stopping |
+| `joystickRadius` | 78 | C01+ | Thumb travel for full speed |
+| `joystickDeadzone` | 0.18 | C01+ | Fraction of the stick radius that reads as still |
+
+*Rows marked **C01+** were added by C2 during the C01 build (D-019); the spec's behaviour could not be expressed without them. All are `[TUNE]` and provisional until playtest.*
 
 ---
 
