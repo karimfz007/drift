@@ -1,38 +1,43 @@
 # Dependencies — The First Night (DRIFT)
 
-**Dependency law** (charter §II.10, Ops v1.2 §5 law 7): every direct dependency is
-pinned to an exact version, permissively licensed, and listed here with its purpose and
-its exit path. The lockfile is committed. Upgrades happen **between** cycles, never
-mid-build. Before adding anything, we search for a maintained package first — and reject
-any package that introduces more concepts than the code it removes.
+**Dependency law** (charter §II.10, Ops v1.3 §5 law 7): every direct dependency is pinned
+to an exact version, permissively licensed, and listed here with its purpose and its exit
+path. The lockfile is committed. Upgrades happen **between** cycles, never mid-build.
+Before adding anything, we search for a maintained package first — and reject any package
+that introduces more concepts than the code it removes.
 
-`npm audit` reports **0 vulnerabilities** as of Cycle 01.
+`npm audit` reports **0 vulnerabilities** as of Cycle 02.
 
 ## Runtime
 
 | Package | Version | Licence | Purpose | Exit path |
 |---|---|---|---|---|
-| `phaser` | 4.2.1 (exact) | MIT | The renderer and input layer — the **body** only. Chosen for v4's GPU tilemap/sprite layers and mobile-browser behaviour (charter §II.5). | The brain has zero Phaser in it (CI-enforced). Replacing Phaser means rewriting `/src/body` against another 2D renderer and reusing `/src/brain` untouched. That is the whole point of the architecture. |
+| `@babylonjs/core` | 9.17.1 (exact) | Apache-2.0 | The 3D renderer, scene graph, and picking — the **body** only (D-028). Deep ES imports only, so the bundle carries what the game uses and nothing else: **371 KB gzipped**, near-identical to the Phaser build it replaced. | The brain has zero renderer imports (CI-enforced, transitively). Replacing Babylon means rewriting `/src/body` and reusing `/src/brain` untouched — which is exactly what Cycle 02 did to Phaser, with **zero diffs** under `/src/brain` and `/tests`. The named native hatch is Godot 4.x (D-028). |
 | `terser` | 5.39.0 (exact) | BSD-2-Clause | Production minifier used by the Vite build. | Drop it and set `build.minify: 'esbuild'` in `vite/config.prod.mjs`. One line. |
 
 ## Build & test
 
 | Package | Version | Licence | Purpose | Exit path |
 |---|---|---|---|---|
-| `vite` | 6.4.3 (exact) | MIT | Dev server and production bundler. | Any bundler that handles TS + static assets; the source has no Vite-specific API beyond `import.meta` env types. |
+| `vite` | 6.4.3 (exact) | MIT | Dev server and production bundler. | Any bundler that handles TS + static assets; the source uses no Vite-specific API. |
 | `typescript` | 5.7.3 (exact) | Apache-2.0 | The language. | None wanted. |
 | `vitest` | 3.2.7 (exact) | MIT | The brain's automated done-checks. | Test files use only `describe/it/expect`; they port to Jest or `node:test` with an import change. |
-| `puppeteer-core` | 24.15.0 (exact) | Apache-2.0 | Drives a **already-installed** Chrome for `tools/smoke.mjs` — the device acceptance checks. Deliberately `-core`: it downloads no browser. | Delete `tools/smoke.mjs` and the dependency; the device checks revert to being run by hand. |
+| `puppeteer-core` | 24.15.0 (exact) | Apache-2.0 | Drives an **already-installed** Chrome for `tools/smoke.mjs` — the device acceptance checks, including the frame-rate probe A3 now names. Deliberately `-core`: it downloads no browser. | Delete `tools/smoke.mjs` and the dependency; the device checks revert to being run by hand. |
 
 ## Deliberately not taken
 
-- **No sound library.** The six placeholder cues are synthesised by `tools/gen-audio.mjs`
-  (ours, licence-free, regenerable). Phaser's SoundManager already covers playback.
-- **No UI framework.** The HUD and panels are Phaser objects; a DOM UI layer would add a
-  second rendering model for four screens.
-- **No state-management library.** The brain *is* the state model; a store would be a
-  concept on top of a concept.
-- **No physics engine.** Cycle 01 has no collisions — distance checks are two lines.
+- **No physics engine — Havok included (D-031).** Cycle 02's spec named the official Havok
+  plugin, and it was measured rather than assumed: it costs ~1.4 MB of WASM against an 8 s
+  cold-load budget, and Cycle 02 has nothing that needs it. The island's height is an
+  analytic function, so ground-following is exact in one call and reach is a distance
+  check. Havok is adopted the moment something needs real dynamics — Cycle 03's building
+  placement, or the first threat that moves.
+- **No UI framework.** The HUD and panels are plain DOM over the canvas (D-032): crisp at
+  any pixel ratio, free for the GPU, and accessible. React was already rejected in D-009.
+- **No sound library.** The seven placeholder cues are synthesised by `tools/gen-audio.mjs`
+  (ours, licence-free, regenerable) and played through the Web Audio API directly, which
+  keeps the renderer's audio subsystem out of the bundle.
+- **No state-management library.** The brain *is* the state model.
 - **No asset pipeline.** Placeholder-first (charter §II.7); the art pipeline arrives with
   the Art Director in Phase 2–3.
 
@@ -40,6 +45,12 @@ any package that introduces more concepts than the code it removes.
 
 | What | Where | Licence |
 |---|---|---|
-| Six placeholder audio cues (7 WAV files) | `public/assets/audio/` | Generated by `tools/gen-audio.mjs` in this repo. No third-party audio. |
+| Seven placeholder audio cues (WAV) | `public/assets/audio/` | Generated by `tools/gen-audio.mjs` in this repo. No third-party audio. |
+| The island — terrain, trees, rocks, sea, sky | generated at boot from `src/data/world.ts` | Ours. **Zero network bytes**: no models, no textures, no heightmap. |
 | Favicon | `public/favicon.svg` | Hand-authored here. |
-| Project scaffold | `index.html`, `vite/` | Structured after the official `phaserjs/template-vite-ts` (MIT), with Phaser bumped 4.0.0 → 4.2.1 and the layout re-cut for `/src/brain` + `/src/body`. |
+
+## Removed at Cycle 02
+
+| Package | Why |
+|---|---|
+| `phaser` (was 4.2.1) | The 2D body was frozen when the director overturned the direction at Cycle 01's third gate (D-027). The 2D build is preserved, playable, at `/builds/c01/` and at tag `c01`. Phaser remains on the purity check's forbidden list so it cannot creep back in. |

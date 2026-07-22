@@ -35,13 +35,25 @@
 | `nodeTapSlack` | 34 | C01+ | Fat-finger forgiveness around a wood node — a difficulty number, not a decoration (D-026) |
 | `fireTapRadius` | 40 | C01+ | How close a tap must land to the fire to feed it (D-026) |
 | `approachStopFraction` | 0.6 | C01+ | Walking to a tapped node stops this far into the reach — beside it, not on it (D-026) |
+| `walkSpeedMps` | 3.5 | C02 | Metres per second on foot in the 3D body |
+| `cameraDistanceM` | 6 | C02 | Close third-person camera distance |
+| `lookSensitivity` | 1.0 | C02 | Drag-to-orbit multiplier; persisted setting |
+| `coldLoadBudgetSeconds` | 8 | C02 | Cold-load ceiling on 4G for the 3D build |
+| `fpsFloorMedian` | 30 | C02 | Median FPS floor on the director's device; below it after an optimization pass, the Godot hatch (D-028) triggers a fork |
+| `cameraFovHorizontalRad` | 1.05 | C02 | Horizontal-fixed field of view; vertical-fixed narrows to ~26° on a tall phone and the game becomes a telescope |
+| `cameraHeightM` | 2.1 | C02 | Camera height above the player's feet |
+| `cameraPitchMaxDeg` / `cameraPitchMinDeg` | 62 / −12 | C02 | How far the camera may be pitched |
+| `turnRateDegPerSecond` | 620 | C02 | How fast the castaway turns to face travel |
+| `fireBuildOffsetM` | 1.7 | C02 | How far ahead the fire is laid — in 2D it went at your feet, which in 3D put you inside the flames |
+
+*Spatial constants changed units at C02: the 2D body measured screen pixels, the 3D body measures metres. `fireWarmthRadius` 140 px → 7 m, `interactRadius` 74 px → 2.6 m, `nodeTapSlack` 34 px → 0.9 m, `fireTapRadius` 40 px → 1.6 m. The brain only ever asked for a distance on a plane, which is why it did not notice (D-030). Retired with the 2D body: `playerSpeed`, `tapArriveEpsilon`, `approachStopFraction`.*
 
 *Rows marked **C01+** were added by C2 during the C01 build (D-019); the spec's behaviour could not be expressed without them. All are `[TUNE]` and provisional until playtest.*
 
 ---
 
 ## CYCLE 01 — "First Fire"
-**Phase 1 · Tier: Opus-class · Status: SHIPPED — audited, awaiting PLAYTEST · Opened 2026-07-22 · Shipped 2026-07-22 · Amended twice 2026-07-22: library-first audit (D-008 … D-014), then director directives + human-enjoyment audit (D-015 … D-018)**
+**Phase 1 · Tier: Opus-class · Status: CLOSED — technical PASS; direction overturned at gate 3 (D-027). The 2D body is frozen; this build is preserved as the simulation laboratory at /builds/c01/ · Opened 2026-07-22 · Shipped 2026-07-22 · Closed 2026-07-22 · Amended twice 2026-07-22: library-first audit (D-008 … D-014), then director directives + human-enjoyment audit (D-015 … D-018)**
 
 **HANDOFF BLOCK** — director: paste into Claude Code opened in the project folder:
 
@@ -137,3 +149,40 @@ Six defects raised; **all six fixed, none accepted** (D-026): the purity check's
 C3's standing note, carried to Cycle 02: **D-025's reasoning leans on OS auto-lock on the primary device and has no safety net on desktop.** Recorded in the decisions log; Cycle 02 weighs it on that basis.
 
 The audit's value is not in doubt: the two defects that mattered — the purity hole and the touch-input failure — were both invisible to reading the code, and one of them would have put a game with no working buttons on the director's phone.
+
+---
+
+## CYCLE 02 — "Boots on Sand"
+**Phase 1 · Tier: Opus-class · Status: OPEN · Opened 2026-07-22 · The 3D pivot cycle (D-027 … D-030)**
+
+**GOAL:** Prove The First Night in three dimensions on a phone — a real island underfoot, the same fire, the same honest absence — with the Cycle 01 brain running untouched.
+
+**PROMISE:** Standing on the beach for the first time — the world has depth, and your fire lives in it, not in a UI.
+
+**HYPOTHESIS:** Low-poly 3D in the phone browser delivers the presence 2D couldn't, at a playable frame rate, without giving up the tap-a-link loop.
+
+**PLAYTEST QUESTION:** Does moving, looking, and gathering feel like being there — and does it hold a playable frame rate on your phone?
+
+**SCOPE IN (build in stage order):**
+
+- **Stage 0 — Rebase.** New body scaffold: Babylon.js pinned at current stable (record exact version + license in `DEPENDENCIES.md`), official Havok physics plugin; Phaser removed from dependencies; `/src/brain` and `/tests` carried over **byte-identical**; the purity check generalized (transitive check now forbids Babylon — and any rendering engine — under `/src/brain`); smoke harness adapted to 3D scene-readiness signals and an FPS probe; pipeline unchanged (push → checks → Pages). The 2D body remains at tag `c01` and deployed under `/builds/c01/`.
+- **Stage 1 — The island underfoot.** One small handcrafted low-poly island slice (beach, treeline, water plane, sky — roughly 100–150 m across) with terrain collision; day/night driven by the existing world clock and tune constants; close third-person camera (`cameraDistanceM`); touch controls: left virtual stick to move (`walkSpeedMps`), right-side drag to orbit (`lookSensitivity`, persisted setting), tap the world to interact; capsule/simple CC0 placeholder character via a Havok character controller or kinematic controller (C2's call). Performance discipline from the first mesh: median ≥ `fpsFloorMedian` on Android Chrome, cold load ≤ `coldLoadBudgetSeconds` on 4G.
+- **Stage 2 — The same fire, standing up.** Driftwood scattered on the sand (instant tap pickup, several near spawn), deadfall at the treeline (hold, world-space progress ring); campfire built at the player's spot as a real object — light pool, flame particles, the sanctuary transition re-created in 3D; warmth bar minimal; the six audio cues carried over; cold-open title card (**THE FIRST NIGHT**); one highlighted next action + idle hint; local playtest trace extended with an FPS median; morning-report overlay on qualifying reopen — all driven by the untouched brain and the same tune constants.
+- **Stage 3 — Audit & ship.** Deploy (the main URL becomes the 3D build); archive `/builds/c02/`; tag `c02`; smoke checks green including the 3D additions; spawn the C3 audit; on PASS, append the as-built note and report the play URL.
+
+**SCOPE OUT (explicit):** building system; inventory beyond the wood count; hunting, combat, threats; thirst/hunger/energy; skills/XP; first-person camera; procedural or full-size islands; character art and animations beyond a placeholder; multiplayer. (The Rust-loop systems begin Cycle 03+ on this foundation.)
+
+**ACCEPTANCE CHECKS:**
+- **A1** — Brain suite green with **zero diffs under `/src/brain` and `/tests` vs tag `c01`** — the pivot's central claim, checked mechanically.
+- **A2** — Purity check green: zero rendering-engine imports under `/src/brain` (transitive), CI-enforced.
+- **A3** — On Android Chrome via the public URL: cold load ≤ `coldLoadBudgetSeconds` on 4G, median FPS ≥ `fpsFloorMedian` through the steel thread, no pinch/zoom traps, tab-switch survives.
+- **A4** — The 3D steel thread on-device: walk the island → gather ≥5 wood (both interactions) → build + light the fire → warmth visibly recovers → background/close ≥2 real minutes → reopen → morning report matches `tune.ts` math.
+- **A5** — Main URL serves the 3D build; `/builds/c02/` archived; `c02` tag pushed; as-built appended; the 2D laboratory still reachable at `/builds/c01/`.
+- **A6** — Controls: the thread completes with stick + drag + tap; look sensitivity persists across reload.
+- **A7** — Feel in 3D: first wood within seconds of control; every action confirmed visibly and audibly **in the world**, not only the HUD; the lit fire reads as sanctuary (light pool + ambience shift); the idle hint fires; the trace records the run including the FPS median.
+
+**TUNE INTRODUCED:** see ledger — rows marked C02.
+
+**AS-BUILT:** *(pending — C2 at SHIP)*
+
+**AUDIT:** *(pending — C3)*

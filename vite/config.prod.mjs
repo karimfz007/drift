@@ -7,9 +7,9 @@ export default defineConfig({
     build: {
         rollupOptions: {
             output: {
-                manualChunks: {
-                    phaser: ['phaser']
-                }
+                //  Babylon in its own chunk: it is the heavy, rarely-changing half, so it
+                //  stays cached across deploys while the game code churns.
+                manualChunks: (id) => (id.includes('node_modules/@babylonjs') ? 'babylon' : undefined)
             }
         },
         minify: 'terser',

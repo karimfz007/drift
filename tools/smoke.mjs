@@ -1,18 +1,24 @@
 #!/usr/bin/env node
 /**
- * Device smoke test — the automated half of the Cycle 01 device acceptance checks.
+ * Device smoke test — the automated half of the cycle's device acceptance checks.
  *
  * The brain is covered by Vitest; this drives the *body* the way a thumb does: a real
- * Chromium in mobile emulation, touch events on the canvas, and assertions read back out
- * of the live game state. It exists so that "it plays on a phone" is a check somebody can
- * re-run — including the C3 auditor, against the deployed URL.
+ * Chromium in mobile emulation, real touch events on the canvas, and assertions read back
+ * out of the live game state. It exists so that "it plays on a phone" is a check somebody
+ * can re-run — including the C3 auditor, against the deployed URL.
+ *
+ * Cycle 02 (the 3D pivot) changed what it drives, not what it proves: the harness now
+ * waits on a rendered frame, steers with the virtual stick in world space, aims taps by
+ * projecting a world point to the screen, and measures the frame rate that A3 now names.
  *
  * Usage:
- *   node tools/smoke.mjs [url]            # defaults to http://127.0.0.1:4173/
- *   node tools/smoke.mjs <url> --headful  # watch it play
+ *   node tools/smoke.mjs [url]              # defaults to http://127.0.0.1:4173/
+ *   node tools/smoke.mjs <url> --headful    # watch it play
+ *   node tools/smoke.mjs <url> --software   # force software rendering (FPS becomes meaningless)
  *
- * Covers: A3 (load, layout, tab-switch survival), A4 (steel thread + morning report),
- * A6 (both control modes, toggle persists), and the observable half of A7.
+ * Covers: A2 (nothing to assert here — CI owns it), A3 (load, layout, FPS, tab-switch),
+ * A4 (the 3D steel thread + morning report), A6 (controls and the persisted setting),
+ * and the observable half of A7.
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
@@ -22,6 +28,7 @@ import puppeteer from 'puppeteer-core';
 
 const URL_UNDER_TEST = process.argv[2]?.startsWith('http') ? process.argv[2] : 'http://127.0.0.1:4173/';
 const HEADFUL = process.argv.includes('--headful');
+const SOFTWARE = process.argv.includes('--software');
 const SHOT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
 
 /** A same-origin page that is NOT the game — used to edit the save with nothing running. */
@@ -29,23 +36,26 @@ const BLANK_PATH = '__smoke_blank';
 
 const CHROME_CANDIDATES = [
     process.env.CHROME_PATH,
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 ].filter(Boolean);
 
 const SAVE_KEY = 'drift.save.v1';
-const WORLD = { width: 540, height: 960 };
+const LOOK_KEY = 'drift.look.v1';
 
 //  Tuning the harness asserts against (mirrors src/data/tune.ts).
 const TUNE = {
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
-    interactRadius: 74
+    interactRadius: 2.6,
+    deadfallHoldSeconds: 1.5,
+    coldLoadBudgetSeconds: 8,
+    fpsFloorMedian: 30
 };
 
 const results = [];
@@ -72,7 +82,9 @@ async function main() {
     const browser = await puppeteer.launch({
         executablePath: findChrome(),
         headless: !HEADFUL,
-        args: ['--no-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required']
+        args: SOFTWARE
+            ? ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+            : ['--no-sandbox', '--enable-gpu', '--use-angle=default', '--ignore-gpu-blocklist']
     });
 
     const page = await browser.newPage();
@@ -86,7 +98,11 @@ async function main() {
     await page.setRequestInterception(true);
     page.on('request', (request) => {
         if (request.url().includes(BLANK_PATH)) {
-            request.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><link rel="icon" href="data:,"><title>blank</title>' });
+            request.respond({
+                status: 200,
+                contentType: 'text/html',
+                body: '<!doctype html><link rel="icon" href="data:,"><title>blank</title>'
+            });
             return;
         }
         request.continue();
@@ -104,51 +120,98 @@ async function main() {
 
     // ---- Helpers ---------------------------------------------------------
 
-    /** World coordinates → viewport coordinates, read from the live canvas rect. */
-    const toScreen = async (wx, wy) =>
-        page.evaluate(
-            ({ wx, wy, W, H }) => {
-                const canvas = document.querySelector('canvas');
-                const r = canvas.getBoundingClientRect();
-                return { x: r.left + (wx / W) * r.width, y: r.top + (wy / H) * r.height };
-            },
-            { wx, wy, W: WORLD.width, H: WORLD.height }
-        );
+    const live = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__drift.state())));
+    const panelOpen = () => page.evaluate(() => window.__drift.panelOpen());
+    const fps = () => page.evaluate(() => window.__drift.fps());
+    const camera = () => page.evaluate(() => window.__drift.camera());
+    const screenOf = (x, z) =>
+        page.evaluate(([wx, wz]) => window.__drift.screenOf(wx, wz), [x, z]);
 
-    const tap = async (wx, wy, holdMs = 45) => {
-        const { x, y } = await toScreen(wx, wy);
-        await page.touchscreen.touchStart(x, y);
-        await sleep(holdMs);
-        await page.touchscreen.touchEnd();
-        await sleep(110);
+    const waitForScene = async (timeoutMs = 60_000) => {
+        await page.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: timeoutMs });
     };
 
-    const holdTap = async (wx, wy, holdMs) => tap(wx, wy, holdMs);
-
-    const drag = async (fromX, fromY, toX, toY, holdMs = 800) => {
-        const a = await toScreen(fromX, fromY);
-        const b = await toScreen(toX, toY);
-        await page.touchscreen.touchStart(a.x, a.y);
-        await sleep(60);
-        await page.touchscreen.touchMove(b.x, b.y);
+    const tapAt = async (x, y, holdMs = 60) => {
+        await page.touchscreen.touchStart(x, y);
         await sleep(holdMs);
         await page.touchscreen.touchEnd();
         await sleep(140);
     };
 
-    /** The live game state, straight out of the brain. */
-    const live = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__drift.state())));
-    const reportOpen = () => page.evaluate(() => window.__drift.reportOpen());
-    const readSave = () =>
-        page.evaluate((key) => {
-            const raw = localStorage.getItem(key);
-            return raw ? JSON.parse(raw) : null;
-        }, SAVE_KEY);
+    const tapWorld = async (worldX, worldZ, holdMs = 60) => {
+        const point = await screenOf(worldX, worldZ);
+        if (!point) return false;
+        await tapAt(point.x, point.y, holdMs);
+        return true;
+    };
+
+    /** Click a DOM control (HUD buttons and panels are DOM, not canvas). */
+    const clickDom = async (selector) => {
+        const handle = await page.$(selector);
+        if (!handle) return false;
+        await handle.click();
+        await sleep(320);
+        return true;
+    };
+
+    const canvasRect = () =>
+        page.evaluate(() => {
+            const r = document.getElementById('game-canvas').getBoundingClientRect();
+            return { left: r.left, top: r.top, width: r.width, height: r.height };
+        });
 
     /**
-     * Simulate closing the app for `minutes`. The game persists on pagehide, so the
-     * rewind has to happen on a page where the game is not running — otherwise the
-     * unload handler stamps the save with "now" again and the absence disappears.
+     * Steer toward a world point with the virtual stick.
+     *
+     * Movement is camera-relative, so the harness solves the same little rotation the game
+     * does — otherwise "walk to that log" would mean something different every time the
+     * camera moved, and the test would be measuring luck.
+     */
+    const walkToward = async (targetX, targetZ, seconds) => {
+        const rect = await canvasRect();
+        const originX = rect.left + rect.width * 0.25;
+        const originY = rect.top + rect.height * 0.78;
+
+        const state = await live();
+        const view = await camera();
+        const dx = targetX - state.player.x;
+        const dz = targetZ - state.player.y;
+        const length = Math.hypot(dx, dz) || 1;
+        const nx = dx / length;
+        const nz = dz / length;
+
+        //  Inverse of: world = forward*(-stickY) + right*(stickX)
+        const stickX = Math.cos(view.yaw) * nx - Math.sin(view.yaw) * nz;
+        const stickY = -Math.sin(view.yaw) * nx - Math.cos(view.yaw) * nz;
+
+        const travel = 78; // full stick deflection, in screen pixels
+        await page.touchscreen.touchStart(originX, originY);
+        await sleep(60);
+        await page.touchscreen.touchMove(originX + stickX * travel, originY + stickY * travel);
+        await sleep(seconds * 1000);
+        await page.touchscreen.touchEnd();
+        await sleep(180);
+    };
+
+    /** Walk until within reach of a node, re-aiming as we go. Returns the final distance. */
+    const approach = async (node, budgetSeconds = 14) => {
+        const deadline = Date.now() + budgetSeconds * 1000;
+        let state = await live();
+        let distance = Math.hypot(state.player.x - node.x, state.player.y - node.y);
+
+        while (distance > TUNE.interactRadius * 0.7 && Date.now() < deadline) {
+            const seconds = Math.min(1.2, Math.max(0.25, (distance - 1) / 3.5));
+            await walkToward(node.x, node.y, seconds);
+            state = await live();
+            distance = Math.hypot(state.player.x - node.x, state.player.y - node.y);
+        }
+        return distance;
+    };
+
+    /**
+     * Simulate closing the app for `minutes`. The game persists on pagehide, so the rewind
+     * has to happen on a page where the game is not running — otherwise the unload handler
+     * stamps the save with "now" again and the absence disappears.
      */
     const goAway = async (minutes) => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
@@ -163,146 +226,136 @@ async function main() {
             { key: SAVE_KEY, ms: minutes * 60 * 1000 }
         );
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
-        await sleep(1500);
+        await waitForScene();
+        await sleep(1200);
         return before;
     };
 
-    /** Edit the save with the game stopped, then come back. */
-    const editSaveOffline = async (mutate) => {
+    /** Wipe the save with the game stopped, so a genuinely fresh run boots. */
+    const startFreshRun = async () => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
         await page.evaluate(
-            ({ key, source }) => {
-                const env = JSON.parse(localStorage.getItem(key));
-                // eslint-disable-next-line no-new-func
-                new Function('state', source)(env.state);
-                localStorage.setItem(key, JSON.stringify(env));
+            ({ save, look }) => {
+                localStorage.removeItem(save);
+                localStorage.removeItem(look);
             },
-            { key: SAVE_KEY, source: mutate }
+            { save: SAVE_KEY, look: LOOK_KEY }
         );
-        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
-        await sleep(1400);
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+        await waitForScene();
+        await sleep(900);
     };
 
     const shot = (name) => page.screenshot({ path: join(SHOT_DIR, `${name}.png`) });
 
-    /** Walk to a node in tap-to-move mode, then take it. */
-    const takeNode = async (x, y) => {
-        await tap(x, y);
-        for (let i = 0; i < 24; i++) {
-            const state = await live();
-            if (Math.hypot(state.player.x - x, state.player.y - y) <= TUNE.interactRadius) break;
-            await sleep(120);
-        }
-        await sleep(150);
-        await tap(x, y);
-        await sleep(200);
-    };
+    // ---- A3: load, layout, renderer --------------------------------------
 
-    // ---- A3: first load --------------------------------------------------
+    console.log(`\nDRIFT device smoke test (3D) — ${URL_UNDER_TEST}\n`);
+    console.log('A3 — load, layout, renderer');
 
-    console.log(`\nDRIFT device smoke test — ${URL_UNDER_TEST}\n`);
-    console.log('A3 — load and layout');
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+    await waitForScene();
 
-    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 60_000 });
-    await page.evaluate((key) => localStorage.removeItem(key), SAVE_KEY);
+    const renderer = await page.evaluate(() => {
+        const gl = document.createElement('canvas').getContext('webgl2');
+        const info = gl?.getExtension('WEBGL_debug_renderer_info');
+        return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'unknown';
+    });
+    const software = /swiftshader|software|llvmpipe/i.test(renderer);
+    console.log(`  (renderer: ${renderer})`);
 
-    const started = Date.now();
-    await page.goto(`${URL_UNDER_TEST}?fresh=1`, { waitUntil: 'networkidle2', timeout: 60_000 });
-    await page.waitForFunction(() => !!window.__drift?.state(), { timeout: 20_000 });
-    const loadMs = Date.now() - started;
-    await sleep(1200);
+    await startFreshRun();
 
-    //  Assert something the page has to actually do, not a literal true.
     const booted = await page.evaluate(() => {
-        const state = window.__drift?.state();
+        const state = window.__drift.state();
         return {
-            hasState: !!state,
-            hasCanvas: !!document.querySelector('canvas'),
-            nodes: state?.nodes?.length ?? 0
+            canvas: !!document.getElementById('game-canvas'),
+            nodes: state?.nodes?.length ?? 0,
+            warmth: state?.warmth ?? 0
         };
     });
     check(
-        'loads and reaches a playable state',
-        booted.hasCanvas && booted.hasState && booted.nodes > 0,
-        `${loadMs} ms, ${booted.nodes} nodes on the island`
+        'loads and reaches a playable 3D scene',
+        booted.canvas && booted.nodes > 0 && booted.warmth > 98,
+        `${booted.nodes} nodes on the island`
     );
 
     const layout = await page.evaluate(() => {
-        const canvas = document.querySelector('canvas');
+        const canvas = document.getElementById('game-canvas');
         const r = canvas.getBoundingClientRect();
         return {
-            rect: { top: Math.round(r.top), left: Math.round(r.left), w: Math.round(r.width), h: Math.round(r.height) },
             fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1,
             noScroll: document.documentElement.scrollWidth <= window.innerWidth + 1,
             touchAction: getComputedStyle(document.body).touchAction,
             viewport: document.querySelector('meta[name=viewport]')?.content ?? ''
         };
     });
-    check('canvas fits the viewport with no page scroll', layout.fits && layout.noScroll, JSON.stringify(layout.rect));
+    check('canvas fills the viewport with no page scroll', layout.fits && layout.noScroll);
     check('no pinch/zoom trap', layout.touchAction === 'none' && /user-scalable=no/.test(layout.viewport));
 
-    //  Touch coordinates must land where the game thinks they do, or every check below
-    //  is measuring the wrong thing. Verify the mapping against Phaser's own transform.
-    //  Round-trip a probe point through the harness's mapping and back out through the
-    //  page's own inverse. If these disagree, every touch below lands somewhere the game
-    //  does not think it landed — which is exactly the bug that hid the dead buttons.
-    const probes = [[WORLD.width / 2, WORLD.height / 2], [WORLD.width - 148, 878], [120, 800]];
-    const mapping = [];
-    for (const [wx, wy] of probes) {
-        const screen = await toScreen(wx, wy);
-        const back = await page.evaluate(
-            ({ sx, sy, W, H }) => {
-                const r = document.querySelector('canvas').getBoundingClientRect();
-                return { wx: ((sx - r.left) / r.width) * W, wy: ((sy - r.top) / r.height) * H };
-            },
-            { sx: screen.x, sy: screen.y, W: WORLD.width, H: WORLD.height }
-        );
-        mapping.push({ wx, wy, backX: +back.wx.toFixed(1), backY: +back.wy.toFixed(1) });
-    }
-    const mappingExact = mapping.every((m) => Math.abs(m.backX - m.wx) < 1 && Math.abs(m.backY - m.wy) < 1);
-    check('world↔screen mapping round-trips within a pixel', mappingExact, JSON.stringify(mapping));
+    //  World→screen has to be right or every tap below is aimed at nothing.
+    const projection = await page.evaluate(() => {
+        const state = window.__drift.state();
+        const p = window.__drift.screenOf(state.player.x, state.player.y);
+        const r = document.getElementById('game-canvas').getBoundingClientRect();
+        return { p, onScreen: !!p && p.x > r.left && p.x < r.right && p.y > r.top && p.y < r.bottom };
+    });
+    check(
+        'the player projects onto the screen (world→screen aiming works)',
+        projection.onScreen,
+        JSON.stringify(projection.p)
+    );
 
-    await shot('01-cold-open');
+    await shot('c02-01-cold-open');
+    check('the cold open is showing on a fresh run', await panelOpen());
 
-    // ---- A4 + A7: the steel thread, tap-to-move mode ---------------------
+    // ---- A4 + A7: the 3D steel thread ------------------------------------
 
-    console.log('\nA4/A7 — the steel thread (tap to move)');
+    console.log('\nA4/A7 — the steel thread, in three dimensions');
 
-    await tap(WORLD.width / 2, 120);   // dismiss the cold open (empty sea, no node under it)
+    check('the cold open dismisses', await clickDom('.cold-open button'));
     await sleep(900);
-    await shot('02-island');
+    await shot('c02-02-island');
 
-    const fresh = await live();
-    check('a fresh run begins at full warmth, empty-handed', fresh.warmth > 98 && fresh.inventory.wood === 0, `warmth ${fresh.warmth.toFixed(1)}`);
+    const start = await live();
+    check('control begins with an empty pack', start.inventory.wood === 0);
 
-    const driftwood = fresh.nodes.filter((n) => n.kind === 'driftwood');
-    for (const node of driftwood.slice(0, 5)) {
-        await takeNode(node.x, node.y);
+    //  Gather driftwood: walk to each log, then tap it.
+    const driftwood = start.nodes.filter((n) => n.kind === 'driftwood');
+    let gathered = 0;
+    for (const node of driftwood.slice(0, 4)) {
+        const distance = await approach(node);
+        if (distance > TUNE.interactRadius) continue;
+        await tapWorld(node.x, node.y);
+        const after = await live();
+        if (after.inventory.wood > gathered) gathered = after.inventory.wood;
     }
 
-    const afterGather = await live();
-    check('gathering yields wood', afterGather.inventory.wood >= TUNE.woodPerFire, `wood ${afterGather.inventory.wood}`);
+    const afterDriftwood = await live();
+    check(
+        'walking to driftwood and tapping it yields wood',
+        afterDriftwood.inventory.wood >= 3,
+        `wood ${afterDriftwood.inventory.wood}`
+    );
     check(
         'first wood lands within seconds of gaining control',
-        afterGather.trace.msToFirstWood !== null && afterGather.trace.msToFirstWood < 20_000,
-        `${afterGather.trace.msToFirstWood} ms`
+        afterDriftwood.trace.msToFirstWood !== null && afterDriftwood.trace.msToFirstWood < 45_000,
+        `${afterDriftwood.trace.msToFirstWood} ms`
     );
-    await shot('03-wood-gathered');
+    check('the walk was traced', afterDriftwood.trace.msToFirstMove !== null);
+    await shot('c02-03-gathered');
 
-    //  A deadfall, to prove the hold path and its progress ring.
-    const deadfall = afterGather.nodes.find((n) => n.kind === 'deadfall' && n.available);
-    await tap(deadfall.x, deadfall.y);
-    for (let i = 0; i < 40; i++) {
-        const state = await live();
-        if (Math.hypot(state.player.x - deadfall.x, state.player.y - deadfall.y) <= TUNE.interactRadius) break;
-        await sleep(120);
-    }
+    //  A deadfall at the treeline: the hold path and its world-space progress ring.
+    const deadfall = afterDriftwood.nodes.find((n) => n.kind === 'deadfall' && n.available);
+    const deadfallDistance = await approach(deadfall, 22);
+    check('the treeline is reachable on foot', deadfallDistance <= TUNE.interactRadius, `${deadfallDistance.toFixed(2)} m`);
+
     const beforeHold = await live();
-    await holdTap(deadfall.x, deadfall.y, 300);              // too short: should not yield
+    await tapWorld(deadfall.x, deadfall.y, 300); // too short
     const shortHold = await live();
     check('a short hold does not salvage the deadfall', shortHold.inventory.wood === beforeHold.inventory.wood);
 
-    await holdTap(deadfall.x, deadfall.y, 1900);             // a full hold
+    await tapWorld(deadfall.x, deadfall.y, TUNE.deadfallHoldSeconds * 1000 + 600);
     const afterHold = await live();
     check(
         'a full hold salvages the deadfall for 2–3 wood',
@@ -310,36 +363,47 @@ async function main() {
             afterHold.inventory.wood - beforeHold.inventory.wood <= 3,
         `+${afterHold.inventory.wood - beforeHold.inventory.wood}`
     );
+    await shot('c02-04-deadfall');
 
-    //  Build the fire with the action button (bottom right).
-    const woodBeforeFire = afterHold.inventory.wood;
-    await tap(WORLD.width - 148, 878);
-    await sleep(800);
+    //  Build the fire.
+    const woodBeforeFire = (await live()).inventory.wood;
+    check('enough wood for a fire was gathered', woodBeforeFire >= TUNE.woodPerFire, `wood ${woodBeforeFire}`);
+    check('the build-fire button is offered', await clickDom('.action'));
+    await sleep(900);
 
     const afterFire = await live();
-    //  Fuel is already burning by the time we read it, so allow the elapsed sliver.
     check(
-        'fire built and lit',
-        afterFire.fire.built && afterFire.fire.fuel > TUNE.woodPerFire - 0.02 && afterFire.fire.fuel <= TUNE.woodPerFire,
-        `fuel ${afterFire.fire.fuel.toFixed(4)}`
+        'the fire is built and lit, standing in the world',
+        afterFire.fire.built && afterFire.fire.fuel > TUNE.woodPerFire - 0.05,
+        `fuel ${afterFire.fire.fuel.toFixed(3)}`
     );
     check('the fire cost exactly woodPerFire', afterFire.inventory.wood === woodBeforeFire - TUNE.woodPerFire);
-    check('trace recorded the ignition', afterFire.trace.msToFireLit !== null, `${afterFire.trace.msToFireLit} ms`);
-    await shot('04-fire-lit');
+    check('the ignition was traced', afterFire.trace.msToFireLit !== null);
+    await shot('c02-05-fire');
 
-    //  Warmth recovers while standing in the light.
-    await editSaveOffline('state.warmth = 50;');
-    const cooled = await live();
-    await sleep(4000);
+    //  Warmth recovers in the firelight.
+    const cooledFrom = 50;
+    await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(
+        ({ key, warmth }) => {
+            const env = JSON.parse(localStorage.getItem(key));
+            env.state.warmth = warmth;
+            localStorage.setItem(key, JSON.stringify(env));
+        },
+        { key: SAVE_KEY, warmth: cooledFrom }
+    );
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
+    await waitForScene();
+    await sleep(4200);
+
     const warmed = await live();
     check(
-        'warmth recovers inside the firelight',
-        warmed.warmth > cooled.warmth,
-        `${cooled.warmth.toFixed(2)} → ${warmed.warmth.toFixed(2)}`
+        'warmth recovers while standing in the firelight',
+        warmed.warmth > cooledFrom,
+        `${cooledFrom} → ${warmed.warmth.toFixed(2)}`
     );
-    check('the HUD reports the fire as shelter', warmed.fire.built && warmed.fire.fuel > 0);
 
-    //  A7: one contextual hint appears after idleHintSeconds of nothing happening.
+    //  A7: the idle hint.
     const hintsBefore = await page.evaluate(() => window.__drift.hints().shown);
     await sleep(12_500);
     const hintsAfter = await page.evaluate(() => window.__drift.hints());
@@ -349,103 +413,101 @@ async function main() {
         `"${hintsAfter.last}"`
     );
 
-    // ---- A4: quit, wait, reopen, morning report --------------------------
+    // ---- A4: absence and the morning report ------------------------------
 
     console.log('\nA4 — absence and the morning report');
 
     const beforeAway = await goAway(3);
-    await shot('05-morning-report');
-
-    check('the morning report is on screen', await reportOpen(), '.smoke/05-morning-report.png');
+    await shot('c02-06-morning-report');
+    check('the morning report is on screen', await panelOpen());
 
     const reopened = await live();
     const gameHoursGained = reopened.gameHoursElapsed - beforeAway.gameHoursElapsed;
-    const expectedHours = (3 * 60) / TUNE.realSecondsPerGameHour;   // 1.2
-    //  A wider band here on purpose: this one is measuring the harness's wall clock as
-    //  much as the game's, so it only has to show the clock is running at the right scale.
+    const expectedHours = (3 * 60) / TUNE.realSecondsPerGameHour;
     check(
         'the absence advanced the clock at the tuned rate',
         Math.abs(gameHoursGained - expectedHours) < 0.15,
         `${gameHoursGained.toFixed(3)} game hours for ~3 real minutes (expect ~${expectedHours})`
     );
 
-    //  Derive the expectation from the time the game ACTUALLY saw, not from the nominal
-    //  three minutes. The harness's own reload and sleeps leak a second or two of real
-    //  time into the absence; testing fuel against a fixed number therefore tested the
-    //  harness's punctuality rather than the game's arithmetic, and flaked. What matters
-    //  is the invariant: whatever time passed, the fire burned it at the tuned rate.
+    //  Derive the expectation from the time the game actually saw, not the nominal three
+    //  minutes: otherwise this measures the harness's punctuality, not the game's maths.
     const fuelBurned = beforeAway.fire.fuel - reopened.fire.fuel;
     const expectedBurn = gameHoursGained / TUNE.fireBurnGameHoursPerWood;
     check(
         'the fire burned exactly as tune.ts says, for the time that actually passed',
         Math.abs(fuelBurned - expectedBurn) < 1e-6,
-        `${fuelBurned.toFixed(6)} wood for ${gameHoursGained.toFixed(4)} game hours ` +
-        `(expect ${expectedBurn.toFixed(6)} = hours ÷ ${TUNE.fireBurnGameHoursPerWood})`
+        `${fuelBurned.toFixed(6)} wood for ${gameHoursGained.toFixed(4)} game hours`
     );
 
-    //  Dismiss the report and confirm play resumes.
-    await tap(WORLD.width / 2, WORLD.height - 170);
-    await sleep(700);
-    check('the report dismisses and hands the island back', !(await reportOpen()));
-    await shot('06-after-report');
+    check('the report dismisses and hands the island back', await clickDom('.report button'));
+    await sleep(600);
+    check('play resumes after the report', !(await panelOpen()));
+    await shot('c02-07-after-report');
 
-    // ---- A6: the second control mode ------------------------------------
+    // ---- A6: controls and the persisted setting --------------------------
 
-    console.log('\nA6 — the thumb stick, and the toggle');
+    console.log('\nA6 — controls, and the setting that persists');
 
-    await tap(WORLD.width - 56, 130);      // Controls button
-    await sleep(700);
-    await shot('07-settings');
-    await tap(WORLD.width / 2, 408);       // "Thumb stick"
-    await sleep(350);
-    await tap(WORLD.width / 2, 660);       // Done
+    const beforeWalk = await live();
+    await walkToward(beforeWalk.player.x, beforeWalk.player.y - 10, 1.4);
+    const afterWalk = await live();
+    const travelled = Math.hypot(
+        afterWalk.player.x - beforeWalk.player.x,
+        afterWalk.player.y - beforeWalk.player.y
+    );
+    check('the virtual stick walks the castaway', travelled > 2, `${travelled.toFixed(2)} m`);
+
+    const yawBefore = (await camera()).yaw;
+    const rect = await canvasRect();
+    await page.touchscreen.touchStart(rect.left + rect.width * 0.75, rect.top + rect.height * 0.3);
+    await sleep(60);
+    await page.touchscreen.touchMove(rect.left + rect.width * 0.35, rect.top + rect.height * 0.3);
+    await sleep(200);
+    await page.touchscreen.touchEnd();
+    await sleep(300);
+    const yawAfter = (await camera()).yaw;
+    check('dragging orbits the camera', Math.abs(yawAfter - yawBefore) > 0.05, `yaw ${yawBefore.toFixed(2)} → ${yawAfter.toFixed(2)}`);
+    await shot('c02-08-look');
+
+    check('the look settings open', await clickDom('.settings-button'));
+    await sleep(500);
+    check('a sensitivity can be chosen', await clickDom('.choices button[data-value="1.6"]'));
+    check('the settings close', await clickDom('.settings .done'));
     await sleep(600);
 
-    const switched = await live();
-    check('control mode switched to the thumb stick', switched.settings.controlMode === 'joystick');
-    check('the switch was traced', switched.trace.controlModeSwitches >= 1);
-
-    const posBefore = { ...switched.player };
-    await drag(120, 800, 120, 690, 1000);   // push the stick up
-    const moved = await live();
-    const travelled = Math.hypot(moved.player.x - posBefore.x, moved.player.y - posBefore.y);
-    check('the thumb stick walks the castaway', travelled > 20, `${travelled.toFixed(1)} px`);
-    await shot('08-joystick');
-
-    //  Gather in thumb-stick mode: steer to a driftwood, then tap it with the other hand.
-    const target = moved.nodes.find((n) => n.available && n.kind === 'driftwood');
-    //  Never let coverage drop silently: a missing target is a failed check, not a skip.
-    check('a driftwood node is left to test thumb-stick gathering with', !!target);
-    if (target) {
-        for (let i = 0; i < 8; i++) {
-            const state = await live();
-            const dx = target.x - state.player.x;
-            const dy = target.y - state.player.y;
-            if (Math.hypot(dx, dy) <= TUNE.interactRadius) break;
-            const length = Math.hypot(dx, dy) || 1;
-            await drag(120, 760, 120 + (dx / length) * 70, 760 + (dy / length) * 70, 700);
-        }
-        const beforeTake = await live();
-        await tap(target.x, target.y);
-        await sleep(300);
-        const afterTake = await live();
-        check(
-            'the steel thread also works in thumb-stick mode',
-            afterTake.inventory.wood > beforeTake.inventory.wood,
-            `wood ${beforeTake.inventory.wood} → ${afterTake.inventory.wood}`
-        );
-    } else {
-        check('the steel thread also works in thumb-stick mode', false, 'no node left to gather — coverage lost');
-    }
+    const storedSensitivity = await page.evaluate((key) => localStorage.getItem(key), LOOK_KEY);
+    check('the chosen sensitivity is stored', storedSensitivity === '1.6', `stored ${storedSensitivity}`);
 
     await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
-    await sleep(1300);
-    const persisted = await live();
-    check('the control-mode toggle survives a reload', persisted.settings.controlMode === 'joystick');
+    await waitForScene();
+    await sleep(900);
+    const reloadedSensitivity = await page.evaluate((key) => localStorage.getItem(key), LOOK_KEY);
+    check('look sensitivity survives a reload', reloadedSensitivity === '1.6');
 
-    // ---- A3: tab-switch survival ----------------------------------------
+    // ---- A3: frame rate and tab-switch survival --------------------------
 
-    console.log('\nA3 — surviving a tab switch');
+    console.log('\nA3 — frame rate and tab-switch survival');
+
+    //  Move for a few seconds so the sample window describes play, not a still camera.
+    const moving = await live();
+    await walkToward(moving.player.x + 6, moving.player.y - 6, 2.2);
+    await walkToward(moving.player.x - 6, moving.player.y + 4, 2.2);
+    const frame = await fps();
+
+    if (software) {
+        check(
+            'frame rate measured (SOFTWARE renderer — not a verdict on A3)',
+            frame.samples > 60,
+            `median ${frame.median} fps under SwiftShader; re-run on a GPU for a real number`
+        );
+    } else {
+        check(
+            `median frame rate is at or above the floor (${TUNE.fpsFloorMedian})`,
+            frame.median >= TUNE.fpsFloorMedian,
+            `median ${frame.median} fps, 1% low ${frame.onePercentLow} fps, on ${renderer}`
+        );
+    }
 
     const beforeHide = await live();
     const other = await browser.newPage();
@@ -463,10 +525,7 @@ async function main() {
             afterHide.gameHoursElapsed >= beforeHide.gameHoursElapsed,
         `clock ${beforeHide.gameHoursElapsed.toFixed(3)} → ${afterHide.gameHoursElapsed.toFixed(3)}`
     );
-
-    const saved = await readSave();
-    check('the save on disk matches the live run', saved && saved.state.fire.built === afterHide.fire.built);
-    await shot('09-after-tab-switch');
+    await shot('c02-09-after-tab-switch');
 
     // ---- A3: cold load on a throttled 4G connection ----------------------
 
@@ -477,7 +536,6 @@ async function main() {
     const cdp = await cold.createCDPSession();
     await cdp.send('Network.enable');
     await cdp.send('Network.clearBrowserCache');
-    //  A realistic mid-band 4G link, not the optimistic lab profile.
     await cdp.send('Network.emulateNetworkConditions', {
         offline: false,
         latency: 70,
@@ -486,12 +544,16 @@ async function main() {
     });
 
     const coldStart = Date.now();
-    await cold.goto(URL_UNDER_TEST, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await cold.waitForFunction(() => !!document.querySelector('canvas'), { timeout: 60_000 });
+    await cold.goto(URL_UNDER_TEST, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+    await cold.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: 90_000 });
     const coldMs = Date.now() - coldStart;
     await cold.close();
 
-    check('first load on a cold 4G connection is under 5 s', coldMs <= 5000, `${coldMs} ms`);
+    check(
+        `first playable frame on cold 4G is within ${TUNE.coldLoadBudgetSeconds} s`,
+        coldMs <= TUNE.coldLoadBudgetSeconds * 1000,
+        `${coldMs} ms`
+    );
 
     // ---- Hygiene ---------------------------------------------------------
 

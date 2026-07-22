@@ -1,7 +1,7 @@
 # The First Night *(codename DRIFT)*
 
-A mobile-web survival game. You crash in the Bermuda Triangle and wash ashore at dusk
-with nothing. The island keeps turning while you are gone.
+A low-poly 3D mobile-web survival game. You crash in the Bermuda Triangle and wash ashore
+at dusk with nothing. The island keeps turning while you are gone.
 
 **Play:** open the URL on a phone. No install, no store, no account.
 
@@ -13,8 +13,8 @@ now-pointer, and any session can recover the project from it plus the cycle log.
 
 ```
 /src/brain/   Pure TypeScript: simulation, data model, reconciliation, formulas.
-              ZERO Phaser. Fully unit-tested.
-/src/body/    Phaser scenes, rendering, input. Imports the brain; the brain never
+              ZERO rendering-engine imports. Fully unit-tested.
+/src/body/    Rendering, scene, input (Babylon.js). Imports the brain; the brain never
               imports the body.
 /src/data/    Content tables + tune.ts — every tunable number, and only here.
 /tests/       Brain tests — the automated done-checks.
@@ -23,9 +23,14 @@ now-pointer, and any session can recover the project from it plus the cycle log.
 /builds/      Per-cycle archived builds, published alongside the current build.
 ```
 
-Phaser only *draws*. The valuable logic stays portable so a future native port re-skins
-the body and reuses the brain untouched. A CI check fails the build on any Phaser import
-under `/src/brain`.
+The renderer only *draws*. The valuable logic stays portable so a new body re-skins the
+game and reuses the brain untouched — which is not a claim, it is a measured result:
+**Cycle 02 replaced the entire 2D Phaser body with a 3D Babylon one and `/src/brain` and
+`/tests` came through byte-identical.** A CI check walks the brain's whole transitive
+import graph and fails the build on any rendering-engine import under `/src/brain`.
+
+The 2D build is preserved and still playable at `/builds/c01/` — the simulation
+laboratory the 3D game was grown from.
 
 The other standing law: **no magic numbers**. Everything that changes how the game plays
 lives in [`src/data/tune.ts`](src/data/tune.ts), mirrored by the TUNE ledger at the top of
@@ -46,13 +51,15 @@ npm run purity       # brain/body law
 npm run done-checks  # all three, in the order CI runs them
 
 npm run gen:audio    # regenerate the placeholder cues
-npm run smoke        # device acceptance checks — drives a real Chrome with touch
+npm run smoke        # device acceptance checks — drives a real Chrome with real touches
                      # npm run smoke -- https://<play-url>/ --headful
+                     # add --software to force SwiftShader (FPS becomes meaningless)
 ```
 
 `npm run smoke` needs a Chrome or Edge already installed (set `CHROME_PATH` to point at
 it) and a server to test — run `npm run preview` in another terminal first, or pass a
-deployed URL.
+deployed URL. It runs on the real GPU by default, because the frame-rate check is
+meaningless without one.
 
 ## The pipeline
 

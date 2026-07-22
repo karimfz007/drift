@@ -2,7 +2,7 @@
   "name": "drift",
   "private": true,
   "version": "0.1.0",
-  "description": "The First Night (codename DRIFT) — mobile-web survival, Phaser 4 + TypeScript.",
+  "description": "The First Night (codename DRIFT) — low-poly 3D mobile-web survival. Babylon.js + TypeScript.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -24,7 +24,7 @@
     "vitest": "3.2.7"
   },
   "dependencies": {
-    "phaser": "4.2.1",
-    "terser": "5.39.0"
+    "terser": "5.39.0",
+    "@babylonjs/core": "9.17.1"
   }
 }

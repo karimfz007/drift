@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Brain/body purity check — Ops v1.2 §5 law 1, enforced mechanically.
+ * Brain/body purity check — Ops v1.3 §5 law 1, enforced mechanically.
  *
- * The brain must stay portable: a future native/Godot port re-skins the body and reuses
- * the brain untouched. So no file reachable from /src/brain may depend on Phaser, and the
- * brain may never import the body.
+ * The brain must stay portable: a new body re-skins the game and reuses the brain untouched
+ * — which Cycle 02 proved by swapping Phaser for Babylon with zero brain diffs. So no file
+ * reachable from /src/brain may depend on ANY rendering engine, and the brain may never
+ * import the body.
  *
  * This walks the **transitive import graph**, not just the text of the brain's own files.
  * A regex over /src/brain alone is not enough: a brain file importing `src/data/leak.ts`
- * which re-exports Phaser would sail straight through it, and the law would be enforced
+ * which re-exports a renderer would sail straight through it, and the law would be enforced
  * in name only. (Found by the C3 audit of Cycle 01 — the original check had exactly that
  * hole.) When a violation is found we print the whole import chain, because the offending
  * file is usually not the one that has to change.
@@ -22,8 +23,23 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const brainDir = join(root, 'src', 'brain');
 const bodyDir = join(root, 'src', 'body');
 
-/** Bare specifiers the brain may never reach, however indirectly. */
-const FORBIDDEN_PACKAGES = [/^phaser$/, /^phaser\//];
+/**
+ * Rendering engines the brain may never reach, however indirectly.
+ *
+ * Generalized at Cycle 02 (D-030): the law was never about Phaser, it was about the
+ * brain staying portable. When the body swapped from Phaser to Babylon the forbidden
+ * name changed and nothing else did — which is the law working exactly as intended.
+ * Phaser stays on the list so the frozen 2D body can never creep back in.
+ */
+const FORBIDDEN_PACKAGES = [
+    /^phaser($|\/)/,
+    /^@babylonjs($|\/)/,
+    /^babylonjs($|\/)/,
+    /^three($|\/)/,
+    /^pixi\.js($|\/)/,
+    /^@playcanvas($|\/)/,
+    /^playcanvas($|\/)/
+];
 
 const show = (file) => relative(root, file).split(sep).join('/');
 
@@ -147,16 +163,16 @@ const entryPoints = walkFiles(brainDir);
 for (const entry of entryPoints) visit(entry, []);
 
 if (violations.length > 0) {
-    console.error('BRAIN PURITY CHECK FAILED (Ops v1.2 §5 law 1)\n');
+    console.error('BRAIN PURITY CHECK FAILED (Ops v1.3 §5 law 1)\n');
     for (const violation of violations) {
         console.error(`  ${violation.why}`);
         console.error(`    ${violation.chain.join('\n    ')}\n`);
     }
-    console.error(`${violations.length} violation(s). Nothing the brain can reach may touch Phaser.`);
+    console.error(`${violations.length} violation(s). Nothing the brain can reach may touch a rendering engine.`);
     process.exit(1);
 }
 
 console.log(
     `Brain purity check passed: ${entryPoints.length} brain files, ` +
-    `${visited.size} modules in the transitive closure, zero Phaser, zero body imports.`
+    `${visited.size} modules in the closure, zero rendering-engine imports, zero body imports.`
 );

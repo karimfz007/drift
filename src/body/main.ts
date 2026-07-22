@@ -1,45 +1,44 @@
 /**
- * BODY — boot. Phaser only ever draws (charter §II.5); the simulation is /src/brain.
+ * BODY — boot. The renderer only ever draws (charter §II.5); the simulation is /src/brain.
  */
 
-import { AUTO, Game, Scale, type Types } from 'phaser';
-import { WORLD } from '../data/world';
-import { PALETTE } from './theme';
-import { BootScene } from './scenes/BootScene';
-import { ColdOpenScene } from './scenes/ColdOpenScene';
-import { IslandScene } from './scenes/IslandScene';
+import { Game } from './game';
+import { runtime, startRuntime } from './runtime';
 
-const config: Types.Core.GameConfig = {
-    type: AUTO,
-    backgroundColor: PALETTE.seaDeep,
-    scale: {
-        parent: 'game-container',
-        // FIT keeps the authored portrait island intact on every phone and never crops
-        // an interactable off screen. Letterboxing is styled to the page background.
-        mode: Scale.FIT,
-        autoCenter: Scale.CENTER_BOTH,
-        width: WORLD.width,
-        height: WORLD.height
-    },
-    input: {
-        // One thumb is the target, but a second pointer must not break a hold.
-        activePointers: 3,
-        touch: true,
-        mouse: true,
-        keyboard: false,
-        gamepad: false
-    },
-    disableContextMenu: true,
-    banner: false,
-    scene: [BootScene, ColdOpenScene, IslandScene]
-};
+function boot(): void {
+    const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
+    const overlay = document.getElementById('ui') as HTMLElement | null;
+    if (!canvas || !overlay) throw new Error('The page is missing its canvas or UI layer');
 
-new Game(config);
+    //  Load (or start) the run before a single mesh exists: the morning report belongs to
+    //  the absence that just ended, not to whatever the renderer manages to show first.
+    startRuntime();
 
-//  The HTML splash covers the first paint; drop it once Phaser has the canvas up.
-window.setTimeout(() => {
+    const game = new Game(canvas, overlay);
+    game.start();
+
+    //  Drop the HTML splash once the scene has actually rendered something.
     const splash = document.getElementById('boot-splash');
     if (!splash) return;
-    splash.style.opacity = '0';
-    window.setTimeout(() => splash.remove(), 500);
-}, 250);
+
+    const clear = () => {
+        splash.style.opacity = '0';
+        window.setTimeout(() => splash.remove(), 500);
+    };
+    const poll = window.setInterval(() => {
+        if (!runtime.sceneReady) return;
+        window.clearInterval(poll);
+        clear();
+    }, 100);
+    //  Never let a stalled scene leave the splash up forever.
+    window.setTimeout(() => {
+        window.clearInterval(poll);
+        clear();
+    }, 12_000);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+} else {
+    boot();
+}
