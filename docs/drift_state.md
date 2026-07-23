@@ -12,7 +12,7 @@
 - **Current experience bet (C03):** three clocks and a first tool turn walking into deciding — pressure creates the decisions the Experience Constitution demands.
 
 ## What exists now (the inheritance every later cycle gets free)
-- **The brain**, now with four vitals, death/respawn, tools, and two seed skills — all through the same `reconcile` spine. 99 tests, including the headline **property test: offline death is impossible** for any state × any elapsed (D-011 made law).
+- **The brain**, now with four vitals, death/respawn, tools, and two seed skills — all through the same `reconcile` spine. 100 tests, including the headline **property test: offline death is impossible** for any state × any elapsed (D-011 made law).
 - **The one non-negotiable rule holds:** `/src/brain` has zero rendering-engine imports, CI-enforced by a check that resolves real package identity (alias-proof, D-034). The whole survival sim is portable.
 - **Versioned save** with a working **v1→v2 migration** (a Cycle 02 save loads and wakes to a sensible set of vitals).
 - **The pipeline** — push → purity → types → tests → build → Pages. One stable URL, per-cycle archives, a tag per cycle.

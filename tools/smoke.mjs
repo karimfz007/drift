@@ -301,8 +301,8 @@ async function main() {
     //  Set every vital empty with a sliver of health, then a tick should kill and respawn.
     await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');
     await sleep(1600); // the render loop ticks; health runs out fast
-    await shot('c03-07-death');
     const deathShowing = await panelOpen();
+    await shot('c03-07-death'); // after the panel is confirmed up, so the image shows it
     check('a death overlay appears when health runs out in play', deathShowing);
     const dying = await live();
     check('the death was counted and a cause recorded', dying.trace.deaths >= 1 && dying.lastDeathCause !== null, `cause: ${dying.lastDeathCause}`);

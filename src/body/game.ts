@@ -61,8 +61,6 @@ import { Island } from './island';
 import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session } from './runtime';
 import { RENDER } from './theme';
 
-const PLAYER_RADIUS = 0.4;
-
 export class Game {
     private engine: Engine;
     private scene: Scene;
@@ -231,7 +229,7 @@ export class Game {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
         if (hit?.hit && hit.pickedMesh?.metadata?.pond) return true;
-        if (hit?.hit && hit.pickedPoint) return distance(hit.pickedPoint.x, hit.pickedPoint.z, POND.x, POND.y) <= POND.radius + 1;
+        if (hit?.hit && hit.pickedPoint) return distance(hit.pickedPoint.x, hit.pickedPoint.z, POND.x, POND.y) <= POND.radius + TUNE.pondTapSlack;
         return false;
     }
 
@@ -560,7 +558,7 @@ export class Game {
         const dynamic = this.nodes.obstacles();
         const fireObstacle = this.fire.obstacle(state);
         if (fireObstacle) dynamic.push(fireObstacle);
-        const resolved = this.island.resolveCollision(x, z, PLAYER_RADIUS, dynamic);
+        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dynamic);
         x = resolved.x;
         z = resolved.z;
 

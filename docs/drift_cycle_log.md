@@ -67,6 +67,12 @@
 | `xpPerMeaningfulAction` | 5 | C03 | XP for an outcome that mattered (a felled tree, a foraged meal) — never spam |
 | `xpToLevelPerLevel` | 25 | C03 | XP to reach level N = N × this |
 | `skillSpeedBonusPerLevel` | 0.08 | C03 | Each level makes the action faster/richer — mastery changes the action (§I.9) |
+| `playerCollisionRadius` | 0.4 | C03+ | The castaway's collision radius; how close you get to a trunk (moved from the body, D-038) |
+| `treeCollisionRadius` / `rockCollisionRadius` / `palmCollisionRadius` / `crashboxCollisionRadius` / `fireCollisionRadius` | 0.8 / 1.1 / 0.5 / 0.9 / 0.9 | C03+ | Obstacle footprints, in metres (D-038) |
+| `decorTreeCollisionRadius` / `decorRockCollisionScale` | 0.7 / 1.4 | C03+ | Footprints for the decorative treeline/rock instances (D-038) |
+| `pondTapSlack` | 1 | C03+ | Extra metres of forgiveness tapping the pond (D-038) |
+| `tapMaxMs` / `tapMaxMovePx` | 320 / 14 | C03+ | A press this short and still is a tap, not a look-drag (moved from the body, D-038) |
+| `thirstLowHintAt` / `hungerLowHintAt` / `healthLowHintAt` | 35 / 30 / 30 | C03+ | At or below, the HUD bar reads "low" AND a hint fires — one threshold, so they agree (D-038) |
 
 *C03 adds the three vitals, death/respawn, the first tool and loot, and two seed skills. Rows marked **C03+** are derived constants C2 added under the tune law to express the spec's behaviour (food values, node yields, fibre source, health regen). The D-011 offline floors (`*OfflineFloor`) make **offline death impossible** — proven by a property test, not asserted (A1).*
 
@@ -263,7 +269,7 @@ C3's standing note for the next cycle: the allow-list-by-string design is inhere
 ---
 
 ## CYCLE 03 — "The Island Pushes Back"
-**Phase 1 · Tier: Opus-class · Status: OPEN · Opened 2026-07-23 · The pressure cycle (D-031, D-032)**
+**Phase 1 · Tier: Opus-class · Status: SHIPPED — audited PASS-WITH-NOTES, all notes fixed; awaiting PLAYTEST · Opened 2026-07-23 · Shipped 2026-07-23 · The pressure cycle (D-036 … D-039)**
 
 **GOAL:** Turn the island from scenery into a survival situation — three vital clocks, real death and respawn, the first tool earned through the four gates, the first loot, and the first visible mystery — all flowing through the untouched reconcile spine with D-011's floors protecting absence.
 
@@ -293,6 +299,52 @@ C3's standing note for the next cycle: the allow-list-by-string design is inhere
 
 **TUNE INTRODUCED:** see ledger — rows marked C03.
 
-**AS-BUILT:** *(pending — C2 at SHIP)*
+**AS-BUILT** *(C2, 2026-07-23)*
 
-**AUDIT:** *(pending — C3)*
+**Play URL:** https://karimfz007.github.io/drift/ · **Archive:** `/builds/c03/` · **Tag:** `c03` · 2D lab at `/builds/c01/`, first 3D at `/builds/c02/`, both still live.
+
+**The island stopped being scenery.** Three vital clocks, real death and respawn, the crude axe earned through the four gates, the first loot, and a wreck on the horizon — all through the untouched reconcile spine, with D-011's floors turning absence into a thing that can sting but never kill.
+
+**Shipped vs. spec — everything in SCOPE IN shipped.**
+
+- **Stage 0 — Ground truth (the two Cycle 02 defects, fixed first).** Blob contact shadows under the castaway, the wood, and the fire — the float is gone (measured feet-to-terrain gap **0.000 m**). Colliders via analytic cylinder push-out on trees, rocks, the crash box, and the fire pit (walking into a tree stops you 1.2 m short of the trunk); **no physics engine** — D-031 held, and the push-out was fuzzed by C3 at 200k resolves with zero residual penetration and no traps. Island grown to ~250 m with a freshwater pond (in a real basin), stone outcrops, berry bushes, coconut palms, shellfish on the wet sand, one sealed crash box, and a distant unreachable wreck.
+- **Stage 1 — Brain: three clocks (100 tests).** Thirst, hunger, health as modules through `reconcile`. Empty vitals drain health, **stacking**; health regens online while nothing is empty. **Death and respawn — active play can kill**: on death you wake ashore at spawn, inventory/tools/skills kept (v1 mercy, §14), a plain honest cause shown. **THE LAW (D-011/D-025, now D-039): offline death is impossible** — proven by a property test over 3000 random states × long absences, plus the worst legal entry (every vital empty, a sliver of health, 1000 days away), not asserted. Development Tree seed: Woodcutting and Foraging XP for meaningful outcomes only; levels shorten the chop. Save schema **v1→v2 migration**: a Cycle 02 save loads and wakes to full vitals.
+- **Stage 2 — Body: demands and answers.** Four vital bars, a carried-inventory chip strip, a two-button context action. Drink at the pond (hold, or fill the flask to carry a drink inland); forage and eat (coconut both feeds and waters); **craft the crude axe** on a card that shows the four gates plainly; **fell standing trees** (axe only, 8 wood, trains woodcutting); **open the sealed box** (the flask). Death overlay, level-up toast, five new synthesised cues (drink, eat, craft, fell, unlock). The sanctuary beat is untouched.
+
+**Deviations and why**
+
+1. **Havok still not adopted** (D-031 held). Collision is analytic cylinder push-out — a distance check and a push, the same family as reach checks — because the island's height is analytic and Cycle 03 has no moving dynamics. Fuzzed sound by the audit. The real Havok trigger is Cycle 04's construction.
+2. **`D-036`/`D-037` renumbered** from the handoff's suggested D-031/D-032 (Cycle 02 had logged through D-035). No collision.
+3. **Derived `[TUNE]` rows** (C03+): food/yield values, the fibre source, health regen, and — after the audit — the body's collision/gesture numbers, all in `tune.ts` and the ledger.
+4. **A `window.__drift.groundAt`/`playerFeetY` debug accessor** for the harness's grounding check.
+5. **`vitest.config.ts`** scopes the suite to `tests/` (a stray `.claude/worktrees/` checkout from another session was polluting local runs; CI's clean checkout never saw it, and I left the worktree untouched since it is not mine).
+
+**Acceptance checks — all met** (C3-verified independently; the property test adversarially fuzzed)
+
+- **A1** 100 brain tests, including the offline-death-impossible property test and the c02→c03 migration. C3 attacked the property with 1e15-second spans, chained qualifying calls, and 2000 fuzzed out-of-band vitals — it held.
+- **A2** Purity green, CI-enforced. **Materially stronger after audit:** the check now judges every import by the package that owns the file it resolves to, closing the whole "trust the syntax" class after a fourth bypass (a relative path into node_modules). All five bypass shapes reproduced and caught.
+- **A3** Cold 4G load **1.8 s** (budget 8 s); median **76–87 FPS** on the ~250 m island (floor 30); no pinch/zoom trap; tab-switch survives.
+- **A4** The pressure loop on-device: thirsty → pond → drink; forage → eat; craft the axe; fell a tree; open the box; die once (cause stated) → respawn ashore; a 4-minute absence → report with honest vitals lines.
+- **A5** URL live; `/builds/c03/` archived; `c03` tag pushed; this note appended; c01/c02 archives intact.
+- **A6** Feet on the terrain with a contact shadow; colliders stop the player and cannot trap them (audit-fuzzed).
+- **A7** Vitals legible at a glance; drink/eat/craft/fell/unlock each cued; the craft card shows the gates; the level-up toast reads; the wreck is on the horizon; every new verb has a hint path.
+
+**Automated done-checks:** `npm run done-checks` (purity → types → 100 tests) and `npm run smoke` (**38 device checks** on a real GPU).
+
+**Known gaps — the honest list**
+
+- The screenshots are the only record of *feel*, and the frame rate is a desktop GPU's, not the director's phone (the `fpsFloorMedian` / Godot-hatch watch, D-028).
+- Placeholder art throughout: the castaway is a capsule, trees are cones, the wreck is two cylinders, audio is non-positional.
+- Single-use nodes; the island doesn't regrow yet.
+- No character or tree-fall animation — the tree vanishes with a cue, it doesn't topple.
+- iOS untested (Android-first, D-015).
+
+**AUDIT** *(C3, 2026-07-23 — fresh-context agent in the repo, per Ops §4)*
+
+**VERDICT: PASS-WITH-NOTES.**
+
+A1–A7 all verified independently. C3 read `reconcile.ts`/`vitals.ts` end to end and confirmed the offline-death-impossible mechanism is real (not an assertion), then attacked it with its own adversarial suite — 1e15-second spans, Infinity/NaN/negative elapsed, 500 chained qualifying calls, 2000 fuzzed out-of-band vitals — and it held (health finite, > 0, loop terminates in ms). It independently fuzzed the analytic collision (200k resolves, zero penetration, no pond lockout) and confirmed A6. Constitutional checks upheld; the v1→v2 migration verified real; `npm audit` clean; Phaser and Havok both absent from the bundle.
+
+**One blocking defect: a fourth purity bypass** — a *relative* import tunnelling into node_modules, past a check that judged relative paths only for body imports. Same root cause as the prior three, so it was **fixed by generalisation, not another special case** (D-038): every import is now judged by the package that owns the file it resolves to. All five bypass shapes reproduced and confirmed caught. Five notes also fixed: the body's collision/gesture numbers moved into `tune.ts` (the class D-026 established); the HUD "low" thresholds now share the hint system's constants; `save.ts` clamps vitals on load (a tampered negative health can no longer be held negative — pinned by a new test); D-025 formally resolved on the record (D-039); and the harness's death screenshot now fires after the overlay is confirmed up.
+
+C3's standing note for Cycle 04: the purity checker has now been generalised to close the *class* of syntax-vs-resolution bypasses, which should end the four-cycle run; and the tune-law sweep matters more as C04 adds construction footprints and reach checks. The audit's value, a fourth time running, was the one defect invisible to reading the code — the constitutional check guarding the whole architecture had a hole, and now has the generalisation that should close the family for good.

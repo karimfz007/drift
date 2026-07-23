@@ -23,6 +23,7 @@ import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
+import { TUNE } from '../data/tune';
 import { POND, POND_SURFACE_Y, ROCKS, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
@@ -307,7 +308,7 @@ export class Island {
 
         //  The forest blocks — sparse enough (≈12 m apart) to weave through to the pond,
         //  dense enough to read as woods. Collision is push-out, so it never traps.
-        for (const [x, z] of TREES) this.staticObstacles.push({ x, z, radius: 0.7 });
+        for (const [x, z] of TREES) this.staticObstacles.push({ x, z, radius: TUNE.decorTreeCollisionRadius });
     }
 
     private buildRocks(): void {
@@ -331,7 +332,7 @@ export class Island {
         source.thinInstanceAdd(matrices);
         source.freezeWorldMatrix();
 
-        for (const [x, z, size] of ROCKS) this.staticObstacles.push({ x, z, radius: size * 1.4 });
+        for (const [x, z, size] of ROCKS) this.staticObstacles.push({ x, z, radius: size * TUNE.decorRockCollisionScale });
     }
 
     /**

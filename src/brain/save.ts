@@ -6,8 +6,15 @@
  * cycle can be swapped for IndexedDB (or a native store) without the brain noticing.
  */
 
+import { TUNE } from '../data/tune';
 import { SCHEMA_VERSION, type GameState } from './types';
 import { createInitialState } from './state';
+
+/** Keep a loaded vital in [0, max]; fall back to a fresh-run default if it is not a number. */
+function clampVital(value: number, max: number, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+    return Math.max(0, Math.min(max, value));
+}
 
 export interface SaveEnvelope {
     schemaVersion: number;
@@ -144,6 +151,14 @@ function hydrate(state: GameState): GameState {
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },
         nodes: Array.isArray(state.nodes) && state.nodes.length > 0 ? state.nodes : base.nodes,
+        //  Defensive clamp on load. Vitals are now life-and-death, so a corrupt or
+        //  hand-edited save must not carry an out-of-band value (a negative health would
+        //  otherwise be held negative forever by reconcile's floor). A health of 0 self-heals
+        //  on the next online tick — death, then a merciful respawn. (C3 audit, C03.)
+        warmth: clampVital(state.warmth, TUNE.warmthMax, base.warmth),
+        thirst: clampVital(state.thirst, TUNE.thirstMax, base.thirst),
+        hunger: clampVital(state.hunger, TUNE.hungerMax, base.hunger),
+        health: clampVital(state.health, TUNE.healthMax, base.health),
         schemaVersion: SCHEMA_VERSION
     };
 }

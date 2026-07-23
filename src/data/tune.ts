@@ -72,6 +72,25 @@ export const TUNE = {
      *  down an arm's length ahead — and the firelight becomes somewhere you step into. */
     fireBuildOffsetM: 1.7,
 
+    // ---- Collision and gesture (C03; moved from the body at the C03 audit, D-038) -----
+    /** [TUNE] C03+ — the castaway's collision radius, in metres. Governs how close you can
+     *  get to a trunk or a rock — a reachability number, so it belongs here (D-026's rule). */
+    playerCollisionRadius: 0.4,
+    /** [TUNE] C03+ — collision footprints, in metres, for the things you cannot walk through. */
+    treeCollisionRadius: 0.8,
+    rockCollisionRadius: 1.1,
+    palmCollisionRadius: 0.5,
+    crashboxCollisionRadius: 0.9,
+    fireCollisionRadius: 0.9,
+    /** [TUNE] C03+ — footprint multiplier for the decorative treeline/rock instances. */
+    decorTreeCollisionRadius: 0.7,
+    decorRockCollisionScale: 1.4,
+    /** [TUNE] C03+ — extra metres of forgiveness when tapping the pond to drink. */
+    pondTapSlack: 1,
+    /** [TUNE] C03+ — a press this short and this still (screen px) is a tap, not a look-drag. */
+    tapMaxMs: 320,
+    tapMaxMovePx: 14,
+
     // ---- Movement and camera (C02) -----------------------------------------
     /** [TUNE] C02 — metres per second on foot. */
     walkSpeedMps: 3.5,
@@ -128,9 +147,11 @@ export const TUNE = {
      *  Recovery preserves momentum (§I.18 rule 3): a crisis survived is a crisis you climb out of. */
     healthRegenPerGameHour: 4,
 
-    /** [TUNE] C03+ — at or below these, a contextual hint nudges the player toward water/food. */
+    /** [TUNE] C03+ — at or below these, the HUD bar reads "low" and a hint nudges the player.
+     *  One threshold per vital, so the bar's own cue and the hint system always agree (D-038). */
     thirstLowHintAt: 35,
     hungerLowHintAt: 30,
+    healthLowHintAt: 30,
 
     /** [TUNE] C03 — D-011 offline floors: absence drifts these here and stops. */
     thirstOfflineFloor: 10,

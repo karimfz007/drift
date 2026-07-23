@@ -160,3 +160,18 @@ describe('save — A1: a Cycle 02 save migrates to Cycle 03', () => {
         expect(twice!.state).toEqual(once!.state);
     });
 });
+
+describe('save — a tampered save cannot carry an out-of-band vital (C3 audit, C03)', () => {
+    it('clamps a negative or over-max vital on load', () => {
+        const tampered = {
+            schemaVersion: SCHEMA_VERSION,
+            savedAtMs: 5,
+            state: { schemaVersion: SCHEMA_VERSION, health: -40, thirst: 999, hunger: -1, warmth: 50 }
+        };
+        const envelope = deserialize(JSON.stringify(tampered));
+        expect(envelope!.state.health).toBe(0); // negative → 0; self-heals to a respawn on the next tick
+        expect(envelope!.state.thirst).toBe(TUNE.thirstMax); // clamped to the ceiling
+        expect(envelope!.state.hunger).toBe(0);
+        expect(envelope!.state.warmth).toBe(50); // in range, untouched
+    });
+});

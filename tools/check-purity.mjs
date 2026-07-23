@@ -98,38 +98,23 @@ function importsOf(source) {
 }
 
 /**
- * The REAL package a bare specifier points at, not the name the code typed.
+ * The REAL package that owns a resolved file — walk up to its nearest package.json and
+ * read the `name` it declares. This is what makes the check judge an import by *where it
+ * actually lands*, never by the name (or the path shape) the code typed.
  *
- * A specifier can lie: `import ... from 'x'` where package.json aliases `"x":
- * "npm:@babylonjs/core"` loads Babylon under a clean name, straight past a forbidden-name
- * list. (Found by the C3 audit of Cycle 02 — the third bypass of this check in three
- * cycles, all the same shape: trusting the typed name.) So resolve the specifier to a
- * file, walk up to its owning package.json, and return the `name` field it actually
- * declares — which for an alias is the true package, `@babylonjs/core`. Returns null for
- * Node built-ins and anything unresolvable.
+ * This is the generalization the check has been converging on for four cycles. The bypass
+ * history is one story told four times, always the same shape — trusting syntax over
+ * resolution: a direct import, a transitive re-export (D-026), a computed dynamic import
+ * and an npm alias (D-034), and now a relative path that tunnels into node_modules
+ * (`../../node_modules/@babylonjs/core/...`, D-038). So we stopped special-casing the
+ * shapes and started asking one question of every import: what package does the file it
+ * resolves to belong to? Returns null for source outside node_modules, Node built-ins,
+ * and anything unresolvable.
  */
-function realPackageName(specifier) {
-    //  The subpath (`@scope/pkg/foo/bar`) does not matter; the package identity does.
-    const parts = specifier.split('/');
-    const packageSpecifier = specifier.startsWith('@')
-        ? parts.slice(0, 2).join('/')
-        : parts[0];
-
-    let entry;
-    try {
-        entry = requireFrom.resolve(specifier);
-    } catch {
-        try {
-            //  Packages with no main/exports still resolve their own package.json.
-            entry = requireFrom.resolve(`${packageSpecifier}/package.json`);
-        } catch {
-            return null; // built-in, or genuinely not installed
-        }
-    }
-
-    //  Walk up from the resolved file to the nearest package.json and read its name.
-    let dir = dirname(entry);
-    while (dir.startsWith(root) || dir.includes(`${sep}node_modules${sep}`)) {
+function owningPackageOfFile(resolvedPath) {
+    if (!resolvedPath || !resolvedPath.includes(`${sep}node_modules${sep}`)) return null;
+    let dir = dirname(resolvedPath);
+    while (dir.includes(`${sep}node_modules${sep}`) || dir.startsWith(root)) {
         const manifest = join(dir, 'package.json');
         if (existsSync(manifest)) {
             try {
@@ -144,6 +129,23 @@ function realPackageName(specifier) {
         dir = parent;
     }
     return null;
+}
+
+/** The real package a BARE specifier resolves to (handles npm aliases). */
+function realPackageName(specifier) {
+    const parts = specifier.split('/');
+    const packageSpecifier = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+    let entry;
+    try {
+        entry = requireFrom.resolve(specifier);
+    } catch {
+        try {
+            entry = requireFrom.resolve(`${packageSpecifier}/package.json`);
+        } catch {
+            return null; // built-in, or genuinely not installed
+        }
+    }
+    return owningPackageOfFile(entry);
 }
 
 /** Resolve a relative specifier the way the bundler would. Returns null if unresolvable. */
@@ -205,6 +207,19 @@ function visit(file, chain) {
         const resolved = resolveRelative(file, specifier);
         if (!resolved) continue;
 
+        //  A relative path can tunnel straight into node_modules (`../../node_modules/...`).
+        //  Judge the resolved file by the package that owns it — the same question we ask of
+        //  a bare specifier — so a forbidden engine cannot hide behind a relative path
+        //  (the fourth bypass, D-038).
+        const owner = owningPackageOfFile(resolved);
+        if (owner !== null && FORBIDDEN_PACKAGES.some((pattern) => pattern.test(owner))) {
+            violations.push({
+                why: `depends on a rendering engine`,
+                chain: [...here, `→ '${specifier}' (resolves into '${owner}')`]
+            });
+            continue;
+        }
+
         if (resolved.startsWith(bodyDir)) {
             violations.push({
                 why: 'imports the body (the dependency only ever runs body → brain)',
@@ -212,6 +227,10 @@ function visit(file, chain) {
             });
             continue;
         }
+
+        //  Never recurse into node_modules source (only the ownership check above matters
+        //  there); recurse only into our own files.
+        if (resolved.includes(`${sep}node_modules${sep}`)) continue;
 
         visit(resolved, here);
     }

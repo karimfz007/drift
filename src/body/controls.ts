@@ -32,9 +32,6 @@ export interface ControlHandlers {
     onActivity: () => void;
 }
 
-const TAP_MAX_MS = 320;
-const TAP_MAX_MOVE_PX = 14;
-
 export class Controls {
     private stickPointer: number | null = null;
     private lookPointer: number | null = null;
@@ -134,13 +131,13 @@ export class Controls {
             this.lookDeltaY += event.clientY - this.lookLastY;
             this.lookLastX = event.clientX;
             this.lookLastY = event.clientY;
-            if (this.pressMoved > TAP_MAX_MOVE_PX) this.handlers.onActivity();
+            if (this.pressMoved > TUNE.tapMaxMovePx) this.handlers.onActivity();
         }
     };
 
     private onUp = (event: PointerEvent): void => {
         const heldMs = performance.now() - this.pressStartedAt;
-        const wasTap = heldMs <= TAP_MAX_MS && this.pressMoved <= TAP_MAX_MOVE_PX;
+        const wasTap = heldMs <= TUNE.tapMaxMs && this.pressMoved <= TUNE.tapMaxMovePx;
 
         if (event.pointerId === this.worldPointer) {
             this.worldPointer = null;

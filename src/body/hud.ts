@@ -96,9 +96,9 @@ export class Hud {
 
     update(v: HudView): void {
         this.paintBar('warmth', v.warmth, TUNE.warmthMax, CSS.warm, TUNE.warmthLowThreshold, v.sheltered ? 'rising' : '');
-        this.paintBar('thirst', v.thirst, TUNE.thirstMax, '#5ec6e0', 20, '');
-        this.paintBar('hunger', v.hunger, TUNE.hungerMax, '#c9a227', 20, '');
-        this.paintBar('health', v.health, TUNE.healthMax, CSS.good, 30, '');
+        this.paintBar('thirst', v.thirst, TUNE.thirstMax, '#5ec6e0', TUNE.thirstLowHintAt, '');
+        this.paintBar('hunger', v.hunger, TUNE.hungerMax, '#c9a227', TUNE.hungerLowHintAt, '');
+        this.paintBar('health', v.health, TUNE.healthMax, CSS.good, TUNE.healthLowHintAt, '');
 
         this.clockLabel.textContent = formatClock(v.gameHoursElapsed);
         this.goalLabel.textContent = v.goal;

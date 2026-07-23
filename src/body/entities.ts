@@ -166,13 +166,13 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             canopy.position.y = 4.0;
             canopy.isPickable = true;
             canopy.metadata = { nodeId: node.id };
-            return at(trunk, 3.0, 1.1, 0.8);
+            return at(trunk, 3.0, 1.1, TUNE.treeCollisionRadius);
         }
         case 'rock': {
             const m = CreateCylinder(`n_${node.id}`, { height: 1.4, diameterTop: 1.1, diameterBottom: 1.9, tessellation: 5 }, scene);
             m.material = materials.rock;
             m.rotation.y = index * 0.9;
-            return at(m, 0.5, 1.4, 1.1);
+            return at(m, 0.5, 1.4, TUNE.rockCollisionRadius);
         }
         case 'berrybush': {
             const m = CreateSphere(`n_${node.id}`, { diameter: 1.5, segments: 6 }, scene);
@@ -191,7 +191,7 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             fronds.position.y = 3.3;
             fronds.isPickable = true;
             fronds.metadata = { nodeId: node.id };
-            return at(trunk, 3.25, 1.0, 0.5);
+            return at(trunk, 3.25, 1.0, TUNE.palmCollisionRadius);
         }
         case 'shellfish': {
             const m = CreateSphere(`n_${node.id}`, { diameter: 0.7, segments: 5 }, scene);
@@ -203,7 +203,7 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             const m = CreateBox(`n_${node.id}`, { width: 1.3, height: 1.0, depth: 0.9 }, scene);
             m.material = materials.box;
             m.rotation.y = 0.4;
-            return at(m, 0.5, 1.1, 0.9);
+            return at(m, 0.5, 1.1, TUNE.crashboxCollisionRadius);
         }
     }
 }
@@ -431,7 +431,7 @@ export class FireView {
 
     /** The fire's footprint, so the player cannot stand inside the pit. */
     obstacle(state: GameState): Obstacle | null {
-        return state.fire.built ? { x: state.fire.x, z: state.fire.y, radius: 0.9 } : null;
+        return state.fire.built ? { x: state.fire.x, z: state.fire.y, radius: TUNE.fireCollisionRadius } : null;
     }
 
     update(state: GameState, groundY: number, nightFactor: number): void {
