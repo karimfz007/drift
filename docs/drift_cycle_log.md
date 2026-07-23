@@ -84,6 +84,30 @@
 | `rotatePromptEnabled` | true | C04 | Portrait shows a rotate-to-landscape prompt (D-041) |
 | `cameraMinBoomM` | 1.4 | C04 | Shortest camera boom — how close the camera pulls to avoid clipping/occluding through a trunk or rise (A6; C3 note N1) |
 | `pondSipMinIntervalMs` | 600 | C04 | Min real-ms between auto-sips while standing in the pond — governs rehydration rate (C3 note N3) |
+| `energyMax` | 100 | C05 | Full energy — the 5th vital |
+| `energyDrainPerGameHour` | 5 | C05 | ~20 game hours to empty — a full-day rhythm, not a pressure clock like thirst/hunger; never feeds health drain this cycle (soft debuff only) |
+| `energyOfflineFloor` | 15 | C05 | D-011-style offline floor, for consistency with every other vital — not required for safety (energy is not a death vector this cycle), just kindness |
+| `energyLowThreshold` | 25 | C05 | At or below, the castaway is sluggish (walk speed scaled); a soft debuff, never a death vector |
+| `energySlowWalkMultiplier` | 0.65 | C05 | Walk-speed multiplier while exhausted (below `energyLowThreshold`) |
+| `sleepDurationGameHours` | 8 | C05 | Game hours a voluntary sleep at the shelter advances the clock by — reuses the reconcile spine an absence already uses, unmodified |
+| `wetMax` | 100 | C05 | Full wetness — a condition, not a vital; no offline floor (not a safety concern) |
+| `wetGainPerGameHourInPond` | 240 | C05 | Wetness gained per game hour standing in the pond — fast, a few real minutes of wading soaks through |
+| `wetDecayPerGameHourDry` | 15 | C05 | Wetness lost per game hour on dry land, away from the shelter |
+| `wetDecayPerGameHourSheltered` | 60 | C05 | Wetness lost per game hour within the shelter's radius — drying off is the shelter's second job |
+| `wetWarmthDrainMultiplierAtMaxWet` | 1.5 | C05 | Warmth's night-time drain rate is multiplied by this at full wetness (linear from 1.0 at wet=0); applies only to the drain case, never the fire's regen |
+| `shelterWoodCost` / `shelterStoneCost` / `shelterFiberCost` | 8 / 4 / 3 | C05 | The lean-to's build recipe — a meaningful step up from the axe |
+| `shelterRadius` | 6 | C05 | Metres from the shelter its bonuses (warmth relief, faster drying) reach |
+| `shelterWarmthDrainMultiplier` | 0.5 | C05 | Within the shelter's radius, warmth's night-time drain is halved — independent of the fire |
+| `shelterBuildOffsetM` | 2.2 | C05 | How far ahead of the player the shelter is placed — same reasoning as `fireBuildOffsetM` |
+| `shelterCollisionRadius` | 1.3 | C05 | Collision footprint of a built shelter |
+| `storageWoodCost` / `storageStoneCost` | 5 / 3 | C05 | The storage crate's build recipe — wood and stone only, no fibre gate |
+| `storageBuildOffsetM` | 2.2 | C05 | How far ahead of the player storage is placed |
+| `storageCollisionRadius` | 0.9 | C05 | Collision footprint of a built storage crate |
+| `storageWithdrawBatch` | 5 | C05 | Per-resource amount withdrawn per tap when the crate holds any and the player carries none |
+| `structureDurabilityMax` | 100 | C05 | Full durability, for any structure (shelter or storage) |
+| `structureDurabilityDecayPerGameHour` | 1 | C05 | Durability lost per game hour — ~4 days from full to 0, long enough that neglect, not attentiveness, triggers it |
+| `repairDurabilityPerWood` | 15 | C05 | Durability restored per wood spent repairing |
+| `structureRepairThresholdFraction` | 0.9 | C05 | Repair only "counts" (and wins the sleep/storage-use disjoint choice) below this fraction of max — the fix for the repair-threshold starvation bug found during the C05 build |
 
 *C03 adds the three vitals, death/respawn, the first tool and loot, and two seed skills. Rows marked **C03+** are derived constants C2 added under the tune law to express the spec's behaviour (food values, node yields, fibre source, health regen). The D-011 offline floors (`*OfflineFloor`) make **offline death impossible** — proven by a property test, not asserted (A1).*
 
@@ -506,4 +530,21 @@ Phase 2 · Tier: Sonnet high (Opus per-blockage) · Status: OPEN · Opened 2026-
 
 **Play URL:** https://karimfz007.github.io/drift/ · **Archive:** `/builds/c05/` · **Tag:** `c05`.
 
-**AUDIT:** *(pending — C3)*
+**AUDIT:** *(C3, 2026-07-23 — fresh-context agent in the repo, per Ops §4)*
+
+**VERDICT: PASS-WITH-NOTES** (remediated to green).
+
+A1–A6 independently verified, not taken on the as-built's word:
+
+- **A1/A2** — `npm run purity` (10 brain files, zero rendering-engine imports), `npm run typecheck`, and `npm run test` re-run from a clean checkout: **128 tests green**, including the offline-death-impossible property test (3000 random states × random long absences) unmodified since C03. Read `healthRatePerGameHour` in `src/brain/vitals.ts` directly — its signature takes thirst/hunger/warmth/health only, no energy parameter — confirming energy genuinely cannot feed the health-drain path; this is a structural guarantee, not a convention that could quietly slip.
+- **The `onTap` nearest-wins fix** (`src/body/game.ts`) is real and general, confirmed by reading the code rather than the as-built's description of it: fire, pond, shelter, and storage are all collected into one `candidates` array within their own forgiveness radius, sorted by distance, and the nearest wins — there is no special case for shelter-vs-storage specifically. Any future pair of nearby placed objects resolves through the same path.
+- **The repair-threshold fix** (`canRepairStructure` in `src/brain/state.ts`, gated on `TUNE.structureRepairThresholdFraction = 0.9`) and **the collision degenerate-case fix** (`resolveCollision` in `src/body/island.ts`, a deterministic push angle derived from the obstacle's own position when `d² ≈ 0`) were both read line-by-line, not sampled: the repair gate is a real inequality against a tuned fraction of max (not `< max`), and the degenerate branch is a genuine second code path guarding every caller of `resolveCollision` (movement, camera-clip, and all three build placements), not a special case for shelter/storage alone.
+- **Honest-systems law on structure decay** — confirmed in three places independently: `reconcile.ts` floors durability at `Math.max(0, ...)` (never negative, never triggers any deletion branch); `isInDisrepair`/`isNearShelter` in `state.ts` only pause the *bonus* (`shelterActive = nearShelter && !isInDisrepair(...)`); and `src/body/entities.ts`'s `ShelterView`/`StorageView.update()` only swap the material colour to `PALETTE.disrepair` at 0 durability — the mesh is never disabled, the obstacle footprint is returned unconditionally, and `useStorage()` never reads `durability` at all, so stored contents are reachable regardless of repair state.
+- **The Havok deferral** — grepped `package.json`, all of `/src`, and the built `dist/assets/*.js` bundle for any Havok/physics-engine reference: zero, confirming the deferral is not merely asserted. Shelter and storage are built through `onBuildShelter`/`onBuildStorage` using the identical `island.resolveCollision` clear-ground check the fire already used pre-C05. No gameplay reason surfaced in this cycle's scope that C06 (moving threats) couldn't be the real trigger point instead — agreed with C2's call.
+- **Device harness** — a fresh build (`npm run build`), served via `vite preview --port 4173`, driven by `node tools/smoke.mjs`. First attempt crashed mid-run at check 54/75 with `Error: Attempted to use detached Frame` — the identical signature the as-built already documents from this session's Chrome/Node process accumulation, not a new regression (every check up to the crash was a clean PASS). Killed stray `chrome.exe`/`node.exe`, restarted the preview server, and reran with no code changes: **a clean 75/75**, one retry needed exactly as the as-built anticipated. Independently confirmed live: the degenerate-collision fix (storage built 2.20 m from the shelter, no overlap), the repair-threshold fix (a shelter at 54.9% durability repairs, not sleeps, when wood is held), sleep (clock +8.01 game hours, energy refilled), storage's disjoint deposit/withdraw, and respawn-at-shelter after death.
+
+**One finding, fixed — the TUNE ledger did not mirror `tune.ts`.** The spec's own A6 ("No hardcoded gameplay constants outside `tune.ts`; the TUNE ledger mirrors it") and the doc's standing convention both require every `tune.ts` row to appear in the ledger table at the top of this file. It did not: `tune.ts` gained roughly 26 new C05 constants (energy, wet, shelter, storage, upkeep) and none were added to the ledger table — a documentation-completeness gap, not a code violation (the diff was independently checked and contains no hardcoded gameplay numbers; every C05 constant does live in `tune.ts`, as claimed). **Fixed:** all 26 C05 rows added to the ledger table in this same pass, in the existing style.
+
+**One carried-forward note, not remediated.** `onTap`'s per-kind forgiveness radius uses a hardcoded `+ 1.5` (metres) on top of each object's own tune-law radius — present for fire and pond since C04, and this cycle simply extended the same pattern consistently to shelter and storage rather than introducing a new instance of it. Not blocking (it predates this cycle and was already latent through C04's audit), but worth a `tune.ts` row (e.g. `tapForgivenessM`) the next time the tune-law sweep runs.
+
+The audit's value this cycle was smaller than in prior cycles — every code-level claim in the as-built checked out on direct reading, and the harness's one crash was exactly the documented environment flakiness rather than a surprise. The one real finding was a documentation gap the acceptance checks claimed was satisfied but wasn't; it is now.
