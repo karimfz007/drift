@@ -13,8 +13,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "purity": "node tools/check-purity.mjs",
+    "docs-integrity": "node tools/check-docs-integrity.mjs",
     "gen:audio": "node tools/gen-audio.mjs",
-    "done-checks": "npm run purity && npm run typecheck && npm run test",
+    "done-checks": "npm run purity && npm run docs-integrity && npm run typecheck && npm run test",
     "smoke": "node tools/smoke.mjs"
   },
   "devDependencies": {

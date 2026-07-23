@@ -3,6 +3,18 @@
 
 ---
 
+**D-048 · 2026-07-23 — C05 spec, retroactive C1 audit: APPROVED-WITH-NOTES.**
+Scope-true to D-037/D-040/D-044; D-011-compliant. Notes: placement-feel judged at playtest; tap-forgiveness constant → tune sweep; energy→death integration requires re-proving the offline-death property when it lands. *Status: standing.* — C1
+
+**D-047 · 2026-07-23 — ⚑ RESOLVED: crew composition** (open since the library-first audit's Amendment 7).
+Standing crew remains all-Claude, tiered per D-044; non-Claude external audits stay an occasional red-team practice with no standing seat and no constitutional pen — independence is their value. Resolved by C1 at the director's request. *Status: standing; resolved.* — C1
+
+**D-046 · 2026-07-23 — Process-gap remediation (C1).**
+Laws: (a) **No committed spec, no build** — if the cycle log lacks the target cycle's spec, C2 halts and requests it; a missing OPEN artifact is a stop condition, never an improvisation license. (b) **Handoff packages embed their spec and deltas inline** — never reference uncommitted content. (c) **MAJOR artifacts flagged by SON reach C2 only with C1's explicit "AUDITED — GO"** relayed by the director. (d) **New CI docs-integrity check** — every D-reference in `/docs` must resolve to a ledger entry (this would have caught the dangling D-045 reference mechanically). Ops → v1.5 with these under §4; version strings bumped. *Status: standing.* — C1
+
+**D-045 · 2026-07-23 — Third tap-to-fell root cause: an untracked pointer event corrupting tap-vs-drag detection.**
+Regression-locked; shipped as its own commit before the C05 build. **Standing rule: a fourth distinct failure of this interaction rewrites the input layer (class, not instance).** *Status: standing.* — C2
+
 **D-044 · 2026-07-23 — Crew reorganization for token economy (director).**
 SON Operator added (Sonnet high, chat) for daily orchestration, triage, and drafting specs/packages/deltas; **C1 becomes Supervisor** (top tier: constitution, forks, MAJOR-artifact audits, cycle-close verdicts). **C2 default drops to Sonnet high** with per-block Opus escalation (the handoff block's tier line) or per-blockage escalation (an architecture-level problem C2 cannot crack in two attempts → tell the Director "flip to Opus for this", then back). C01–C04 ran Opus as architecture-founding cycles — correct spend, that era is closed. **C3 stays Sonnet.** Supervision loop: MAJOR artifacts (cycle specs, handoff packages, constitutional deltas) are audited by C1 pre-handoff when flagged; a KEY REPORT goes to C1 at every CLOSE. Ops → v1.4 (§1 crew table + supervision loop, §6 token economy). *Status: standing.* — C2
 
