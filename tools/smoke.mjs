@@ -112,6 +112,15 @@ async function main() {
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
     const canvasRect = () => page.evaluate(() => { const r = document.getElementById('game-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; });
 
+    //  Dispatch a real PointerEvent with its own pointerId, as a second finger would — used
+    //  to reproduce concurrent-touch bugs puppeteer's single-pointer touchscreen API cannot
+    //  simulate (a resting/steering left thumb alongside a tapping right thumb, PERFECT-pass
+    //  FIX 1). This exercises the actual Controls -> onTap path, not a debug bypass.
+    const firePointer = (type, x, y, pointerId) => page.evaluate(({ type, x, y, pointerId }) => {
+        const el = document.getElementById('game-canvas');
+        el.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId, pointerType: 'touch', bubbles: true, cancelable: true, isPrimary: false }));
+    }, { type, x, y, pointerId });
+
     //  Drive the left-thumb stick toward a world point for a while.
     const walkToward = async (tx, tz, seconds) => {
         const rect = await canvasRect();
@@ -400,6 +409,56 @@ async function main() {
 
     //  #5 THE AXE DOES SOMETHING: with the axe, tapping a standing tree fells it (below).
 
+    // ================================================================
+    // PERFECT PASS (2026-07-23) — FIX 1 and FIX 2, root-caused and locked
+    // ================================================================
+    console.log('\nPERFECT pass — FIX 1 (stick-held tap) and FIX 2 (pond fill starved by drink)');
+
+    //  FIX 1 root cause: `stepMovement` cleared ANY pending interaction every frame the
+    //  movement stick had nonzero magnitude — so the natural two-thumb gesture (walk toward
+    //  a tree with the left thumb, tap it with the right) set `pending` in `onTap`, then the
+    //  very next frame's stepMovement (stick still held/resting) nulled it before the
+    //  interaction ever ran. `__drift.intend()` bypasses onTap/Controls entirely and would
+    //  NOT have caught this — it lives in the real tap path, so this regression dispatches
+    //  genuine concurrent PointerEvents (a held stick pointer + a separate tapping pointer),
+    //  exactly as two real fingers would, through the actual Controls -> onTap code path.
+    await editSave('state.tools.axe = true; state.player = { x: -10, y: 45.7 };'); // ~1.7 m from tree tr1 (-10,44)
+    {
+        const rect = await canvasRect();
+        const stickX = rect.left + rect.width * 0.2, stickY = rect.top + rect.height * 0.75;
+        const sp = await screenOf(-10, 44);
+        //  Left thumb: press and rest/nudge the stick (as it naturally does while walking).
+        await firePointer('pointerdown', stickX, stickY, 101);
+        await firePointer('pointermove', stickX + 15, stickY, 101);
+        await sleep(80);
+        //  Right thumb: a quick, separate-pointerId tap on the tree, stick still held.
+        await firePointer('pointerdown', sp.x, sp.y, 102);
+        await sleep(50);
+        await firePointer('pointerup', sp.x, sp.y, 102);
+        await sleep(200);
+        let felled = false;
+        for (let i = 0; i < 12; i++) { const av = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'tr1')?.available); if (av === false) { felled = true; break; } await sleep(400); }
+        check('FIX 1 — a tap on a standing tree fells it EVEN WHILE the movement stick is still held', felled);
+        await firePointer('pointerup', stickX + 15, stickY, 101); // release the stick
+        await sleep(150);
+    }
+
+    //  FIX 2 root cause: the pond's `actOnArrival` checked `canDrinkAtPond` FIRST, which is
+    //  true whenever thirst < max — nearly always — so an empty/partial flask was starved
+    //  exactly like C03's Craft-axe starved Build-fire: the higher-priority branch's gate was
+    //  satisfied so often the other verb was practically unreachable ("no way to fill it").
+    await editSave('state.tools.flask = true; state.tools.flaskSips = 0; state.thirst = 70;'); // thirsty but not desperate; flask empty
+    {
+        const POND = { x: -22, y: 8 };
+        await approach(POND.x, POND.y, 40);
+        const before = await live();
+        await faceNode(POND.x, POND.y);
+        await tapWorld(POND.x, POND.y, 55);
+        await sleep(500);
+        const after = await live();
+        check('FIX 2 — tapping the pond fills a non-full flask (not just self-drink)', after.tools.flaskSips > before.tools.flaskSips, `sips ${before.tools.flaskSips} → ${after.tools.flaskSips}, thirst ${before.thirst}→${after.thirst.toFixed(1)}`);
+    }
+
     // ---- A4/A7: the pressure loop, through the new direct-world verbs ----
     console.log('\nA4/A7 — the pressure loop (tap the thing to use the thing)');
 
@@ -443,8 +502,11 @@ async function main() {
     const afterBox = await live();
     check('the box yields the flask and fibre', afterBox.tools.flask === true && afterBox.inventory.fiber > afterCraft.inventory.fiber, `flask ${afterBox.tools.flask}`);
 
-    //  Drink at the pond by TAPPING the water (no button).
-    await editSave('state.thirst = 40;');
+    //  Drink at the pond by TAPPING the water (no button). Top the flask first if one was
+    //  picked up earlier in this run (the crash box) — since FIX 2 (2026-07-23) makes filling
+    //  win over drinking whenever the flask isn't full, a full flask isolates this check to
+    //  plain self-drinking; the fill-wins-when-empty behavior has its own regression above.
+    await editSave('state.thirst = 40; if (state.tools.flask) state.tools.flaskSips = 999;');
     const POND = { x: -22, y: 8 };
     const thirstBeforeDrink = (await live()).thirst;
     let atPondDist = await approach(POND.x, POND.y, 40);

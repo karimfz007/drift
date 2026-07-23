@@ -317,7 +317,10 @@ export class Game {
             this.cues.play(CUES.target);
             return;
         }
-        //  Empty ground: just look there. No pending.
+        //  Empty ground: just look there — and drop any pending intention. This is the
+        //  player's explicit "never mind" gesture now that manual steering no longer cancels
+        //  a pending on its own (FIX 1, 2026-07-23 handoff).
+        this.clearPending();
     }
 
     /** The world point a pending interaction wants to reach. */
@@ -362,8 +365,16 @@ export class Game {
         }
 
         if (this.pending.kind === 'pond') {
-            if (canDrinkAtPond(s)) { this.doDrink(); }
-            else if (canFillFlask(s)) { this.doFillFlask(); this.pending = null; }
+            //  FIX 2 (2026-07-23 handoff): fill wins over drink at the pond. Drink used to go
+            //  first unconditionally, and it applies whenever thirst < max — nearly always —
+            //  so an empty flask was starved exactly like C03's Craft-axe starved Build-fire:
+            //  the higher-priority branch's gate was satisfied so often that the other verb
+            //  was practically unreachable ("no way to fill it"). Filling is the one thing
+            //  only the pond can do; drinking your own thirst down is also reachable anywhere
+            //  by tapping a full flask chip (D-042 audit fix). So: fill first when it applies
+            //  (tops the flask, a one-shot action), otherwise drink as before.
+            if (canFillFlask(s)) { this.doFillFlask(); this.pending = null; }
+            else if (canDrinkAtPond(s)) { this.doDrink(); }
             else { this.explain('The flask is full and so are you.'); this.pending = null; }
             return; // drinking keeps the pending alive to allow repeat sips while held nearby
         }
@@ -658,8 +669,16 @@ export class Game {
         let desiredZ = 0;
 
         if (stick.magnitude > 0) {
-            //  Manual steering cancels any walk-to intention.
-            if (this.pending) this.clearPending();
+            //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
+            //  pending interaction itself (FIX 1, 2026-07-23 handoff — root cause of "axe
+            //  equipped, tap standing tree, tree does not fell"). The natural two-thumb
+            //  gesture is: walk toward a tree with the left thumb, tap it with the right —
+            //  the tap sets `pending`, but this method runs every frame, and with the stick
+            //  still held (even lightly resting) it used to null `pending` on the very next
+            //  frame, before `stepInteraction` ever got a chance to act on arrival. Now the
+            //  pending survives regardless of steering; it fires the moment the player is in
+            //  reach, however they got there. It is superseded by any new tap and explicitly
+            //  dropped by a tap on empty ground (the player's "never mind" gesture).
             const forward = new Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
             const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
             const dir = forward.scale(-stick.y).add(right.scale(stick.x));

@@ -309,9 +309,9 @@ export function showSettings(overlay: HTMLElement, current: number, onPick: (v: 
         <h2>Look sensitivity</h2>
         <p class="subtitle">How far the camera swings when you drag.</p>
         <div class="choices">
-            <button type="button" data-value="0.6">Gentle</button>
-            <button type="button" data-value="1">Standard</button>
-            <button type="button" data-value="1.6">Quick</button>
+            <button type="button" data-value="0.8">Gentle</button>
+            <button type="button" data-value="1.35">Standard</button>
+            <button type="button" data-value="2">Quick</button>
         </div>
         <button class="primary done" type="button">Done</button>`;
     const buttons = [...el.querySelectorAll<HTMLButtonElement>('.choices button')];

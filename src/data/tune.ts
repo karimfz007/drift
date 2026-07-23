@@ -119,8 +119,9 @@ export const TUNE = {
     walkSpeedMps: 3.5,
     /** [TUNE] C02 — close third-person camera distance, in metres. */
     cameraDistanceM: 6,
-    /** [TUNE] C02 — drag-to-orbit multiplier. Persisted setting. */
-    lookSensitivity: 1.0,
+    /** [TUNE] C02, raised C04 PERFECT pass (2026-07-23) — drag-to-orbit multiplier, 1.0 -> 1.35
+     *  for a quicker camera turn. Persisted setting (readSensitivity() falls back to this). */
+    lookSensitivity: 1.35,
     /** [TUNE] C02 — horizontal field of view, in radians. Horizontal-fixed so the view
      *  does not narrow on a tall phone screen. */
     cameraFovHorizontalRad: 1.05,
