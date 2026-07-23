@@ -1,0 +1,19 @@
+{
+  "name": "The First Night",
+  "short_name": "First Night",
+  "description": "You wash ashore at dusk. Cold is coming. A low-poly survival island.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#05080f",
+  "theme_color": "#0b1220",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
