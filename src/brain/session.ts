@@ -6,9 +6,11 @@
  * the clock itself — `nowMs` is always passed in, which is what keeps it testable.
  */
 
+import { TUNE } from '../data/tune';
+import { realSecondsFromGameHours } from './clock';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
-import { createInitialState, respawn } from './state';
+import { canSleep, createInitialState, respawn } from './state';
 import { deserialize, serialize, type SaveRepository } from './save';
 import type { ControlMode, GameState } from './types';
 
@@ -92,6 +94,33 @@ export class Session {
         outcome.state.lastSeenMs = nowMs;
         this.state = outcome.state;
         return this.handleDeath(outcome, nowMs);
+    }
+
+    /**
+     * Sleep at the shelter (Cycle 05 §4): a voluntary, `sleepDurationGameHours`-long
+     * absence, using the *exact same* reconcile path a real backgrounding already uses —
+     * no parallel time-skip system, no new risk to the offline-death-impossible property
+     * (A1), which this span rides on unmodified. `sleepDurationGameHours` real-seconds
+     * comfortably exceeds `morningReportMinRealSeconds`, so this is always the OFFLINE,
+     * floored path: sleeping is a deliberate retreat to safety, and inherits the same
+     * guarantee a real absence already has. Energy is refilled on waking; everything else
+     * drifts exactly as an absence of that length would. Returns null if not near a built
+     * shelter.
+     */
+    sleep(nowMs: number): MorningReport | null {
+        if (!canSleep(this.state)) return null;
+
+        const elapsedRealSeconds = realSecondsFromGameHours(TUNE.sleepDurationGameHours);
+        const outcome = reconcile(this.state, elapsedRealSeconds);
+        outcome.state.trace = this.state.trace;
+        outcome.state.energy = TUNE.energyMax;
+        outcome.state.lastSeenMs = nowMs;
+        this.state = outcome.state;
+
+        this.handleDeath(outcome, nowMs);
+        const report = composeMorningReport(outcome.result, this.state);
+        this.persist(nowMs);
+        return report;
     }
 
     /**

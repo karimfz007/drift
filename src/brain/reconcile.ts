@@ -19,7 +19,7 @@
 
 import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
-import { cloneState, isPlayerInFireRadius } from './state';
+import { cloneState, isAtPond, isInDisrepair, isNearShelter, isPlayerInFireRadius } from './state';
 import { deathCauseFrom, healthRatePerGameHour, vitalLowerBound } from './vitals';
 import type { GameState, ReconcileResult, TimeOfDay, VitalDrift } from './types';
 
@@ -39,6 +39,13 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     const timeBefore = timeOfDay(state.gameHoursElapsed);
     const fireLitBefore = state.fire.built && state.fire.fuel > 0;
     const sheltered = isPlayerInFireRadius(state);
+    //  The player does not move during an absence, so these are fixed for the whole span —
+    //  unlike day/night or the fire, neither can change rate mid-reconcile (Cycle 05). The
+    //  shelter's bonus additionally checks its STARTING durability — disrepair, not deletion
+    //  (charter honest-systems), pauses the bonus rather than removing the structure.
+    const nearShelter = isNearShelter(state);
+    const shelterActive = nearShelter && !isInDisrepair(state.shelter);
+    const atPond = isAtPond(state);
 
     // Zero (or nonsensical) elapsed time changes nothing at all.
     if (!(elapsedRealSeconds > 0) || !Number.isFinite(elapsedRealSeconds)) {
@@ -55,6 +62,12 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     const thirstBound = vitalLowerBound(state.thirst, TUNE.thirstOfflineFloor, qualifiesForReport);
     const hungerBound = vitalLowerBound(state.hunger, TUNE.hungerOfflineFloor, qualifiesForReport);
     const healthBound = vitalLowerBound(state.health, TUNE.healthOfflineFloor, qualifiesForReport);
+    //  Energy is not a death vector (C05 SCOPE OUT), so its floor is kindness, not safety —
+    //  given anyway, for consistency with every other vital's offline treatment.
+    const energyBound = vitalLowerBound(state.energy, TUNE.energyOfflineFloor, qualifiesForReport);
+    //  Wet has no offline floor: it is not a vital and nothing protects it from either
+    //  extreme — hitting 0 or `wetMax` is just weather, not a safety concern.
+    const wetRate = atPond ? TUNE.wetGainPerGameHourInPond : -(shelterActive ? TUNE.wetDecayPerGameHourSheltered : TUNE.wetDecayPerGameHourDry);
 
     const startClock = state.gameHoursElapsed;
     const endClock = startClock + totalGameHours;
@@ -64,6 +77,8 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     let thirst = state.thirst;
     let hunger = state.hunger;
     let health = state.health;
+    let energy = state.energy;
+    let wet = state.wet;
     let fuel = state.fire.fuel;
 
     let fireWentOutAtGameHours: number | null = null;
@@ -78,15 +93,22 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         const nightNow = timeOfDay(clock).isNight;
         const lit = next.fire.built && fuel > 0;
 
+        //  Wetness at THIS segment's start — wet's own rate is fixed for the whole span
+        //  (position doesn't change offline), so this is exact, not an approximation, even
+        //  though it is recomputed per segment to feed warmth's rate below.
+        const wetNow = clampBand(wet + wetRate * (clock - startClock), 0, TUNE.wetMax);
+        const wetWarmthMultiplier = 1 + (TUNE.wetWarmthDrainMultiplierAtMaxWet - 1) * (wetNow / TUNE.wetMax);
+
         // Rates for this segment (per game hour). They stay constant until a boundary.
         const warmthRate = lit && sheltered
             ? TUNE.warmthRegenPerGameHourAtFire
             : nightNow
-                ? -TUNE.warmthDrainPerGameHourNight
+                ? -TUNE.warmthDrainPerGameHourNight * (shelterActive ? TUNE.shelterWarmthDrainMultiplier : 1) * wetWarmthMultiplier
                 : 0;
         const thirstRate = -TUNE.thirstDrainPerGameHour;
         const hungerRate = -TUNE.hungerDrainPerGameHour;
         const healthRate = healthRatePerGameHour(thirst, hunger, warmth, health, online);
+        const energyRate = -TUNE.energyDrainPerGameHour;
 
         // The next boundary: the soonest event that changes any rate, in game hours from here.
         let step = endClock - clock;
@@ -96,6 +118,8 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         step = Math.min(step, timeToBound(thirst, thirstRate, thirstBound, TUNE.thirstMax));
         step = Math.min(step, timeToBound(hunger, hungerRate, hungerBound, TUNE.hungerMax));
         step = Math.min(step, timeToBound(health, healthRate, healthBound, TUNE.healthMax));
+        step = Math.min(step, timeToBound(energy, energyRate, energyBound, TUNE.energyMax));
+        step = Math.min(step, timeToBound(wet, wetRate, 0, TUNE.wetMax));
         step = Math.max(step, 0);
 
         // Advance every vital across the segment, then clamp to its band.
@@ -103,11 +127,14 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         thirst = clampBand(thirst + thirstRate * step, thirstBound, TUNE.thirstMax);
         hunger = clampBand(hunger + hungerRate * step, hungerBound, TUNE.hungerMax);
         health = clampBand(health + healthRate * step, healthBound, TUNE.healthMax);
+        energy = clampBand(energy + energyRate * step, energyBound, TUNE.energyMax);
+        wet = clampBand(wet + wetRate * step, 0, TUNE.wetMax);
 
         if (warmthRate < 0 && warmth <= warmthBound + EPSILON && warmthBound > 0) floorHeld = true;
         if (thirst <= thirstBound + EPSILON && thirstBound > 0) floorHeld = true;
         if (hunger <= hungerBound + EPSILON && hungerBound > 0) floorHeld = true;
         if (healthRate < 0 && health <= healthBound + EPSILON && healthBound > 0) floorHeld = true;
+        if (energy <= energyBound + EPSILON && energyBound > 0) floorHeld = true;
 
         if (lit && step > 0) {
             fuel = Math.max(0, fuel - step / TUNE.fireBurnGameHoursPerWood);
@@ -146,7 +173,14 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     next.thirst = round(thirst);
     next.hunger = round(hunger);
     next.health = round(health);
+    next.energy = round(energy);
+    next.wet = round(wet);
     next.fire.fuel = fuel;
+    //  Structure decay: a simple closed-form over the whole span (not segment-stepped) —
+    //  nothing else's rate depends on exactly when durability crosses a boundary, unlike
+    //  the vitals above, so exactness here would cost complexity for no observable benefit.
+    if (next.shelter.built) next.shelter.durability = Math.max(0, next.shelter.durability - TUNE.structureDurabilityDecayPerGameHour * totalGameHours);
+    if (next.storage.built) next.storage.durability = Math.max(0, next.storage.durability - TUNE.structureDurabilityDecayPerGameHour * totalGameHours);
     next.lastSeenMs = state.lastSeenMs + Math.round(elapsedRealSeconds * 1000);
 
     const drifts: VitalDrift[] = [
@@ -170,6 +204,10 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             hungerAfter: next.hunger,
             healthBefore: state.health,
             healthAfter: next.health,
+            energyBefore: state.energy,
+            energyAfter: next.energy,
+            wetBefore: state.wet,
+            wetAfter: next.wet,
             drifts,
             diedDuringSpan,
             deathCause,
@@ -233,6 +271,10 @@ function emptyResult(
         hungerAfter: state.hunger,
         healthBefore: state.health,
         healthAfter: state.health,
+        energyBefore: state.energy,
+        energyAfter: state.energy,
+        wetBefore: state.wet,
+        wetAfter: state.wet,
         drifts: [],
         diedDuringSpan: false,
         deathCause: null,

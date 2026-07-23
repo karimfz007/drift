@@ -125,11 +125,11 @@ async function main() {
         const info = await page.evaluate((selector) => {
             const el = document.querySelector(selector);
             if (!el) return { found: false };
-            let node = el.parentElement;
-            while (node && node !== document.body) {
-                if (getComputedStyle(node).overflowY === 'auto' || getComputedStyle(node).overflowY === 'scroll') { node.scrollTop = node.scrollHeight; break; }
-                node = node.parentElement;
-            }
+            //  Scroll the TARGET into view, not the container to its bottom — a container
+            //  can hold several items (the Build panel's axe/shelter/storage cards), and the
+            //  target may sit anywhere in it, not just at the end (REGRESSION: scrollHeight
+            //  landed on the LAST item, leaving an earlier one like the axe button offscreen).
+            el.scrollIntoView({ block: 'center' });
             const r = el.getBoundingClientRect();
             const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
             const inViewport = cy >= 0 && cy <= window.innerHeight && cx >= 0 && cx <= window.innerWidth;
@@ -224,6 +224,18 @@ async function main() {
             const env = JSON.parse(localStorage.getItem(key));
             // eslint-disable-next-line no-new-func
             new Function('state', src)(env.state);
+            //  Stamp both clocks to "now" before writing back. Without this, the real wall-clock
+            //  time this reload itself takes (page.goto + networkidle2 + Chrome overhead — which
+            //  on a loaded machine can run to real seconds) gets folded into the boot-time
+            //  reconcile as if it were genuine elapsed absence (Session.start() diffs `nowMs` against
+            //  `savedAtMs`). That phantom gap compounds decay-per-real-hour effects (structure
+            //  durability, vitals) editSave never intended to simulate — a REGRESSION found when a
+            //  chain of editSave() calls after a deliberate sleep() pushed storage decay across the
+            //  repair threshold and silently hijacked a deposit tap into a repair. editSave mutates
+            //  state; it must not also mutate elapsed time.
+            const now = Date.now();
+            env.savedAtMs = now;
+            env.state.lastSeenMs = now;
             localStorage.setItem(key, JSON.stringify(env));
         }, { key: SAVE_KEY, src: mutateSrc });
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
@@ -543,14 +555,14 @@ async function main() {
     check('a coconut palm gives coconut and husk fibre', inv.coconut >= 1 && inv.fiber >= 1, `coconut ${inv.coconut}, fibre ${inv.fiber}`);
     void rock; void palm;
 
-    //  Craft the axe through the card, now reached by its own secondary button.
+    //  Craft the axe through the Build panel (C05: axe/shelter/storage, own button each).
     await editSave('state.inventory.wood = 3; state.inventory.stone = 2; state.inventory.fiber = 2;');
-    check('the Craft button opens the card', await clickDom('.secondary-action'));
+    check('the Build button opens the panel', await clickDom('.secondary-action'));
     await sleep(400);
     await shot('c04-05-craftcard');
-    check('the craft card shows the gates with source hints', await page.$('.craft .gates') !== null);
-    const craftTap = await realTapDom('.craft .craft-btn');
-    check('the axe can be made via a real, reachable tap (craft card does not overflow the viewport)', craftTap.ok, craftTap.reason ?? '');
+    check('the Build panel shows the axe item with gated source hints', await page.$('.build-item .gates') !== null);
+    const craftTap = await realTapDom('.axe-btn');
+    check('the axe can be made via a real, reachable tap (Build panel does not overflow the viewport)', craftTap.ok, craftTap.reason ?? '');
     await sleep(600);
     const afterCraft = await live();
     check('the axe is crafted and the parts spent', afterCraft.tools.axe === true && afterCraft.inventory.wood === 0, `axe ${afterCraft.tools.axe}`);
@@ -614,6 +626,80 @@ async function main() {
     const hintsAfter = await page.evaluate(() => window.__drift.hints());
     check('the idle hint appears and is contextual', hintsAfter.shown > hintsBefore && hintsAfter.last.length > 0, `"${hintsAfter.last}"`);
 
+    // ================================================================
+    // CYCLE 05 "Foundations" — shelter, storage, upkeep, energy, sleep
+    // ================================================================
+    console.log('\nA1–A4 (C05) — construction: shelter, storage, upkeep, sleep');
+
+    //  Build the shelter through the (now three-item) Build panel.
+    await editSave('state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0 };');
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    check('the Build panel shows all three items', (await page.evaluate(() => document.querySelectorAll('.build-item').length)) === 3);
+    const shelterBuildTap = await realTapDom('.shelter-btn');
+    check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
+    await sleep(400);
+    const afterShelter = await live();
+    //  Durability decays continuously (even the ~400ms since building has shaved a hair off
+    //  it), so this checks "built, effectively full" rather than an exact 100.
+    check('the shelter is built, full durability', afterShelter.shelter.built && afterShelter.shelter.durability > 99.9, `durability ${afterShelter.shelter.durability}`);
+
+    //  Build storage next — must NOT land on the shelter (the same-offset collision fix).
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    const storageBuildTap = await realTapDom('.storage-btn');
+    check('storage builds via a real, reachable tap', storageBuildTap.ok, storageBuildTap.reason ?? '');
+    await sleep(400);
+    const afterStorage = await live();
+    const shelterStorageGap = Math.hypot(afterStorage.shelter.x - afterStorage.storage.x, afterStorage.shelter.y - afterStorage.storage.y);
+    check('REGRESSION — storage does not overlap the shelter (degenerate same-offset placement)', shelterStorageGap > 1, `${shelterStorageGap.toFixed(2)} m apart`);
+
+    //  Sleep at the shelter: reuses the reconcile spine, advances the clock, refills energy.
+    //  This also doubles as the repair-threshold REGRESSION: by now the shelter has
+    //  naturally decayed a hair below 100 (real time has passed since it was built), and
+    //  the player is about to carry wood via editSave below — if canRepairStructure still
+    //  treated ANY durability<max as "needs repair" (the bug found in manual testing),
+    //  repair would hijack this tap and the clock/energy checks below would fail exactly
+    //  as they did before the structureRepairThresholdFraction fix.
+    await editSave(`state.energy = 10;`);
+    await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
+    await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
+    const beforeSleep = await live();
+    await tapWorld(afterShelter.shelter.x, afterShelter.shelter.y, 55);
+    await sleep(600);
+    const sleepReportTap = await realTapDom('.report button');
+    check('sleeping at the shelter opens the (reused) morning-report overlay', sleepReportTap.ok, sleepReportTap.reason ?? '');
+    await sleep(300);
+    const afterSleep = await live();
+    check('sleep advances the clock by sleepDurationGameHours', Math.abs((afterSleep.gameHoursElapsed - beforeSleep.gameHoursElapsed) - 8) < 0.5, `Δ ${(afterSleep.gameHoursElapsed - beforeSleep.gameHoursElapsed).toFixed(2)} game hours`);
+    //  Energy decays continuously (energyDrainPerGameHour), so by the time this reads state
+    //  some real time has passed since sleep() topped it to exactly 100 — same "effectively
+    //  full" pattern as the shelter-durability check above, not an exact-100 assertion.
+    check('sleep refills energy on waking', afterSleep.energy > 99, `energy ${afterSleep.energy}`);
+
+    //  Upkeep: repair only wins the disjoint choice once durability has meaningfully lapsed
+    //  (REGRESSION — cosmetic decay must not starve sleep/storage-use every tap).
+    await editSave('state.shelter.durability = 40; state.inventory.wood = 10;');
+    await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
+    await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
+    await tapWorld(afterShelter.shelter.x, afterShelter.shelter.y, 55);
+    await sleep(400);
+    const afterRepair = await live();
+    check('a meaningfully damaged shelter repairs (not sleeps) when wood is held', afterRepair.shelter.durability > 40 && afterRepair.inventory.wood === 9, `durability ${afterRepair.shelter.durability.toFixed(1)}, wood ${afterRepair.inventory.wood}`);
+
+    //  Storage: the disjoint deposit-vs-withdraw rule, exercised for real.
+    await editSave(`state.inventory = { wood: 6, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0 };`);
+    await approach(afterStorage.storage.x, afterStorage.storage.y, 20);
+    await faceNode(afterStorage.storage.x, afterStorage.storage.y);
+    await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
+    await sleep(400);
+    const afterDeposit = await live();
+    check('tapping storage while carrying raw materials deposits them', afterDeposit.inventory.wood === 0 && afterDeposit.storage.stored.wood === 6, `inv.wood ${afterDeposit.inventory.wood}, stored.wood ${afterDeposit.storage.stored.wood}`);
+    await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
+    await sleep(400);
+    const afterWithdraw = await live();
+    check('tapping storage empty-handed withdraws a batch', afterWithdraw.inventory.wood > 0 && afterWithdraw.storage.stored.wood < afterDeposit.storage.stored.wood, `inv.wood ${afterWithdraw.inventory.wood}, stored.wood ${afterWithdraw.storage.stored.wood}`);
+
     // ---- A4: death and respawn ----
     console.log('\nA4 — death and respawn (active play can kill)');
     await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');
@@ -626,7 +712,7 @@ async function main() {
     if (deathShowing) await realTapDom('.death button');
     await sleep(500);
     const revived = await live();
-    check('waking ashore restores you at spawn with your kit', revived.player.x === 0 && revived.health === 100 && revived.inventory.wood === 4);
+    check('REGRESSION — once a shelter is built, respawn wakes you there, not the beach', Math.abs(revived.player.x - afterShelter.shelter.x) < 0.5 && Math.abs(revived.player.y - afterShelter.shelter.y) < 0.5 && revived.health === 100 && revived.inventory.wood === 4, `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}`);
 
     // ---- A4: absence and the morning report ----
     console.log('\nA4 — absence and the vitals report');

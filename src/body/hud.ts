@@ -26,6 +26,9 @@ export interface HudView {
     thirst: number;
     hunger: number;
     health: number;
+    /** The 5th vital (C05): a slow, full-day rhythm. Shown last — it is the quietest bar,
+     *  a soft debuff rather than an urgent pressure. */
+    energy: number;
     sheltered: boolean;
     inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number };
     tools: { axe: boolean; flask: boolean; flaskSips: number };
@@ -38,7 +41,7 @@ export interface HudView {
 
 export class Hud {
     private root: HTMLElement;
-    private bars: Record<'warmth' | 'thirst' | 'hunger' | 'health', { fill: HTMLElement; label: HTMLElement }>;
+    private bars: Record<'warmth' | 'thirst' | 'hunger' | 'health' | 'energy', { fill: HTMLElement; label: HTMLElement }>;
     private invRow: HTMLElement;
     private clockLabel: HTMLElement;
     private goalLabel: HTMLElement;
@@ -64,6 +67,7 @@ export class Hud {
                 ${vitalMarkup('thirst', 'THIRST')}
                 ${vitalMarkup('hunger', 'HUNGER')}
                 ${vitalMarkup('health', 'HEALTH')}
+                ${vitalMarkup('energy', 'ENERGY')}
             </div>
             <div class="hud-corner">
                 <div class="clock">18:00</div>
@@ -82,7 +86,7 @@ export class Hud {
             fill: this.root.querySelector(`.v-${k} .vital-fill`) as HTMLElement,
             label: this.root.querySelector(`.v-${k} .vital-label`) as HTMLElement
         });
-        this.bars = { warmth: bar('warmth'), thirst: bar('thirst'), hunger: bar('hunger'), health: bar('health') };
+        this.bars = { warmth: bar('warmth'), thirst: bar('thirst'), hunger: bar('hunger'), health: bar('health'), energy: bar('energy') };
         this.invRow = this.root.querySelector('.inv') as HTMLElement;
         this.clockLabel = this.root.querySelector('.clock') as HTMLElement;
         this.goalLabel = this.root.querySelector('.goal') as HTMLElement;
@@ -117,6 +121,7 @@ export class Hud {
         this.paintBar('thirst', v.thirst, TUNE.thirstMax, '#5ec6e0', TUNE.thirstLowHintAt, '');
         this.paintBar('hunger', v.hunger, TUNE.hungerMax, '#c9a227', TUNE.hungerLowHintAt, '');
         this.paintBar('health', v.health, TUNE.healthMax, CSS.good, TUNE.healthLowHintAt, '');
+        this.paintBar('energy', v.energy, TUNE.energyMax, '#b79ee0', TUNE.energyLowThreshold, '');
 
         this.clockLabel.textContent = formatClock(v.gameHoursElapsed);
         this.goalLabel.textContent = v.goal;
@@ -131,7 +136,7 @@ export class Hud {
         this.secondaryButton.textContent = v.secondary.label;
     }
 
-    private paintBar(k: 'warmth' | 'thirst' | 'hunger' | 'health', value: number, max: number, ok: string, low: number, trend: string): void {
+    private paintBar(k: 'warmth' | 'thirst' | 'hunger' | 'health' | 'energy', value: number, max: number, ok: string, low: number, trend: string): void {
         const bar = this.bars[k];
         const ratio = Math.max(0, Math.min(1, value / max));
         bar.fill.style.width = `${ratio * 100}%`;
@@ -243,42 +248,90 @@ export function showDeath(overlay: HTMLElement, cause: string, deaths: number, o
     requestAnimationFrame(() => el.classList.add('visible'));
 }
 
-/** The craft card: the four gates shown plainly — what you have, what you still need. */
-export function showCraftCard(
+/** One buildable's cost and current holdings, for the Build panel. */
+export interface BuildItemView {
+    have: Partial<Record<'wood' | 'stone' | 'fiber', number>>;
+    /** Already built/crafted — the item shows as done, no button. */
+    done: boolean;
+}
+
+export interface BuildCardView {
+    axe: BuildItemView;
+    shelter: BuildItemView;
+    storage: BuildItemView;
+}
+
+//  When a part is short, say where it comes from — the C03 defect was fibre feeling
+//  sourceless (D-040/D-043). A met gate needs no hint; a short one names the source.
+const MATERIAL_SOURCE: Record<string, string> = {
+    Wood: 'driftwood on the sand, deadfall by the trees',
+    Stone: 'grey rock outcrops on the beach',
+    Fibre: 'reeds at the pond, or a coconut palm'
+};
+
+function buildItemMarkup(
+    title: string,
+    subtitle: string,
+    item: BuildItemView,
+    need: Partial<Record<'wood' | 'stone' | 'fiber', number>>,
+    doneLabel: string,
+    buttonLabel: string,
+    buttonClass: string
+): string {
+    if (item.done) {
+        return `<div class="build-item done"><h2>${title}</h2><p class="subtitle">${doneLabel}</p></div>`;
+    }
+    const labels: Record<string, string> = { wood: 'Wood', stone: 'Stone', fiber: 'Fibre' };
+    const rows = (Object.keys(need) as Array<'wood' | 'stone' | 'fiber'>).map((key) => {
+        const n = need[key] ?? 0;
+        const h = item.have[key] ?? 0;
+        const met = h >= n;
+        const label = labels[key];
+        const hint = met ? '' : `<div class="gate-hint">from ${MATERIAL_SOURCE[label]}</div>`;
+        return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${label}</span><span>${h} / ${n}</span></div>${hint}`;
+    }).join('');
+    const ready = (Object.keys(need) as Array<'wood' | 'stone' | 'fiber'>).every((key) => (item.have[key] ?? 0) >= (need[key] ?? 0));
+    return `
+        <div class="build-item">
+            <h2>${title}</h2>
+            <p class="subtitle">${subtitle}</p>
+            <div class="gates">${rows}</div>
+            <button class="primary ${buttonClass}" type="button" ${ready ? '' : 'disabled'}>${ready ? buttonLabel : 'Not enough yet'}</button>
+        </div>`;
+}
+
+/**
+ * The Build panel (C05): axe, shelter, and storage, each independently gated — a page each,
+ * never a shared priority slot (that is exactly the bug class D-040/D-042 fixed once
+ * already; a second shared slot here would only invite it back).
+ */
+export function showBuildCard(
     overlay: HTMLElement,
-    have: { wood: number; stone: number; fiber: number },
-    onCraft: () => void,
+    view: BuildCardView,
+    onCraftAxe: () => void,
+    onBuildShelter: () => void,
+    onBuildStorage: () => void,
     onClose: () => void
 ): void {
-    const el = panel(overlay, 'craft');
-    const need = { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost };
-    //  When a part is short, say where it comes from — the C03 defect was fibre feeling
-    //  sourceless (D-040/D-043). A met gate needs no hint; a short one names the source.
-    const source: Record<string, string> = {
-        Wood: 'driftwood on the sand, deadfall by the trees',
-        Stone: 'grey rock outcrops on the beach',
-        Fibre: 'reeds at the pond, or a coconut palm'
-    };
-    const row = (name: string, h: number, n: number) => {
-        const met = h >= n;
-        const hint = met ? '' : `<div class="gate-hint">from ${source[name]}</div>`;
-        return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${name}</span><span>${h} / ${n}</span></div>${hint}`;
-    };
-    const ready = have.wood >= need.wood && have.stone >= need.stone && have.fiber >= need.fiber;
+    const el = panel(overlay, 'build');
     el.innerHTML = `
-        <h2>Crude axe</h2>
-        <p class="subtitle">Gather the parts. Knowledge, this time, is in your hands.</p>
-        <div class="gates">
-            ${row('Wood', have.wood, need.wood)}
-            ${row('Stone', have.stone, need.stone)}
-            ${row('Fibre', have.fiber, need.fiber)}
+        <div class="build-list">
+            ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
+                { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost }, 'Made.', 'Make the axe', 'axe-btn')}
+            ${buildItemMarkup('Shelter', 'Somewhere to rest — it becomes home.', view.shelter,
+                { wood: TUNE.shelterWoodCost, stone: TUNE.shelterStoneCost, fiber: TUNE.shelterFiberCost }, 'Standing.', 'Raise the shelter', 'shelter-btn')}
+            ${buildItemMarkup('Storage', 'A second place to keep what you gather.', view.storage,
+                { wood: TUNE.storageWoodCost, stone: TUNE.storageStoneCost }, 'Set.', 'Set the crate', 'storage-btn')}
         </div>
-        <button class="primary craft-btn" type="button" ${ready ? '' : 'disabled'}>${ready ? 'Make the axe' : 'Not enough yet'}</button>
         <button class="quiet close-btn" type="button">Close</button>`;
     let done = false;
-    if (ready) {
-        el.querySelector('.craft-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onCraft); });
-    }
+    const bind = (selector: string, action: () => void) => {
+        const btn = el.querySelector(selector);
+        btn?.addEventListener('click', () => { if (done) return; done = true; fade(el, action); });
+    };
+    bind('.axe-btn', onCraftAxe);
+    bind('.shelter-btn', onBuildShelter);
+    bind('.storage-btn', onBuildStorage);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
     requestAnimationFrame(() => el.classList.add('visible'));
 }

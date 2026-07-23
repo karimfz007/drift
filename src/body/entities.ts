@@ -508,6 +508,114 @@ export class FireView {
     }
 }
 
+// ---- Construction (Cycle 05): the shelter and the storage crate ---------
+//
+// Both are placed, player-built structures — visually and structurally the same kind of
+// thing as the fire (a static mesh at a chosen point, a footprint for collision, a shadow),
+// so they reuse the same `flat()`/`makeShadow()` helpers rather than inventing new ones.
+// Disrepair dims the structure rather than removing it (charter honest-systems law).
+
+export class ShelterView {
+    private root: Mesh;
+    private roofMaterial: StandardMaterial;
+    private shadow: Mesh;
+    private built = false;
+
+    constructor(scene: Scene) {
+        //  A lean-to: two angled support poles and a sloped thatch roof between them.
+        this.root = CreateBox('shelterRoof', { width: 3.4, height: 0.18, depth: 2.4 }, scene);
+        this.roofMaterial = flat(scene, 'shelterRoofMat', PALETTE.thatch);
+        this.root.material = this.roofMaterial;
+        this.root.rotation.x = -0.5;
+        this.root.isPickable = true;
+        this.root.metadata = { shelter: true };
+
+        for (const side of [-1, 1]) {
+            const pole = CreateCylinder(`shelterPole${side}`, { height: 2.1, diameter: 0.16, tessellation: 6 }, scene);
+            pole.material = flat(scene, 'shelterPoleMat', PALETTE.trunk);
+            pole.parent = this.root;
+            pole.position.set(0, -1.05, side * 1.05);
+            pole.rotation.x = 0.5; // undo the parent's tilt so poles stand vertical
+            pole.isPickable = false;
+        }
+
+        this.shadow = makeShadow(scene, 2.2);
+        this.setBuilt(false);
+    }
+
+    private setBuilt(built: boolean): void {
+        this.built = built;
+        this.root.setEnabled(built);
+        this.shadow.setEnabled(built);
+    }
+
+    /** The shelter's footprint, so the player cannot stand inside the poles. */
+    obstacle(state: GameState): Obstacle | null {
+        return state.shelter.built ? { x: state.shelter.x, z: state.shelter.y, radius: TUNE.shelterCollisionRadius } : null;
+    }
+
+    update(state: GameState, groundY: number): void {
+        const built = state.shelter.built;
+        if (built !== this.built) this.setBuilt(built);
+        if (!built) return;
+
+        this.root.position.set(state.shelter.x, groundY + 2.05, state.shelter.y);
+        this.shadow.position.set(state.shelter.x, groundY + 0.02, state.shelter.y);
+
+        //  Disrepair dims the thatch — visible neglect, never removal.
+        const inRepair = state.shelter.durability > 0;
+        this.roofMaterial.diffuseColor = colour(inRepair ? PALETTE.thatch : PALETTE.disrepair);
+    }
+}
+
+export class StorageView {
+    private crate: Mesh;
+    private crateMaterial: StandardMaterial;
+    private shadow: Mesh;
+    private built = false;
+
+    constructor(scene: Scene) {
+        this.crate = CreateBox('storageCrate', { width: 1.1, height: 0.9, depth: 1.1 }, scene);
+        this.crateMaterial = flat(scene, 'storageCrateMat', PALETTE.crateWood);
+        this.crate.material = this.crateMaterial;
+        this.crate.isPickable = true;
+        this.crate.metadata = { storage: true };
+
+        const lid = CreateBox('storageLid', { width: 1.2, height: 0.12, depth: 1.2 }, scene);
+        lid.material = this.crateMaterial;
+        lid.parent = this.crate;
+        lid.position.y = 0.51;
+        lid.isPickable = true;
+        lid.metadata = { storage: true };
+
+        this.shadow = makeShadow(scene, 0.9);
+        this.setBuilt(false);
+    }
+
+    private setBuilt(built: boolean): void {
+        this.built = built;
+        this.crate.setEnabled(built);
+        this.shadow.setEnabled(built);
+    }
+
+    /** The crate's footprint, so the player cannot walk through it. */
+    obstacle(state: GameState): Obstacle | null {
+        return state.storage.built ? { x: state.storage.x, z: state.storage.y, radius: TUNE.storageCollisionRadius } : null;
+    }
+
+    update(state: GameState, groundY: number): void {
+        const built = state.storage.built;
+        if (built !== this.built) this.setBuilt(built);
+        if (!built) return;
+
+        this.crate.position.set(state.storage.x, groundY + 0.45, state.storage.y);
+        this.shadow.position.set(state.storage.x, groundY + 0.02, state.storage.y);
+
+        const inRepair = state.storage.durability > 0;
+        this.crateMaterial.diffuseColor = colour(inRepair ? PALETTE.crateWood : PALETTE.disrepair);
+    }
+}
+
 /** Keep the node-kind union honest against the mesh builder at compile time. */
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,

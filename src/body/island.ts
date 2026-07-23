@@ -132,11 +132,22 @@ export class Island {
                     const dz = pz - o.z;
                     const min = o.radius + radius;
                     const d2 = dx * dx + dz * dz;
-                    if (d2 < min * min && d2 > 1e-9) {
-                        const d = Math.sqrt(d2);
-                        const push = (min - d) / d;
-                        px += dx * push;
-                        pz += dz * push;
+                    if (d2 < min * min) {
+                        if (d2 > 1e-9) {
+                            const d = Math.sqrt(d2);
+                            const push = (min - d) / d;
+                            px += dx * push;
+                            pz += dz * push;
+                        } else {
+                            //  Degenerate: the point sits exactly on the obstacle's centre —
+                            //  e.g. two structures placed from the same spot at the same
+                            //  offset (C05). There is no defined push direction, so pick a
+                            //  deterministic one from the obstacle's own position rather than
+                            //  silently leaving the overlap unresolved.
+                            const angle = (o.x * 12.9898 + o.z * 78.233) % (Math.PI * 2);
+                            px = o.x + Math.cos(angle) * min;
+                            pz = o.z + Math.sin(angle) * min;
+                        }
                     }
                 }
             }

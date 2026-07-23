@@ -6,8 +6,10 @@
  * v1 — Cycles 01–02 (warmth, wood, fire).
  * v2 — Cycle 03: three vitals, death/respawn, expanded inventory, the first tool and
  *      loot, and two seed skills. Migration v1→v2 lives in save.ts.
+ * v3 — Cycle 05: the 5th vital (energy), the wet condition, shelter, and storage.
+ *      Migration v2→v3 lives in save.ts.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -73,6 +75,31 @@ export interface Tools {
     flaskSips: number;
 }
 
+/**
+ * A placed structure (Cycle 05): the shelter or the storage crate. Both share the same
+ * shape — a location and a durability that decays over game hours and pauses the
+ * structure's bonus at 0 until repaired. Nothing is ever destroyed (charter honest-systems
+ * law) — disrepair, never deletion.
+ */
+export interface Structure {
+    built: boolean;
+    x: number;
+    y: number;
+    /** 0–100. At 0 the structure's bonus pauses until repaired; never deleted. */
+    durability: number;
+}
+
+/** The storage crate's contents — raw materials only, a second pool from personal carry. */
+export interface StorageInventory {
+    wood: number;
+    stone: number;
+    fiber: number;
+}
+
+export interface StorageState extends Structure {
+    stored: StorageInventory;
+}
+
 /** One skill in the Development Tree seed. Levels through meaningful use (§I.9). */
 export interface Skill {
     level: number;
@@ -121,12 +148,24 @@ export interface GameState {
     thirst: number;
     hunger: number;
     health: number;
+    /** The 5th vital (Cycle 05): a slow, full-day rhythm. A soft debuff only — never a
+     *  death vector this cycle (see the C05 spec's SCOPE OUT). Restored by sleeping. */
+    energy: number;
+    /** Not a vital: a 0–100 condition, not part of the health-drain path. Rises in the
+     *  pond, decays on dry land (faster within the shelter's radius), and raises warmth's
+     *  drain rate while high — the reason a roof matters even with a fire already lit. */
+    wet: number;
 
     inventory: Inventory;
     tools: Tools;
     skills: Skills;
 
     fire: FireState;
+    /** The lean-to (Cycle 05): warmth-drain relief and faster drying in its radius; once
+     *  built, it is also where death and absence respawn the castaway (D-042/C05 §2). */
+    shelter: Structure;
+    /** The storage crate (Cycle 05): a second pool for raw materials only. */
+    storage: StorageState;
     player: PlayerState;
     nodes: WoodNode[];
     settings: Settings;
@@ -175,6 +214,12 @@ export interface ReconcileResult {
     hungerAfter: number;
     healthBefore: number;
     healthAfter: number;
+    /** Cycle 05: tracked for tests and the sleep summary; no new report line this cycle
+     *  (the C05 spec scopes that out — the numbers are honest even unnarrated). */
+    energyBefore: number;
+    energyAfter: number;
+    wetBefore: number;
+    wetAfter: number;
     drifts: VitalDrift[];
 
     /**

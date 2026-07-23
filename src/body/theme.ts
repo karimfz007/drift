@@ -32,7 +32,13 @@ export const PALETTE = {
     flameHot: [1.0, 0.86, 0.52],
     ember: [1.0, 0.45, 0.15],
 
-    highlight: [1.0, 0.86, 0.52]
+    highlight: [1.0, 0.86, 0.52],
+
+    // ---- Construction (C05) ----
+    thatch: [0.58, 0.48, 0.24],
+    thatchDark: [0.38, 0.31, 0.16],
+    crateWood: [0.48, 0.36, 0.22],
+    disrepair: [0.32, 0.30, 0.28]
 } as const;
 
 /**

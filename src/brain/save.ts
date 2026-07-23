@@ -79,6 +79,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion > SCHEMA_VERSION) return null;
 
     if (current.schemaVersion === 1) current = migrateV1toV2(current);
+    if (current.schemaVersion === 2) current = migrateV2toV3(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -126,6 +127,29 @@ function migrateV1toV2(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v2 (Cycle 03: three vitals, death/respawn) → v3 (Cycle 05: energy, wet, shelter,
+ * storage). Everything a v2 save has carries over untouched; the new fields start at
+ * their fresh-run defaults (full energy, dry, nothing built yet) — a returning player
+ * simply hasn't built anything yet, which is the honest truth for a save from before
+ * construction existed.
+ */
+function migrateV2toV3(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const fresh = createInitialState(typeof old.startedAtMs === 'number' ? old.startedAtMs : 0);
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        energy: fresh.energy,
+        wet: fresh.wet,
+        shelter: fresh.shelter,
+        storage: fresh.storage,
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -147,6 +171,8 @@ function hydrate(state: GameState): GameState {
             foraging: { ...base.skills.foraging, ...state.skills?.foraging }
         },
         fire: { ...base.fire, ...state.fire },
+        shelter: { ...base.shelter, ...state.shelter },
+        storage: { ...base.storage, ...state.storage, stored: { ...base.storage.stored, ...state.storage?.stored } },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },
@@ -159,6 +185,8 @@ function hydrate(state: GameState): GameState {
         thirst: clampVital(state.thirst, TUNE.thirstMax, base.thirst),
         hunger: clampVital(state.hunger, TUNE.hungerMax, base.hunger),
         health: clampVital(state.health, TUNE.healthMax, base.health),
+        energy: clampVital(state.energy, TUNE.energyMax, base.energy),
+        wet: clampVital(state.wet, TUNE.wetMax, base.wet),
         schemaVersion: SCHEMA_VERSION
     };
 }

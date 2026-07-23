@@ -228,7 +228,88 @@ export const TUNE = {
 
     // ---- Offline / morning report -----------------------------------------
     /** [TUNE] C01 — an absence shorter than this produces no morning report. */
-    morningReportMinRealMinutes: 2
+    morningReportMinRealMinutes: 2,
+
+    // ---- Energy — the 5th vital (C05, "Foundations") -----------------------
+    /** [TUNE] C05 — full energy. */
+    energyMax: 100,
+    /** [TUNE] C05 — energy lost per game hour, at all times. ~20 game hours to empty — a
+     *  full-day rhythm, not a pressure clock like thirst/hunger. Never feeds health drain
+     *  this cycle (see the C05 spec's SCOPE OUT — a soft debuff only). */
+    energyDrainPerGameHour: 5,
+    /** [TUNE] C05 — D-011-style offline floor, for consistency with every other vital —
+     *  not required for safety (energy is not a death vector), just kindness. */
+    energyOfflineFloor: 15,
+    /** [TUNE] C05 — at or below this, the castaway is sluggish: `walkSpeedMps` is scaled by
+     *  `energySlowWalkMultiplier` and the HUD says why. Soft debuff, never death. */
+    energyLowThreshold: 25,
+    /** [TUNE] C05 — walk-speed multiplier while exhausted (below `energyLowThreshold`). */
+    energySlowWalkMultiplier: 0.65,
+    /** [TUNE] C05 — game hours a sleep at the shelter advances the clock by (§4). Reuses the
+     *  exact reconcile path an absence already uses — a voluntary, floor-protected span. */
+    sleepDurationGameHours: 8,
+
+    // ---- Wet condition (C05) — not a vital, not a death vector -------------
+    /** [TUNE] C05 — full wetness. */
+    wetMax: 100,
+    /** [TUNE] C05 — wetness gained per game hour standing in the pond. Fast: a few real
+     *  minutes of wading is enough to soak through. */
+    wetGainPerGameHourInPond: 240,
+    /** [TUNE] C05 — wetness lost per game hour on dry land, away from the shelter. */
+    wetDecayPerGameHourDry: 15,
+    /** [TUNE] C05 — wetness lost per game hour within the shelter's radius — drying off
+     *  under a roof is the shelter's second job, alongside warmth (§5). */
+    wetDecayPerGameHourSheltered: 60,
+    /** [TUNE] C05 — warmth's night-time drain rate is multiplied by this at full wetness
+     *  (linearly interpolated from 1.0 at wet=0). Applies only to the drain case, not to
+     *  the fire's regen — wet makes the cold worse; it does not cancel the fire. */
+    wetWarmthDrainMultiplierAtMaxWet: 1.5,
+
+    // ---- Shelter (C05) — the lean-to, one tier this cycle ------------------
+    /** [TUNE] C05 — build cost: a meaningful step up from the axe, matching "construction". */
+    shelterWoodCost: 8,
+    shelterStoneCost: 4,
+    shelterFiberCost: 3,
+    /** [TUNE] C05 — metres from the shelter its bonuses (warmth relief, faster drying) reach. */
+    shelterRadius: 6,
+    /** [TUNE] C05 — within the shelter's radius, warmth's NIGHT-TIME DRAIN (not the fire's
+     *  regen) is multiplied by this — a partial relief independent of the fire, so the
+     *  shelter's value shows even between fire visits. */
+    shelterWarmthDrainMultiplier: 0.5,
+    /** [TUNE] C05 — how far in front of the player the shelter is placed, in metres — the
+     *  same "an arm's length ahead" reasoning as the fire (`fireBuildOffsetM`). */
+    shelterBuildOffsetM: 2.2,
+    /** [TUNE] C05 — collision footprint of a built shelter, in metres. */
+    shelterCollisionRadius: 1.3,
+
+    // ---- Storage (C05) — a second pool for raw materials -------------------
+    /** [TUNE] C05 — build cost: wood and stone only, no fibre gate. */
+    storageWoodCost: 5,
+    storageStoneCost: 3,
+    /** [TUNE] C05 — how far in front of the player storage is placed, in metres. */
+    storageBuildOffsetM: 2.2,
+    /** [TUNE] C05 — collision footprint of a built storage crate, in metres. */
+    storageCollisionRadius: 0.9,
+    /** [TUNE] C05 — per-resource amount withdrawn per tap when the crate holds any and the
+     *  player is carrying none — the disjoint-state rule the pond's fill/drink conflict
+     *  proved out (D-042 audit), applied up front here instead of found by a bug report. */
+    storageWithdrawBatch: 5,
+
+    // ---- Structure upkeep (C05) — disrepair, never deletion ----------------
+    /** [TUNE] C05 — full durability, for any structure (shelter or storage). */
+    structureDurabilityMax: 100,
+    /** [TUNE] C05 — durability lost per game hour, for any structure. ~4 days from full to 0
+     *  — long enough that neglect, not attentiveness, is what triggers it. */
+    structureDurabilityDecayPerGameHour: 1,
+    /** [TUNE] C05 — durability restored per wood spent repairing (any structure). Whole
+     *  numbers only in practice — one tap with wood in hand is one repair. */
+    repairDurabilityPerWood: 15,
+    /** [TUNE] C05 — repair only "counts" (and so only wins the sleep/storage-use disjoint
+     *  choice) once durability has dropped below this fraction of max. Without a real
+     *  threshold, near-continuous passive decay makes durability<max true almost always,
+     *  and repair — checked first — would starve sleep/storage-use nearly every tap, the
+     *  same one-condition-always-true bug class that starved Build-fire in C03. */
+    structureRepairThresholdFraction: 0.9
 } as const;
 
 export type TuneTable = typeof TUNE;

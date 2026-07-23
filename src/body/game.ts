@@ -20,12 +20,15 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import {
     axeShortfall,
     buildFire,
+    buildShelter,
+    buildStorage,
     canBuildFire,
     canCraftAxe,
     canDrinkAtPond,
     canDrinkFlask,
     canFeedFire,
     canFillFlask,
+    canRepairStructure,
     craftAxe,
     distance,
     drinkAtPond,
@@ -36,33 +39,37 @@ import {
     fireBurnHoursRemaining,
     gatherNode,
     isAtPond,
+    isExhausted,
     isFireLit,
     isSheltered,
     nodeHoldSeconds,
     nodeSpec,
+    repairStructure,
     timeOfDay,
+    useStorage,
     type Food,
     type GatherResult,
     type MorningReport,
-    type NodeKind
+    type NodeKind,
+    type RepairTarget
 } from '../brain';
 import { TUNE } from '../data/tune';
 import { COLD_OPEN, POND, WALKABLE_RADIUS } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { Controls } from './controls';
-import { FireView, NodeViews, PlayerView, type NodeView } from './entities';
+import { FireView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
 import {
     addSettingsButton,
     Hud,
     levelToast,
     pickupToast,
+    showBuildCard,
     showColdOpen,
-    showCraftCard,
     showDeath,
     showMorningReport,
     showSettings
 } from './hud';
-import { Island } from './island';
+import { Island, type Obstacle } from './island';
 import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session } from './runtime';
 import { RENDER } from './theme';
 
@@ -71,6 +78,8 @@ type Pending =
     | { kind: 'node'; id: string }
     | { kind: 'fire' }
     | { kind: 'pond' }
+    | { kind: 'shelter' }
+    | { kind: 'storage' }
     | null;
 
 /** Human names for the first-pickup toasts (D-043). */
@@ -94,6 +103,8 @@ export class Game {
     private player: PlayerView;
     private nodes: NodeViews;
     private fire: FireView;
+    private shelter: ShelterView;
+    private storage: StorageView;
     private hud: Hud;
     private controls: Controls;
     private cues = new Cues();
@@ -144,6 +155,8 @@ export class Game {
         this.island = new Island(this.scene);
         this.player = new PlayerView(this.scene);
         this.fire = new FireView(this.scene);
+        this.shelter = new ShelterView(this.scene);
+        this.storage = new StorageView(this.scene);
 
         const state = session().state;
         this.nodes = new NodeViews(this.scene, state.nodes, (x, z) => this.island.heightAt(x, z));
@@ -152,7 +165,7 @@ export class Game {
         this.hud = new Hud(
             this.overlay,
             () => this.onBuildFire(),
-            () => this.openCraftCard(),
+            () => this.openBuildCard(),
             (food) => this.onEatFood(food),
             () => this.onDrinkFlask()
         );
@@ -281,6 +294,14 @@ export class Game {
             const f = session().state.fire;
             return { x: f.x, z: f.y };
         }
+        if (hit?.hit && hit.pickedMesh?.metadata?.shelter) {
+            const sh = session().state.shelter;
+            return { x: sh.x, z: sh.y };
+        }
+        if (hit?.hit && hit.pickedMesh?.metadata?.storage) {
+            const st = session().state.storage;
+            return { x: st.x, z: st.y };
+        }
         return hit?.hit && hit.pickedPoint ? { x: hit.pickedPoint.x, z: hit.pickedPoint.z } : null;
     }
 
@@ -302,18 +323,40 @@ export class Game {
             return;
         }
 
-        //  Otherwise, the fire or the pond, by the point the ray struck.
+        //  Otherwise, the fire, the pond, the shelter, or storage, by the point the ray struck.
+        //  Every candidate within its own forgiveness radius is collected and the NEAREST
+        //  centre wins — not the first one checked. Shelter and storage are built close
+        //  together in practice (both placed `~2.2 m` ahead of the builder), so their
+        //  forgiveness radii can overlap; an earlier first-match if-chain let the shelter
+        //  (checked first) swallow taps square on the storage crate whenever the two sat
+        //  within about 2.8 m of each other — a REGRESSION found via the device harness:
+        //  a tap aimed at storage kept silently repairing the shelter instead.
         const point = this.pickHitPoint(screenX, screenY);
         if (!point) return;
 
         const s = session().state;
-        if (s.fire.built && distance(point.x, point.z, s.fire.x, s.fire.y) <= TUNE.fireTapRadius + 1.5) {
-            this.pending = { kind: 'fire' };
-            this.cues.play(CUES.target);
-            return;
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
+        const candidates: Candidate[] = [];
+        if (s.fire.built) {
+            const d = distance(point.x, point.z, s.fire.x, s.fire.y);
+            if (d <= TUNE.fireTapRadius + 1.5) candidates.push({ kind: 'fire', d });
         }
-        if (distance(point.x, point.z, POND.x, POND.y) <= POND.radius + TUNE.pondTapSlack + 1.5) {
-            this.pending = { kind: 'pond' };
+        {
+            const d = distance(point.x, point.z, POND.x, POND.y);
+            if (d <= POND.radius + TUNE.pondTapSlack + 1.5) candidates.push({ kind: 'pond', d });
+        }
+        if (s.shelter.built) {
+            const d = distance(point.x, point.z, s.shelter.x, s.shelter.y);
+            if (d <= TUNE.shelterCollisionRadius + 1.5) candidates.push({ kind: 'shelter', d });
+        }
+        if (s.storage.built) {
+            const d = distance(point.x, point.z, s.storage.x, s.storage.y);
+            if (d <= TUNE.storageCollisionRadius + 1.5) candidates.push({ kind: 'storage', d });
+        }
+        candidates.sort((a, b) => a.d - b.d);
+        const winner = candidates[0];
+        if (winner) {
+            this.pending = { kind: winner.kind };
             this.cues.play(CUES.target);
             return;
         }
@@ -333,6 +376,14 @@ export class Game {
         if (this.pending.kind === 'fire') {
             const f = session().state.fire;
             return f.built ? { x: f.x, z: f.y } : null;
+        }
+        if (this.pending.kind === 'shelter') {
+            const sh = session().state.shelter;
+            return sh.built ? { x: sh.x, z: sh.y } : null;
+        }
+        if (this.pending.kind === 'storage') {
+            const st = session().state.storage;
+            return st.built ? { x: st.x, z: st.y } : null;
         }
         return { x: POND.x, z: POND.y }; // pond: aim at the centre; the reach check uses the bank
     }
@@ -379,6 +430,24 @@ export class Game {
             return; // drinking keeps the pending alive to allow repeat sips while held nearby
         }
 
+        if (this.pending.kind === 'shelter') {
+            //  Repair-vs-sleep: upkeep first when it applies (carrying wood, durability
+            //  short), else sleep — sleep has no OTHER failure mode once you're this close
+            //  (canSleep only checks range, already satisfied by arrival), so the two never
+            //  starve each other the way an ill-considered priority order once did (D-042).
+            if (canRepairStructure(s, 'shelter')) this.tryRepair('shelter');
+            else this.trySleep();
+            this.pending = null;
+            return;
+        }
+
+        if (this.pending.kind === 'storage') {
+            if (canRepairStructure(s, 'storage')) this.tryRepair('storage');
+            else this.tryUseStorage();
+            this.pending = null;
+            return;
+        }
+
         //  A node: tap-kind gathers at once; hold-kind starts an auto-hold (the castaway
         //  works it), the LDOE "walk over and chop" beat.
         const view = this.nodes.find(this.pending.id);
@@ -422,6 +491,47 @@ export class Game {
             session().persist(now());
             this.lastActivityAt = now();
         }
+    }
+
+    /**
+     * Sleep at the shelter (C05 §4): the exact reconcile path a real absence already uses,
+     * triggered voluntarily. Shown through the same morning-report overlay — sleeping IS the
+     * mechanic the report already explains, just chosen rather than happened-to-you.
+     */
+    private trySleep(): void {
+        const report = session().sleep(now());
+        if (!report) { this.explain('Too far from the shelter to sleep.'); return; }
+        this.cues.stopAllBeds();
+        this.openReport(report);
+    }
+
+    private tryRepair(which: RepairTarget): void {
+        const s = session().state;
+        if (!repairStructure(s, which)) { this.explain('Needs wood in hand to repair.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText(`+${TUNE.repairDurabilityPerWood} durability`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** The disjoint-state rule (D-042 audit): carrying raw materials stores them; empty-handed
+     *  withdraws a batch. Never a priority conflict, since the two states cannot both be true. */
+    private tryUseStorage(): void {
+        const result = useStorage(session().state);
+        if (!result.ok) { this.explain('Nothing to store, and nothing to take.'); return; }
+        this.cues.play(result.action === 'deposit' ? CUES.collected : CUES.pickup);
+        this.floatText(this.storageMovedLabel(result.action, result.moved));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    private storageMovedLabel(action: 'deposit' | 'withdraw' | null, moved: Partial<Record<'wood' | 'stone' | 'fiber', number>>): string {
+        const parts: string[] = [];
+        if (moved.wood) parts.push(`${moved.wood} wood`);
+        if (moved.stone) parts.push(`${moved.stone} stone`);
+        if (moved.fiber) parts.push(`${moved.fiber} fibre`);
+        const verb = action === 'deposit' ? 'stored' : 'took';
+        return parts.length ? `${verb} ${parts.join(', ')}` : '';
     }
 
     private cancelHold(): void {
@@ -502,6 +612,22 @@ export class Game {
 
     // ---- Buttons: placement and crafting only ----------------------------
 
+    /** Every placed thing that blocks movement — nodes plus the fire/shelter/storage, each
+     *  included only once built. The single source both movement collision and every
+     *  placement's clear-ground check draw from, so a new structure can never be dropped
+     *  on top of an existing one, and the player can never be walked into any of them. */
+    private dynamicObstacles(): Obstacle[] {
+        const state = session().state;
+        const out = this.nodes.obstacles();
+        const fireObstacle = this.fire.obstacle(state);
+        if (fireObstacle) out.push(fireObstacle);
+        const shelterObstacle = this.shelter.obstacle(state);
+        if (shelterObstacle) out.push(shelterObstacle);
+        const storageObstacle = this.storage.obstacle(state);
+        if (storageObstacle) out.push(storageObstacle);
+        return out;
+    }
+
     /** Build fire — available whenever wood suffices, day OR night (the D-040/D-042 fix). */
     private onBuildFire(): void {
         const s = session().state;
@@ -509,8 +635,7 @@ export class Game {
         const x = s.player.x + Math.sin(this.facing) * TUNE.fireBuildOffsetM;
         const z = s.player.y + Math.cos(this.facing) * TUNE.fireBuildOffsetM;
         //  Clear-ground check: do not lay the fire inside a trunk or rock.
-        const dyn = this.nodes.obstacles();
-        const clear = this.island.resolveCollision(x, z, TUNE.fireCollisionRadius, dyn);
+        const clear = this.island.resolveCollision(x, z, TUNE.fireCollisionRadius, this.dynamicObstacles());
         if (!buildFire(s, clear.x, clear.z)) return;
         this.fire.flare();
         this.cues.play(CUES.ignition);
@@ -520,6 +645,34 @@ export class Game {
         session().persist(now());
         this.lastActivityAt = now();
         this.showHint('Stay in the firelight. Warmth is coming back.');
+    }
+
+    /** Build the shelter — same placement pattern as the fire: an arm's length ahead, on
+     *  clear ground. Once built, it is also the new respawn anchor (state.ts's respawn). */
+    private onBuildShelter(): void {
+        const s = session().state;
+        const x = s.player.x + Math.sin(this.facing) * TUNE.shelterBuildOffsetM;
+        const z = s.player.y + Math.cos(this.facing) * TUNE.shelterBuildOffsetM;
+        const clear = this.island.resolveCollision(x, z, TUNE.shelterCollisionRadius, this.dynamicObstacles());
+        if (!buildShelter(s, clear.x, clear.z)) return;
+        this.cues.play(CUES.craft);
+        this.floatText('the shelter stands');
+        session().persist(now());
+        this.lastActivityAt = now();
+        this.showHint('Tap the shelter to sleep — it is home now.');
+    }
+
+    private onBuildStorage(): void {
+        const s = session().state;
+        const x = s.player.x + Math.sin(this.facing) * TUNE.storageBuildOffsetM;
+        const z = s.player.y + Math.cos(this.facing) * TUNE.storageBuildOffsetM;
+        const clear = this.island.resolveCollision(x, z, TUNE.storageCollisionRadius, this.dynamicObstacles());
+        if (!buildStorage(s, clear.x, clear.z)) return;
+        this.cues.play(CUES.craft);
+        this.floatText('the crate is set');
+        session().persist(now());
+        this.lastActivityAt = now();
+        this.showHint('Carrying materials? Tap the crate to store them.');
     }
 
     private tryFeedFire(): void {
@@ -566,13 +719,25 @@ export class Game {
         }
     }
 
-    private openCraftCard(): void {
+    /**
+     * The Build panel (C05): axe, shelter, and storage, each independently gated with its
+     * own button — never a shared priority slot. That single-button-stack pattern is what
+     * starved "Build fire" behind "Craft axe" in C03 (D-040/D-042); this cycle adds two more
+     * buildables, so a shared slot here would only invite the same bug again.
+     */
+    private openBuildCard(): void {
         if (runtime.panelOpen) return;
         runtime.panelOpen = true;
         this.controls.releaseAll();
         this.clearPending();
         const s = session().state;
-        showCraftCard(this.overlay, { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber },
+        showBuildCard(
+            this.overlay,
+            {
+                axe: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.tools.axe },
+                shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built },
+                storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built }
+            },
             () => {
                 runtime.panelOpen = false;
                 if (craftAxe(session().state)) {
@@ -584,7 +749,10 @@ export class Game {
                 }
                 this.lastActivityAt = now();
             },
-            () => { runtime.panelOpen = false; this.lastActivityAt = now(); });
+            () => { runtime.panelOpen = false; this.onBuildShelter(); },
+            () => { runtime.panelOpen = false; this.onBuildStorage(); },
+            () => { runtime.panelOpen = false; this.lastActivityAt = now(); }
+        );
     }
 
     // ---- Feedback --------------------------------------------------------
@@ -642,6 +810,8 @@ export class Game {
 
         const groundAtFire = state.fire.built ? this.island.heightAt(state.fire.x, state.fire.y) : 0;
         this.fire.update(state, groundAtFire, this.nightFactor(state.gameHoursElapsed));
+        this.shelter.update(state, this.island.heightAt(state.shelter.x, state.shelter.y));
+        this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
 
         this.nodes.sync(state);
         this.nodes.highlight(this.highlightTarget());
@@ -667,6 +837,9 @@ export class Game {
 
         let desiredX = 0;
         let desiredZ = 0;
+        //  Exhausted (C05 §3): a soft debuff, never a death vector — the HUD's goal line
+        //  says why, and sleeping at the shelter is the only cure.
+        const speedScale = isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1;
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
@@ -683,7 +856,7 @@ export class Game {
             const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
             const dir = forward.scale(-stick.y).add(right.scale(stick.x));
             const len = Math.hypot(dir.x, dir.z) || 1;
-            const speed = TUNE.walkSpeedMps * stick.magnitude;
+            const speed = TUNE.walkSpeedMps * stick.magnitude * speedScale;
             desiredX = (dir.x / len) * speed;
             desiredZ = (dir.z / len) * speed;
         } else if (this.pending && !this.pendingInReach()) {
@@ -693,7 +866,7 @@ export class Game {
                 const dz = t.z - state.player.y;
                 const len = Math.hypot(dx, dz) || 1;
                 //  Ease off in the last metre so the castaway settles beside the target.
-                const speed = TUNE.walkSpeedMps * Math.min(1, len / 1.5);
+                const speed = TUNE.walkSpeedMps * Math.min(1, len / 1.5) * speedScale;
                 desiredX = (dx / len) * speed;
                 desiredZ = (dz / len) * speed;
             }
@@ -710,10 +883,7 @@ export class Game {
         let x = state.player.x + this.velX * dt;
         let z = state.player.y + this.velZ * dt;
 
-        const dyn = this.nodes.obstacles();
-        const fireObstacle = this.fire.obstacle(state);
-        if (fireObstacle) dyn.push(fireObstacle);
-        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dyn);
+        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, this.dynamicObstacles());
         x = resolved.x;
         z = resolved.z;
 
@@ -786,7 +956,7 @@ export class Game {
         const full = dir.length();
         if (full < 0.01) return desired;
         dir.scaleInPlace(1 / full);
-        const dyn = this.nodes.obstacles();
+        const dyn = this.dynamicObstacles();
 
         const blockedAt = (d: number): boolean => {
             const px = target.x + dir.x * d;
@@ -852,20 +1022,27 @@ export class Game {
             action = { label: short === 0 ? 'Build fire' : `Build fire (${short} short)`, visible: state.inventory.wood > 0, ready: short === 0 };
         }
 
-        //  Craft: its own button whenever the axe is not yet made.
+        //  Build: one entry point to the Build panel (axe, shelter, storage), visible
+        //  whenever anything on it is still unbuilt. Each item inside gates independently —
+        //  this button is just the door, never a priority slot itself.
         let secondary = { label: '', visible: false };
-        if (!state.tools.axe) {
-            secondary = { label: canCraftAxe(state) ? 'Craft axe' : 'Craft…', visible: true };
+        if (!state.tools.axe || !state.shelter.built || !state.storage.built) {
+            secondary = { label: 'Build', visible: true };
         }
 
         this.hud.update({
-            warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health,
+            warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health, energy: state.energy,
             sheltered, inventory: state.inventory, tools: state.tools,
             gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, secondary, skills: state.skills
         });
     }
 
     private goalLine(state: ReturnType<typeof session>['state']): string {
+        //  Exhausted (C05): a soft debuff, but an active one — worth naming before anything
+        //  else, since it is visibly slowing the player down right now.
+        if (isExhausted(state)) {
+            return state.shelter.built ? 'Exhausted — tap the shelter to sleep.' : 'Exhausted. A shelter would give you somewhere to rest.';
+        }
         if (!state.tools.axe && !canCraftAxe(state)) {
             const s = axeShortfall(state);
             const needs = [s.wood && `${s.wood} wood`, s.stone && `${s.stone} stone`, s.fiber && `${s.fiber} fibre`].filter(Boolean).join(', ');
@@ -874,8 +1051,9 @@ export class Game {
         if (!state.tools.axe && canCraftAxe(state)) return 'You have the parts — Craft the axe.';
         if (!state.fire.built && state.inventory.wood >= TUNE.woodPerFire) return 'Enough wood. Build the fire.';
         if (!state.fire.built) return `Gather ${TUNE.woodPerFire} wood, then build a fire.`;
-        if (isFireLit(state)) return `Fire burning — about ${fireBurnHoursRemaining(state).toFixed(1)} game hours left.`;
-        return 'The fire is out. Tap it to add wood.';
+        if (!isFireLit(state)) return 'The fire is out. Tap it to add wood.';
+        if (!state.shelter.built) return 'The fire holds. A shelter would make this place home.';
+        return `Fire burning — about ${fireBurnHoursRemaining(state).toFixed(1)} game hours left.`;
     }
 
     private stepIdleHint(): void {
@@ -887,6 +1065,7 @@ export class Game {
 
     private contextualHint(): string {
         const s = session().state;
+        if (isExhausted(s)) return s.shelter.built ? 'You are exhausted. Tap the shelter to sleep.' : 'You are exhausted. Building a shelter gives you somewhere to sleep.';
         if (s.thirst <= TUNE.thirstLowHintAt) return 'Thirsty. Tap the pond inland, west of the trees, to drink.';
         if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';
@@ -894,6 +1073,7 @@ export class Game {
         if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough wood. Build the fire.';
         if (!s.fire.built) return 'Tap a standing tree to chop it, then build a fire.';
         if (!isFireLit(s)) return 'The fire is out. Tap it to add wood.';
+        if (!s.shelter.built) return 'The Build panel has more than the axe now — a shelter awaits.';
         if (!isSheltered(s)) return 'Stand in the firelight to warm up.';
         return 'You are warming. Close the app — the island keeps the time.';
     }

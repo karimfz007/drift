@@ -13,6 +13,8 @@ import {
     type Inventory,
     type NodeKind,
     type Skills,
+    type StorageInventory,
+    type Structure,
     type WoodNode
 } from './types';
 
@@ -26,10 +28,14 @@ export function createInitialState(nowMs: number): GameState {
         thirst: TUNE.thirstMax,
         hunger: TUNE.hungerMax,
         health: TUNE.healthMax,
+        energy: TUNE.energyMax,
+        wet: 0,
         inventory: emptyInventory(),
         tools: { axe: false, flask: false, flaskSips: 0 },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
+        shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax },
+        storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
         player: { x: SPAWN.x, y: SPAWN.y },
         nodes: createNodes(),
         settings: { controlMode: 'tap' },
@@ -67,6 +73,8 @@ export function cloneState(state: GameState): GameState {
             foraging: { ...state.skills.foraging }
         },
         fire: { ...state.fire },
+        shelter: { ...state.shelter },
+        storage: { ...state.storage, stored: { ...state.storage.stored } },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
         settings: { ...state.settings },
@@ -370,19 +378,177 @@ export function craftAxe(state: GameState): boolean {
     return true;
 }
 
+// ---- Construction: shelter, storage, upkeep (Cycle 05) -------------------
+//
+// Both structures share one shape (Structure/StorageState in types.ts) and one law:
+// disrepair, never deletion (charter honest-systems). `isNearShelter`/`isNearStorage` are
+// distinct from the fire's `isSheltered` above on purpose — one is "near a lit fire", the
+// other "near the lean-to"; they are independent bonuses that can both apply at once.
+
+export function isNearShelter(state: GameState): boolean {
+    return state.shelter.built && distance(state.player.x, state.player.y, state.shelter.x, state.shelter.y) <= TUNE.shelterRadius;
+}
+
+export function isNearStorage(state: GameState): boolean {
+    return state.storage.built && distance(state.player.x, state.player.y, state.storage.x, state.storage.y) <= TUNE.interactRadiusM;
+}
+
+export function canBuildShelter(state: GameState): boolean {
+    return (
+        !state.shelter.built &&
+        state.inventory.wood >= TUNE.shelterWoodCost &&
+        state.inventory.stone >= TUNE.shelterStoneCost &&
+        state.inventory.fiber >= TUNE.shelterFiberCost
+    );
+}
+
+/** What the shelter still needs — for the build card. */
+export function shelterShortfall(state: GameState): { wood: number; stone: number; fiber: number } {
+    return {
+        wood: Math.max(0, TUNE.shelterWoodCost - state.inventory.wood),
+        stone: Math.max(0, TUNE.shelterStoneCost - state.inventory.stone),
+        fiber: Math.max(0, TUNE.shelterFiberCost - state.inventory.fiber)
+    };
+}
+
+export function buildShelter(state: GameState, x: number, y: number): boolean {
+    if (!canBuildShelter(state)) return false;
+    state.inventory.wood -= TUNE.shelterWoodCost;
+    state.inventory.stone -= TUNE.shelterStoneCost;
+    state.inventory.fiber -= TUNE.shelterFiberCost;
+    state.shelter = { built: true, x, y, durability: TUNE.structureDurabilityMax };
+    return true;
+}
+
+export function canBuildStorage(state: GameState): boolean {
+    return (
+        !state.storage.built &&
+        state.inventory.wood >= TUNE.storageWoodCost &&
+        state.inventory.stone >= TUNE.storageStoneCost
+    );
+}
+
+/** What storage still needs — for the build card. */
+export function storageShortfall(state: GameState): { wood: number; stone: number } {
+    return {
+        wood: Math.max(0, TUNE.storageWoodCost - state.inventory.wood),
+        stone: Math.max(0, TUNE.storageStoneCost - state.inventory.stone)
+    };
+}
+
+export function buildStorage(state: GameState, x: number, y: number): boolean {
+    if (!canBuildStorage(state)) return false;
+    state.inventory.wood -= TUNE.storageWoodCost;
+    state.inventory.stone -= TUNE.storageStoneCost;
+    state.storage = { built: true, x, y, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } };
+    return true;
+}
+
+/** True while a structure's durability has lapsed to 0 — its bonus is paused, not gone. */
+export function isInDisrepair(structure: Structure): boolean {
+    return structure.built && structure.durability <= 0;
+}
+
+export type RepairTarget = 'shelter' | 'storage';
+
+/**
+ * True once durability has dropped below `structureRepairThresholdFraction` of max — a real
+ * threshold, not "less than 100.000". Passive decay is continuous, so `durability < max` is
+ * true almost all the time; gating on that alone would make repair win the sleep/storage-use
+ * disjoint choice on nearly every tap, the same one-condition-always-true bug class that
+ * starved Build-fire in C03 (D-040/D-042). Cosmetic decay noise never triggers repair.
+ */
+export function canRepairStructure(state: GameState, which: RepairTarget): boolean {
+    const structure = state[which];
+    if (!structure.built || structure.durability >= TUNE.structureDurabilityMax * TUNE.structureRepairThresholdFraction) return false;
+    if (state.inventory.wood <= 0) return false;
+    return which === 'shelter' ? isNearShelter(state) : isNearStorage(state);
+}
+
+/** Spend one wood to restore `repairDurabilityPerWood` durability. Returns true if it did anything. */
+export function repairStructure(state: GameState, which: RepairTarget): boolean {
+    if (!canRepairStructure(state, which)) return false;
+    state.inventory.wood -= 1;
+    const structure = state[which];
+    structure.durability = Math.min(TUNE.structureDurabilityMax, structure.durability + TUNE.repairDurabilityPerWood);
+    return true;
+}
+
+/** The raw-material keys storage can hold — personal inventory carries food too; storage never does. */
+const STORABLE_KEYS: Array<keyof StorageInventory> = ['wood', 'stone', 'fiber'];
+
+export interface StorageActionResult {
+    ok: boolean;
+    action: 'deposit' | 'withdraw' | null;
+    moved: Partial<StorageInventory>;
+}
+
+/**
+ * Tap the storage crate: the disjoint-state rule that correctly resolved the pond's
+ * fill-vs-drink conflict (D-042 audit), applied here up front. Carrying any raw material
+ * deposits all of it; carrying none, with the crate holding any, withdraws a fixed batch
+ * per resource. The two conditions cannot both be true, so neither can starve the other.
+ */
+export function useStorage(state: GameState): StorageActionResult {
+    if (!state.storage.built) return { ok: false, action: null, moved: {} };
+
+    const carrying = STORABLE_KEYS.some((key) => state.inventory[key] > 0);
+    if (carrying) {
+        const moved: Partial<StorageInventory> = {};
+        for (const key of STORABLE_KEYS) {
+            if (state.inventory[key] > 0) {
+                moved[key] = state.inventory[key];
+                state.storage.stored[key] += state.inventory[key];
+                state.inventory[key] = 0;
+            }
+        }
+        return { ok: true, action: 'deposit', moved };
+    }
+
+    const holding = STORABLE_KEYS.some((key) => state.storage.stored[key] > 0);
+    if (!holding) return { ok: false, action: null, moved: {} };
+
+    const moved: Partial<StorageInventory> = {};
+    for (const key of STORABLE_KEYS) {
+        const take = Math.min(state.storage.stored[key], TUNE.storageWithdrawBatch);
+        if (take > 0) {
+            moved[key] = take;
+            state.storage.stored[key] -= take;
+            state.inventory[key] += take;
+        }
+    }
+    return { ok: true, action: 'withdraw', moved };
+}
+
+// ---- Energy and sleep (Cycle 05) ------------------------------------------
+
+/** Below `energyLowThreshold`: sluggish (slower on foot), never a death vector this cycle. */
+export function isExhausted(state: GameState): boolean {
+    return state.energy <= TUNE.energyLowThreshold;
+}
+
+export function canSleep(state: GameState): boolean {
+    return isNearShelter(state);
+}
+
 // ---- Death and respawn --------------------------------------------------
 
 /**
  * Wake washed ashore after a death. Inventory, tools, skills, fire, and the island are
  * kept (v1 mercy, charter §14); vitals reset so you do not immediately die again, and the
  * cause is recorded for the overlay. Called by the session when reconcile reports a death.
+ *
+ * Cycle 05 (§2): once a shelter is built, it — not the original beach — is home. Energy
+ * and wet reset with the rest of the vitals; a death is a clean slate, not a lingering one.
  */
 export function respawn(state: GameState, cause: string): void {
-    state.player = { x: SPAWN.x, y: SPAWN.y };
+    state.player = state.shelter.built ? { x: state.shelter.x, y: state.shelter.y } : { x: SPAWN.x, y: SPAWN.y };
     state.warmth = TUNE.warmthMax;
     state.thirst = TUNE.thirstMax;
     state.hunger = TUNE.hungerMax;
     state.health = TUNE.healthMax;
+    state.energy = TUNE.energyMax;
+    state.wet = 0;
     state.lastDeathCause = cause;
     state.trace.deaths += 1;
 }
