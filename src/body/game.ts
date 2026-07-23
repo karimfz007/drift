@@ -82,6 +82,14 @@ type Pending =
     | { kind: 'storage' }
     | null;
 
+/** One entry in the debug tap log (D-050) — what a tap resolved to, and where. */
+interface TapBreadcrumb {
+    tMs: number;
+    screenX: number;
+    screenY: number;
+    outcome: string;
+}
+
 /** Human names for the first-pickup toasts (D-043). */
 const KIND_LABEL: Partial<Record<NodeKind, string>> = {
     driftwood: 'Driftwood',
@@ -129,6 +137,12 @@ export class Game {
     private holdStartedAt = 0;
     private pondDrinkAccumMs = 0;
     private pickedUpKinds = new Set<NodeKind>();
+
+    //  Harness-fidelity mandate (C1 ruling, D-050): a bounded log of the last 20 taps, so a
+    //  live report the harness never reproduced ("tap does nothing, 5th time") is diagnosable
+    //  from the director's own phone instead of guessed at blind. Never persisted, never sent
+    //  anywhere — read only via the settings panel's "Copy debug info" button, on request.
+    private tapBreadcrumbs: TapBreadcrumb[] = [];
 
     private lastActivityAt = now();
     private lastFrameAt = now();
@@ -191,6 +205,7 @@ export class Game {
         //  point is not feasible, and the range-gate must still be regression-locked (D-022).
         runtime.pendingReadout = () => (this.pending ? { kind: this.pending.kind, id: this.pending.kind === 'node' ? this.pending.id : undefined } : null);
         runtime.intend = (id: string) => { this.pending = { kind: 'node', id }; };
+        runtime.debugInfo = () => this.debugInfoText();
         runtime.cameraReadout = () => ({ yaw: this.yaw, pitch: this.pitch });
         runtime.groundAt = (x, z) => this.island.heightAt(x, z);
         runtime.playerFeetY = () => this.player.feetY;
@@ -260,7 +275,8 @@ export class Game {
         this.clearPending();
         showSettings(this.overlay, this.lookSensitivity,
             (value) => { this.lookSensitivity = value; writeSensitivity(value); },
-            () => { runtime.panelOpen = false; this.lastActivityAt = now(); });
+            () => { runtime.panelOpen = false; this.lastActivityAt = now(); },
+            () => this.debugInfoText());
     }
 
     // ---- Picking ---------------------------------------------------------
@@ -320,7 +336,7 @@ export class Game {
      * A tap that lands on nothing interactive is a look-around, not a failure.
      */
     private onTap(screenX: number, screenY: number): void {
-        if (runtime.panelOpen) return;
+        if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
         this.lastActivityAt = now();
 
         //  A node under (or near) the finger wins.
@@ -328,6 +344,7 @@ export class Game {
         if (node) {
             this.pending = { kind: 'node', id: node.node.id };
             this.cues.play(CUES.target);
+            this.recordTap(screenX, screenY, `node:${node.node.id}`);
             return;
         }
 
@@ -340,7 +357,7 @@ export class Game {
         //  within about 2.8 m of each other — a REGRESSION found via the device harness:
         //  a tap aimed at storage kept silently repairing the shelter instead.
         const point = this.pickHitPoint(screenX, screenY);
-        if (!point) return;
+        if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
 
         const s = session().state;
         type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
@@ -366,6 +383,7 @@ export class Game {
         if (winner) {
             this.pending = { kind: winner.kind };
             this.cues.play(CUES.target);
+            this.recordTap(screenX, screenY, winner.kind);
             return;
         }
         //  Fail-loud law (D-046(d) ruling, D-045 lineage): the ray hit something real that
@@ -378,6 +396,7 @@ export class Game {
         if (point.unexpectedMesh) {
             this.explain('Nothing to do there.');
             this.clearPending();
+            this.recordTap(screenX, screenY, `unexpected:${point.unexpectedMesh}`);
             return;
         }
 
@@ -385,6 +404,40 @@ export class Game {
         //  player's explicit "never mind" gesture now that manual steering no longer cancels
         //  a pending on its own (FIX 1, 2026-07-23 handoff).
         this.clearPending();
+        this.recordTap(screenX, screenY, 'empty-ground');
+    }
+
+    /** Keeps the last 20 taps — see the field comment for why. */
+    private recordTap(screenX: number, screenY: number, outcome: string): void {
+        this.tapBreadcrumbs.push({ tMs: Math.round(now()), screenX: Math.round(screenX), screenY: Math.round(screenY), outcome });
+        if (this.tapBreadcrumbs.length > 20) this.tapBreadcrumbs.shift();
+    }
+
+    /**
+     * Everything needed to diagnose a report the harness never reproduced, from the
+     * director's own phone: the trace, the last 20 taps, and — the number that would have
+     * settled this one immediately — how many of each resource kind remain available. A
+     * single-use node that never respawns (D-043's world) is visually identical to the
+     * purely decorative treeline (`island.ts`'s thin-instanced trees): once the real ones
+     * are gone, every later tap on "a tree" is genuinely, correctly silent.
+     */
+    debugInfoText(): string {
+        const s = session().state;
+        const counts: Partial<Record<NodeKind, { available: number; total: number }>> = {};
+        for (const n of s.nodes) {
+            const c = (counts[n.kind] ??= { available: 0, total: 0 });
+            c.total += 1;
+            if (n.available) c.available += 1;
+        }
+        const lines: string[] = [];
+        lines.push(`DRIFT debug info — ${new Date().toISOString()}`);
+        lines.push(`player: ${s.player.x.toFixed(1)}, ${s.player.y.toFixed(1)} · clock: ${s.gameHoursElapsed.toFixed(2)}h · axe: ${s.tools.axe}`);
+        lines.push('nodes remaining, by kind (available/total):');
+        for (const [kind, c] of Object.entries(counts)) lines.push(`  ${kind}: ${c!.available}/${c!.total}`);
+        lines.push(`trace: ${JSON.stringify(s.trace)}`);
+        lines.push(`last ${this.tapBreadcrumbs.length} taps:`);
+        for (const b of this.tapBreadcrumbs) lines.push(`  +${b.tMs - (this.tapBreadcrumbs[0]?.tMs ?? b.tMs)}ms  (${b.screenX},${b.screenY}) -> ${b.outcome}`);
+        return lines.join('\n');
     }
 
     /** The world point a pending interaction wants to reach. */

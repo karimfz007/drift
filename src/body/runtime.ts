@@ -31,7 +31,11 @@ export const runtime = {
     playerFeetY: (() => 0) as () => number,
     //  The direct-world tap intention, for the harness's range-gate regression (D-042/A4).
     pendingReadout: (() => null) as () => { kind: string; id?: string } | null,
-    intend: (() => {}) as (id: string) => void
+    intend: (() => {}) as (id: string) => void,
+    //  Harness-fidelity mandate (D-050): the same text the settings panel's "Copy debug
+    //  info" button copies to the clipboard, readable directly so a regression can assert
+    //  on its content without touching clipboard permissions at all.
+    debugInfo: (() => '') as () => string
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -163,6 +167,7 @@ function installDebugHook(): void {
         //  Read/inject the direct-world tap intention (the range-gate regression, A4).
         pending: () => runtime.pendingReadout(),
         intend: (nodeId: string) => runtime.intend(nodeId),
+        debugInfo: () => runtime.debugInfo(),
         persist: () => runtime.session?.persist(now()),
         reset: () => localStorage.removeItem(SAVE_KEY)
     };

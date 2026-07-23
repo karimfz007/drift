@@ -576,3 +576,30 @@ The audit's value this cycle was smaller than in prior cycles — every code-lev
 - **Visible axe carriage is real.** `PlayerView` grows a haft+head parented to `root`, `isPickable = false` on both (won't interfere with picking), toggled only by `syncTools(hasAxe)` called from `placePlayerFromState`. `hud.ts`'s Build panel confirmed changed from `'Made.'` to `'Owned.'` for the axe's built-label.
 - **Full clean re-run from scratch:** `purity` ✓, `docs-integrity` ✓ (49 decisions, all references resolve), `typecheck` ✓, `vitest` **128/128** ✓. Fresh `npm run build` + `vite preview` + `node tools/smoke.mjs`: first attempt stalled with zero output for several minutes (this session's documented stray-process pattern); killed accumulated `chrome.exe`, retried once against the same still-live preview server, and got a clean **82/82**, including every check in the new "D-045 lineage — sequential interactions" section (fell → tap-storage, the fell→gather→fell interleave, and the fail-loud regression).
 No findings requiring remediation. **Verdict: PASS.**
+
+---
+
+## PERFECT pass (C05) — FIX 5: the 5th live report — an emptied world, not a defect (D-050)
+
+**C1 scoped diagnostic ruling, same live build.** Axe visibly carried (D-049 confirmed working); standing as close as possible to a tree, axe out, taps it — nothing happens. Not the fell action, not the tree reacting, not even the in-range affordance circle. True silence, every tree tried, the 5th consecutive live failure of this one verb while the device harness stayed green.
+
+**The ruling's own lead was the key.** The affordance circle (`highlightTarget()`/`highlight()`) renders every frame from player proximity alone — it needs no tap at all. Its total absence meant the failure sat somewhere upstream of tap detection entirely, not inside it.
+
+**Confirmed by direct reproduction, in the order the ruling required:**
+- **(a) New-system gating** — ruled out. No C05 condition (energy, wet, any structure state) touches node felling or highlighting; `isExhausted` only scales walk speed.
+- **(b) Ownership-state mismatch** — ruled out. The fell verb's `needsAxe` gate and the visible-carriage render both read the identical `state.tools.axe` field; no divergent source.
+- **Root cause, reproduced bit-for-bit:** the island's 5 standing trees (`world.ts`) are single-use and never respawn. The 110-tree decorative treeline behind them (`island.ts`, thin-instanced for the frame budget its own comment states) uses the same trunk/canopy materials and sits in the same zone — visually indistinguishable from a real one, confirmed by screenshot. A scratch repro — fell all 5 real trees via `editSave`, then approach and tap a genuine decorative-tree coordinate (`TREES`'s deterministic scatter) — reproduced the exact report: no pending set, no highlight (decorative trees were never in `NodeViews.views`), no trace breadcrumb, `failedInteractionTaps` unchanged. After enough of today's own extensive testing to exhaust the 5 real trees, every later "tree" the director sees and taps genuinely has nothing left to give — correct behaviour, not a regression.
+
+**Neither of the ruling's pre-committed branches fired.** This is not tap-detection/pointer-routing (D-045's class) and not post-action interaction state (D-049's class) — it is a content/legibility gap: a finite, non-respawning resource with zero visual distinction from decorative scenery and no depletion signal. **The input-layer strike count stays at three; no rewrite, no Opus escalation.**
+
+**Shipped regardless — the mandatory harness-fidelity item (c):** a "Copy debug info" button in Settings (`hud.ts`'s `showSettings`, wired through a new `runtime.debugInfo`/`window.__drift.debugInfo()` hook) exporting: the trace, the last 20 taps (`Game.tapBreadcrumbs`, a bounded ring buffer recorded at every `onTap` exit path — node/fire/pond/shelter/storage/unexpected-mesh/empty-ground/no-hit/panel-open), and — the number that would have settled this instantly — every resource kind's remaining-vs-total count. **This explains precisely why 82/82 harness runs coexisted with 5 real device failures:** every harness run starts from a fresh or explicitly-reset save; a state a long, cumulative real session structurally cannot stay in. The harness has never once run long enough, or persistently enough, to exhaust a finite world resource — this class of report was categorically unreachable by the automated suite, not merely missed by it.
+
+**Regression-locked** (`tools/smoke.mjs`, section "D-050"): felling all 5 trees then tapping a real decorative-tree coordinate reproduces the exact silent symptom (pending stays null, no trace increment); the debug-export text is asserted to report `tree: 0/5` in that state, to include the tap log, and to include the trace; the Settings panel's "Copy debug info" button is confirmed reachable by a real tap and its confirmation message shows.
+
+**Verification:** purity ✓, docs-integrity ✓ (50 decisions), typecheck ✓, 128 brain tests ✓ (unchanged), device harness **89/89** clean on the first attempt.
+
+**Recommendation, not actioned under this ruling's scope** (flagged to SON/C1 for the next cycle spec): give single-use harvestable nodes a visual tell distinct from decorative scenery, or a passive "picked clean" hint once a resource kind is fully depleted near the player.
+
+**Doc deltas:** D-050 (decisions log); `drift_state.md` regenerated with the KEY REPORT stating explicitly which branch fired (neither — a content/legibility gap) and a debug-export mention for the director's next session.
+
+**AUDIT:** *(pending — C3 spot-audit)*

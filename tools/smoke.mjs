@@ -773,6 +773,56 @@ async function main() {
     const failedTapsAfter = (await live()).trace.failedInteractionTaps;
     check('fail-loud — a tap that reaches something real but has nothing to do explains why and traces it, never silently', failedTapsAfter > failedTapsBefore, `${failedTapsBefore} → ${failedTapsAfter}`);
 
+    // ================================================================
+    // D-050 — the 5th live report: an emptied world, not a defect, plus the debug-export tool
+    // ================================================================
+    console.log('\nD-050 — resource exhaustion looks like silence; the debug-export tool');
+
+    //  C1 diagnostic ruling: the director's 5th consecutive live "tap-to-fell does nothing"
+    //  report — true silence, not even the in-range affordance circle, across every tree
+    //  tried. REPRODUCED: nodes are single-use and never respawn (world.ts); the 5 real
+    //  standing trees are visually near-identical to the 110 purely decorative treeline
+    //  trees (`island.ts`'s thin-instanced forest, `isPickable: false` by design, for the
+    //  60-fps-not-a-slideshow reason its own comment gives). Once a long real session has
+    //  felled all 5, every later "tree" the director sees and taps IS a decorative one —
+    //  correctly, silently inert, not a regression. This coordinate is a real decorative
+    //  tree's position (`TREES`'s deterministic golden-angle scatter, index 62 as authored),
+    //  confirmed once by direct diagnostic before this test was written.
+    await editSave(`
+        for (const n of state.nodes) if (n.kind === 'tree') n.available = false;
+        state.player = { x: 21, y: 35 };
+        state.tools.axe = true;
+    `);
+    const decorativeTapFailedBefore = (await live()).trace.failedInteractionTaps;
+    await approach(24, 35, 15);
+    await faceNode(24, 35);
+    const decorativePendingBefore = await page.evaluate(() => window.__drift.pending());
+    await tapWorld(24, 35, 55);
+    await sleep(400);
+    const decorativePendingAfter = await page.evaluate(() => window.__drift.pending());
+    const decorativeTapFailedAfter = (await live()).trace.failedInteractionTaps;
+    check('REGRESSION — an emptied world (all 5 trees felled) makes a decorative treeline tree correctly, silently inert — not a defect', decorativePendingBefore === null && decorativePendingAfter === null && decorativeTapFailedAfter === decorativeTapFailedBefore, `pending ${JSON.stringify(decorativePendingBefore)}→${JSON.stringify(decorativePendingAfter)}, failedTaps ${decorativeTapFailedBefore}→${decorativeTapFailedAfter}`);
+
+    //  The mandatory harness-fidelity item: a report the automated suite can't reproduce
+    //  (this one needed a session's worth of real, cumulative play to set up) must still be
+    //  diagnosable from the director's own phone. `debugInfo()` — the exact text "Copy debug
+    //  info" copies to the clipboard — must show the resource-exhaustion story plainly.
+    const debugInfo = await page.evaluate(() => window.__drift.debugInfo());
+    check('the debug-export text reports 0/5 standing trees remaining, explaining the silence at a glance', /tree: 0\/5/.test(debugInfo), debugInfo.split('\n').find((l) => l.includes('tree:')) ?? 'no tree line found');
+    check('the debug-export text includes the tap log', /last \d+ taps/.test(debugInfo) && debugInfo.includes('->'), '');
+    check('the debug-export text includes the trace', debugInfo.includes('trace:') && debugInfo.includes('failedInteractionTaps'), '');
+
+    //  The settings panel's real button, reachable by a real tap — not just the text existing.
+    check('the Look button opens settings', await clickDom('.settings-button'));
+    await sleep(400);
+    const copyDebugTap = await realTapDom('.copy-debug');
+    check('the "Copy debug info" button is reachable by a real tap', copyDebugTap.ok, copyDebugTap.reason ?? '');
+    await sleep(200);
+    const copiedVisible = await page.evaluate(() => { const el = document.querySelector('.debug-copied'); return el ? !el.hasAttribute('hidden') : false; });
+    check('tapping it confirms the copy (clipboard write succeeded or a fallback message shows)', copiedVisible);
+    await clickDom('.panel .done');
+    await sleep(300);
+
     // ---- A4: death and respawn ----
     console.log('\nA4 — death and respawn (active play can kill)');
     await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');
