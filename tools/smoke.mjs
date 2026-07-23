@@ -110,6 +110,39 @@ async function main() {
     const tapAt = async (x, y, hold = 55) => { await page.touchscreen.touchStart(x, y); await sleep(hold); await page.touchscreen.touchEnd(); await sleep(140); };
     const tapWorld = async (wx, wz, hold = 55) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
+
+    //  A REAL, coordinate-based, viewport-and-occlusion-respecting tap on a DOM element — as
+    //  opposed to clickDom() above, which dispatches straight at the element via Puppeteer's
+    //  ElementHandle.click() regardless of whether it is actually on-screen or covered by
+    //  something else. That gap let a real bug slip past 57/57 automated checks: on the
+    //  landscape viewport (D-041, ~412px tall), the morning report's dismiss button could sit
+    //  entirely below the visible viewport with no scroll affordance, unreachable by any real
+    //  finger — invisible to clickDom() because it never checks geometry (FIX 1, 2026-07-23
+    //  PERFECT pass). This helper scrolls the nearest overflow container to reveal the target,
+    //  confirms via elementFromPoint that the element itself is the topmost hit within the
+    //  viewport, and only then dispatches a genuine touch at that point.
+    const realTapDom = async (sel) => {
+        const info = await page.evaluate((selector) => {
+            const el = document.querySelector(selector);
+            if (!el) return { found: false };
+            let node = el.parentElement;
+            while (node && node !== document.body) {
+                if (getComputedStyle(node).overflowY === 'auto' || getComputedStyle(node).overflowY === 'scroll') { node.scrollTop = node.scrollHeight; break; }
+                node = node.parentElement;
+            }
+            const r = el.getBoundingClientRect();
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            const inViewport = cy >= 0 && cy <= window.innerHeight && cx >= 0 && cx <= window.innerWidth;
+            const topEl = inViewport ? document.elementFromPoint(cx, cy) : null;
+            return { found: true, x: cx, y: cy, inViewport, isTopmost: topEl === el || el.contains(topEl) };
+        }, sel);
+        if (!info.found) return { ok: false, reason: 'not-found' };
+        if (!info.inViewport) return { ok: false, reason: 'off-screen-after-scroll' };
+        if (!info.isTopmost) return { ok: false, reason: 'occluded' };
+        await tapAt(info.x, info.y, 55);
+        await sleep(300);
+        return { ok: true };
+    };
     const canvasRect = () => page.evaluate(() => { const r = document.getElementById('game-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; });
 
     //  Dispatch a real PointerEvent with its own pointerId, as a second finger would — used
@@ -275,7 +308,9 @@ async function main() {
 
     await shot('c04-01-coldopen');
     check('the cold open shows on a fresh run', await panelOpen());
-    check('the cold open dismisses', await clickDom('.cold-open button'));
+    const coldOpenTap = await realTapDom('.cold-open button');
+    await sleep(200); // past the panel's 320ms fade-out before reading panelOpen
+    check('the cold open dismisses via a real, reachable tap', coldOpenTap.ok && !(await panelOpen()));
     await sleep(800);
     await shot('c04-02-island');
 
@@ -361,7 +396,7 @@ async function main() {
 
     //  #2 FIBRE SOURCING: reeds are an obvious, tappable fibre source (D-043).
     await startFresh();
-    await clickDom('.cold-open button');
+    await realTapDom('.cold-open button');
     await sleep(500);
     const fiberBefore = (await live()).inventory.fiber;
     const reed = await harvest('reed');
@@ -463,7 +498,7 @@ async function main() {
     console.log('\nA4/A7 — the pressure loop (tap the thing to use the thing)');
 
     await startFresh();
-    await clickDom('.cold-open button');
+    await realTapDom('.cold-open button');
     await sleep(400);
 
     const dead = await harvest('deadfall');
@@ -481,7 +516,8 @@ async function main() {
     await sleep(400);
     await shot('c04-05-craftcard');
     check('the craft card shows the gates with source hints', await page.$('.craft .gates') !== null);
-    check('the axe can be made', await clickDom('.craft .craft-btn'));
+    const craftTap = await realTapDom('.craft .craft-btn');
+    check('the axe can be made via a real, reachable tap (craft card does not overflow the viewport)', craftTap.ok, craftTap.reason ?? '');
     await sleep(600);
     const afterCraft = await live();
     check('the axe is crafted and the parts spent', afterCraft.tools.axe === true && afterCraft.inventory.wood === 0, `axe ${afterCraft.tools.axe}`);
@@ -554,7 +590,7 @@ async function main() {
     check('a death overlay appears when health runs out in play', deathShowing);
     const dying = await live();
     check('the death was counted and a cause recorded', dying.trace.deaths >= 1 && dying.lastDeathCause !== null, `cause: ${dying.lastDeathCause}`);
-    if (deathShowing) await clickDom('.death button');
+    if (deathShowing) await realTapDom('.death button');
     await sleep(500);
     const revived = await live();
     check('waking ashore restores you at spawn with your kit', revived.player.x === 0 && revived.health === 100 && revived.inventory.wood === 4);
@@ -569,8 +605,28 @@ async function main() {
     const gh = reopened.gameHoursElapsed - beforeAway.gameHoursElapsed;
     check('the absence advanced the clock at the tuned rate', Math.abs(gh - (4 * 60) / TUNE.realSecondsPerGameHour) < 0.2, `${gh.toFixed(2)} game hours`);
     check('vitals drifted during the absence but nobody died', reopened.thirst < 60 && reopened.health > 0 && reopened.trace.deaths === revived.trace.deaths, `thirst ${reopened.thirst.toFixed(1)}, health ${reopened.health}`);
-    await clickDom('.report button');
-    await sleep(500);
+    const shortReportTap = await realTapDom('.report button');
+    check('the short report\'s dismiss button is reachable by a real tap', shortReportTap.ok, shortReportTap.reason ?? '');
+    await sleep(200);
+
+    //  FIX 1 (2026-07-23 PERFECT pass): a LONGER, entirely realistic absence (hours, not
+    //  minutes — a player who genuinely put the phone down for a while) produces a longer
+    //  report (fire status + both vitals having moved + the day/night line), which is what
+    //  actually overflowed a short landscape viewport (~412px tall) with no scroll
+    //  affordance and no way to reach "Back to the island" (the director's report). The
+    //  short 4-minute absence above is too brief to reliably reproduce it — this is a
+    //  dedicated, deterministic worst-case: fire pinned lit, both vitals pinned to move,
+    //  the clock pinned so the day/night line fires too, guaranteeing every optional line.
+    await editSave('state.gameHoursElapsed = 0; state.fire = { built: true, fuel: 5, x: state.player.x, y: state.player.y }; state.thirst = 70; state.hunger = 65;');
+    await goAway(240); // 4 real HOURS
+    await shot('c04-10-longreport');
+    check('a long, realistic absence produces a report at all', await panelOpen());
+    const scrollState = await page.evaluate(() => { const el = document.querySelector('.panel.report'); return el ? { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, lines: el.querySelectorAll('.lines p').length } : null; });
+    check('REGRESSION FIX 1 setup — the long report genuinely overflows a short landscape viewport', scrollState && scrollState.scrollHeight > scrollState.clientHeight, JSON.stringify(scrollState));
+    const dismissTap = await realTapDom('.report button');
+    await sleep(200); // past the panel's 320ms fade-out before reading panelOpen
+    check('REGRESSION FIX 1 — the overflowing report\'s dismiss button is reachable by a real tap (not off-screen or occluded)', dismissTap.ok, dismissTap.reason ?? '');
+    check('REGRESSION FIX 1 — the real tap actually dismisses the report', !(await panelOpen()));
 
     // ---- A3: FPS + tab switch + cold load ----
     console.log('\nA3 — frame rate, tab-switch, cold load');

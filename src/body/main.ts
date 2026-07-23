@@ -5,6 +5,7 @@
 import { Game } from './game';
 import { installLandscape } from './orientation';
 import { runtime, startRuntime } from './runtime';
+import { installUpdateCheck } from './updateCheck';
 
 function boot(): void {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
@@ -14,6 +15,12 @@ function boot(): void {
     //  Landscape-first presentation (D-041): rotate prompt while upright, fullscreen + lock
     //  on the first touch. Installed before the game so the prompt can show during load.
     installLandscape();
+
+    //  The controlled new-build prompt (D-014, 2026-07-23 PERFECT pass): GH Pages caches
+    //  index.html for up to 10 minutes with no way to shorten it, so a session can silently
+    //  keep running an older bundle well after a fix has shipped. This flags it; it never
+    //  auto-reloads mid-session.
+    installUpdateCheck();
 
     //  Load (or start) the run before a single mesh exists: the morning report belongs to
     //  the absence that just ended, not to whatever the renderer manages to show first.
