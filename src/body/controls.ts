@@ -119,9 +119,24 @@ export class Controls {
     };
 
     private onMove = (event: PointerEvent): void => {
-        const dx = event.clientX - this.pressStartX;
-        const dy = event.clientY - this.pressStartY;
-        this.pressMoved = Math.max(this.pressMoved, Math.hypot(dx, dy));
+        //  pressMoved decides tap-vs-drag in onUp (wasTap for both the look pointer and a
+        //  quick jab in the stick zone), so it must only ever reflect the TRACKED pointer's
+        //  own travel. It used to be updated unconditionally for ANY pointermove reaching
+        //  the canvas — a stray/unrelated pointer event (confirmed: a spurious pointermove
+        //  carrying a DIFFERENT pointerId, landing between a real tap's down and up, most
+        //  reliably reproduced around a requestFullscreen() call — the very thing the first
+        //  real gesture of a session triggers, D-041) would register as a huge apparent move,
+        //  flip wasTap to false, and silently swallow the tap before onTap ever ran. Root
+        //  cause of the recurring tap-to-fell reports (2026-07-23, 3rd report) — the fixes
+        //  for the stick and for cache staleness were both real but incomplete; this is the
+        //  one that actually explains a tap being dropped with no stick ever touched, on a
+        //  freshly loaded page.
+        const tracked = event.pointerId === this.stickPointer || event.pointerId === this.lookPointer;
+        if (tracked) {
+            const dx = event.clientX - this.pressStartX;
+            const dy = event.clientY - this.pressStartY;
+            this.pressMoved = Math.max(this.pressMoved, Math.hypot(dx, dy));
+        }
 
         if (event.pointerId === this.stickPointer) {
             event.preventDefault();
@@ -138,6 +153,8 @@ export class Controls {
             this.lookLastY = event.clientY;
             if (this.pressMoved > TUNE.tapMaxMovePx) this.handlers.onActivity();
         }
+        //  Any other pointerId — an unrelated stray touch, or a misdelivered synthetic event
+        //  — is ignored outright. It must never be able to corrupt an in-flight press.
     };
 
     private onUp = (event: PointerEvent): void => {

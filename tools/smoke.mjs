@@ -494,6 +494,39 @@ async function main() {
         check('FIX 2 — tapping the pond fills a non-full flask (not just self-drink)', after.tools.flaskSips > before.tools.flaskSips, `sips ${before.tools.flaskSips} → ${after.tools.flaskSips}, thirst ${before.thirst}→${after.thirst.toFixed(1)}`);
     }
 
+    // ================================================================
+    // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
+    // ================================================================
+    console.log('\nPERFECT pass (C05) — FIX 3: tap-to-fell, root-caused fresh (3rd report)');
+
+    //  Neither prior diagnosis (stick-clears-pending; cache staleness) was wrong, but neither
+    //  was the WHOLE story either. Root cause, found by reproducing with NO stick ever
+    //  touched at all: `Controls.onMove` updated `pressMoved` (the tap-vs-drag distance that
+    //  decides `wasTap` in onUp) for ANY pointermove reaching the canvas, regardless of which
+    //  pointerId it belonged to. A single, ordinary tap on a fresh page reliably produces a
+    //  spurious pointermove carrying an UNRELATED pointerId — most reliably reproduced around
+    //  the very first `requestFullscreen()` call a session makes (D-041's first-gesture
+    //  handler, orientation.ts) — which `onMove` treated as if the tracked pointer had
+    //  travelled hundreds of pixels, flipping `wasTap` false and silently discarding the tap
+    //  before `onTap` ever ran. The cold-open dismiss elsewhere in this suite is a REAL touch
+    //  and consumes that one-time first-gesture trigger, which is exactly why 62/62 prior
+    //  checks never caught this: by the time they tap a tree, the trigger is already spent.
+    //  This regression dismisses the cold open with a plain DOM click (which does NOT consume
+    //  it — confirmed empirically) so the very next tap genuinely is the session's first real
+    //  touchscreen gesture, reproducing the failure precisely.
+    await startFresh();
+    await editSave('state.tools.axe = true; state.player = { x: -10, y: 45.8 };'); // ~1.8 m from tree tr1 (-10,44)
+    await clickDom('.cold-open button'); // a DOM click, not a real touch — does not consume the first-gesture trigger
+    await sleep(400);
+    await faceNode(-10, 44);
+    await tapWorld(-10, 44, 55);
+    await sleep(250);
+    const fix3Pending = await page.evaluate(() => window.__drift.pending());
+    check('FIX 3 — the session\'s very first real tap registers a pending interaction', !!fix3Pending, JSON.stringify(fix3Pending));
+    let fix3Felled = false;
+    for (let i = 0; i < 20; i++) { const av = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'tr1')?.available); if (av === false) { fix3Felled = true; break; } await sleep(400); }
+    check('FIX 3 — the tree fells on the session\'s first real tap (no stick ever touched)', fix3Felled);
+
     // ---- A4/A7: the pressure loop, through the new direct-world verbs ----
     console.log('\nA4/A7 — the pressure loop (tap the thing to use the thing)');
 
