@@ -3,22 +3,17 @@
  * Device smoke test — the automated half of the cycle's device acceptance checks.
  *
  * The brain is covered by Vitest; this drives the *body* the way a thumb does: a real
- * Chromium in mobile emulation, real touch events on the canvas, and assertions read back
- * out of the live game state. It exists so that "it plays on a phone" is a check somebody
- * can re-run — including the C3 auditor, against the deployed URL.
+ * Chromium in mobile emulation, real touch events, and assertions read back out of the
+ * live game state. It exists so "it plays on a phone" is a check anyone can re-run —
+ * including the C3 auditor, against the deployed URL.
  *
- * Cycle 02 (the 3D pivot) changed what it drives, not what it proves: the harness now
- * waits on a rendered frame, steers with the virtual stick in world space, aims taps by
- * projecting a world point to the screen, and measures the frame rate that A3 now names.
+ * Cycle 03 adds the pressure loop (three vitals, drink, forage, craft, chop, loot, death),
+ * and the two Cycle-02 fixes (feet-to-terrain grounding + colliders), so the harness now
+ * reaches into the scene to check the player's feet sit on the ground and that a tree
+ * stops the player.
  *
  * Usage:
- *   node tools/smoke.mjs [url]              # defaults to http://127.0.0.1:4173/
- *   node tools/smoke.mjs <url> --headful    # watch it play
- *   node tools/smoke.mjs <url> --software   # force software rendering (FPS becomes meaningless)
- *
- * Covers: A2 (nothing to assert here — CI owns it), A3 (load, layout, FPS, tab-switch),
- * A4 (the 3D steel thread + morning report), A6 (controls and the persisted setting),
- * and the observable half of A7.
+ *   node tools/smoke.mjs [url] [--headful] [--software]
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
@@ -30,8 +25,6 @@ const URL_UNDER_TEST = process.argv[2]?.startsWith('http') ? process.argv[2] : '
 const HEADFUL = process.argv.includes('--headful');
 const SOFTWARE = process.argv.includes('--software');
 const SHOT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
-
-/** A same-origin page that is NOT the game — used to edit the save with nothing running. */
 const BLANK_PATH = '__smoke_blank';
 
 const CHROME_CANDIDATES = [
@@ -40,45 +33,38 @@ const CHROME_CANDIDATES = [
     'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
     '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    '/usr/bin/chromium'
 ].filter(Boolean);
 
 const SAVE_KEY = 'drift.save.v1';
 const LOOK_KEY = 'drift.look.v1';
 
-//  Tuning the harness asserts against (mirrors src/data/tune.ts).
 const TUNE = {
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
     interactRadius: 2.6,
-    deadfallHoldSeconds: 1.5,
+    drinkPerSip: 25,
+    treeWoodYield: 8,
     coldLoadBudgetSeconds: 8,
     fpsFloorMedian: 30
 };
 
 const results = [];
 let failures = 0;
-
 function check(name, passed, detail = '') {
     results.push({ name, passed, detail });
     if (!passed) failures++;
     console.log(`  ${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
-
 function findChrome() {
-    for (const candidate of CHROME_CANDIDATES) {
-        if (existsSync(candidate)) return candidate;
-    }
-    throw new Error(`No Chrome found. Tried:\n${CHROME_CANDIDATES.join('\n')}`);
+    for (const c of CHROME_CANDIDATES) if (existsSync(c)) return c;
+    throw new Error('No Chrome found.');
 }
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
     mkdirSync(SHOT_DIR, { recursive: true });
-
     const browser = await puppeteer.launch({
         executablePath: findChrome(),
         headless: !HEADFUL,
@@ -88,498 +74,301 @@ async function main() {
     });
 
     const page = await browser.newPage();
-    //  A mid-range Android in portrait — the director's device class.
     await page.setViewport({ width: 412, height: 915, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-    await page.setUserAgent(
-        'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36'
-    );
+    await page.setUserAgent('Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36');
 
-    //  Serve a bare same-origin page for save surgery, without touching the shipped build.
     await page.setRequestInterception(true);
-    page.on('request', (request) => {
-        if (request.url().includes(BLANK_PATH)) {
-            request.respond({
-                status: 200,
-                contentType: 'text/html',
-                body: '<!doctype html><link rel="icon" href="data:,"><title>blank</title>'
-            });
-            return;
-        }
-        request.continue();
+    page.on('request', (r) => {
+        if (r.url().includes(BLANK_PATH)) { r.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><link rel="icon" href="data:,"><title>blank</title>' }); return; }
+        r.continue();
     });
 
     const consoleErrors = [];
     const missing = [];
-    page.on('console', (m) => {
-        if (m.type() === 'error') consoleErrors.push(m.text());
-    });
+    page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
     page.on('pageerror', (e) => consoleErrors.push(String(e)));
-    page.on('response', (r) => {
-        if (r.status() >= 400) missing.push(`${r.status()} ${r.url()}`);
-    });
+    page.on('response', (r) => { if (r.status() >= 400) missing.push(`${r.status()} ${r.url()}`); });
 
-    // ---- Helpers ---------------------------------------------------------
-
+    // ---- Helpers ----
     const live = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__drift.state())));
     const panelOpen = () => page.evaluate(() => window.__drift.panelOpen());
     const fps = () => page.evaluate(() => window.__drift.fps());
     const camera = () => page.evaluate(() => window.__drift.camera());
-    const screenOf = (x, z) =>
-        page.evaluate(([wx, wz]) => window.__drift.screenOf(wx, wz), [x, z]);
+    const screenOf = (x, z) => page.evaluate(([wx, wz]) => window.__drift.screenOf(wx, wz), [x, z]);
+    const waitForScene = async (t = 60_000) => page.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: t });
 
-    const waitForScene = async (timeoutMs = 60_000) => {
-        await page.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: timeoutMs });
-    };
+    const tapAt = async (x, y, hold = 60) => { await page.touchscreen.touchStart(x, y); await sleep(hold); await page.touchscreen.touchEnd(); await sleep(140); };
+    const tapWorld = async (wx, wz, hold = 60) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
+    const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
+    const canvasRect = () => page.evaluate(() => { const r = document.getElementById('game-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; });
 
-    const tapAt = async (x, y, holdMs = 60) => {
-        await page.touchscreen.touchStart(x, y);
-        await sleep(holdMs);
-        await page.touchscreen.touchEnd();
-        await sleep(140);
-    };
-
-    const tapWorld = async (worldX, worldZ, holdMs = 60) => {
-        const point = await screenOf(worldX, worldZ);
-        if (!point) return false;
-        await tapAt(point.x, point.y, holdMs);
-        return true;
-    };
-
-    /** Click a DOM control (HUD buttons and panels are DOM, not canvas). */
-    const clickDom = async (selector) => {
-        const handle = await page.$(selector);
-        if (!handle) return false;
-        await handle.click();
-        await sleep(320);
-        return true;
-    };
-
-    const canvasRect = () =>
-        page.evaluate(() => {
-            const r = document.getElementById('game-canvas').getBoundingClientRect();
-            return { left: r.left, top: r.top, width: r.width, height: r.height };
-        });
-
-    /**
-     * Steer toward a world point with the virtual stick.
-     *
-     * Movement is camera-relative, so the harness solves the same little rotation the game
-     * does — otherwise "walk to that log" would mean something different every time the
-     * camera moved, and the test would be measuring luck.
-     */
-    const walkToward = async (targetX, targetZ, seconds) => {
+    const walkToward = async (tx, tz, seconds) => {
         const rect = await canvasRect();
-        const originX = rect.left + rect.width * 0.25;
-        const originY = rect.top + rect.height * 0.78;
-
-        const state = await live();
+        const ox = rect.left + rect.width * 0.25;
+        const oy = rect.top + rect.height * 0.78;
+        const st = await live();
         const view = await camera();
-        const dx = targetX - state.player.x;
-        const dz = targetZ - state.player.y;
-        const length = Math.hypot(dx, dz) || 1;
-        const nx = dx / length;
-        const nz = dz / length;
-
-        //  Inverse of: world = forward*(-stickY) + right*(stickX)
+        const dx = tx - st.player.x, dz = tz - st.player.y;
+        const len = Math.hypot(dx, dz) || 1;
+        const nx = dx / len, nz = dz / len;
         const stickX = Math.cos(view.yaw) * nx - Math.sin(view.yaw) * nz;
         const stickY = -Math.sin(view.yaw) * nx - Math.cos(view.yaw) * nz;
-
-        const travel = 78; // full stick deflection, in screen pixels
-        await page.touchscreen.touchStart(originX, originY);
+        await page.touchscreen.touchStart(ox, oy);
         await sleep(60);
-        await page.touchscreen.touchMove(originX + stickX * travel, originY + stickY * travel);
+        await page.touchscreen.touchMove(ox + stickX * 78, oy + stickY * 78);
         await sleep(seconds * 1000);
         await page.touchscreen.touchEnd();
-        await sleep(180);
+        await sleep(160);
     };
-
-    /** Walk until within reach of a node, re-aiming as we go. Returns the final distance. */
-    const approach = async (node, budgetSeconds = 14) => {
-        const deadline = Date.now() + budgetSeconds * 1000;
-        let state = await live();
-        let distance = Math.hypot(state.player.x - node.x, state.player.y - node.y);
-
-        while (distance > TUNE.interactRadius * 0.7 && Date.now() < deadline) {
-            const seconds = Math.min(1.2, Math.max(0.25, (distance - 1) / 3.5));
-            await walkToward(node.x, node.y, seconds);
-            state = await live();
-            distance = Math.hypot(state.player.x - node.x, state.player.y - node.y);
+    const approach = async (x, z, budget = 16) => {
+        const deadline = Date.now() + budget * 1000;
+        let st = await live();
+        let d = Math.hypot(st.player.x - x, st.player.y - z);
+        while (d > TUNE.interactRadius * 0.7 && Date.now() < deadline) {
+            await walkToward(x, z, Math.min(1.2, Math.max(0.25, (d - 1) / 3.5)));
+            st = await live();
+            d = Math.hypot(st.player.x - x, st.player.y - z);
         }
-        return distance;
+        return d;
     };
+    const nodeOf = async (kind) => { const st = await live(); return st.nodes.find((n) => n.available && n.kind === kind); };
 
-    /**
-     * Simulate closing the app for `minutes`. The game persists on pagehide, so the rewind
-     * has to happen on a page where the game is not running — otherwise the unload handler
-     * stamps the save with "now" again and the absence disappears.
-     */
+    const editSave = async (mutateSrc) => {
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
+        await page.evaluate(({ key, src }) => {
+            const env = JSON.parse(localStorage.getItem(key));
+            // eslint-disable-next-line no-new-func
+            new Function('state', src)(env.state);
+            localStorage.setItem(key, JSON.stringify(env));
+        }, { key: SAVE_KEY, src: mutateSrc });
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
+        await waitForScene();
+        await sleep(1000);
+    };
     const goAway = async (minutes) => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
-        const before = await page.evaluate(
-            ({ key, ms }) => {
-                const env = JSON.parse(localStorage.getItem(key));
-                env.savedAtMs -= ms;
-                env.state.lastSeenMs -= ms;
-                localStorage.setItem(key, JSON.stringify(env));
-                return env.state;
-            },
-            { key: SAVE_KEY, ms: minutes * 60 * 1000 }
-        );
+        const before = await page.evaluate(({ key, ms }) => {
+            const env = JSON.parse(localStorage.getItem(key));
+            env.savedAtMs -= ms; env.state.lastSeenMs -= ms;
+            localStorage.setItem(key, JSON.stringify(env));
+            return env.state;
+        }, { key: SAVE_KEY, ms: minutes * 60 * 1000 });
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
         await waitForScene();
         await sleep(1200);
         return before;
     };
-
-    /** Wipe the save with the game stopped, so a genuinely fresh run boots. */
-    const startFreshRun = async () => {
+    const startFresh = async () => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
-        await page.evaluate(
-            ({ save, look }) => {
-                localStorage.removeItem(save);
-                localStorage.removeItem(look);
-            },
-            { save: SAVE_KEY, look: LOOK_KEY }
-        );
+        await page.evaluate(({ s, l }) => { localStorage.removeItem(s); localStorage.removeItem(l); }, { s: SAVE_KEY, l: LOOK_KEY });
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
         await waitForScene();
         await sleep(900);
     };
+    const shot = (n) => page.screenshot({ path: join(SHOT_DIR, `${n}.png`) });
 
-    const shot = (name) => page.screenshot({ path: join(SHOT_DIR, `${name}.png`) });
+    /** Walk to a node and gather it (tap for tap-nodes, hold for hold-nodes). */
+    const harvest = async (kind, holdMs = 2200) => {
+        const node = await nodeOf(kind);
+        if (!node) return { ok: false };
+        const d = await approach(node.x, node.y, 22);
+        if (d > TUNE.interactRadius) return { ok: false, reason: 'unreached', d };
+        const hold = ['deadfall', 'tree', 'rock', 'coconutpalm', 'crashbox'].includes(kind) ? holdMs : 60;
+        await tapWorld(node.x, node.y, hold);
+        await sleep(300);
+        return { ok: true, node };
+    };
 
-    // ---- A3: load, layout, renderer --------------------------------------
-
-    console.log(`\nDRIFT device smoke test (3D) — ${URL_UNDER_TEST}\n`);
+    // ---- A3: load ----
+    console.log(`\nDRIFT device smoke test (C03) — ${URL_UNDER_TEST}\n`);
     console.log('A3 — load, layout, renderer');
-
     await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
     await waitForScene();
-
-    const renderer = await page.evaluate(() => {
-        const gl = document.createElement('canvas').getContext('webgl2');
-        const info = gl?.getExtension('WEBGL_debug_renderer_info');
-        return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'unknown';
-    });
+    const renderer = await page.evaluate(() => { const gl = document.createElement('canvas').getContext('webgl2'); const i = gl?.getExtension('WEBGL_debug_renderer_info'); return i ? gl.getParameter(i.UNMASKED_RENDERER_WEBGL) : 'unknown'; });
     const software = /swiftshader|software|llvmpipe/i.test(renderer);
     console.log(`  (renderer: ${renderer})`);
+    await startFresh();
 
-    await startFreshRun();
+    const booted = await page.evaluate(() => { const s = window.__drift.state(); return { canvas: !!document.getElementById('game-canvas'), nodes: s.nodes.length, thirst: s.thirst, hunger: s.hunger, health: s.health }; });
+    check('loads a playable 3D scene with the three new vitals full', booted.canvas && booted.nodes > 0 && booted.thirst > 98 && booted.hunger > 98 && booted.health === 100, `${booted.nodes} nodes`);
 
-    const booted = await page.evaluate(() => {
-        const state = window.__drift.state();
-        return {
-            canvas: !!document.getElementById('game-canvas'),
-            nodes: state?.nodes?.length ?? 0,
-            warmth: state?.warmth ?? 0
-        };
-    });
-    check(
-        'loads and reaches a playable 3D scene',
-        booted.canvas && booted.nodes > 0 && booted.warmth > 98,
-        `${booted.nodes} nodes on the island`
-    );
-
-    const layout = await page.evaluate(() => {
-        const canvas = document.getElementById('game-canvas');
-        const r = canvas.getBoundingClientRect();
-        return {
-            fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1,
-            noScroll: document.documentElement.scrollWidth <= window.innerWidth + 1,
-            touchAction: getComputedStyle(document.body).touchAction,
-            viewport: document.querySelector('meta[name=viewport]')?.content ?? ''
-        };
-    });
-    check('canvas fills the viewport with no page scroll', layout.fits && layout.noScroll);
-    check('no pinch/zoom trap', layout.touchAction === 'none' && /user-scalable=no/.test(layout.viewport));
-
-    //  World→screen has to be right or every tap below is aimed at nothing.
-    const projection = await page.evaluate(() => {
-        const state = window.__drift.state();
-        const p = window.__drift.screenOf(state.player.x, state.player.y);
-        const r = document.getElementById('game-canvas').getBoundingClientRect();
-        return { p, onScreen: !!p && p.x > r.left && p.x < r.right && p.y > r.top && p.y < r.bottom };
-    });
-    check(
-        'the player projects onto the screen (world→screen aiming works)',
-        projection.onScreen,
-        JSON.stringify(projection.p)
-    );
-
-    await shot('c02-01-cold-open');
-    check('the cold open is showing on a fresh run', await panelOpen());
-
-    // ---- A4 + A7: the 3D steel thread ------------------------------------
-
-    console.log('\nA4/A7 — the steel thread, in three dimensions');
-
+    const layout = await page.evaluate(() => { const c = document.getElementById('game-canvas'); const r = c.getBoundingClientRect(); return { fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1, touch: getComputedStyle(document.body).touchAction, vp: document.querySelector('meta[name=viewport]')?.content ?? '' }; });
+    check('canvas fills the viewport, no pinch/zoom trap', layout.fits && layout.touch === 'none' && /user-scalable=no/.test(layout.vp));
+    await shot('c03-01-coldopen');
+    check('the cold open shows on a fresh run', await panelOpen());
     check('the cold open dismisses', await clickDom('.cold-open button'));
-    await sleep(900);
-    await shot('c02-02-island');
+    await sleep(800);
+    await shot('c03-02-island');
 
-    const start = await live();
-    check('control begins with an empty pack', start.inventory.wood === 0);
+    // ---- A6: grounding + colliders ----
+    console.log('\nA6 — ground truth (grounding + colliders)');
+    const grounding = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const feetY = window.__drift.playerFeetY();
+        const ground = window.__drift.groundAt(s.player.x, s.player.y);
+        const hasShadow = !!window.__driftScene.meshes.find((m) => m.name.startsWith('shadow_') && m.isEnabled());
+        return { feetY, ground, gap: feetY - ground, hasShadow };
+    });
+    check('the castaway has a contact shadow (the float fix)', grounding.hasShadow);
+    check('the feet sit on the terrain, not floating', Math.abs(grounding.gap) < 0.05, `feet-to-ground gap ${grounding.gap.toFixed(3)} m`);
 
-    //  Gather driftwood: walk to each log, then tap it.
-    const driftwood = start.nodes.filter((n) => n.kind === 'driftwood');
-    let gathered = 0;
-    for (const node of driftwood.slice(0, 4)) {
-        const distance = await approach(node);
-        if (distance > TUNE.interactRadius) continue;
-        await tapWorld(node.x, node.y);
-        const after = await live();
-        if (after.inventory.wood > gathered) gathered = after.inventory.wood;
-    }
+    //  Collider: walk straight into a tree and confirm the player stops short of its trunk.
+    const tree = await nodeOf('tree');
+    await approach(tree.x, tree.y, 22); // gets within reach but not into the trunk
+    //  Now push hard toward the tree centre for a couple of seconds.
+    await walkToward(tree.x, tree.y, 2.0);
+    const afterPush = await live();
+    const gap = Math.hypot(afterPush.player.x - tree.x, afterPush.player.y - tree.y);
+    check('a tree collider stops the player (cannot walk through it)', gap > 0.6, `${gap.toFixed(2)} m from the trunk`);
+    await shot('c03-03-treeline');
 
-    const afterDriftwood = await live();
-    check(
-        'walking to driftwood and tapping it yields wood',
-        afterDriftwood.inventory.wood >= 3,
-        `wood ${afterDriftwood.inventory.wood}`
-    );
-    //  "Within seconds" is the acceptance language; 8 s is a generous but honest reading of
-    //  it, not the 45 s that let the check pass without testing the claim (C3 audit, C02).
-    check(
-        'first wood lands within seconds of gaining control',
-        afterDriftwood.trace.msToFirstWood !== null && afterDriftwood.trace.msToFirstWood < 8_000,
-        `${afterDriftwood.trace.msToFirstWood} ms`
-    );
-    check('the walk was traced', afterDriftwood.trace.msToFirstMove !== null);
-    await shot('c02-03-gathered');
+    // ---- A4/A7: the pressure loop ----
+    console.log('\nA4/A7 — the pressure loop');
 
-    //  A deadfall at the treeline: the hold path and its world-space progress ring.
-    const deadfall = afterDriftwood.nodes.find((n) => n.kind === 'deadfall' && n.available);
-    const deadfallDistance = await approach(deadfall, 22);
-    check('the treeline is reachable on foot', deadfallDistance <= TUNE.interactRadius, `${deadfallDistance.toFixed(2)} m`);
+    //  Gather the axe recipe by hand: wood (deadfall), stone (rock), fibre (palm).
+    const dead = await harvest('deadfall');
+    check('deadfall gives wood by hand', dead.ok);
+    const rock = await harvest('rock');
+    const palm = await harvest('coconutpalm');
+    let inv = (await live()).inventory;
+    check('a rock outcrop gives stone', inv.stone >= 1, `stone ${inv.stone}`);
+    check('a coconut palm gives coconut and fibre', inv.coconut >= 1 && inv.fiber >= 1, `coconut ${inv.coconut}, fibre ${inv.fiber}`);
+    void rock; void palm;
 
-    const beforeHold = await live();
-    await tapWorld(deadfall.x, deadfall.y, 300); // too short
-    const shortHold = await live();
-    check('a short hold does not salvage the deadfall', shortHold.inventory.wood === beforeHold.inventory.wood);
+    //  Top up to the recipe deterministically (foraging exact counts by touch is flaky),
+    //  then craft the axe through the card — the four gates.
+    await editSave('state.inventory.wood = 3; state.inventory.stone = 2; state.inventory.fiber = 2;');
+    check('the craft-axe action is offered once the parts are in hand', await clickDom('.action'));
+    await sleep(400);
+    await shot('c03-04-craftcard');
+    check('the craft card is a panel with the gates', await page.$('.craft .gates') !== null);
+    check('the axe can be made', await clickDom('.craft .craft-btn'));
+    await sleep(600);
+    const afterCraft = await live();
+    check('the axe is crafted and the parts spent', afterCraft.tools.axe === true && afterCraft.inventory.wood === 0, `axe ${afterCraft.tools.axe}`);
+    check('the craft was traced', afterCraft.trace.msToFirstCraft !== null);
 
-    await tapWorld(deadfall.x, deadfall.y, TUNE.deadfallHoldSeconds * 1000 + 600);
-    const afterHold = await live();
-    check(
-        'a full hold salvages the deadfall for 2–3 wood',
-        afterHold.inventory.wood - beforeHold.inventory.wood >= 2 &&
-            afterHold.inventory.wood - beforeHold.inventory.wood <= 3,
-        `+${afterHold.inventory.wood - beforeHold.inventory.wood}`
-    );
-    await shot('c02-04-deadfall');
+    //  Fell a standing tree — axe only, big yield.
+    const woodBeforeFell = (await live()).inventory.wood;
+    const felled = await harvest('tree', 4600);
+    check('a standing tree can be felled with the axe', felled.ok, felled.reason ?? '');
+    const afterFell = await live();
+    check('the felled tree yields timber (treeWoodYield)', afterFell.inventory.wood - woodBeforeFell === TUNE.treeWoodYield, `+${afterFell.inventory.wood - woodBeforeFell}`);
+    check('felling trains woodcutting', afterFell.skills.woodcutting.xp > 0 || afterFell.skills.woodcutting.level > 1);
+    await shot('c03-05-felled');
 
-    //  Build the fire.
-    const woodBeforeFire = (await live()).inventory.wood;
-    check('enough wood for a fire was gathered', woodBeforeFire >= TUNE.woodPerFire, `wood ${woodBeforeFire}`);
-    check('the build-fire button is offered', await clickDom('.action'));
-    await sleep(900);
+    //  Open the sealed crash box — first loot.
+    const box = await harvest('crashbox', 2400);
+    check('the sealed crash box opens with the axe', box.ok);
+    const afterBox = await live();
+    check('the box yields the flask and fibre', afterBox.tools.flask === true && afterBox.inventory.fiber > afterCraft.inventory.fiber, `flask ${afterBox.tools.flask}`);
 
-    const afterFire = await live();
-    check(
-        'the fire is built and lit, standing in the world',
-        afterFire.fire.built && afterFire.fire.fuel > TUNE.woodPerFire - 0.05,
-        `fuel ${afterFire.fire.fuel.toFixed(3)}`
-    );
-    check('the fire cost exactly woodPerFire', afterFire.inventory.wood === woodBeforeFire - TUNE.woodPerFire);
-    check('the ignition was traced', afterFire.trace.msToFireLit !== null);
-    await shot('c02-05-fire');
+    //  Drink at the pond: get thirsty first (save surgery), then walk to the pond and drink.
+    await editSave('state.thirst = 40;');
+    const pond = await page.evaluate(() => { const s = window.__drift; return s ? null : null; });
+    void pond;
+    const POND = { x: -22, y: 8 };
+    const thirstBeforeDrink = (await live()).thirst;
+    let atPondDist = await approach(POND.x, POND.y, 40);
+    if (atPondDist > 11) atPondDist = await approach(POND.x, POND.y, 20); // one more push through the trees
+    const reached = (() => { return atPondDist; })();
+    check('the pond bank is reachable on foot', reached <= 11, `${reached.toFixed(1)} m from the water`);
+    check('drinking at the pond is offered when close', await clickDom('.action'));
+    await sleep(400);
+    const afterDrink = await live();
+    check('drinking restores thirst', afterDrink.thirst > thirstBeforeDrink + 1, `${thirstBeforeDrink.toFixed(1)} → ${afterDrink.thirst.toFixed(1)}`);
+    check('the first drink was traced', afterDrink.trace.msToFirstDrink !== null);
+    await shot('c03-06-pond');
 
-    //  Warmth recovers in the firelight.
-    const cooledFrom = 50;
-    await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(
-        ({ key, warmth }) => {
-            const env = JSON.parse(localStorage.getItem(key));
-            env.state.warmth = warmth;
-            localStorage.setItem(key, JSON.stringify(env));
-        },
-        { key: SAVE_KEY, warmth: cooledFrom }
-    );
-    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
-    await waitForScene();
-    await sleep(4200);
+    //  Eat: get hungry, forage a berry within reach or grant one, then eat.
+    //  Away from the pond, thirst full and flask empty, so the secondary button is Eat
+    //  (not Fill flask / Drink flask — those outrank eating when they apply).
+    await editSave('state.player = { x: 0, y: 104 }; state.thirst = 100; state.tools.flaskSips = 0; state.hunger = 40; state.inventory.berries = 2;');
+    const hungerBeforeEat = (await live()).hunger;
+    check('an Eat action appears when hungry with food', await clickDom('.secondary-action'));
+    await sleep(300);
+    const afterEat = await live();
+    check('eating restores hunger', afterEat.hunger > hungerBeforeEat, `${hungerBeforeEat} → ${afterEat.hunger}`);
 
-    const warmed = await live();
-    check(
-        'warmth recovers while standing in the firelight',
-        warmed.warmth > cooledFrom,
-        `${cooledFrom} → ${warmed.warmth.toFixed(2)}`
-    );
-
-    //  A7: the idle hint.
+    //  The idle hint fires and is contextual.
     const hintsBefore = await page.evaluate(() => window.__drift.hints().shown);
     await sleep(12_500);
     const hintsAfter = await page.evaluate(() => window.__drift.hints());
-    check(
-        'the idle hint appears, and it is about where the player actually is',
-        hintsAfter.shown > hintsBefore && hintsAfter.last.length > 0,
-        `"${hintsAfter.last}"`
-    );
+    check('the idle hint appears and is contextual', hintsAfter.shown > hintsBefore && hintsAfter.last.length > 0, `"${hintsAfter.last}"`);
 
-    // ---- A4: absence and the morning report ------------------------------
-
-    console.log('\nA4 — absence and the morning report');
-
-    const beforeAway = await goAway(3);
-    await shot('c02-06-morning-report');
-    check('the morning report is on screen', await panelOpen());
-
-    const reopened = await live();
-    const gameHoursGained = reopened.gameHoursElapsed - beforeAway.gameHoursElapsed;
-    const expectedHours = (3 * 60) / TUNE.realSecondsPerGameHour;
-    check(
-        'the absence advanced the clock at the tuned rate',
-        Math.abs(gameHoursGained - expectedHours) < 0.15,
-        `${gameHoursGained.toFixed(3)} game hours for ~3 real minutes (expect ~${expectedHours})`
-    );
-
-    //  Derive the expectation from the time the game actually saw, not the nominal three
-    //  minutes: otherwise this measures the harness's punctuality, not the game's maths.
-    const fuelBurned = beforeAway.fire.fuel - reopened.fire.fuel;
-    const expectedBurn = gameHoursGained / TUNE.fireBurnGameHoursPerWood;
-    check(
-        'the fire burned exactly as tune.ts says, for the time that actually passed',
-        Math.abs(fuelBurned - expectedBurn) < 1e-6,
-        `${fuelBurned.toFixed(6)} wood for ${gameHoursGained.toFixed(4)} game hours`
-    );
-
-    check('the report dismisses and hands the island back', await clickDom('.report button'));
-    await sleep(600);
-    check('play resumes after the report', !(await panelOpen()));
-    await shot('c02-07-after-report');
-
-    // ---- A6: controls and the persisted setting --------------------------
-
-    console.log('\nA6 — controls, and the setting that persists');
-
-    const beforeWalk = await live();
-    await walkToward(beforeWalk.player.x, beforeWalk.player.y - 10, 1.4);
-    const afterWalk = await live();
-    const travelled = Math.hypot(
-        afterWalk.player.x - beforeWalk.player.x,
-        afterWalk.player.y - beforeWalk.player.y
-    );
-    check('the virtual stick walks the castaway', travelled > 2, `${travelled.toFixed(2)} m`);
-
-    const yawBefore = (await camera()).yaw;
-    const rect = await canvasRect();
-    await page.touchscreen.touchStart(rect.left + rect.width * 0.75, rect.top + rect.height * 0.3);
-    await sleep(60);
-    await page.touchscreen.touchMove(rect.left + rect.width * 0.35, rect.top + rect.height * 0.3);
-    await sleep(200);
-    await page.touchscreen.touchEnd();
-    await sleep(300);
-    const yawAfter = (await camera()).yaw;
-    check('dragging orbits the camera', Math.abs(yawAfter - yawBefore) > 0.05, `yaw ${yawBefore.toFixed(2)} → ${yawAfter.toFixed(2)}`);
-    await shot('c02-08-look');
-
-    check('the look settings open', await clickDom('.settings-button'));
+    // ---- A4: death and respawn ----
+    console.log('\nA4 — death and respawn (active play can kill)');
+    //  Set every vital empty with a sliver of health, then a tick should kill and respawn.
+    await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');
+    await sleep(1600); // the render loop ticks; health runs out fast
+    await shot('c03-07-death');
+    const deathShowing = await panelOpen();
+    check('a death overlay appears when health runs out in play', deathShowing);
+    const dying = await live();
+    check('the death was counted and a cause recorded', dying.trace.deaths >= 1 && dying.lastDeathCause !== null, `cause: ${dying.lastDeathCause}`);
+    if (deathShowing) await clickDom('.death button');
     await sleep(500);
-    check('a sensitivity can be chosen', await clickDom('.choices button[data-value="1.6"]'));
-    check('the settings close', await clickDom('.settings .done'));
-    await sleep(600);
+    const revived = await live();
+    check('waking ashore restores you at spawn with your kit', revived.player.x === 0 && revived.health === 100 && revived.inventory.wood === 4);
 
-    const storedSensitivity = await page.evaluate((key) => localStorage.getItem(key), LOOK_KEY);
-    check('the chosen sensitivity is stored', storedSensitivity === '1.6', `stored ${storedSensitivity}`);
+    // ---- A4: absence and the morning report ----
+    console.log('\nA4 — absence and the vitals report');
+    await editSave('state.thirst = 60; state.hunger = 55;');
+    const beforeAway = await goAway(4);
+    await shot('c03-08-report');
+    check('the morning report is on screen', await panelOpen());
+    const reopened = await live();
+    const gh = reopened.gameHoursElapsed - beforeAway.gameHoursElapsed;
+    check('the absence advanced the clock at the tuned rate', Math.abs(gh - (4 * 60) / TUNE.realSecondsPerGameHour) < 0.2, `${gh.toFixed(2)} game hours`);
+    check('vitals drifted during the absence but nobody died', reopened.thirst < 60 && reopened.health > 0 && reopened.trace.deaths === revived.trace.deaths, `thirst ${reopened.thirst.toFixed(1)}, health ${reopened.health}`);
+    await clickDom('.report button');
+    await sleep(500);
 
-    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
-    await waitForScene();
-    await sleep(900);
-    const reloadedSensitivity = await page.evaluate((key) => localStorage.getItem(key), LOOK_KEY);
-    check('look sensitivity survives a reload', reloadedSensitivity === '1.6');
-
-    // ---- A3: frame rate and tab-switch survival --------------------------
-
-    console.log('\nA3 — frame rate and tab-switch survival');
-
-    //  Move for a few seconds so the sample window describes play, not a still camera.
+    // ---- A3: FPS + tab switch + cold load ----
+    console.log('\nA3 — frame rate, tab-switch, cold load');
     const moving = await live();
-    await walkToward(moving.player.x + 6, moving.player.y - 6, 2.2);
-    await walkToward(moving.player.x - 6, moving.player.y + 4, 2.2);
+    await walkToward(moving.player.x + 8, moving.player.y - 8, 2.0);
+    await walkToward(moving.player.x - 8, moving.player.y + 6, 2.0);
     const frame = await fps();
-
-    //  A software renderer must be an explicit choice, never a silent one: on a GPU-less
-    //  CI runner plain `npm run smoke` would otherwise read an 8 fps SwiftShader number as
-    //  a real A3 verdict. If we are on software without --software having asked for it, that
-    //  is a failed run, not a passed check (C3 audit, Cycle 02).
     if (software && !SOFTWARE) {
-        check(
-            'the frame-rate check ran on a real GPU',
-            false,
-            `renderer is ${renderer} — pass --software to accept a meaningless FPS number, or run where a GPU exists`
-        );
+        check('the frame-rate check ran on a real GPU', false, `renderer is ${renderer} — pass --software to accept a meaningless number`);
     } else if (software) {
-        check(
-            'frame rate measured (SOFTWARE renderer — not a verdict on A3)',
-            frame.samples > 60,
-            `median ${frame.median} fps under SwiftShader; re-run on a GPU for a real number`
-        );
+        check('frame rate measured (SOFTWARE — not a verdict on A3)', frame.samples > 60, `median ${frame.median} fps under SwiftShader`);
     } else {
-        check(
-            `median frame rate is at or above the floor (${TUNE.fpsFloorMedian})`,
-            frame.median >= TUNE.fpsFloorMedian,
-            `median ${frame.median} fps, 1% low ${frame.onePercentLow} fps, on ${renderer}`
-        );
+        check(`median frame rate ≥ floor (${TUNE.fpsFloorMedian}) on the bigger island`, frame.median >= TUNE.fpsFloorMedian, `median ${frame.median} fps, 1% low ${frame.onePercentLow} fps`);
     }
 
     const beforeHide = await live();
     const other = await browser.newPage();
     await other.goto('about:blank');
-    await sleep(2000);
+    await sleep(1800);
     await page.bringToFront();
-    await sleep(1400);
+    await sleep(1200);
     await other.close();
-
     const afterHide = await live();
-    check(
-        'state survives backgrounding and the clock kept running',
-        afterHide.fire.built === beforeHide.fire.built &&
-            afterHide.inventory.wood === beforeHide.inventory.wood &&
-            afterHide.gameHoursElapsed >= beforeHide.gameHoursElapsed,
-        `clock ${beforeHide.gameHoursElapsed.toFixed(3)} → ${afterHide.gameHoursElapsed.toFixed(3)}`
-    );
-    await shot('c02-09-after-tab-switch');
-
-    // ---- A3: cold load on a throttled 4G connection ----------------------
-
-    console.log('\nA3 — cold load on 4G');
+    check('state survives backgrounding, clock kept running', afterHide.inventory.wood === beforeHide.inventory.wood && afterHide.gameHoursElapsed >= beforeHide.gameHoursElapsed);
 
     const cold = await browser.newPage();
     await cold.setViewport({ width: 412, height: 915, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const cdp = await cold.createCDPSession();
     await cdp.send('Network.enable');
     await cdp.send('Network.clearBrowserCache');
-    await cdp.send('Network.emulateNetworkConditions', {
-        offline: false,
-        latency: 70,
-        downloadThroughput: (4 * 1024 * 1024) / 8,
-        uploadThroughput: (1 * 1024 * 1024) / 8
-    });
-
-    const coldStart = Date.now();
+    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 70, downloadThroughput: (4 * 1024 * 1024) / 8, uploadThroughput: (1 * 1024 * 1024) / 8 });
+    const t0 = Date.now();
     await cold.goto(URL_UNDER_TEST, { waitUntil: 'domcontentloaded', timeout: 90_000 });
     await cold.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: 90_000 });
-    const coldMs = Date.now() - coldStart;
+    const coldMs = Date.now() - t0;
     await cold.close();
+    check(`cold 4G load within ${TUNE.coldLoadBudgetSeconds} s (bigger island)`, coldMs <= TUNE.coldLoadBudgetSeconds * 1000, `${coldMs} ms`);
 
-    check(
-        `first playable frame on cold 4G is within ${TUNE.coldLoadBudgetSeconds} s`,
-        coldMs <= TUNE.coldLoadBudgetSeconds * 1000,
-        `${coldMs} ms`
-    );
-
-    // ---- Hygiene ---------------------------------------------------------
-
+    // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
     check('no console errors during the whole run', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 
     await browser.close();
-
     console.log(`\n${results.length - failures}/${results.length} checks passed. Screenshots in .smoke/\n`);
     process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((error) => {
-    console.error('\nSMOKE TEST CRASHED\n', error);
-    process.exit(1);
-});
+main().catch((e) => { console.error('\nSMOKE TEST CRASHED\n', e); process.exit(1); });

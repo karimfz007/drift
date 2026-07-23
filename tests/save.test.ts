@@ -87,8 +87,76 @@ describe('save — refuses what it cannot trust', () => {
         expect(envelope!.state.gameHoursElapsed).toBe(2);
         // Defaults arrive from a fresh run rather than crashing the body.
         expect(envelope!.state.inventory.wood).toBe(0);
+        expect(envelope!.state.tools.axe).toBe(false);
+        expect(envelope!.state.skills.woodcutting.level).toBe(1);
         expect(envelope!.state.nodes.length).toBeGreaterThan(0);
         expect(envelope!.state.settings.controlMode).toBe('tap');
-        expect(envelope!.state.trace.failedInteractionTaps).toBe(0);
+    });
+});
+
+describe('save — A1: a Cycle 02 save migrates to Cycle 03', () => {
+    /** A realistic v1 (Cycle 01–02) save: warmth, wood, a lit fire, a joystick preference. */
+    function v1Save(): string {
+        const state = {
+            schemaVersion: 1,
+            startedAtMs: 1_700_000_000_000,
+            lastSeenMs: 1_700_000_300_000,
+            gameHoursElapsed: 6.5,
+            warmth: 72.4,
+            inventory: { wood: 3 },
+            fire: { built: true, fuel: 4.2, x: 12, y: -3 },
+            player: { x: 8, y: 41 },
+            nodes: [
+                { id: 'dw1', kind: 'driftwood', x: -6, y: 40, available: false },
+                { id: 'df1', kind: 'deadfall', x: -8, y: 22, available: true }
+            ],
+            settings: { controlMode: 'joystick' },
+            trace: {
+                msToFirstMove: 800,
+                msToFirstWood: 3400,
+                msToFireLit: 14000,
+                failedInteractionTaps: 2,
+                controlModeSwitches: 1,
+                steelThreadComplete: true,
+                activeMs: 300000
+            }
+        };
+        return JSON.stringify({ schemaVersion: 1, savedAtMs: 1_700_000_300_000, state });
+    }
+
+    it('loads, keeps what carried over, and gains a sensible set of vitals', () => {
+        const envelope = deserialize(v1Save());
+        expect(envelope).not.toBeNull();
+        const s = envelope!.state;
+
+        // Bumped to the current schema.
+        expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+
+        // Carried over from v1.
+        expect(s.warmth).toBeCloseTo(72.4, 6);
+        expect(s.gameHoursElapsed).toBeCloseTo(6.5, 6);
+        expect(s.inventory.wood).toBe(3);
+        expect(s.fire).toMatchObject({ built: true, fuel: 4.2 });
+        expect(s.settings.controlMode).toBe('joystick');
+        expect(s.trace.msToFirstWood).toBe(3400);
+
+        // Gained in v2, at full — the castaway wakes whole, not on the brink.
+        expect(s.thirst).toBe(TUNE.thirstMax);
+        expect(s.hunger).toBe(TUNE.hungerMax);
+        expect(s.health).toBe(TUNE.healthMax);
+        expect(s.tools.axe).toBe(false);
+        expect(s.skills.foraging.level).toBe(1);
+
+        // The rest of the inventory starts empty; the island's nodes are regenerated
+        // (the world genuinely changed), so the pond/forage/trees exist for them.
+        expect(s.inventory.stone).toBe(0);
+        expect(s.nodes.some((n) => n.kind === 'tree')).toBe(true);
+        expect(s.nodes.some((n) => n.kind === 'crashbox')).toBe(true);
+    });
+
+    it('is idempotent — migrating a v1 save then serialising round-trips as v2', () => {
+        const once = deserialize(v1Save());
+        const twice = deserialize(serialize(once!.state, once!.savedAtMs));
+        expect(twice!.state).toEqual(once!.state);
     });
 });

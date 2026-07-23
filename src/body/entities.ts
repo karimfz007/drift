@@ -1,12 +1,14 @@
 /**
- * BODY — the things standing on the island: the castaway, the wood, and the fire.
+ * BODY — the things standing on the island: the castaway, the resource nodes, and the
+ * fire. The brain owns every rule; this file only draws its answers. The brain's `(x, y)`
+ * is the world's `(x, z)` — it never learned about the third dimension, and never needed to.
  *
- * The brain owns every rule here; this file only draws its answers. Note the coordinate
- * mapping in one place: the brain's `(x, y)` is the world's `(x, z)`. It never learned
- * about the third dimension, and it never needed to.
+ * Cycle 03 fixes the two Cycle 02 defects here: every standing thing gets a **blob contact
+ * shadow** (the absence of one is what made the castaway read as floating, D-036), and the
+ * nodes report their footprints so the game can stop the player walking through them (A6).
  */
 
-import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -14,6 +16,7 @@ import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { CreateCapsule } from '@babylonjs/core/Meshes/Builders/capsuleBuilder';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
+import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
@@ -22,15 +25,14 @@ import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
 //  Side-effect only: registers the particle scene component. Without it the flames are
 //  constructed, started, and never drawn — the deep-import tree-shaking trap.
 import '@babylonjs/core/Particles/particleSystemComponent';
-import { Color4 } from '@babylonjs/core/Maths/math.color';
 
-import { isFireLit, type GameState, type WoodNode } from '../brain';
+import { isFireLit, type GameState, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
 import { PALETTE, RENDER } from './theme';
+import type { Obstacle } from './island';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
 
-/** Player capsule height, in metres — presentation, not gameplay. */
 const PLAYER_HEIGHT = 1.8;
 
 function flat(scene: Scene, name: string, rgb: readonly number[]): StandardMaterial {
@@ -40,162 +42,284 @@ function flat(scene: Scene, name: string, rgb: readonly number[]): StandardMater
     return material;
 }
 
+// ---- Blob shadows — the contact-shadow fix (D-036) ----------------------
+
+let sharedShadowMaterial: StandardMaterial | null = null;
+
+function shadowMaterial(scene: Scene): StandardMaterial {
+    if (sharedShadowMaterial) return sharedShadowMaterial;
+    const texture = new DynamicTexture('blobShadow', { width: 64, height: 64 }, scene, false);
+    const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(0,0,0,0.5)');
+    gradient.addColorStop(0.6, 'rgba(0,0,0,0.3)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    texture.update();
+    texture.hasAlpha = true;
+
+    const material = new StandardMaterial('blobShadowMat', scene);
+    material.diffuseTexture = texture;
+    material.opacityTexture = texture;
+    material.disableLighting = true;
+    material.specularColor = new Color3(0, 0, 0);
+    material.diffuseColor = new Color3(0, 0, 0);
+    sharedShadowMaterial = material;
+    return material;
+}
+
+/** A flat dark disc laid on the ground under a thing — the cheap, reliable contact shadow. */
+function makeShadow(scene: Scene, radius: number): Mesh {
+    const disc = CreateDisc(`shadow_${Math.random().toString(36).slice(2)}`, { radius, tessellation: 16 }, scene);
+    disc.rotation.x = Math.PI / 2;
+    disc.material = shadowMaterial(scene);
+    disc.isPickable = false;
+    return disc;
+}
+
 // ---- The castaway -------------------------------------------------------
 
 export class PlayerView {
     readonly root: Mesh;
     private pack: Mesh;
+    private shadow: Mesh;
 
     constructor(scene: Scene) {
-        this.root = CreateCapsule(
-            'player',
-            { height: PLAYER_HEIGHT, radius: 0.34, tessellation: 8, subdivisions: 1 },
-            scene
-        );
+        this.root = CreateCapsule('player', { height: PLAYER_HEIGHT, radius: 0.34, tessellation: 8, subdivisions: 1 }, scene);
         this.root.material = flat(scene, 'playerMat', PALETTE.player);
         this.root.isPickable = false;
 
-        //  A pack on the back, so which way you are facing is readable at a glance.
         this.pack = CreateBox('pack', { width: 0.52, height: 0.5, depth: 0.28 }, scene);
         this.pack.material = flat(scene, 'packMat', PALETTE.playerPack);
         this.pack.parent = this.root;
         this.pack.position = new Vector3(0, 0.16, -0.36);
         this.pack.isPickable = false;
+
+        this.shadow = makeShadow(scene, 0.6);
     }
 
-    /** Place the capsule so its feet are on the ground at (x, z). */
+    /** Plant the feet on the ground at (x, z), and lay the shadow flat where they land. */
     place(x: number, groundY: number, z: number, facingRadians: number): void {
         this.root.position.set(x, groundY + PLAYER_HEIGHT / 2, z);
         this.root.rotation.y = facingRadians;
+        //  The shadow sits just above the surface at the feet — the fix for the float.
+        this.shadow.position.set(x, groundY + 0.03, z);
     }
 
     get eyeHeight(): number {
         return PLAYER_HEIGHT * 0.9;
     }
+
+    /** World Y of the capsule's feet — the harness checks this sits on the ground (A6). */
+    get feetY(): number {
+        return this.root.position.y - PLAYER_HEIGHT / 2;
+    }
 }
 
-// ---- Wood ---------------------------------------------------------------
+// ---- Resource nodes -----------------------------------------------------
 
 export interface NodeView {
     node: WoodNode;
-    mesh: Mesh;
+    body: Mesh;
     halo: Mesh;
+    shadow: Mesh;
+    /** Footprint radius for collision, or 0 if the player may walk over it. */
+    obstacleRadius: number;
 }
 
-export class WoodViews {
+/** Build the mesh for one node kind at (x, groundY, z). Returns [mesh, shadowRadius, obstacleRadius]. */
+function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: number, materials: NodeMaterials): {
+    mesh: Mesh;
+    shadowRadius: number;
+    obstacleRadius: number;
+} {
+    const at = (mesh: Mesh, yOffset: number, shadow: number, obstacle: number) => {
+        mesh.position.set(node.x, groundY + yOffset, node.y);
+        mesh.isPickable = true;
+        mesh.metadata = { nodeId: node.id };
+        return { mesh, shadowRadius: shadow, obstacleRadius: obstacle };
+    };
+
+    switch (node.kind) {
+        case 'driftwood': {
+            const m = CreateCylinder(`n_${node.id}`, { height: 1.5, diameter: 0.26, tessellation: 6 }, scene);
+            m.material = materials.driftwood;
+            m.rotation.z = Math.PI / 2;
+            m.rotation.y = index * 0.8;
+            return at(m, 0.14, 0.8, 0);
+        }
+        case 'deadfall': {
+            const m = CreateCylinder(`n_${node.id}`, { height: 2.6, diameterTop: 0.34, diameterBottom: 0.52, tessellation: 6 }, scene);
+            m.material = materials.deadfall;
+            m.rotation.z = Math.PI / 2.6;
+            m.rotation.y = index * 1.1;
+            return at(m, 0.42, 1.0, 0);
+        }
+        case 'tree': {
+            //  A standing tree: trunk + canopy, parented so both fell together.
+            const trunk = CreateCylinder(`n_${node.id}`, { height: 6.0, diameterTop: 0.5, diameterBottom: 0.85, tessellation: 6 }, scene);
+            trunk.material = materials.trunk;
+            const canopy = CreateCylinder(`nc_${node.id}`, { height: 4.6, diameterTop: 0, diameterBottom: 4.4, tessellation: 7 }, scene);
+            canopy.material = materials.canopy;
+            canopy.parent = trunk;
+            canopy.position.y = 4.0;
+            canopy.isPickable = true;
+            canopy.metadata = { nodeId: node.id };
+            return at(trunk, 3.0, 1.1, 0.8);
+        }
+        case 'rock': {
+            const m = CreateCylinder(`n_${node.id}`, { height: 1.4, diameterTop: 1.1, diameterBottom: 1.9, tessellation: 5 }, scene);
+            m.material = materials.rock;
+            m.rotation.y = index * 0.9;
+            return at(m, 0.5, 1.4, 1.1);
+        }
+        case 'berrybush': {
+            const m = CreateSphere(`n_${node.id}`, { diameter: 1.5, segments: 6 }, scene);
+            m.material = materials.bush;
+            m.scaling.y = 0.7;
+            return at(m, 0.6, 0.9, 0);
+        }
+        case 'coconutpalm': {
+            const trunk = CreateCylinder(`n_${node.id}`, { height: 6.5, diameterTop: 0.4, diameterBottom: 0.6, tessellation: 6 }, scene);
+            trunk.material = materials.palm;
+            trunk.rotation.z = 0.12;
+            const fronds = CreateSphere(`nf_${node.id}`, { diameter: 3.2, segments: 5 }, scene);
+            fronds.material = materials.frond;
+            fronds.scaling.y = 0.45;
+            fronds.parent = trunk;
+            fronds.position.y = 3.3;
+            fronds.isPickable = true;
+            fronds.metadata = { nodeId: node.id };
+            return at(trunk, 3.25, 1.0, 0.5);
+        }
+        case 'shellfish': {
+            const m = CreateSphere(`n_${node.id}`, { diameter: 0.7, segments: 5 }, scene);
+            m.material = materials.shell;
+            m.scaling.y = 0.5;
+            return at(m, 0.14, 0.55, 0);
+        }
+        case 'crashbox': {
+            const m = CreateBox(`n_${node.id}`, { width: 1.3, height: 1.0, depth: 0.9 }, scene);
+            m.material = materials.box;
+            m.rotation.y = 0.4;
+            return at(m, 0.5, 1.1, 0.9);
+        }
+    }
+}
+
+interface NodeMaterials {
+    driftwood: StandardMaterial;
+    deadfall: StandardMaterial;
+    trunk: StandardMaterial;
+    canopy: StandardMaterial;
+    rock: StandardMaterial;
+    bush: StandardMaterial;
+    palm: StandardMaterial;
+    frond: StandardMaterial;
+    shell: StandardMaterial;
+    box: StandardMaterial;
+    halo: StandardMaterial;
+}
+
+export class NodeViews {
     readonly views: NodeView[] = [];
     private ring: Mesh;
     private ringTexture: DynamicTexture;
-    private ringMaterial: StandardMaterial;
 
     constructor(scene: Scene, nodes: WoodNode[], heightAt: (x: number, z: number) => number) {
-        const driftMat = flat(scene, 'driftMat', PALETTE.driftwood);
-        const deadMat = flat(scene, 'deadMat', PALETTE.deadfall);
-        const haloMat = flat(scene, 'haloMat', PALETTE.highlight);
-        haloMat.emissiveColor = colour(PALETTE.highlight);
-        haloMat.alpha = 0.55;
+        const materials: NodeMaterials = {
+            driftwood: flat(scene, 'm_driftwood', PALETTE.driftwood),
+            deadfall: flat(scene, 'm_deadfall', PALETTE.deadfall),
+            trunk: flat(scene, 'm_trunk', PALETTE.trunk),
+            canopy: flat(scene, 'm_canopy', PALETTE.canopyAlt),
+            rock: flat(scene, 'm_rock', PALETTE.rock),
+            bush: flat(scene, 'm_bush', [0.28, 0.34, 0.18]),
+            palm: flat(scene, 'm_palm', PALETTE.trunk),
+            frond: flat(scene, 'm_frond', PALETTE.canopy),
+            shell: flat(scene, 'm_shell', [0.7, 0.66, 0.6]),
+            box: flat(scene, 'm_box', [0.5, 0.42, 0.3]),
+            halo: haloMaterial(scene)
+        };
 
         nodes.forEach((node, index) => {
             const ground = heightAt(node.x, node.y);
-            let mesh: Mesh;
+            const built = buildNodeMesh(scene, node, ground, index, materials);
+            built.mesh.setEnabled(node.available);
 
-            if (node.kind === 'driftwood') {
-                mesh = CreateCylinder(
-                    `wood_${node.id}`,
-                    { height: 1.5, diameter: 0.26, tessellation: 6 },
-                    scene
-                );
-                mesh.material = driftMat;
-                mesh.rotation.z = Math.PI / 2;
-                mesh.rotation.y = index * 0.8;
-                mesh.position.set(node.x, ground + 0.14, node.y);
-            } else {
-                mesh = CreateCylinder(
-                    `wood_${node.id}`,
-                    { height: 2.6, diameterTop: 0.34, diameterBottom: 0.52, tessellation: 6 },
-                    scene
-                );
-                mesh.material = deadMat;
-                mesh.rotation.z = Math.PI / 2.6;
-                mesh.rotation.y = index * 1.1;
-                mesh.position.set(node.x, ground + 0.42, node.y);
-            }
-
-            mesh.isPickable = true;
-            mesh.metadata = { nodeId: node.id };
-
-            //  A flat halo on the ground: the target highlight, readable from any angle
-            //  and from directly above, where a glowing outline would vanish.
-            const halo = CreateDisc(`halo_${node.id}`, { radius: 1.0, tessellation: 20 }, scene);
+            const halo = CreateDisc(`halo_${node.id}`, { radius: Math.max(1.0, built.obstacleRadius + 0.9), tessellation: 24 }, scene);
             halo.rotation.x = Math.PI / 2;
             halo.position.set(node.x, ground + 0.06, node.y);
-            halo.material = haloMat;
+            halo.material = materials.halo;
             halo.isPickable = false;
             halo.setEnabled(false);
 
-            this.views.push({ node, mesh, halo });
+            const shadow = makeShadow(scene, built.shadowRadius);
+            shadow.position.set(node.x, ground + 0.02, node.y);
+            shadow.setEnabled(node.available);
+
+            this.views.push({ node, body: built.mesh, halo, shadow, obstacleRadius: built.obstacleRadius });
         });
 
-        //  The world-space hold-progress ring, drawn once and re-textured during a hold.
         this.ringTexture = new DynamicTexture('holdRing', { width: 128, height: 128 }, scene, false);
         this.ringTexture.hasAlpha = true;
-        this.ringMaterial = new StandardMaterial('holdRingMat', scene);
-        this.ringMaterial.diffuseTexture = this.ringTexture;
-        this.ringMaterial.emissiveTexture = this.ringTexture;
-        this.ringMaterial.opacityTexture = this.ringTexture;
-        this.ringMaterial.specularColor = new Color3(0, 0, 0);
-        this.ringMaterial.backFaceCulling = false;
-        this.ringMaterial.disableLighting = true;
+        const ringMat = new StandardMaterial('holdRingMat', scene);
+        ringMat.diffuseTexture = this.ringTexture;
+        ringMat.opacityTexture = this.ringTexture;
+        ringMat.disableLighting = true;
+        ringMat.specularColor = new Color3(0, 0, 0);
+        ringMat.backFaceCulling = false;
 
-        this.ring = CreateDisc('holdRingMesh', { radius: 0.85, tessellation: 24 }, scene);
+        this.ring = CreateDisc('holdRingMesh', { radius: 1.1, tessellation: 28 }, scene);
         this.ring.rotation.x = Math.PI / 2;
-        this.ring.material = this.ringMaterial;
+        this.ring.material = ringMat;
         this.ring.isPickable = false;
         this.ring.setEnabled(false);
     }
 
-    /** Show the ring above a node, filled to `progress` (0–1). */
+    /** Every available node that blocks the player, for collision this frame. */
+    obstacles(): Obstacle[] {
+        const out: Obstacle[] = [];
+        for (const v of this.views) {
+            if (v.node.available && v.obstacleRadius > 0) {
+                out.push({ x: v.node.x, z: v.node.y, radius: v.obstacleRadius });
+            }
+        }
+        return out;
+    }
+
     showHold(view: NodeView, progress: number, groundY: number): void {
         this.ring.position.set(view.node.x, groundY + 0.09, view.node.y);
         this.ring.setEnabled(true);
-        this.drawRing(progress);
+        const ctx = this.ringTexture.getContext() as unknown as CanvasRenderingContext2D;
+        ctx.clearRect(0, 0, 128, 128);
+        ctx.lineWidth = 13;
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.beginPath();
+        ctx.arc(64, 64, 48, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffdb8a';
+        ctx.beginPath();
+        ctx.arc(64, 64, 48, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        ctx.stroke();
+        this.ringTexture.update();
     }
 
     hideHold(): void {
         this.ring.setEnabled(false);
     }
 
-    private drawRing(progress: number): void {
-        const context = this.ringTexture.getContext() as unknown as CanvasRenderingContext2D;
-        const size = 128;
-        context.clearRect(0, 0, size, size);
-
-        context.lineWidth = 13;
-        context.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-        context.beginPath();
-        context.arc(size / 2, size / 2, 48, 0, Math.PI * 2);
-        context.stroke();
-
-        context.strokeStyle = '#ffdb8a';
-        context.beginPath();
-        context.arc(size / 2, size / 2, 48, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-        context.stroke();
-
-        this.ringTexture.update();
-    }
-
-    /** Reflect the brain's view of which nodes are still there. */
     sync(state: GameState): void {
         for (const view of this.views) {
             const live = state.nodes.find((n) => n.id === view.node.id);
             const available = live?.available ?? false;
             view.node.available = available;
-            view.mesh.setEnabled(available);
+            view.body.setEnabled(available);
+            view.shadow.setEnabled(available);
             if (!available) view.halo.setEnabled(false);
         }
     }
 
-    /** Highlight one node and nothing else. */
     highlight(target: NodeView | null): void {
         for (const view of this.views) {
             view.halo.setEnabled(view === target && view.node.available);
@@ -207,13 +331,18 @@ export class WoodViews {
     }
 }
 
-// ---- The fire -----------------------------------------------------------
+function haloMaterial(scene: Scene): StandardMaterial {
+    const m = new StandardMaterial('haloMat', scene);
+    m.diffuseColor = colour(PALETTE.highlight);
+    m.emissiveColor = colour(PALETTE.highlight);
+    m.specularColor = new Color3(0, 0, 0);
+    m.alpha = 0.5;
+    m.disableLighting = true;
+    return m;
+}
 
-/**
- * The sanctuary beat, in three dimensions: a real object on the ground, a pool of warm
- * light that pushes the night back, and flames you can stand beside. In Cycle 01 this was
- * a circle behind a HUD; the whole point of the pivot is that it is now a place.
- */
+// ---- The fire (Cycle 01's sanctuary beat, kept) -------------------------
+
 export class FireView {
     private pit: Mesh;
     private logs: Mesh;
@@ -221,6 +350,7 @@ export class FireView {
     private glowMaterial: StandardMaterial;
     private light: PointLight;
     private particles: ParticleSystem;
+    private shadow: Mesh;
     private built = false;
     private lit = false;
 
@@ -230,17 +360,12 @@ export class FireView {
         this.pit.isPickable = true;
         this.pit.metadata = { fire: true };
 
-        this.logs = CreateCylinder(
-            'fireLogs',
-            { height: 0.9, diameterTop: 0.1, diameterBottom: 0.55, tessellation: 6 },
-            scene
-        );
+        this.logs = CreateCylinder('fireLogs', { height: 0.9, diameterTop: 0.1, diameterBottom: 0.55, tessellation: 6 }, scene);
         this.logs.material = flat(scene, 'fireLogsMat', PALETTE.deadfall);
         this.logs.parent = this.pit;
         this.logs.position.y = 0.34;
         this.logs.isPickable = false;
 
-        //  A ground glow disc so the firelight reads even on a bright screen outdoors.
         this.glowMaterial = new StandardMaterial('fireGlowMat', scene);
         this.glowMaterial.emissiveColor = colour(PALETTE.flame);
         this.glowMaterial.diffuseColor = new Color3(0, 0, 0);
@@ -248,11 +373,7 @@ export class FireView {
         this.glowMaterial.alpha = 0.22;
         this.glowMaterial.disableLighting = true;
 
-        this.glow = CreateDisc(
-            'fireGlow',
-            { radius: TUNE.fireWarmthRadius, tessellation: 32 },
-            scene
-        );
+        this.glow = CreateDisc('fireGlow', { radius: TUNE.fireWarmthRadius, tessellation: 32 }, scene);
         this.glow.rotation.x = Math.PI / 2;
         this.glow.material = this.glowMaterial;
         this.glow.isPickable = false;
@@ -263,12 +384,11 @@ export class FireView {
         this.light.intensity = 0;
 
         this.particles = this.buildParticles(scene);
-
+        this.shadow = makeShadow(scene, 1.0);
         this.setBuilt(false);
     }
 
     private buildParticles(scene: Scene): ParticleSystem {
-        //  A soft dot drawn at boot rather than fetched: one less request, one less asset.
         const texture = new DynamicTexture('spark', { width: 32, height: 32 }, scene, false);
         const context = texture.getContext() as unknown as CanvasRenderingContext2D;
         const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
@@ -306,9 +426,14 @@ export class FireView {
         this.built = built;
         this.pit.setEnabled(built);
         this.glow.setEnabled(built);
+        this.shadow.setEnabled(built);
     }
 
-    /** Match the fire to the brain's state, and animate it. Called every frame. */
+    /** The fire's footprint, so the player cannot stand inside the pit. */
+    obstacle(state: GameState): Obstacle | null {
+        return state.fire.built ? { x: state.fire.x, z: state.fire.y, radius: 0.9 } : null;
+    }
+
     update(state: GameState, groundY: number, nightFactor: number): void {
         const built = state.fire.built;
         if (built !== this.built) this.setBuilt(built);
@@ -320,6 +445,7 @@ export class FireView {
 
         this.pit.position.set(state.fire.x, groundY + 0.11, state.fire.y);
         this.glow.position.set(state.fire.x, groundY + 0.03, state.fire.y);
+        this.shadow.position.set(state.fire.x, groundY + 0.02, state.fire.y);
         this.light.position.set(state.fire.x, groundY + 1.0, state.fire.y);
         (this.particles.emitter as Vector3).set(state.fire.x, groundY + 0.2, state.fire.y);
 
@@ -336,8 +462,6 @@ export class FireView {
             return;
         }
 
-        //  Flicker, and burn brighter against a darker sky — the same fire doing more
-        //  work at night, which is when it matters.
         const flicker = 0.86 + Math.sin(performance.now() / 90) * 0.07 + Math.sin(performance.now() / 37) * 0.05;
         this.light.intensity = (0.55 + 1.5 * nightFactor) * flicker;
         this.glowMaterial.alpha = (0.10 + 0.30 * nightFactor) * flicker;
@@ -348,14 +472,17 @@ export class FireView {
         if (this.particles.isStarted()) this.particles.stop();
     }
 
-    /** The ignition beat: a burst of embers the moment it catches. */
     flare(): void {
         this.particles.manualEmitCount = 40;
-        //  Babylon latches manual emission: once manualEmitCount is anything but -1 the
-        //  system stops honouring emitRate, so the ignition burst was silently killing the
-        //  flame it announced. Hand the system back to continuous emission next frame.
         requestAnimationFrame(() => {
             this.particles.manualEmitCount = -1;
         });
     }
 }
+
+/** Keep the node-kind union honest against the mesh builder at compile time. */
+const _EXHAUSTIVE: Record<NodeKind, true> = {
+    driftwood: true, deadfall: true, tree: true, rock: true,
+    berrybush: true, coconutpalm: true, shellfish: true, crashbox: true
+};
+void _EXHAUSTIVE;

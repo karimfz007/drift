@@ -1,40 +1,39 @@
 # THE FIRST NIGHT (DRIFT) — State
 *The now-pointer. Canonical home: repo `/docs/drift_state.md`. Regenerated at every cycle CLOSE; C2 updates it after ship (Ops §2). This is the only handover document — any session can recover the project from here plus the cycle log.*
 
-**As of:** 2026-07-23 (**Cycle 02 "Boots on Sand" SHIPPED and AUDITED — the 3D pivot; awaiting PLAYTEST**)
+**As of:** 2026-07-23 (**Cycle 03 "The Island Pushes Back" SHIPPED and AUDITED — the pressure cycle; awaiting PLAYTEST**)
 
 ## Now
 - **Title: The First Night** (D-015). DRIFT remains the internal codename for files and the repo.
-- **⚑ THE PIVOT (D-027 … D-030).** Cycle 01 passed technically and was **overturned at gate 3**: the systems work, but 2D top-down buttons-and-overlays cannot deliver the Rust-like experience the game is for. The three-gate rule did its job — the direction changed at the cheapest possible moment, one cycle in. The 2D body is frozen. **Everything above the renderer survives untouched**: brain, reconcile, saves, tune, tests, pipeline, ops, every decision.
-- **Phase 1 — The Naked Hour · Cycle 02 "Boots on Sand" — SHIPPED, AUDITED PASS-WITH-NOTES (all notes fixed), awaiting PLAYTEST.** Low-poly 3D, close third-person, Babylon.js. The same steel thread, standing up. Two of the three gates are closed; the third is the director on the phone — **judge presence and frame rate, not content volume.**
-- Current canon: **charter v0.4 · ops v1.3** (supersede all earlier versions), plus this state, the decisions log, the cycle log, and the codex. All six live at `/docs/`; superseded versions in `/docs/archive/`, reference material in `/docs/reference/`.
-- **Repo: https://github.com/karimfz007/drift** (public). **Play URL: https://karimfz007.github.io/drift/** — becomes the 3D build at Cycle 02 ship; the **2D simulation laboratory is preserved at `/builds/c01/`**.
-- **Current experience bet (C02):** low-poly 3D in the phone browser delivers the presence 2D couldn't, at a playable frame rate, without giving up the tap-a-link loop.
+- **Phase 1 — The Naked Hour · Cycle 03 "The Island Pushes Back" — SHIPPED, AUDITED, awaiting PLAYTEST.** Three vital clocks (thirst, hunger, health), real death and respawn, the crude axe earned through the four gates, the first loot, and a wreck on the horizon. The island stopped being scenery. Built on the untouched reconcile spine, with D-011's floors protecting absence.
+- **The escalation is locked (D-037):** C03 pressure → **C04 construction** (shelter, bed/respawn, energy/sleep, storage, upkeep) → **C05 threats** (first creature, spear, defense). Each cycle turns learned systems into new decisions.
+- Current canon: **charter v0.4 · ops v1.3** (unchanged this cycle), plus this state, the decisions log, the cycle log, and the codex. All six live at `/docs/`; superseded versions in `/docs/archive/`, reference material (including the three handoff packages) in `/docs/reference/`.
+- **Repo: https://github.com/karimfz007/drift** (public). **Play URL: https://karimfz007.github.io/drift/**. The 2D lab is at `/builds/c01/`, the first 3D build at `/builds/c02/`, this one at `/builds/c03/`.
+- **Current experience bet (C03):** three clocks and a first tool turn walking into deciding — pressure creates the decisions the Experience Constitution demands.
 
-## What survives the pivot (the inheritance, unchanged)
-- **The brain** — `/src/brain` and `/tests`, byte-identical. C02's A1 checks this mechanically: zero diffs versus tag `c01`. This is the pivot's central claim, and it is the whole reason the architectural rule exists.
-- **`reconcile()`** — the offline DNA. Pure, deterministic, tested from one second to three real days.
-- **Versioned save** behind `SaveRepository` (D-010), and every `[TUNE]` constant.
+## What exists now (the inheritance every later cycle gets free)
+- **The brain**, now with four vitals, death/respawn, tools, and two seed skills — all through the same `reconcile` spine. 99 tests, including the headline **property test: offline death is impossible** for any state × any elapsed (D-011 made law).
+- **The one non-negotiable rule holds:** `/src/brain` has zero rendering-engine imports, CI-enforced by a check that resolves real package identity (alias-proof, D-034). The whole survival sim is portable.
+- **Versioned save** with a working **v1→v2 migration** (a Cycle 02 save loads and wakes to a sensible set of vitals).
 - **The pipeline** — push → purity → types → tests → build → Pages. One stable URL, per-cycle archives, a tag per cycle.
-- **`tools/smoke.mjs`** — the device acceptance harness (D-022), adapted in C02 to 3D readiness signals and an FPS probe.
-- **The constitutions** — the Experience Constitution (§I.18), offline fairness (D-011), honest systems (§I.8), the tune law, the dependency law. None of them were about the renderer.
+- **`tools/smoke.mjs`** — 38 device acceptance checks on a real GPU, including feet-to-terrain grounding, colliders, the full pressure loop, and death/respawn.
 
 ## Director's standing notes
 - Keep replies short. C1 doubles as the director's candid advisor outside cycle ceremony (D-015).
 - **Android-first**: Android Chrome is the primary device until launch-prep.
 
 ## Next actions
-1. **Director** — open the play URL on the phone. Left thumb (lower-left) to walk, drag the right side to look, tap wood to take it, then the **Build fire** button. Close the app for two minutes and come back for the morning report. **Judge two things and only two: does moving and gathering feel like being there, and does it hold a smooth frame rate on *your* phone?** Everything else is deliberately thin. React in plain language.
-2. **C1** — triage the reactions (FIX / TUNE / NEXT / PARK); if the frame rate disappoints on the director's device, that is the `fpsFloorMedian` watch item and it routes to the Godot-hatch fork (D-028). Run PERFECT with C2, then CLOSE and propose Cycle 03 (the Rust-loop systems — building, upkeep, the first threat — begin on this foundation).
+1. **Director** — play on the phone. Walk inland, get thirsty, find the pond (west of the trees), drink. Forage and eat. Gather wood + stone + fibre and **craft the axe** — then fell a standing tree and crack open the sealed box on the beach. Let yourself die once from neglect to see the wake-ashore. Close the app two minutes and come back. **The playtest question: did you ever have to choose between two needs — and did the axe feel earned?** React in plain language.
+2. **C1** — triage the reactions (FIX / TUNE / NEXT / PARK); run PERFECT with C2, then CLOSE and OPEN **Cycle 04 — construction** (D-037): shelter tiers, the bed as a real respawn anchor, energy/sleep, storage, upkeep. This is the cycle that finally needs real dynamics, so it is the Havok adoption trigger (D-031).
 
 ## Awaiting the director (⚑ fork, does not block)
 - **Crew composition** — the library-first audit's Amendment 7 proposes adding non-Claude sessions to the standing crew. Default if unanswered: crew stays as chartered; external red-team audits stay welcome as an occasional practice.
 
 ## Open design notes and watch items (not blockers)
-- **⚠ Performance ceiling (new, C02).** If median FPS stays below `fpsFloorMedian` on the director's device after a dedicated optimization pass, the **Godot native hatch (D-028) triggers a fork**. This is the one gate that reopens the engine decision.
-- **iOS save durability** — deferred to launch-prep (Android-first, D-015): Safari's ~7-day eviction of script-writable storage; mitigation add-to-home-screen/PWA, later a native wrapper.
-- **Clock scale** — one clock online and offline, 1 game day = 60 real minutes `[TUNE]` (D-007). Proven working end to end; the number itself is untested against taste.
-- **D-025 floor semantics** — the offline fairness floor protects *absence*, not *idleness*, and on the primary device it quietly leans on OS auto-lock (no safety net on desktop). Re-examined and carried forward explicitly for Cycle 02 (D-035): the revisit condition (a vital with real stakes) has not arrived, so it stands. It moves to Cycle 03 if that cycle gives a vital consequence.
+- **⚠ Performance ceiling** — median FPS held (76–91 on the desktop GPU) on the bigger ~250 m island; the `fpsFloorMedian` / Godot-hatch watch (D-028) travels forward, now tested against more content each cycle.
+- **⚠ Havok adoption (C04)** — Cycle 03 did collision with analytic cylinder push-out (no physics engine, D-031 held). Construction and moving threats are the trigger; C04 weighs Havok on its merits.
+- **iOS save durability** — deferred to launch-prep (Android-first, D-015): Safari's ~7-day eviction of script-writable storage.
+- **D-025 floor semantics — RESOLVED this cycle.** Warmth (and now thirst/hunger/health) carry real stakes; the rule stands as designed and is proven: floors protect *absence* only, active play can kill, and **offline death is impossible** (property-tested). The desktop-no-auto-lock caveat is now moot for offline (offline simply cannot kill).
 
 ## Last close
-**Cycle 01 "First Fire" — closed 2026-07-22.** Three gates: done-checks green · C3 audit PASS-WITH-NOTES with all eight defects fixed · **director's verdict at gate 3: overturned** (D-027). Shipped, audited, and preserved at `/builds/c01/` as the simulation laboratory. Its real product was not the 2D build — it was the brain, the pipeline, and the harness that Cycle 02 inherits for free.
+**Cycle 02 "Boots on Sand" — closed 2026-07-23 (gate 3 pass-with-notes, D-036).** The director accepted the 3D foundation on the phone: foundation good, trees read well, no frame-rate complaint. Two defects (the floating character; trees without colliders) and one direction note ("still very simple") — the defects fixed in C03 Stage 0 (grounding + blob shadow + colliders), the direction answered by D-037's escalation. Preserved playable at `/builds/c02/`.

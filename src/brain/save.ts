@@ -62,19 +62,69 @@ export function deserialize(payload: string | null): SaveEnvelope | null {
 }
 
 /**
- * Migration ladder. Each future schema bump adds one step here and never touches the
- * steps below it. v1 is the floor: anything older than v1 predates the save format.
+ * Migration ladder. Each schema bump adds one step here and never touches the steps below
+ * it. v1 is the floor: anything older predates the save format. A save from the future
+ * belongs to a newer build than this one — refuse it rather than silently corrupt it.
  */
 export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     let current = envelope;
 
-    // Saves from the future belong to a newer build than this one; refuse rather than
-    // silently corrupt them.
     if (current.schemaVersion > SCHEMA_VERSION) return null;
 
-    // while (current.schemaVersion < SCHEMA_VERSION) { ... one step per version ... }
+    if (current.schemaVersion === 1) current = migrateV1toV2(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
+}
+
+/**
+ * v1 (Cycles 01–02: warmth, wood, fire) → v2 (Cycle 03: three vitals, expanded inventory,
+ * tools, skills, death). A returning player keeps their clock, warmth, wood, fire, and
+ * position; they wake to a full set of vitals and an island that has grown demands. The
+ * old island's node layout is discarded — the world genuinely changed — and regenerated,
+ * so the pond, forage, trees, and crash box exist for them. (A1: a c02 save loads and
+ * gains the new vitals sensibly.)
+ */
+function migrateV1toV2(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const fresh = createInitialState(typeof old.startedAtMs === 'number' ? old.startedAtMs : 0);
+
+    const state: GameState = {
+        ...fresh,
+        startedAtMs: num(old.startedAtMs, fresh.startedAtMs),
+        lastSeenMs: num(old.lastSeenMs, fresh.lastSeenMs),
+        gameHoursElapsed: num(old.gameHoursElapsed, 0),
+        // Warmth carries over; the three new vitals start full.
+        warmth: num(old.warmth, fresh.warmth),
+        // Only wood existed in v1; the rest of the inventory starts empty.
+        inventory: { ...fresh.inventory, wood: num((old.inventory as Record<string, unknown>)?.wood, 0) },
+        fire: isObject(old.fire)
+            ? {
+                  built: Boolean((old.fire as Record<string, unknown>).built),
+                  fuel: num((old.fire as Record<string, unknown>).fuel, 0),
+                  x: num((old.fire as Record<string, unknown>).x, 0),
+                  y: num((old.fire as Record<string, unknown>).y, 0)
+              }
+            : fresh.fire,
+        player: isObject(old.player)
+            ? { x: num((old.player as Record<string, unknown>).x, fresh.player.x), y: num((old.player as Record<string, unknown>).y, fresh.player.y) }
+            : fresh.player,
+        settings: isObject(old.settings)
+            ? { controlMode: (old.settings as Record<string, unknown>).controlMode === 'joystick' ? 'joystick' : 'tap' }
+            : fresh.settings,
+        // Keep whatever of the old trace survives; the rest defaults.
+        trace: { ...fresh.trace, ...(isObject(old.trace) ? (old.trace as Partial<GameState['trace']>) : {}) },
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+function num(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
 }
 
 /** Fill in any field a hand-edited or partial save is missing, using a fresh run as the default. */
@@ -84,6 +134,11 @@ function hydrate(state: GameState): GameState {
         ...base,
         ...state,
         inventory: { ...base.inventory, ...state.inventory },
+        tools: { ...base.tools, ...state.tools },
+        skills: {
+            woodcutting: { ...base.skills.woodcutting, ...state.skills?.woodcutting },
+            foraging: { ...base.skills.foraging, ...state.skills?.foraging }
+        },
         fire: { ...base.fire, ...state.fire },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

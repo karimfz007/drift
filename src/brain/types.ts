@@ -1,25 +1,42 @@
 /**
- * BRAIN — data model. Pure TypeScript. Zero Phaser (Ops v1.2 §5 law 1).
+ * BRAIN — data model. Pure TypeScript. Zero rendering engine (Ops v1.3 §5 law 1).
  */
 
-export const SCHEMA_VERSION = 1;
+/**
+ * v1 — Cycles 01–02 (warmth, wood, fire).
+ * v2 — Cycle 03: three vitals, death/respawn, expanded inventory, the first tool and
+ *      loot, and two seed skills. Migration v1→v2 lives in save.ts.
+ */
+export const SCHEMA_VERSION = 2;
 
 export type ControlMode = 'tap' | 'joystick';
 
-export type WoodNodeKind = 'driftwood' | 'deadfall';
+/**
+ * Every kind of resource node on the island. `driftwood`/`deadfall` are Cycle 01's;
+ * the rest arrive with Cycle 03's bigger island. What each yields, and what gate it
+ * asks for, lives in state.ts — one place, keyed by kind.
+ */
+export type NodeKind =
+    | 'driftwood'
+    | 'deadfall'
+    | 'tree'
+    | 'rock'
+    | 'berrybush'
+    | 'coconutpalm'
+    | 'shellfish'
+    | 'crashbox';
 
-/** A gatherable wood node, as placed by the authored island (src/data/world.ts). */
+/** A gatherable node, as placed by the authored island (src/data/world.ts). */
 export interface WoodNode {
     id: string;
-    kind: WoodNodeKind;
+    kind: NodeKind;
     x: number;
     y: number;
-    /** False once salvaged. Cycle 01 nodes are single-use. */
+    /** False once consumed. Cycle 03 nodes are single-use. */
     available: boolean;
 }
 
 export interface FireState {
-    /** A fire exists in the world (it may be burnt out). */
     built: boolean;
     /** Wood units remaining. Fractional as it burns. Lit means built && fuel > 0. */
     fuel: number;
@@ -32,8 +49,39 @@ export interface PlayerState {
     y: number;
 }
 
+/**
+ * What the castaway is carrying. Counts, all of them — the minimal inventory the spec
+ * asks for. `wood` is Cycle 01's; the rest are Cycle 03's materials and food.
+ */
 export interface Inventory {
     wood: number;
+    stone: number;
+    fiber: number;
+    berries: number;
+    coconut: number;
+    shellfish: number;
+}
+
+/** Tools and carried gear. Booleans in v1; each is a made-or-found milestone. */
+export interface Tools {
+    /** The crude axe: fells trees, opens the crash box. */
+    axe: boolean;
+    /** The water flask: found in the crash box; carries drinks inland. */
+    flask: boolean;
+    /** Drinks currently in the flask (0..flaskCapacitySips). */
+    flaskSips: number;
+}
+
+/** One skill in the Development Tree seed. Levels through meaningful use (§I.9). */
+export interface Skill {
+    level: number;
+    /** XP accumulated toward the NEXT level. */
+    xp: number;
+}
+
+export interface Skills {
+    woodcutting: Skill;
+    foraging: Skill;
 }
 
 export interface Settings {
@@ -42,14 +90,17 @@ export interface Settings {
 
 /** Local-only playtest trace (Ops: no external service; localStorage/debug only). */
 export interface TraceState {
-    /** Real ms from gaining control to the first movement input, or null if it hasn't happened. */
     msToFirstMove: number | null;
     msToFirstWood: number | null;
     msToFireLit: number | null;
-    /** Taps that hit nothing interactable — the ambiguity signal. */
+    /** C03 milestones. */
+    msToFirstDrink: number | null;
+    msToFirstCraft: number | null;
     failedInteractionTaps: number;
     controlModeSwitches: number;
     steelThreadComplete: boolean;
+    /** How many times the castaway has died and washed back ashore. */
+    deaths: number;
     /** Real ms of active (foreground) play since the run started. */
     activeMs: number;
 }
@@ -60,27 +111,50 @@ export interface TraceState {
  */
 export interface GameState {
     schemaVersion: number;
-    /** Real epoch ms the run began. Diagnostic only — the clock runs off gameHoursElapsed. */
     startedAtMs: number;
-    /** Real epoch ms of the last tick folded into this state. Absence = now - lastSeenMs. */
     lastSeenMs: number;
-    /** Game hours elapsed since the crash. The one clock, online and offline. */
     gameHoursElapsed: number;
+
+    // Vitals.
     warmth: number;
+    thirst: number;
+    hunger: number;
+    health: number;
+
     inventory: Inventory;
+    tools: Tools;
+    skills: Skills;
+
     fire: FireState;
     player: PlayerState;
     nodes: WoodNode[];
     settings: Settings;
     trace: TraceState;
+
+    /**
+     * The cause of the most recent death, for the death overlay ("You died of thirst").
+     * Null until the first death; set the instant a death is actioned, cleared when the
+     * player acknowledges it. Not part of the survival sim — a message, not a state.
+     */
+    lastDeathCause: string | null;
 }
 
 export interface TimeOfDay {
-    /** 0–23.999… hour-of-day. */
     hourOfDay: number;
-    /** Days since the crash; the crash itself is day 0. */
     dayNumber: number;
     isNight: boolean;
+}
+
+/** Which vital drove a death or a drain. Used for honest, specific causes. */
+export type VitalName = 'thirst' | 'hunger' | 'warmth';
+
+/** The drift of one vital across a reconcile span, for the morning report. */
+export interface VitalDrift {
+    vital: VitalName | 'health';
+    before: number;
+    after: number;
+    /** The offline floor stopped this vital's fall. */
+    floorHeld: boolean;
 }
 
 /** Everything that happened across an elapsed span. Input to the morning report. */
@@ -90,22 +164,35 @@ export interface ReconcileResult {
 
     warmthBefore: number;
     warmthAfter: number;
-    /** True if the offline fairness floor (D-011) stopped the fall. */
+    /** True if any offline fairness floor (D-011) stopped a fall. */
     floorHeld: boolean;
+
+    // The three C03 vitals, and per-vital drift for the report.
+    thirstBefore: number;
+    thirstAfter: number;
+    hungerBefore: number;
+    hungerAfter: number;
+    healthBefore: number;
+    healthAfter: number;
+    drifts: VitalDrift[];
+
+    /**
+     * A death occurred DURING this span (only possible for a non-qualifying online span;
+     * the floors make it impossible for a qualifying offline span — that is the law).
+     * The session actions the respawn; reconcile only reports it.
+     */
+    diedDuringSpan: boolean;
+    deathCause: string | null;
 
     fireLitBefore: boolean;
     fireLitAfter: boolean;
-    /** Game hours (absolute, since the crash) at which the fire burnt out, if it did. */
     fireWentOutAtGameHours: number | null;
     woodBurned: number;
-    /** The player was parked inside the fire's radius for this span. */
     shelteredByFire: boolean;
 
     timeBefore: TimeOfDay;
     timeAfter: TimeOfDay;
-    /** The span crossed from night into day at least once. */
     dawnBroke: boolean;
-    /** The span crossed from day into night at least once. */
     nightFell: boolean;
 
     /** Absence long enough to earn a morning report (TUNE.morningReportMinRealMinutes). */

@@ -23,16 +23,26 @@ import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
-import { ROCKS, TREES, WORLD, groundHeight, isBeach } from '../data/world';
+import { POND, POND_SURFACE_Y, ROCKS, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
+
+/** A cylinder the player cannot walk into. Collision is push-out, never a trap. */
+export interface Obstacle {
+    x: number;
+    z: number;
+    radius: number;
+}
 
 export class Island {
     readonly sun: DirectionalLight;
     private ambient: HemisphericLight;
     private seaMaterial: StandardMaterial;
     private terrainMaterial: StandardMaterial;
+    /** The permanent obstacles — the decorative forest and rock field. Live nodes and the
+     *  fire are added by the game, which knows which are still standing. */
+    readonly staticObstacles: Obstacle[] = [];
 
     constructor(private readonly scene: Scene) {
         this.ambient = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene);
@@ -56,8 +66,81 @@ export class Island {
 
         this.buildTrees();
         this.buildRocks();
+        this.buildPond();
+        this.buildWreck();
 
         scene.fogMode = Scene.FOGMODE_EXP2;
+    }
+
+    /** The freshwater pond: a still, dark disc set into its basin. The first answer. */
+    private buildPond(): void {
+        const water = CreateDisc('pond', { radius: POND.radius, tessellation: 28 }, this.scene);
+        water.rotation.x = Math.PI / 2;
+        water.position.set(POND.x, POND_SURFACE_Y, POND.y);
+        const material = this.flatMaterial('pondMat');
+        material.diffuseColor = new Color3(0.10, 0.26, 0.30);
+        material.emissiveColor = new Color3(0.03, 0.09, 0.11);
+        material.specularColor = new Color3(0.3, 0.34, 0.36);
+        material.specularPower = 64;
+        material.alpha = 0.9;
+        water.material = material;
+        water.isPickable = true;
+        water.metadata = { pond: true };
+        water.freezeWorldMatrix();
+    }
+
+    /**
+     * The wreck offshore: a dark hull silhouette on the horizon, visible from the spawn
+     * beach, unreachable, unexplained (§I.18 rule 5 — one question, one clue, one visible
+     * possibility). It is scenery this cycle; it is a promise for a later one.
+     */
+    private buildWreck(): void {
+        const hull = CreateCylinder(
+            'wreck',
+            { height: WRECK.heightM, diameterTop: 3.4, diameterBottom: 6.5, tessellation: 7 },
+            this.scene
+        );
+        //  Listing, half-sunk.
+        hull.rotation.z = 0.5;
+        hull.position.set(WRECK.x, WORLD.seaLevel + WRECK.heightM * 0.28, WRECK.y);
+        const material = this.flatMaterial('wreckMat');
+        material.diffuseColor = new Color3(0.14, 0.15, 0.17);
+        material.emissiveColor = new Color3(0.02, 0.02, 0.03);
+        hull.material = material;
+        hull.isPickable = false;
+        hull.freezeWorldMatrix();
+
+        //  A broken mast, so the silhouette reads as a ship, not a rock.
+        const mast = CreateCylinder('wreckMast', { height: WRECK.heightM * 1.1, diameter: 0.7, tessellation: 5 }, this.scene);
+        mast.rotation.z = 0.72;
+        mast.position.set(WRECK.x + 2, WORLD.seaLevel + WRECK.heightM * 0.7, WRECK.y + 1);
+        mast.material = material;
+        mast.isPickable = false;
+        mast.freezeWorldMatrix();
+    }
+
+    /** Push a point out of every obstacle it overlaps. Returns the corrected (x, z). */
+    resolveCollision(x: number, z: number, radius: number, dynamic: readonly Obstacle[]): { x: number; z: number } {
+        let px = x;
+        let pz = z;
+        //  A couple of relaxation passes so wedging between two obstacles still resolves.
+        for (let pass = 0; pass < 2; pass++) {
+            for (const list of [this.staticObstacles, dynamic]) {
+                for (const o of list) {
+                    const dx = px - o.x;
+                    const dz = pz - o.z;
+                    const min = o.radius + radius;
+                    const d2 = dx * dx + dz * dz;
+                    if (d2 < min * min && d2 > 1e-9) {
+                        const d = Math.sqrt(d2);
+                        const push = (min - d) / d;
+                        px += dx * push;
+                        pz += dz * push;
+                    }
+                }
+            }
+        }
+        return { x: px, z: pz };
     }
 
     /** Unlit-ish, cheap, no specular — the low-poly look and the phone-GPU budget agree. */
@@ -221,6 +304,10 @@ export class Island {
         canopySource.thinInstanceAdd(canopies);
         trunkSource.freezeWorldMatrix();
         canopySource.freezeWorldMatrix();
+
+        //  The forest blocks — sparse enough (≈12 m apart) to weave through to the pond,
+        //  dense enough to read as woods. Collision is push-out, so it never traps.
+        for (const [x, z] of TREES) this.staticObstacles.push({ x, z, radius: 0.7 });
     }
 
     private buildRocks(): void {
@@ -243,6 +330,8 @@ export class Island {
         );
         source.thinInstanceAdd(matrices);
         source.freezeWorldMatrix();
+
+        for (const [x, z, size] of ROCKS) this.staticObstacles.push({ x, z, radius: size * 1.4 });
     }
 
     /**

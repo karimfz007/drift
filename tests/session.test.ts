@@ -7,6 +7,66 @@ import { TUNE } from '../src/data/tune';
 
 const T0 = 1_700_000_000_000;
 
+describe('session — death and respawn (C03)', () => {
+    it('a lethal online tick wakes the castaway ashore with a stated cause', () => {
+        const repo = new MemorySaveRepository();
+        const { session } = Session.start(repo, T0);
+
+        //  Push them to the brink: every vital empty, health a sliver, inland.
+        session.state.player = { x: 30, y: -20 };
+        session.state.thirst = 0;
+        session.state.hunger = 0;
+        session.state.warmth = 0;
+        session.state.health = 0.4;
+        session.state.inventory.wood = 5;
+        session.state.gameHoursElapsed = 12;
+        session.state.lastSeenMs = T0;
+
+        //  A short online tick — under the report threshold, so death is real.
+        const died = session.tick(T0 + 20_000);
+        expect(died).toBe(true);
+        expect(session.state.trace.deaths).toBe(1);
+        expect(session.state.lastDeathCause).toBeTruthy();
+        expect(session.state.player.x).toBe(0); // washed back to spawn
+        expect(session.state.health).toBe(TUNE.healthMax);
+        expect(session.state.thirst).toBe(TUNE.thirstMax);
+        expect(session.state.inventory.wood).toBe(5); // kept
+
+        //  The death is persisted immediately — a crash right after loses nothing.
+        expect(deserialize(repo.read())!.state.trace.deaths).toBe(1);
+    });
+
+    it('acknowledging the death clears the overlay flag', () => {
+        const repo = new MemorySaveRepository();
+        const { session } = Session.start(repo, T0);
+        session.state.thirst = 0;
+        session.state.hunger = 0;
+        session.state.warmth = 0;
+        session.state.health = 0.4;
+        session.state.gameHoursElapsed = 12;
+        session.tick(T0 + 20_000);
+        expect(session.state.lastDeathCause).not.toBeNull();
+
+        session.acknowledgeDeath(T0 + 21_000);
+        expect(session.state.lastDeathCause).toBeNull();
+    });
+
+    it('a returning player never dies to the absence, however long (D-011)', () => {
+        const repo = new MemorySaveRepository();
+        const first = Session.start(repo, T0).session;
+        first.state.thirst = 5;
+        first.state.hunger = 5;
+        first.state.warmth = 5;
+        first.state.health = 8;
+        first.persist(T0);
+
+        //  Away for thirty real days.
+        const { session } = Session.start(repo, T0 + 30 * 86400 * 1000);
+        expect(session.state.health).toBeGreaterThan(0);
+        expect(session.state.trace.deaths).toBe(0);
+    });
+});
+
 describe('session — A4: quit, wait, reopen', () => {
     it('starts a fresh run and writes a save immediately', () => {
         const repo = new MemorySaveRepository();

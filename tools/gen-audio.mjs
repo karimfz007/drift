@@ -157,7 +157,64 @@ const cues = {
 
     // Not enough wood: a flat, low, unmistakably negative thud. Never harsh.
     denied: () =>
-        render(0.18, (t, p) => limit(sine(t, 150) * 0.45 * ad(p, 0.02) + sine(t, 151.5) * 0.2 * ad(p, 0.02)))
+        render(0.18, (t, p) => limit(sine(t, 150) * 0.45 * ad(p, 0.02) + sine(t, 151.5) * 0.2 * ad(p, 0.02))),
+
+    // A sip of water: a soft wet gulp, a little rising pitch — relief.
+    drink: () => {
+        const noise = makeNoise(61);
+        let smooth = 0;
+        return render(0.34, (t, p) => {
+            smooth = smooth * 0.8 + noise() * 0.2;
+            const gulp = Math.sin(TAU * (5 + 8 * p) * t) * 0.18 * Math.sin(Math.PI * p);
+            return limit(gulp + smooth * 0.12 * Math.sin(Math.PI * p) + sine(t, 210 + 120 * p) * 0.14 * ad(p, 0.05));
+        });
+    },
+
+    // Eating: two soft organic taps — a bite.
+    eat: () => {
+        const noise = makeNoise(71);
+        return render(0.24, (t, p) => {
+            const bite = (q) => noise() * 0.3 * ad(Math.min(1, q), 0.02);
+            const first = bite(p / 0.45);
+            const second = p > 0.5 ? bite((p - 0.5) / 0.5) : 0;
+            return limit(first + second + sine(t, 180) * 0.1 * ad(p, 0.05));
+        });
+    },
+
+    // Crafting: a purposeful wooden assembly — knock, bind, settle.
+    craft: () => {
+        const noise = makeNoise(83);
+        return render(0.5, (t, p) => {
+            const knock = (at, f) => (Math.abs(p - at) < 0.05 ? sine(t, f) * 0.4 : 0);
+            const scrape = noise() * 0.12 * (p > 0.35 && p < 0.7 ? 1 : 0);
+            return limit(knock(0.08, 300) + knock(0.28, 340) + scrape + knock(0.85, 420) * 1.1);
+        });
+    },
+
+    // A tree coming down: a deep splintering crack, then a settling thud.
+    fell: () => {
+        const noise = makeNoise(101);
+        let smooth = 0;
+        return render(1.0, (t, p) => {
+            smooth = smooth * 0.9 + noise() * 0.1;
+            const crack = p < 0.25 ? smooth * 2.2 * Math.pow(1 - p / 0.25, 0.6) : 0;
+            const whoosh = p >= 0.25 && p < 0.75 ? smooth * 1.2 * Math.sin(Math.PI * (p - 0.25) / 0.5) : 0;
+            const thud = p >= 0.7 ? sine(t, 70) * 0.5 * Math.pow(1 - (p - 0.7) / 0.3, 1.5) + smooth * 0.8 * Math.pow(1 - (p - 0.7) / 0.3, 2) : 0;
+            return limit(crack + whoosh + thud);
+        });
+    },
+
+    // Unlocking the crash box: a metallic latch giving way — a discovery chime under it.
+    unlock: () => {
+        const noise = makeNoise(113);
+        return render(0.6, (t, p) => {
+            const clunk = p < 0.2 ? (noise() * 0.4 + sine(t, 220) * 0.3) * Math.pow(1 - p / 0.2, 0.8) : 0;
+            const chime = p > 0.22
+                ? (sine(t, 660) * 0.22 + sine(t, 990) * 0.14) * ad((p - 0.22) / 0.78, 0.02)
+                : 0;
+            return limit(clunk + chime);
+        });
+    }
 };
 
 mkdirSync(outDir, { recursive: true });

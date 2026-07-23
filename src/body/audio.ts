@@ -14,7 +14,12 @@ export const CUES = {
     collected: 'collected',
     ignition: 'ignition',
     fireloop: 'fireloop',
-    denied: 'denied'
+    denied: 'denied',
+    drink: 'drink',
+    eat: 'eat',
+    craft: 'craft',
+    fell: 'fell',
+    unlock: 'unlock'
 } as const;
 
 export type CueKey = (typeof CUES)[keyof typeof CUES];
@@ -26,7 +31,12 @@ const VOLUME: Record<CueKey, number> = {
     collected: 0.6,
     ignition: 0.7,
     fireloop: 0.26,
-    denied: 0.5
+    denied: 0.5,
+    drink: 0.55,
+    eat: 0.5,
+    craft: 0.55,
+    fell: 0.7,
+    unlock: 0.62
 };
 
 export class Cues {

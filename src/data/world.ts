@@ -4,137 +4,167 @@
  *
  * **Coordinates are world metres on the X/Z plane.** The brain stores a position as
  * `{ x, y }` and only ever asks for a distance on a plane, so the body maps world Z into
- * the brain's `y` and the brain does not need to know it now lives in three dimensions.
- * That mapping is the whole reason `/src/brain` survived the pivot untouched (D-030).
+ * the brain's `y`. That mapping is why `/src/brain` survived the 2D→3D pivot untouched.
  *
- * This file is data, not tuning: numbers that shape *feel* live in tune.ts.
+ * Cycle 03 grows the island to ~250 m and gives it demands and answers: a freshwater
+ * pond, stone outcrops, forage, standing trees to fell, a sealed crash box, and — out to
+ * sea, visible from the spawn beach and unreachable — a wreck. This file is data, not
+ * tuning: numbers that shape *feel* live in tune.ts.
  */
 
-import type { WoodNode } from '../brain/types';
+import type { NodeKind, WoodNode } from '../brain/types';
 
-/** The island slice. A disc of land in an endless sea — small enough to hold 60 fps. */
+/** The island slice: a disc of land in an endless sea. ~250 m across (D-036/A6 scale). */
 export const WORLD = {
-    /** Radius of the sand disc, in metres. Beyond this is water. */
-    islandRadius: 58,
-    /** Radius at which the beach gives way to grass. */
-    beachRadius: 34,
-    /** Radius at which the treeline starts. */
-    treelineRadius: 22,
-    /** Height of the island's central rise, in metres. */
-    centreHeight: 4.6,
-    /** Height of the flat shore shelf above the waterline, in metres. The beach has to
-     *  stand clearly out of the sea or it reads as water — which is exactly what the
-     *  first 3D build did. */
-    shelfHeight: 1.3,
-    /** Over how many metres the shelf falls away into the water at the island's edge. */
-    shoreFalloff: 7,
-    /** Where the water plane sits, in metres. */
+    islandRadius: 122,
+    beachRadius: 96,
+    treelineRadius: 66,
+    centreHeight: 9.5,
+    shelfHeight: 1.4,
+    shoreFalloff: 12,
     seaLevel: -1.0,
-    /** How far the water plane extends, in metres. */
-    seaRadius: 420
+    seaRadius: 900
 } as const;
 
 /** Where the castaway can walk: anywhere on land, kept just clear of the waterline. */
-export const WALKABLE_RADIUS = WORLD.islandRadius - WORLD.shoreFalloff - 1.5;
+export const WALKABLE_RADIUS = WORLD.islandRadius - WORLD.shoreFalloff - 2;
+
+/** Washed ashore on the south beach, facing inland (toward −Z / the treeline). */
+export const SPAWN = { x: 0, y: 104 } as const;
+
+/** The freshwater pond, inland and slightly west. The first answer to the first demand. */
+export const POND = { x: -22, y: 8, radius: 9 } as const;
+
+/** The wreck offshore: visible from the spawn beach, unreachable, unexplained (§I.18 r5). */
+export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 
 /**
- * Washed ashore on the south beach, facing inland.
- *
- * `y` is the world **Z** metre, per the module note above. The frozen brain reads
- * `SPAWN.x` / `SPAWN.y`, so the field names are part of its contract and do not get to
- * change just because the world grew a dimension — only what they mean does.
- */
-export const SPAWN = { x: 0, y: 44 } as const;
-
-/**
- * Ground height at a point, in metres. A smooth analytic dome plus a low dune ridge —
- * no heightmap texture to download, no physics mesh to build, and the body can ask for
- * the exact ground height at any point in one cheap call.
+ * Ground height at a point, in metres. A flat shelf holds the island above the waterline,
+ * a dome rises to the treeline, gentle dunes texture the beach, and the pond basin dips
+ * below the shelf so water sits in it. One cheap analytic call — no heightmap to download,
+ * no physics mesh to build — shared by the terrain mesh, the player's feet, and collision.
  */
 export function groundHeight(x: number, z: number): number {
     const r = Math.hypot(x, z);
     if (r >= WORLD.islandRadius) return WORLD.seaLevel - 0.6;
 
-    //  A flat shelf holds the whole island above the waterline, then rolls off over the
-    //  last few metres into the sea. Without it the shallow dome leaves the beach at
-    //  sea level and the player appears to be standing on the water.
     const shelf = WORLD.shelfHeight * smoothstep(WORLD.islandRadius, WORLD.islandRadius - WORLD.shoreFalloff, r);
 
-    //  A dome rising to the treeline.
     const t = 1 - r / WORLD.islandRadius;
     const dome = WORLD.centreHeight * t * t * (3 - 2 * t);
 
-    //  Two gentle dunes so the beach is not a billiard table — damped at the shore so
-    //  they can never dig a trough back down into the sea.
     const dunes =
-        0.38 *
-        Math.sin(x * 0.09 + 1.3) *
-        Math.cos(z * 0.075 - 0.4) *
-        Math.min(1, r / 12) *
+        0.6 *
+        Math.sin(x * 0.06 + 1.3) *
+        Math.cos(z * 0.05 - 0.4) *
+        Math.min(1, r / 20) *
         smoothstep(WORLD.islandRadius, WORLD.islandRadius - WORLD.shoreFalloff * 1.6, r);
 
-    return shelf + dome + dunes;
+    //  The pond basin: a smooth bowl dug below the local ground so water pools in it.
+    const pondDist = Math.hypot(x - POND.x, z - POND.y);
+    const basin = -2.4 * smoothstep(POND.radius + 6, 0, pondDist);
+
+    return shelf + dome + dunes + basin;
 }
 
-/** Hermite blend between two edges; edge0 may be greater than edge1 for a falling ramp. */
+/** Hermite blend between two edges; edge0 may exceed edge1 for a falling ramp. */
 function smoothstep(edge0: number, edge1: number, x: number): number {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0 || 1)));
     return t * t * (3 - 2 * t);
 }
 
-/** True where the ground is sand rather than grass — used for shading and footing. */
+/** Height of the pond's water surface. */
+export const POND_SURFACE_Y = groundHeight(POND.x, POND.y) + 0.9;
+
+/** True where the ground is sand rather than grass — for shading and footing. */
 export function isBeach(x: number, z: number): boolean {
     return Math.hypot(x, z) > WORLD.beachRadius;
 }
 
 /**
- * The wood on the island. Driftwood lies within a few steps of the spawn so the first
- * reward lands within seconds; deadfall waits up at the treeline and costs a hold.
- * Cycle 01's nodes were single-use and so are these.
+ * The nodes on the island. Everything the axe recipe needs is reachable by hand — wood
+ * (driftwood/deadfall), stone (outcrops), fibre (coconut palms) — so the gate chain opens
+ * itself; the axe then unlocks the standing trees and the crash box.
  *
- * `y` in the returned node is the world **Z** metre (see the module note above).
+ * `y` in each node is the world **Z** metre. Nodes are single-use this cycle.
  */
 export function createNodes(): WoodNode[] {
     return [
-        // Loose driftwood — instant tap pickup, scattered along the landing beach.
-        node('dw1', 'driftwood', -6.2, 40.5),
-        node('dw2', 'driftwood', 5.4, 41.8),
-        node('dw3', 'driftwood', -12.5, 35.0),
-        node('dw4', 'driftwood', 11.8, 34.2),
-        node('dw5', 'driftwood', 1.6, 32.4),
-        node('dw6', 'driftwood', -3.4, 46.8),
+        // Driftwood — instant tap, along the landing beach.
+        node('dw1', 'driftwood', -8, 96),
+        node('dw2', 'driftwood', 9, 99),
+        node('dw3', 'driftwood', -16, 88),
+        node('dw4', 'driftwood', 15, 86),
+        node('dw5', 'driftwood', 2, 82),
 
-        // Deadfall — tap-hold salvage, up at the treeline.
-        node('df1', 'deadfall', -8.0, 22.5),
-        node('df2', 'deadfall', 9.5, 21.0),
-        node('df3', 'deadfall', 0.5, 17.5),
-        node('df4', 'deadfall', 17.0, 26.0)
+        // Shellfish — tap, on the wet sand near the waterline.
+        node('sf1', 'shellfish', -26, 100),
+        node('sf2', 'shellfish', 24, 97),
+        node('sf3', 'shellfish', 6, 108),
+
+        // Rock outcrops — hold, stone. On the beach and scrub, so stone is a pre-axe get.
+        node('rk1', 'rock', -34, 70),
+        node('rk2', 'rock', 30, 66),
+        node('rk3', 'rock', -6, 58),
+
+        // Coconut palms — hold, coconut + coir fibre (the pre-axe fibre source).
+        node('cp1', 'coconutpalm', -40, 52),
+        node('cp2', 'coconutpalm', 36, 48),
+
+        // Berry bushes — tap, in the grass.
+        node('bb1', 'berrybush', -14, 40),
+        node('bb2', 'berrybush', 18, 36),
+        node('bb3', 'berrybush', 0, 28),
+
+        // Deadfall — hold, wood, at the inner treeline.
+        node('df1', 'deadfall', -20, 52),
+        node('df2', 'deadfall', 22, 56),
+
+        // Standing trees — hold, AXE ONLY, big wood yield. Just inside the treeline.
+        node('tr1', 'tree', -10, 44),
+        node('tr2', 'tree', 12, 42),
+        node('tr3', 'tree', -28, 34),
+        node('tr4', 'tree', 26, 30),
+        node('tr5', 'tree', 4, 22),
+
+        // The sealed crash box — hold, AXE ONLY. On the beach, near the landing.
+        node('box1', 'crashbox', 20, 92)
     ];
 }
 
-function node(id: string, kind: WoodNode['kind'], x: number, z: number): WoodNode {
+function node(id: string, kind: NodeKind, x: number, z: number): WoodNode {
     return { id, kind, x, y: z, available: true };
 }
 
 /**
- * The treeline. Authored positions, not random, so the island is one island — and so the
- * silhouette from the spawn point is composed rather than accidental.
- * Each entry is [x, z, heightMetres].
+ * The decorative treeline and rock field — visual density behind the choppable nodes,
+ * drawn as thin instances (two draw calls). Not interactive. Each entry is [x, z, height].
  */
-export const TREES: ReadonlyArray<readonly [number, number, number]> = [
-    [-14, 18, 7.5], [-7, 13, 8.4], [0, 9, 9.1], [7, 12, 8.0], [14, 17, 7.2],
-    [-19, 24, 6.6], [19, 23, 6.9], [-11, 6, 8.8], [11, 5, 8.2], [3, 1, 9.6],
-    [-4, -3, 8.9], [-17, 9, 7.4], [17, 8, 7.8], [-22, 15, 6.2], [22, 14, 6.4],
-    [-9, -9, 8.1], [9, -8, 7.9], [0, -14, 7.6], [-15, -16, 6.8], [15, -15, 7.0],
-    [-25, 3, 6.0], [25, 2, 6.1], [-20, -8, 6.5], [20, -7, 6.7], [5, -20, 6.9],
-    [-6, -21, 6.6], [12, -24, 6.2], [-13, -25, 6.3], [0, -28, 5.9], [-27, -18, 5.7],
-    [27, -17, 5.8], [-30, 10, 5.6], [30, 9, 5.5]
-];
+export const TREES: ReadonlyArray<readonly [number, number, number]> = (() => {
+    const out: Array<[number, number, number]> = [];
+    //  A ring of forest just inside the treeline, authored by a deterministic scatter so
+    //  the silhouette is composed, not random, and identical every load.
+    for (let i = 0; i < 110; i++) {
+        const a = i * 2.399963; // golden angle, radians
+        const rr = WORLD.treelineRadius * (0.34 + 0.66 * ((i * 37) % 100) / 100);
+        const x = Math.cos(a) * rr;
+        const z = Math.sin(a) * rr;
+        if (Math.hypot(x, z) > WORLD.treelineRadius + 2) continue;
+        //  Keep a clearing around the pond so its bank is reachable and readable — a pond
+        //  walled in by trees is a pond you cannot drink from.
+        if (Math.hypot(x - POND.x, z - POND.y) < POND.radius + 8) continue;
+        //  And keep the corridor from the spawn beach to the treeline open.
+        if (Math.abs(x) < 6 && z > 60) continue;
+        const h = 6.5 + ((i * 53) % 40) / 10;
+        out.push([Math.round(x), Math.round(z), h]);
+    }
+    return out;
+})();
 
-/** Rocks — silhouette and landmarks, so the beach has somewhere to be. */
 export const ROCKS: ReadonlyArray<readonly [number, number, number]> = [
-    [-24, 38, 1.6], [21, 37, 1.9], [-33, 28, 1.3], [31, 26, 1.5],
-    [-16, 47, 1.1], [14, 48, 1.2], [0, 52, 1.4], [-40, 14, 1.0], [39, 12, 1.1]
+    [-52, 84, 1.8], [46, 82, 2.1], [-70, 60, 1.5], [66, 56, 1.7],
+    [-30, 104, 1.2], [28, 106, 1.3], [0, 112, 1.5], [-84, 30, 1.2], [82, 26, 1.3],
+    [-60, -40, 1.6], [58, -44, 1.5], [-20, -70, 1.4], [24, -66, 1.5], [0, -88, 1.3]
 ];
 
 /** The cold-open card (charter §I.18 rule 1: contextual onboarding, no tutorial panel). */

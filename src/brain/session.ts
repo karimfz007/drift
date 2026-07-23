@@ -7,8 +7,8 @@
  */
 
 import { composeMorningReport, type MorningReport } from './morningReport';
-import { reconcile } from './reconcile';
-import { createInitialState } from './state';
+import { reconcile, type ReconcileOutcome } from './reconcile';
+import { createInitialState, respawn } from './state';
 import { deserialize, serialize, type SaveRepository } from './save';
 import type { ControlMode, GameState } from './types';
 
@@ -75,18 +75,41 @@ export class Session {
         return report;
     }
 
-    /** Advance the world to `nowMs`. Same maths as a three-day absence, smaller number. */
-    tick(nowMs: number): void {
+    /**
+     * Advance the world to `nowMs`. Same maths as a three-day absence, smaller number —
+     * except this is the online path, so a death here is real: reconcile reports it and
+     * we wake the castaway ashore (offline can never reach this; its floors forbid it).
+     */
+    tick(nowMs: number): boolean {
         const elapsedRealSeconds = (nowMs - this.state.lastSeenMs) / 1000;
         if (!(elapsedRealSeconds > 0)) {
             this.state.lastSeenMs = nowMs;
-            return;
+            return false;
         }
-        const { state } = reconcile(this.state, elapsedRealSeconds);
-        state.trace = this.state.trace;
-        state.trace.activeMs += elapsedRealSeconds * 1000;
-        state.lastSeenMs = nowMs;
-        this.state = state;
+        const outcome = reconcile(this.state, elapsedRealSeconds);
+        outcome.state.trace = this.state.trace;
+        outcome.state.trace.activeMs += elapsedRealSeconds * 1000;
+        outcome.state.lastSeenMs = nowMs;
+        this.state = outcome.state;
+        return this.handleDeath(outcome, nowMs);
+    }
+
+    /**
+     * If the span killed the castaway, wake them ashore and persist immediately so the
+     * death is never lost to a crash. Returns true if a death was actioned this tick.
+     */
+    private handleDeath(outcome: ReconcileOutcome, nowMs: number): boolean {
+        if (!outcome.result.diedDuringSpan) return false;
+        respawn(this.state, outcome.result.deathCause ?? 'your wounds');
+        this.persist(nowMs);
+        return true;
+    }
+
+    /** Clear the death overlay once the player has read it. */
+    acknowledgeDeath(nowMs: number): void {
+        if (this.state.lastDeathCause === null) return;
+        this.state.lastDeathCause = null;
+        this.persist(nowMs);
     }
 
     /** Write the save. Called on visibilitychange/pagehide, and after any real change. */
@@ -119,6 +142,18 @@ export class Session {
     markFireLit(msSinceControl: number): void {
         if (this.state.trace.msToFireLit === null) {
             this.state.trace.msToFireLit = Math.round(msSinceControl);
+        }
+    }
+
+    markFirstDrink(msSinceControl: number): void {
+        if (this.state.trace.msToFirstDrink === null) {
+            this.state.trace.msToFirstDrink = Math.round(msSinceControl);
+        }
+    }
+
+    markFirstCraft(msSinceControl: number): void {
+        if (this.state.trace.msToFirstCraft === null) {
+            this.state.trace.msToFirstCraft = Math.round(msSinceControl);
         }
     }
 

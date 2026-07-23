@@ -26,7 +26,9 @@ export const runtime = {
     controlGrantedAtMs: null as number | null,
     /** Installed by the game; used only by the debug hook. */
     cameraReadout: (() => ({ yaw: 0, pitch: 0 })) as () => { yaw: number; pitch: number },
-    projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null
+    projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null,
+    groundAt: (() => 0) as (x: number, z: number) => number,
+    playerFeetY: (() => 0) as () => number
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -135,11 +137,13 @@ function installDebugHook(): void {
             samples: frameSampleCount()
         }),
         bodyTrace: () => readBodyTrace(),
-        //  Two small helpers the device harness needs to aim a thumb in three dimensions:
-        //  where a world point lands on screen, and which way the camera is facing.
-        //  Without them the harness would have to guess at pixels (D-022).
+        //  Helpers the device harness needs to aim a thumb in three dimensions and to
+        //  verify grounding (A6): where a world point lands on screen, the camera facing,
+        //  the analytic ground height, and the player mesh's feet (D-022).
         camera: () => runtime.cameraReadout(),
         screenOf: (worldX: number, worldZ: number) => runtime.projectToScreen(worldX, worldZ),
+        groundAt: (worldX: number, worldZ: number) => runtime.groundAt(worldX, worldZ),
+        playerFeetY: () => runtime.playerFeetY(),
         persist: () => runtime.session?.persist(now()),
         reset: () => localStorage.removeItem(SAVE_KEY)
     };

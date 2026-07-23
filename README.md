@@ -1,7 +1,8 @@
 # The First Night *(codename DRIFT)*
 
 A low-poly 3D mobile-web survival game. You crash in the Bermuda Triangle and wash ashore
-at dusk with nothing. The island keeps turning while you are gone.
+at dusk with nothing. Fire, then water, food, and a first tool — the island makes demands,
+and keeps turning while you are gone.
 
 **Play:** open the URL on a phone. No install, no store, no account.
 

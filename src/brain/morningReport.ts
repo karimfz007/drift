@@ -63,6 +63,24 @@ export function composeMorningReport(
     // 3. Warmth — stated as cause, then effect.
     lines.push(warmthLine(result));
 
+    // 3b. The other two vitals, if the absence moved them enough to mention. Honest and
+    //     specific: what fell, to where, and that the floor held it (D-011 made visible).
+    const thirst = vitalLine('Thirst', result.thirstBefore, result.thirstAfter, TUNE.thirstOfflineFloor);
+    if (thirst) lines.push(thirst);
+    const hunger = vitalLine('Hunger', result.hungerBefore, result.hungerAfter, TUNE.hungerOfflineFloor);
+    if (hunger) lines.push(hunger);
+
+    //  Health only earns a line if it actually moved — and offline it can only have held
+    //  at a floor, never run out (that is the law this cycle enforces).
+    const healthBefore = Math.round(result.healthBefore);
+    const healthAfter = Math.round(result.healthAfter);
+    if (healthAfter < healthBefore) {
+        lines.push(
+            `An empty vital wore at you. Health fell ${healthBefore} → ${healthAfter}, ` +
+            `then held — you were never in danger of not waking up.`
+        );
+    }
+
     // 4. Where the clock stands now.
     if (result.dawnBroke && !result.timeAfter.isNight) {
         lines.push('You made it to daylight. The cold eases until dusk.');
@@ -78,6 +96,17 @@ export function composeMorningReport(
         lines,
         warmth: stateAfter.warmth
     };
+}
+
+/** One line for a vital that drifted, or null if it barely moved. States the floor if it held. */
+function vitalLine(name: string, before: number, after: number, floor: number): string | null {
+    const b = Math.round(before);
+    const a = Math.round(after);
+    if (b - a < 2) return null; // not worth a sentence
+    const held = a <= floor + 1
+        ? ` It wore down to ${a} and held there — you did not run dry.`
+        : '';
+    return `${name} fell ${b} → ${a}.${held}`;
 }
 
 function warmthLine(result: ReconcileResult): string {

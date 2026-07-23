@@ -109,6 +109,74 @@ export const TUNE = {
      *  optimization pass, the Godot native hatch (D-028) triggers a fork. */
     fpsFloorMedian: 30,
 
+    // ---- Vitals (C03) — the island makes demands ---------------------------
+    /** [TUNE] C03 — full thirst. */
+    thirstMax: 100,
+    /** [TUNE] C03 — thirst lost per game hour. ~3 game-days to empty (Rule of Threes). */
+    thirstDrainPerGameHour: 1.4,
+    /** [TUNE] C03 — full hunger. */
+    hungerMax: 100,
+    /** [TUNE] C03 — hunger lost per game hour. ~7 game-days to empty; the slow pressure. */
+    hungerDrainPerGameHour: 0.6,
+    /** [TUNE] C03 — full health. */
+    healthMax: 100,
+    /** [TUNE] C03 — health lost per game hour for EACH empty vital (thirst or hunger at 0). Stacks. */
+    healthDrainPerGameHourPerEmptyVital: 5,
+    /** [TUNE] C03 — health lost per game hour while warmth is at 0. Adds to the stack. */
+    warmthEmptyHealthDrainPerGameHour: 6,
+    /** [TUNE] C03+ — health recovered per game hour, ONLINE only, while no vital is empty.
+     *  Recovery preserves momentum (§I.18 rule 3): a crisis survived is a crisis you climb out of. */
+    healthRegenPerGameHour: 4,
+
+    /** [TUNE] C03+ — at or below these, a contextual hint nudges the player toward water/food. */
+    thirstLowHintAt: 35,
+    hungerLowHintAt: 30,
+
+    /** [TUNE] C03 — D-011 offline floors: absence drifts these here and stops. */
+    thirstOfflineFloor: 10,
+    hungerOfflineFloor: 10,
+    /** [TUNE] C03 — D-011 offline floor for health. Offline death is IMPOSSIBLE (property-tested). */
+    healthOfflineFloor: 25,
+
+    // ---- Food and water (C03) ----------------------------------------------
+    /** [TUNE] C03 — thirst restored per drink, at the pond or from a full flask. */
+    drinkPerSip: 25,
+    /** [TUNE] C03+ — hunger a handful of berries restores. */
+    berryHungerValue: 12,
+    /** [TUNE] C03+ — hunger a coconut restores. */
+    coconutHungerValue: 14,
+    /** [TUNE] C03+ — thirst a coconut also restores (coconut water). */
+    coconutThirstValue: 10,
+    /** [TUNE] C03+ — hunger shellfish restore; the richest forage. */
+    shellfishHungerValue: 22,
+
+    // ---- The first tool and loot (C03) — the four gates made concrete ------
+    /** [TUNE] C03 — crude axe recipe: wood + stone + fibre. Knowledge is innate in v1. */
+    axeWoodCost: 3,
+    axeStoneCost: 2,
+    axeFiberCost: 2,
+    /** [TUNE] C03 — real seconds to fell a standing tree, at level 1, with the axe. */
+    treeChopSecondsWithAxe: 4,
+    /** [TUNE] C03 — wood a felled tree yields; timber, where hands got scraps. */
+    treeWoodYield: 8,
+    /** [TUNE] C03+ — stone per rock outcrop. */
+    stoneNodeYield: 2,
+    /** [TUNE] C03+ — coir fibre per coconut palm: the pre-axe fibre source, so the recipe is reachable. */
+    fiberPerCoconutPalm: 2,
+    /** [TUNE] C03+ — the sealed crash box's contents, opened only with the axe. */
+    crashBoxFiber: 3,
+    crashBoxFlask: 1,
+    /** [TUNE] C03+ — drinks the water flask carries inland. */
+    flaskCapacitySips: 1,
+
+    // ---- The Development Tree seed (C03) — mastery changes the action ------
+    /** [TUNE] C03 — XP for one meaningful outcome (a felled tree, a foraged meal). Never spam. */
+    xpPerMeaningfulAction: 5,
+    /** [TUNE] C03 — XP to reach level N = N × this. */
+    xpToLevelPerLevel: 25,
+    /** [TUNE] C03 — each skill level makes its action this much faster/richer (fraction). */
+    skillSpeedBonusPerLevel: 0.08,
+
     // ---- Offline / morning report -----------------------------------------
     /** [TUNE] C01 — an absence shorter than this produces no morning report. */
     morningReportMinRealMinutes: 2

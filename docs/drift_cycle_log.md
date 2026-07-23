@@ -45,6 +45,30 @@
 | `cameraPitchMaxDeg` / `cameraPitchMinDeg` | 62 / −12 | C02 | How far the camera may be pitched |
 | `turnRateDegPerSecond` | 620 | C02 | How fast the castaway turns to face travel |
 | `fireBuildOffsetM` | 1.7 | C02 | How far ahead the fire is laid — in 2D it went at your feet, which in 3D put you inside the flames |
+| `thirstMax` / `hungerMax` / `healthMax` | 100 | C03 | The three new vitals' full values |
+| `thirstDrainPerGameHour` | 1.4 | C03 | ~3 game-days to empty — the second survival rhythm (Rule of Threes) |
+| `hungerDrainPerGameHour` | 0.6 | C03 | ~7 game-days to empty — the slow background pressure |
+| `healthDrainPerGameHourPerEmptyVital` | 5 | C03 | Each empty vital (thirst/hunger at 0) drains health, **stacking** |
+| `warmthEmptyHealthDrainPerGameHour` | 6 | C03 | Warmth at 0 drains health too; adds to the stack |
+| `healthRegenPerGameHour` | 4 | C03+ | Health recovers, online, while no vital is empty — recovery preserves momentum (§I.18 r3) |
+| `thirstOfflineFloor` / `hungerOfflineFloor` | 10 | C03 | D-011 floors: absence drifts these here and stops |
+| `healthOfflineFloor` | 25 | C03 | D-011 floor: offline health cannot fall below this. **Offline death is impossible — property-tested** |
+| `drinkPerSip` | 25 | C03 | Thirst restored per drink at the pond or from the flask |
+| `berryHungerValue` | 12 | C03+ | Hunger restored by a handful of berries |
+| `coconutHungerValue` / `coconutThirstValue` | 14 / 10 | C03+ | A coconut feeds and waters — the palm is worth the climb |
+| `shellfishHungerValue` | 22 | C03+ | Shellfish are the richest forage |
+| `axeWoodCost` / `axeStoneCost` / `axeFiberCost` | 3 / 2 / 2 | C03 | The crude axe recipe — the four gates made concrete |
+| `treeChopSecondsWithAxe` | 4 | C03 | Hold-to-chop a standing tree, axe only |
+| `treeWoodYield` | 8 | C03 | A felled tree — timber, where hands got scraps |
+| `stoneNodeYield` | 2 | C03+ | Stone per rock outcrop |
+| `fiberPerCoconutPalm` | 2 | C03+ | Coir fibre from a palm — the pre-axe fibre source, so the recipe is reachable |
+| `crashBoxFiber` / `crashBoxFlask` | 3 / 1 | C03+ | The sealed box's contents: cordage and a water flask |
+| `flaskCapacitySips` | 1 | C03+ | The flask carries one drink inland |
+| `xpPerMeaningfulAction` | 5 | C03 | XP for an outcome that mattered (a felled tree, a foraged meal) — never spam |
+| `xpToLevelPerLevel` | 25 | C03 | XP to reach level N = N × this |
+| `skillSpeedBonusPerLevel` | 0.08 | C03 | Each level makes the action faster/richer — mastery changes the action (§I.9) |
+
+*C03 adds the three vitals, death/respawn, the first tool and loot, and two seed skills. Rows marked **C03+** are derived constants C2 added under the tune law to express the spec's behaviour (food values, node yields, fibre source, health regen). The D-011 offline floors (`*OfflineFloor`) make **offline death impossible** — proven by a property test, not asserted (A1).*
 
 *Spatial constants changed units at C02: the 2D body measured screen pixels, the 3D body measures metres. `fireWarmthRadius` 140 px → 7 m, `interactRadius` 74 px → 2.6 m, `nodeTapSlack` 34 px → 0.9 m, `fireTapRadius` 40 px → 1.6 m. The brain only ever asked for a distance on a plane, which is why it did not notice (D-030). Retired with the 2D body: `playerSpeed`, `tapArriveEpsilon`, `approachStopFraction`.*
 
@@ -153,7 +177,7 @@ The audit's value is not in doubt: the two defects that mattered — the purity 
 ---
 
 ## CYCLE 02 — "Boots on Sand"
-**Phase 1 · Tier: Opus-class · Status: SHIPPED — audited PASS-WITH-NOTES, all notes fixed; awaiting PLAYTEST · Opened 2026-07-22 · Shipped 2026-07-23 · The 3D pivot cycle (D-027 … D-035)**
+**Phase 1 · Tier: Opus-class · Status: CLOSED — gate 3 pass-with-notes (D-036); two defects → C03 Stage 0 · Opened 2026-07-22 · Shipped 2026-07-23 · Closed 2026-07-23 · The 3D pivot cycle (D-027 … D-037)**
 
 **GOAL:** Prove The First Night in three dimensions on a phone — a real island underfoot, the same fire, the same honest absence — with the Cycle 01 brain running untouched.
 
@@ -235,3 +259,40 @@ A1–A7 all verified independently: C3 confirmed the zero brain-diff mechanicall
 **One blocking defect: a third bypass of the purity check** — an npm alias (`"x": "npm:@babylonjs/core"`) let a brain file import a renderer under a clean name, past the forbidden-name list. Same root cause as Cycle 01's two bypasses: trusting the typed name. **Fixed at the root** (D-034): the check now resolves every bare specifier to the file it loads and judges the real declared package name; all four bypass classes reproduced and confirmed caught. Two notes fixed (hard-coded `+2 hours` feedback; a 45 s "within seconds" threshold), plus a guard added so the harness fails rather than silently reads a software-renderer FPS. **D-025's carried-forward risk** — which C3 rightly noted had travelled into Cycle 02 unlogged — is now an explicit on-the-record deferral (D-035): the revisit condition (a vital with real stakes) still has not arrived.
 
 C3's standing note for the next cycle: the allow-list-by-string design is inherently gameable; the real-identity resolution now in place is the sturdier version it asked for. The audit's value, again, was in the one defect invisible to reading the code — the constitutional check that guards the whole architecture had a hole, for the third cycle running, and now has the fix that closes the *class* rather than the instance.
+
+---
+
+## CYCLE 03 — "The Island Pushes Back"
+**Phase 1 · Tier: Opus-class · Status: OPEN · Opened 2026-07-23 · The pressure cycle (D-031, D-032)**
+
+**GOAL:** Turn the island from scenery into a survival situation — three vital clocks, real death and respawn, the first tool earned through the four gates, the first loot, and the first visible mystery — all flowing through the untouched reconcile spine with D-011's floors protecting absence.
+
+**PROMISE:** The island stops being scenery — it makes demands, and it offers answers to those who look.
+
+**HYPOTHESIS:** Three clocks plus a first tool turn walking into deciding; pressure creates the decisions the Experience Constitution demands.
+
+**PLAYTEST QUESTION:** Did you ever have to choose between two needs — and did the axe feel earned?
+
+**SCOPE IN (build in stage order):**
+
+- **Stage 0 — Ground truth (the C02 defects, fixed first).** Character grounding: physics/terrain snap with feet-at-surface calibration **plus a blob shadow** under the character (and under wood items) — the contact shadow is what kills the floating illusion; colliders on trees, rocks, the fire, and the crash box (smoke-checked: walking into a tree stops you). Island grows to ~250 m with an inland **freshwater pond**, rock outcrops (stone nodes), berry bushes, coconut palms, shellfish on the wet sand, **one sealed crash box** on the beach, and a **distant wreck silhouette** offshore — visible from spawn, unreachable, unexplained (the curiosity rule: one question, one clue, one visible possibility).
+- **Stage 1 — Brain: the three clocks.** Thirst, hunger, health as brain modules through `reconcile`: online drain per the charter's Rule-of-Threes ladder; empty vitals drain health (stacking); **death and respawn** — death only from active play; on death, wake washed-ashore at the spawn beach, inventory intact (v1 mercy, `[TUNE]` later), a plain one-line death cause shown. **Offline: D-011 made law** — thirst/hunger/health drift to floors and stop; a property test proves offline death is impossible for *any* elapsed time and starting state. Morning report grows honest vitals lines with causes ("Thirst wore you down to 10 and held"). **Development Tree seed:** Woodcutting and Foraging XP — meaningful actions only (a felled tree, a foraged meal — not spam), levels grant a visible speed/yield bump (the anti-grind principle: mastery changes the action).
+- **Stage 2 — Body: demands and answers.** Vitals HUD (three compact bars + health), drink at the pond (hold — sip cues), forage berries/coconuts/shellfish (eat from a minimal inventory row), **craft the crude axe** — the four gates shown plainly on the craft card (resources + time; knowledge innate v1) — then **chop standing trees**: axe-only, tree falls, big yield; bare hands still limited to driftwood/deadfall (the gates made visible: scraps by hand, timber by tool). The axe **opens the sealed crash box** — first loot moment (contents: fiber cordage + a water flask `[TUNE]` — the flask lets you carry one drink inland). New audio/feedback cues for drink, eat, craft, fell, unlock; sanctuary beat untouched; hints cover the new verbs; local trace extended (time-to-first-drink, first-craft, deaths).
+- **Stage 3 — Audit & ship.** Deploy; archive `/builds/c03/`; tag `c03`; smoke green including grounding/collider checks; C3 audit; on PASS, as-built + play URL.
+
+**SCOPE OUT (explicit):** building/shelter/bed/upkeep, energy/sleep, storage (all C04); threats, combat, spear, hunting (C05); fishing; water purification and cooking (arrive with containers/fire-craft in C04+); first-person; procedural or full-size islands; skills beyond the two seeds; multiplayer.
+
+**ACCEPTANCE CHECKS:**
+- **A1** — Brain suite green including: three-vital reconcile drift with floors; **property test: offline death impossible** (any state × any elapsed); stacking health drain; death/respawn round-trip; XP/level math; save schema migration from c02 saves (a c02 save loads and gains the new vitals sensibly).
+- **A2** — Purity green (transitive, alias-proof) across all new brain modules.
+- **A3** — Performance holds on the bigger island: median ≥ `fpsFloorMedian`, cold load ≤ `coldLoadBudgetSeconds` on 4G, tab-switch survives.
+- **A4** — The pressure loop on-device: get thirsty → find the pond → drink; forage a meal; craft the axe; fell a tree; open the crash box; die once from neglect → respawn ashore with a stated cause; ≥2-minute absence → report shows drift held at floors with causes.
+- **A5** — URL live; `/builds/c03/` archived; `c03` tag; as-built appended; c01/c02 archives intact.
+- **A6** — Ground truth: feet planted with contact shadow (no perceived float at rest or on slopes, smoke-checked feet-to-terrain gap); tree/rock/box colliders stop the player.
+- **A7** — Feel: vitals readable at a glance; drink and eat land with satisfying cues; the axe *visibly* changes chopping (speed, animation of the fall, yield); the wreck silhouette is noticeable from spawn; the XP level-up moment reads; every new verb has a hint path.
+
+**TUNE INTRODUCED:** see ledger — rows marked C03.
+
+**AS-BUILT:** *(pending — C2 at SHIP)*
+
+**AUDIT:** *(pending — C3)*

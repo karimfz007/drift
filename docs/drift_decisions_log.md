@@ -3,6 +3,12 @@
 
 ---
 
+**D-037 · 2026-07-23 — The build-up: escalation order locked (pressure → construction → threats).**
+Per Experience Constitution rule 2 (new decisions before tighter margins): **C03** adds survival pressure (thirst, hunger, health/death, first tool, first loot, first mystery) — the island starts making demands; **C04** adds construction (shelter tiers, bed/respawn anchor, energy/sleep, storage, upkeep) — the player starts owning ground; **C05** adds threats (first creature, spear, defense) — the base earns its walls. Each cycle converts learned systems into new decisions. Director's mandate: "build it up as you see" (standing authority on content escalation within the charter). *Status: standing; contents of C04/C05 specified at their OPEN.* — C2 (renumbered from the handoff's D-032; the ledger reached D-035 in Cycle 02.)
+
+**D-036 · 2026-07-23 — ⚑ Cycle 02 CLOSED: gate 3 pass-with-notes. The 3D foundation is accepted.**
+Director's verdict on the phone: foundation good, trees read well, no frame-rate complaint (treated as pass; re-raised any time it stutters) — two defects and one direction note. Defects, fixed in C03 Stage 0: (1) the character reads as floating — root causes addressed together: feet-to-terrain grounding **and a blob contact shadow** under the character (the absence of a contact shadow is the classic cause of perceived hovering); (2) trees have no colliders. Direction note: "still very simple" — answered by D-037's escalation, not by iterating the thin slice. *Status: standing.* — C2 (renumbered from the handoff's D-031.)
+
 **D-035 · 2026-07-23 — D-025 re-examined for Cycle 02 and carried forward explicitly.**
 The C3 audit noted that D-025's standing commitment — "confirm or replace the offline-floor-vs-idleness rule once warmth carries real stakes" — was carried into Cycle 02 silently rather than re-logged, which is exactly the forgetting D-025 was written to prevent. Re-examined now: **warmth still has no death or damage stakes in Cycle 02** (SCOPE OUT keeps out health, death, and every vital but warmth), so the condition that would force the decision has not arrived, and the rule stands unchanged and correct. It moves to the first cycle that gives a vital real consequence — Cycle 03 at the earliest. The dependency C3 named in D-025 (on the primary device the floor leans on OS auto-lock; no safety net on desktop) travels with it. This entry exists so the deferral is a decision on the record, not an omission. *Status: standing; the revisit condition has still not triggered.* — C2
 
