@@ -23,11 +23,13 @@ import {
     canBuildFire,
     canCraftAxe,
     canDrinkAtPond,
+    canDrinkFlask,
     canFeedFire,
     canFillFlask,
     craftAxe,
     distance,
     drinkAtPond,
+    drinkFlask,
     eat,
     feedFire,
     fillFlask,
@@ -151,7 +153,8 @@ export class Game {
             this.overlay,
             () => this.onBuildFire(),
             () => this.openCraftCard(),
-            (food) => this.onEatFood(food)
+            (food) => this.onEatFood(food),
+            () => this.onDrinkFlask()
         );
         addSettingsButton(this.overlay, () => this.openSettings());
 
@@ -169,6 +172,12 @@ export class Game {
     }
 
     private installDebugProjection(): void {
+        //  The pending intention, readable and settable by the harness. Setting it is not a
+        //  cheat — it is exactly what a tap does; the game still gates the *action* on reach.
+        //  It exists because reliably tapping a distant 3D object from a headless projected
+        //  point is not feasible, and the range-gate must still be regression-locked (D-022).
+        runtime.pendingReadout = () => (this.pending ? { kind: this.pending.kind, id: this.pending.kind === 'node' ? this.pending.id : undefined } : null);
+        runtime.intend = (id: string) => { this.pending = { kind: 'node', id }; };
         runtime.cameraReadout = () => ({ yaw: this.yaw, pitch: this.pitch });
         runtime.groundAt = (x, z) => this.island.heightAt(x, z);
         runtime.playerFeetY = () => this.player.feetY;
@@ -381,9 +390,9 @@ export class Game {
     }
 
     private doDrink(): void {
-        //  A sip at most every ~600 ms of standing in the water, so a tap is one gulp and
-        //  loitering tops you up.
-        if (now() - this.pondDrinkAccumMs < 600) return;
+        //  A sip at most every pondSipMinIntervalMs of standing in the water, so a tap is one
+        //  gulp and loitering tops you up.
+        if (now() - this.pondDrinkAccumMs < TUNE.pondSipMinIntervalMs) return;
         this.pondDrinkAccumMs = now();
         const s = session().state;
         if (drinkAtPond(s)) {
@@ -529,6 +538,20 @@ export class Game {
             this.lastActivityAt = now();
         } else {
             this.explain(s.hunger >= TUNE.hungerMax ? 'You are not hungry.' : `No ${food} to eat.`);
+        }
+    }
+
+    /** Sip the carried flask, anywhere — the inland drink the fill promised (B1 audit fix). */
+    private onDrinkFlask(): void {
+        const s = session().state;
+        if (canDrinkFlask(s) && drinkFlask(s)) {
+            this.cues.play(CUES.drink);
+            this.floatText('a sip from the flask');
+            session().markFirstDrink(msSinceControl());
+            session().persist(now());
+            this.lastActivityAt = now();
+        } else {
+            this.explain(s.thirst >= TUNE.thirstMax ? 'You are not thirsty.' : 'The flask is empty. Refill it at the pond.');
         }
     }
 
@@ -733,34 +756,38 @@ export class Game {
     }
 
     /**
-     * Keep the camera out of the terrain and off the far side of trunks/rocks — no clipping
-     * (A6). Analytic, not a raycast: shorten the boom until the point is clear of every
-     * obstacle and above ground, which is cheap and never tunnels.
+     * Keep the camera out of the terrain AND off the far side of a trunk/rock that sits
+     * between it and the player — no clipping and no occlusion (A6). Analytic, not a raycast:
+     * march the boom OUTWARD from the player and stop just before the first blocked sample,
+     * so the whole segment player→camera is guaranteed clear. (Marching inward from the far
+     * end and taking the first clear point would happily park the camera *behind* a trunk.)
      */
     private avoidCameraClip(target: Vector3, desired: Vector3): Vector3 {
         const dir = desired.subtract(target);
         const full = dir.length();
         if (full < 0.01) return desired;
         dir.scaleInPlace(1 / full);
-
         const dyn = this.nodes.obstacles();
-        let dist = full;
-        for (let d = full; d >= 1.4; d -= 0.4) {
+
+        const blockedAt = (d: number): boolean => {
             const px = target.x + dir.x * d;
             const pz = target.z + dir.z * d;
             const py = target.y + dir.y * d;
-            const groundClear = py > this.island.heightAt(px, pz) + 0.5;
-            let obstacleClear = true;
+            if (py < this.island.heightAt(px, pz) + 0.5) return true;
             for (const o of this.island.staticObstacles) {
-                if ((px - o.x) ** 2 + (pz - o.z) ** 2 < (o.radius + 0.6) ** 2) { obstacleClear = false; break; }
+                if ((px - o.x) ** 2 + (pz - o.z) ** 2 < (o.radius + 0.6) ** 2) return true;
             }
-            if (obstacleClear) {
-                for (const o of dyn) {
-                    if ((px - o.x) ** 2 + (pz - o.z) ** 2 < (o.radius + 0.6) ** 2) { obstacleClear = false; break; }
-                }
+            for (const o of dyn) {
+                if ((px - o.x) ** 2 + (pz - o.z) ** 2 < (o.radius + 0.6) ** 2) return true;
             }
-            if (groundClear && obstacleClear) { dist = d; break; }
-            dist = Math.max(1.4, d - 0.4);
+            return false;
+        };
+
+        //  Nearest allowed boom; grow it while the ray stays clear, stop at the first block.
+        let dist = Math.min(full, TUNE.cameraMinBoomM);
+        for (let d = TUNE.cameraMinBoomM; d <= full; d += 0.4) {
+            if (blockedAt(d)) break;
+            dist = d;
         }
         return new Vector3(target.x + dir.x * dist, target.y + dir.y * dist, target.z + dir.z * dist);
     }

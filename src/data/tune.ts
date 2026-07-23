@@ -107,6 +107,12 @@ export const TUNE = {
     frameTimeP95BudgetMs: 33,
     /** [TUNE] C04 — portrait shows a rotate-to-landscape prompt; the game plays sideways (D-041). */
     rotatePromptEnabled: true,
+    /** [TUNE] C04 — shortest camera boom (m): how close the camera may be pulled when a trunk
+     *  or a rise would otherwise clip or occlude the player. */
+    cameraMinBoomM: 1.4,
+    /** [TUNE] C04 — minimum real-ms between auto-sips while standing in the pond: one tap is a
+     *  gulp, loitering tops you up. Governs how fast you rehydrate at the water. */
+    pondSipMinIntervalMs: 600,
 
     // ---- Movement and camera (C02) -----------------------------------------
     /** [TUNE] C02 — metres per second on foot. */

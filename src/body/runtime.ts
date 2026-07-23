@@ -28,7 +28,10 @@ export const runtime = {
     cameraReadout: (() => ({ yaw: 0, pitch: 0 })) as () => { yaw: number; pitch: number },
     projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null,
     groundAt: (() => 0) as (x: number, z: number) => number,
-    playerFeetY: (() => 0) as () => number
+    playerFeetY: (() => 0) as () => number,
+    //  The direct-world tap intention, for the harness's range-gate regression (D-042/A4).
+    pendingReadout: (() => null) as () => { kind: string; id?: string } | null,
+    intend: (() => {}) as (id: string) => void
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -157,6 +160,9 @@ function installDebugHook(): void {
         screenOf: (worldX: number, worldZ: number) => runtime.projectToScreen(worldX, worldZ),
         groundAt: (worldX: number, worldZ: number) => runtime.groundAt(worldX, worldZ),
         playerFeetY: () => runtime.playerFeetY(),
+        //  Read/inject the direct-world tap intention (the range-gate regression, A4).
+        pending: () => runtime.pendingReadout(),
+        intend: (nodeId: string) => runtime.intend(nodeId),
         persist: () => runtime.session?.persist(now()),
         reset: () => localStorage.removeItem(SAVE_KEY)
     };

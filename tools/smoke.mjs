@@ -326,6 +326,30 @@ async function main() {
     const fireState = await live();
     check('REGRESSION #3/#4 — building the fire works in daylight, pre-axe', fireState.fire.built === true && fireState.inventory.wood === 0, `built ${fireState.fire.built}, wood ${fireState.inventory.wood}`);
 
+    //  #3 THE "FROM FAR AWAY" HALF: nothing acts remotely. An intention set from out of range
+    //  must NOT act — the castaway walks into interactRadiusM first, then acts (D-042; C3 note
+    //  N2). This gate (`actOnArrival` runs only when `pendingInReach()`) is shared by every
+    //  verb including the fire, so locking it here locks the exact rule that defused the fire.
+    //  We inject the intention via `__drift.intend` rather than a tap: reliably tapping a
+    //  distant 3-D object from a headless projected ground-point is not feasible, but injecting
+    //  the intention IS exactly what a tap does — the game still gates the *action* on reach.
+    await editSave('state.player = { x: -40, y: 66 };'); // ~14 m south of coconut palm cp1 (-40,52)
+    const availOf = (id) => page.evaluate((i) => window.__drift.state().nodes.find((n) => n.id === i)?.available, id);
+    const distTo = async (x, z) => { const s = await live(); return Math.hypot(s.player.x - x, s.player.y - z); };
+    const palmNode = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'cp1'));
+    check('REGRESSION #3 setup — a coconut palm sits ~14 m out of reach', !!palmNode && palmNode.available, palmNode ? `cp1 at ${palmNode.x},${palmNode.y}` : 'missing');
+    const dStart = await distTo(palmNode.x, palmNode.y);
+    await page.evaluate(() => window.__drift.intend('cp1')); // the tap intention, set from afar
+    const intended = await page.evaluate(() => window.__drift.pending());
+    check('REGRESSION #3 — the intention registers', intended && intended.id === 'cp1');
+    await sleep(450); // a beat: 14 m is not yet crossed — it must NOT have acted yet
+    check('REGRESSION #3 — out of range it does NOT act remotely (palm still standing)', (await availOf('cp1')) === true, `${dStart.toFixed(1)} m away`);
+    await sleep(900); // now the castaway has had time to accelerate and close ground
+    const dMid = await distTo(palmNode.x, palmNode.y);
+    check('REGRESSION #3 — the intention makes the castaway walk there (auto-walk closes the gap)', dMid < dStart - 2, `${dStart.toFixed(1)} → ${dMid.toFixed(1)} m`);
+    for (let i = 0; i < 22; i++) { if ((await availOf('cp1')) === false) break; await sleep(400); }
+    check('REGRESSION #3 — on arrival it DOES act (walk-then-use, never remote)', (await availOf('cp1')) === false);
+
     //  #2 FIBRE SOURCING: reeds are an obvious, tappable fibre source (D-043).
     await startFresh();
     await clickDom('.cold-open button');
@@ -442,6 +466,16 @@ async function main() {
     await sleep(300);
     const afterEat = await live();
     check('tapping the food chip eats and restores hunger', afterEat.hunger > hungerBeforeEat, `${hungerBeforeEat} → ${afterEat.hunger}`);
+
+    //  The carried flask is drinkable inland (B1 audit fix): a full flask is a tappable chip,
+    //  and the fill the game promises has an inland payoff. No dead feature, no lying hint.
+    await editSave('state.player = { x: 0, y: 104 }; state.thirst = 45; state.tools.flask = true; state.tools.flaskSips = 2;');
+    const beforeFlask = await live();
+    check('a full flask is a tappable chip', await page.$('.chip.tool.drink[data-drink="flask"]') !== null);
+    await clickDom('.chip.tool.drink[data-drink="flask"]');
+    await sleep(300);
+    const afterFlask = await live();
+    check('tapping the flask drinks inland and spends a sip', afterFlask.thirst > beforeFlask.thirst + 1 && afterFlask.tools.flaskSips === beforeFlask.tools.flaskSips - 1, `thirst ${beforeFlask.thirst}→${afterFlask.thirst.toFixed(1)}, sips ${beforeFlask.tools.flaskSips}→${afterFlask.tools.flaskSips}`);
 
     //  The idle hint fires and is contextual.
     const hintsBefore = await page.evaluate(() => window.__drift.hints().shown);

@@ -125,6 +125,10 @@
         .chip.food { pointer-events: auto; cursor: pointer; border-color: rgba(143, 191, 122, 0.55); }
         .chip.food:active { transform: scale(0.94); }
         .chip.food::after { content: " ·eat"; color: var(--dim); font-weight: 500; }
+        /* A full flask is a carried drink — tap it to sip inland. */
+        .chip.tool.drink { pointer-events: auto; cursor: pointer; }
+        .chip.tool.drink:active { transform: scale(0.94); }
+        .chip.tool.drink::after { content: " ·drink"; color: #0c1420; opacity: 0.6; font-weight: 500; }
 
         .hud-bottom {
             position: absolute;

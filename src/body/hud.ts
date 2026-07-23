@@ -53,7 +53,8 @@ export class Hud {
         overlay: HTMLElement,
         onAction: () => void,
         onSecondary: () => void = () => {},
-        onEat: (food: 'berries' | 'coconut' | 'shellfish') => void = () => {}
+        onEat: (food: 'berries' | 'coconut' | 'shellfish') => void = () => {},
+        onDrinkFlask: () => void = () => {}
     ) {
         this.root = document.createElement('div');
         this.root.className = 'hud';
@@ -98,10 +99,12 @@ export class Hud {
         //  world-tap model and off the button stack (D-042). One tap on the chip, one bite.
         this.invRow.addEventListener('pointerdown', (e) => e.stopPropagation());
         this.invRow.addEventListener('click', (e) => {
-            const chip = (e.target as HTMLElement).closest('[data-food]') as HTMLElement | null;
-            if (!chip) return;
-            e.stopPropagation();
-            onEat(chip.dataset.food as 'berries' | 'coconut' | 'shellfish');
+            const target = e.target as HTMLElement;
+            const food = target.closest('[data-food]') as HTMLElement | null;
+            if (food) { e.stopPropagation(); onEat(food.dataset.food as 'berries' | 'coconut' | 'shellfish'); return; }
+            //  A filled flask is a drink you carry: tap it to sip inland (restores the C03
+            //  verb the direct-world model would otherwise have stranded — see D-042 audit).
+            if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); }
         });
 
         this.hintBox = document.createElement('div');
@@ -163,7 +166,9 @@ export class Hud {
             if (name === 'axe') {
                 if (val) chips.push(`<span class="chip tool">Axe</span>`);
             } else if (name === 'flask') {
-                if (val) chips.push(`<span class="chip tool">Flask · ${val}</span>`);
+                //  A full flask is tappable (a carried drink); an empty one is just a chip.
+                if (val === 'full') chips.push(`<span class="chip tool drink" data-drink="flask" role="button" title="Tap to drink">Flask · full</span>`);
+                else if (val) chips.push(`<span class="chip tool">Flask · ${val}</span>`);
             } else if (typeof val === 'number' && val > 0) {
                 //  Food chips are tappable ("Eat" affordance); materials are plain.
                 const eat = edible.has(name) ? ` data-food="${name}" role="button" title="Tap to eat"` : '';
