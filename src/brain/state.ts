@@ -96,6 +96,7 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
     rock: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
     berrybush: { interaction: 'tap', needsAxe: false, skill: 'foraging', holdBaseSeconds: 0 },
     coconutpalm: { interaction: 'hold', needsAxe: false, skill: 'foraging', holdBaseSeconds: TUNE.deadfallHoldSeconds },
+    reed: { interaction: 'tap', needsAxe: false, skill: 'foraging', holdBaseSeconds: 0 },
     shellfish: { interaction: 'tap', needsAxe: false, skill: 'foraging', holdBaseSeconds: 0 },
     crashbox: { interaction: 'hold', needsAxe: true, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds }
 };
@@ -197,9 +198,13 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             break;
         case 'coconutpalm':
             state.inventory.coconut += 1;
-            state.inventory.fiber += TUNE.fiberPerCoconutPalm;
+            state.inventory.fiber += TUNE.palmHuskFiberYield;
             gained.coconut = 1;
-            gained.fiber = TUNE.fiberPerCoconutPalm;
+            gained.fiber = TUNE.palmHuskFiberYield;
+            break;
+        case 'reed':
+            state.inventory.fiber += TUNE.reedFiberYield;
+            gained.fiber = TUNE.reedFiberYield;
             break;
         case 'shellfish':
             state.inventory.shellfish += 1;

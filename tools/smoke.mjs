@@ -7,10 +7,16 @@
  * live game state. It exists so "it plays on a phone" is a check anyone can re-run —
  * including the C3 auditor, against the deployed URL.
  *
- * Cycle 03 adds the pressure loop (three vitals, drink, forage, craft, chop, loot, death),
- * and the two Cycle-02 fixes (feet-to-terrain grounding + colliders), so the harness now
- * reaches into the scene to check the player's feet sit on the ground and that a tree
- * stops the player.
+ * Cycle 04 is the FEEL cycle, and the harness changed shape with the game (D-042): the
+ * verbs left the HUD button stack and moved onto the world, so this now *taps the thing to
+ * use the thing* and polls the result, instead of press-and-holding a button. Every one of
+ * the five director defects in D-040 gets a named regression here — most of all the fire:
+ *
+ *   REGRESSION (D-040 #3/#4): fresh run, broad daylight, NO axe, five wood in hand →
+ *   "Build fire" is the primary action, enabled, and it builds. In Cycle 03 a Craft-axe
+ *   button out-prioritised Build-fire whenever any craft material was held (and wood is
+ *   one), so the fire silently vanished until after the axe — which only ever happened at
+ *   night. That is now impossible to reintroduce without turning this check red.
  *
  * Usage:
  *   node tools/smoke.mjs [url] [--headful] [--software]
@@ -43,11 +49,13 @@ const TUNE = {
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
-    interactRadius: 2.6,
+    interactRadiusM: 2.5,
     drinkPerSip: 25,
     treeWoodYield: 8,
+    reedFiberYield: 2,
     coldLoadBudgetSeconds: 8,
-    fpsFloorMedian: 30
+    fpsFloorMedian: 30,
+    frameTimeP95BudgetMs: 33
 };
 
 const results = [];
@@ -74,7 +82,8 @@ async function main() {
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 412, height: 915, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    //  Landscape mobile: the game's own presentation (D-041). A phone held sideways.
+    await page.setViewport({ width: 915, height: 412, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     await page.setUserAgent('Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36');
 
     await page.setRequestInterception(true);
@@ -96,16 +105,18 @@ async function main() {
     const camera = () => page.evaluate(() => window.__drift.camera());
     const screenOf = (x, z) => page.evaluate(([wx, wz]) => window.__drift.screenOf(wx, wz), [x, z]);
     const waitForScene = async (t = 60_000) => page.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: t });
+    const actionText = () => page.evaluate(() => { const b = document.querySelector('.action'); return b ? { text: b.textContent, shown: b.style.display !== 'none', ready: b.classList.contains('ready') } : null; });
 
-    const tapAt = async (x, y, hold = 60) => { await page.touchscreen.touchStart(x, y); await sleep(hold); await page.touchscreen.touchEnd(); await sleep(140); };
-    const tapWorld = async (wx, wz, hold = 60) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
+    const tapAt = async (x, y, hold = 55) => { await page.touchscreen.touchStart(x, y); await sleep(hold); await page.touchscreen.touchEnd(); await sleep(140); };
+    const tapWorld = async (wx, wz, hold = 55) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
     const canvasRect = () => page.evaluate(() => { const r = document.getElementById('game-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; });
 
+    //  Drive the left-thumb stick toward a world point for a while.
     const walkToward = async (tx, tz, seconds) => {
         const rect = await canvasRect();
-        const ox = rect.left + rect.width * 0.25;
-        const oy = rect.top + rect.height * 0.78;
+        const ox = rect.left + rect.width * 0.2;
+        const oy = rect.top + rect.height * 0.72;
         const st = await live();
         const view = await camera();
         const dx = tx - st.player.x, dz = tz - st.player.y;
@@ -115,23 +126,55 @@ async function main() {
         const stickY = -Math.sin(view.yaw) * nx - Math.cos(view.yaw) * nz;
         await page.touchscreen.touchStart(ox, oy);
         await sleep(60);
-        await page.touchscreen.touchMove(ox + stickX * 78, oy + stickY * 78);
+        await page.touchscreen.touchMove(ox + stickX * 70, oy + stickY * 70);
         await sleep(seconds * 1000);
         await page.touchscreen.touchEnd();
         await sleep(160);
     };
-    const approach = async (x, z, budget = 16) => {
+    const approach = async (x, z, budget = 20) => {
         const deadline = Date.now() + budget * 1000;
         let st = await live();
         let d = Math.hypot(st.player.x - x, st.player.y - z);
-        while (d > TUNE.interactRadius * 0.7 && Date.now() < deadline) {
+        while (d > TUNE.interactRadiusM * 0.7 && Date.now() < deadline) {
             await walkToward(x, z, Math.min(1.2, Math.max(0.25, (d - 1) / 3.5)));
             st = await live();
             d = Math.hypot(st.player.x - x, st.player.y - z);
         }
         return d;
     };
-    const nodeOf = async (kind) => { const st = await live(); return st.nodes.find((n) => n.available && n.kind === kind); };
+    //  The NEAREST available node of a kind — what a player reaches for, and what keeps the
+    //  harness deterministic now that reaching a thing means walking there (D-042).
+    const nodeOf = async (kind) => {
+        const st = await live();
+        const here = st.player;
+        return st.nodes
+            .filter((n) => n.available && n.kind === kind)
+            .sort((a, b) => Math.hypot(a.x - here.x, a.y - here.y) - Math.hypot(b.x - here.x, b.y - here.y))[0];
+    };
+    const nodeById = async (id) => { const st = await live(); return st.nodes.find((n) => n.id === id); };
+
+    //  Turn the look-camera to face a world point, so a tap on it lands. Needed because the
+    //  camera yaw is independent of walking: after strolling past a short node it can sit
+    //  behind you, and you cannot tap what is off-screen. A player does this without thinking;
+    //  the harness has to do it deliberately. Drag-right increases yaw (controls.takeLook).
+    const faceNode = async (x, z) => {
+        for (let i = 0; i < 7; i++) {
+            const st = await live();
+            const view = await camera();
+            const desired = Math.atan2(x - st.player.x, z - st.player.y);
+            let delta = desired - view.yaw;
+            while (delta > Math.PI) delta -= 2 * Math.PI;
+            while (delta < -Math.PI) delta += 2 * Math.PI;
+            if (Math.abs(delta) < 0.12) return;
+            const rect = await canvasRect();
+            const ox = rect.left + rect.width * 0.72, oy = rect.top + rect.height * 0.4;
+            const px = Math.max(-260, Math.min(260, delta / 0.0042)); // px to reach the target yaw
+            await page.touchscreen.touchStart(ox, oy);
+            for (let s = 1; s <= 4; s++) { await page.touchscreen.touchMove(ox + (px * s) / 4, oy); await sleep(20); }
+            await page.touchscreen.touchEnd();
+            await sleep(200);
+        }
+    };
 
     const editSave = async (mutateSrc) => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
@@ -167,21 +210,35 @@ async function main() {
     };
     const shot = (n) => page.screenshot({ path: join(SHOT_DIR, `${n}.png`) });
 
-    /** Walk to a node and gather it (tap for tap-nodes, hold for hold-nodes). */
-    const harvest = async (kind, holdMs = 2200) => {
+    /**
+     * Tap-to-use: walk near, tap once, and poll until the node is consumed. Works the same
+     * for tap-nodes (instant) and hold-nodes (the castaway auto-works it on arrival) — the
+     * harness no longer knows or cares which, exactly as the player doesn't (D-042).
+     */
+    const harvest = async (kind, budget = 30) => {
         const node = await nodeOf(kind);
-        if (!node) return { ok: false };
-        const d = await approach(node.x, node.y, 22);
-        if (d > TUNE.interactRadius) return { ok: false, reason: 'unreached', d };
-        const hold = ['deadfall', 'tree', 'rock', 'coconutpalm', 'crashbox'].includes(kind) ? holdMs : 60;
-        await tapWorld(node.x, node.y, hold);
-        await sleep(300);
-        return { ok: true, node };
+        if (!node) return { ok: false, reason: 'none' };
+        const deadline = Date.now() + budget * 1000;
+        while (Date.now() < deadline) {
+            const cur = await nodeById(node.id);
+            if (!cur || !cur.available) return { ok: true, node };
+            //  Walk near (straight-line auto-walk can snag on a trunk, so the stick closes
+            //  the gap), turn to face it, tap to act, then give a hold-node time to auto-work.
+            await approach(node.x, node.y, 10);
+            await faceNode(node.x, node.y);
+            await tapWorld(node.x, node.y, 55);
+            for (let i = 0; i < 8; i++) {
+                const c = await nodeById(node.id);
+                if (!c || !c.available) return { ok: true, node };
+                await sleep(400);
+            }
+        }
+        return { ok: false, reason: 'not-consumed', node };
     };
 
-    // ---- A3: load ----
-    console.log(`\nDRIFT device smoke test (C03) — ${URL_UNDER_TEST}\n`);
-    console.log('A3 — load, layout, renderer');
+    // ---- A3/A2: load, layout, landscape ----
+    console.log(`\nDRIFT device smoke test (C04 — feel) — ${URL_UNDER_TEST}\n`);
+    console.log('A3/A2 — load, layout, landscape presentation');
     await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
     await waitForScene();
     const renderer = await page.evaluate(() => { const gl = document.createElement('canvas').getContext('webgl2'); const i = gl?.getExtension('WEBGL_debug_renderer_info'); return i ? gl.getParameter(i.UNMASKED_RENDERER_WEBGL) : 'unknown'; });
@@ -190,18 +247,31 @@ async function main() {
     await startFresh();
 
     const booted = await page.evaluate(() => { const s = window.__drift.state(); return { canvas: !!document.getElementById('game-canvas'), nodes: s.nodes.length, thirst: s.thirst, hunger: s.hunger, health: s.health }; });
-    check('loads a playable 3D scene with the three new vitals full', booted.canvas && booted.nodes > 0 && booted.thirst > 98 && booted.hunger > 98 && booted.health === 100, `${booted.nodes} nodes`);
+    check('loads a playable 3D scene with the three vitals full', booted.canvas && booted.nodes > 0 && booted.thirst > 98 && booted.hunger > 98 && booted.health === 100, `${booted.nodes} nodes`);
 
-    const layout = await page.evaluate(() => { const c = document.getElementById('game-canvas'); const r = c.getBoundingClientRect(); return { fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1, touch: getComputedStyle(document.body).touchAction, vp: document.querySelector('meta[name=viewport]')?.content ?? '' }; });
+    const layout = await page.evaluate(() => { const c = document.getElementById('game-canvas'); const r = c.getBoundingClientRect(); return { fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1, landscape: window.innerWidth >= window.innerHeight, touch: getComputedStyle(document.body).touchAction, vp: document.querySelector('meta[name=viewport]')?.content ?? '' }; });
     check('canvas fills the viewport, no pinch/zoom trap', layout.fits && layout.touch === 'none' && /user-scalable=no/.test(layout.vp));
-    await shot('c03-01-coldopen');
+    check('presented in landscape, edge to edge (safe-area aware)', layout.landscape && /viewport-fit=cover/.test(layout.vp));
+
+    //  A2 — the app manifest and the rotate prompt: the phone-disappears kit (D-041).
+    const pwa = await page.evaluate(async () => {
+        const link = document.querySelector('link[rel=manifest]');
+        const rotate = !!document.getElementById('rotate-prompt');
+        let manifest = null;
+        try { manifest = await (await fetch(link.href)).json(); } catch { /* ignore */ }
+        return { linked: !!link, rotate, orientation: manifest?.orientation, display: manifest?.display };
+    });
+    check('a landscape web-app manifest is linked', pwa.linked && pwa.orientation === 'landscape', `orientation ${pwa.orientation}, display ${pwa.display}`);
+    check('a rotate-to-landscape prompt exists for portrait', pwa.rotate);
+
+    await shot('c04-01-coldopen');
     check('the cold open shows on a fresh run', await panelOpen());
     check('the cold open dismisses', await clickDom('.cold-open button'));
     await sleep(800);
-    await shot('c03-02-island');
+    await shot('c04-02-island');
 
     // ---- A6: grounding + colliders ----
-    console.log('\nA6 — ground truth (grounding + colliders)');
+    console.log('\nA6 — ground truth (grounding + colliders + camera never clips)');
     const grounding = await page.evaluate(() => {
         const s = window.__drift.state();
         const feetY = window.__drift.playerFeetY();
@@ -214,81 +284,164 @@ async function main() {
 
     //  Collider: walk straight into a tree and confirm the player stops short of its trunk.
     const tree = await nodeOf('tree');
-    await approach(tree.x, tree.y, 22); // gets within reach but not into the trunk
-    //  Now push hard toward the tree centre for a couple of seconds.
+    await approach(tree.x, tree.y, 22);
     await walkToward(tree.x, tree.y, 2.0);
     const afterPush = await live();
     const gap = Math.hypot(afterPush.player.x - tree.x, afterPush.player.y - tree.y);
     check('a tree collider stops the player (cannot walk through it)', gap > 0.6, `${gap.toFixed(2)} m from the trunk`);
-    await shot('c03-03-treeline');
 
-    // ---- A4/A7: the pressure loop ----
-    console.log('\nA4/A7 — the pressure loop');
+    //  Camera never dives under the ground while orbiting (A6, D-040 #1 territory).
+    let camMinAboveGround = Infinity;
+    for (let i = 0; i < 6; i++) {
+        const rect = await canvasRect();
+        const cx = rect.left + rect.width * 0.72;
+        const cy = rect.top + rect.height * 0.4;
+        await page.touchscreen.touchStart(cx, cy);
+        await page.touchscreen.touchMove(cx + 120, cy + 30);
+        await page.touchscreen.touchMove(cx + 220, cy + 60);
+        await page.touchscreen.touchEnd();
+        await sleep(120);
+        const g = await page.evaluate(() => { const c = window.__driftScene.activeCamera.position; return c.y - window.__drift.groundAt(c.x, c.z); });
+        camMinAboveGround = Math.min(camMinAboveGround, g);
+    }
+    check('the camera stays above the ground through a full orbit (never clips)', camMinAboveGround > 0.2, `min ${camMinAboveGround.toFixed(2)} m above ground`);
+    await shot('c04-03-treeline');
 
-    //  Gather the axe recipe by hand: wood (deadfall), stone (rock), fibre (palm).
+    // ================================================================
+    // C04 REGRESSIONS — one per director defect in D-040
+    // ================================================================
+    console.log('\nD-040 — the five director defects, root-caused and locked');
+
+    //  #3/#4 THE FIRE: fresh run, broad DAYLIGHT, no axe, exactly the wood for a fire and
+    //  nothing else. In C03 this hid Build-fire behind Craft-axe. It must not, ever again.
+    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
+    const clockNow = await page.evaluate(() => document.querySelector('.clock')?.textContent ?? '');
+    const isDaytime = /^(0[6-9]|1[0-7]):/.test(clockNow);
+    check('REGRESSION #3/#4 setup — it is broad daylight, no axe, 5 wood', isDaytime, `clock ${clockNow}`);
+    const fireAction = await actionText();
+    check('REGRESSION #3/#4 — "Build fire" IS the primary action (not hidden by Craft)', !!fireAction && /build fire/i.test(fireAction.text) && fireAction.shown && fireAction.ready, fireAction ? `"${fireAction.text}" ready=${fireAction.ready}` : 'no action');
+    await shot('c04-04-buildfire-daylight');
+    await clickDom('.action');
+    await sleep(500);
+    const fireState = await live();
+    check('REGRESSION #3/#4 — building the fire works in daylight, pre-axe', fireState.fire.built === true && fireState.inventory.wood === 0, `built ${fireState.fire.built}, wood ${fireState.inventory.wood}`);
+
+    //  #2 FIBRE SOURCING: reeds are an obvious, tappable fibre source (D-043).
+    await startFresh();
+    await clickDom('.cold-open button');
+    await sleep(500);
+    const fiberBefore = (await live()).inventory.fiber;
+    const reed = await harvest('reed');
+    check('REGRESSION #2 — reeds are a plain-tap fibre source', reed.ok, reed.reason ?? '');
+    const afterReed = await live();
+    check('REGRESSION #2 — a reed clump yields reedFiberYield fibre', afterReed.inventory.fiber - fiberBefore === TUNE.reedFiberYield, `+${afterReed.inventory.fiber - fiberBefore}`);
+
+    //  #1 CAMERA/LOOK WHILE MOVING: drag-look responds, and moving + looking at once holds
+    //  the p95 frame budget (no jank — the felt half of "smooth").
+    const yawBefore = (await camera()).yaw;
+    const rect0 = await canvasRect();
+    const dragX = rect0.left + rect0.width * 0.75, dragY = rect0.top + rect0.height * 0.4;
+    await page.touchscreen.touchStart(dragX, dragY);
+    await page.touchscreen.touchMove(dragX + 160, dragY);
+    await page.touchscreen.touchMove(dragX + 300, dragY);
+    await page.touchscreen.touchEnd();
+    await sleep(400);
+    const yawAfter = (await camera()).yaw;
+    check('REGRESSION #1 — the look drag turns the camera', Math.abs(yawAfter - yawBefore) > 0.05, `Δyaw ${(yawAfter - yawBefore).toFixed(3)} rad`);
+
+    //  Move and look simultaneously for a couple of seconds, then read the jank metric.
+    {
+        const rect = await canvasRect();
+        const sx = rect.left + rect.width * 0.2, sy = rect.top + rect.height * 0.72;
+        const lx = rect.left + rect.width * 0.78, ly = rect.top + rect.height * 0.4;
+        await page.touchscreen.touchStart(sx, sy);              // left thumb: walk
+        await page.touchscreen.touchMove(sx, sy - 60);
+        for (let i = 0; i < 8; i++) {                           // right thumb: sweep look
+            await page.touchscreen.touchStart(lx, ly);
+            await page.touchscreen.touchMove(lx + 80, ly + (i % 2 ? 20 : -20));
+            await page.touchscreen.touchEnd();
+            await sleep(180);
+        }
+        await page.touchscreen.touchEnd();
+        await sleep(200);
+    }
+    const jank = await fps();
+    if (software && !SOFTWARE) {
+        check('REGRESSION #1 — p95 frame time measured on a real GPU', false, `renderer is ${renderer} — pass --software to accept a meaningless number`);
+    } else if (software) {
+        check('REGRESSION #1 — p95 frame time measured (SOFTWARE, not a verdict)', jank.samples > 40, `p95 ${jank.p95FrameMs} ms under SwiftShader`);
+    } else {
+        check(`REGRESSION #1 — p95 frame time ≤ budget (${TUNE.frameTimeP95BudgetMs} ms) while moving + looking`, jank.p95FrameMs <= TUNE.frameTimeP95BudgetMs, `p95 ${jank.p95FrameMs} ms, median ${jank.median} fps`);
+    }
+
+    //  #5 THE AXE DOES SOMETHING: with the axe, tapping a standing tree fells it (below).
+
+    // ---- A4/A7: the pressure loop, through the new direct-world verbs ----
+    console.log('\nA4/A7 — the pressure loop (tap the thing to use the thing)');
+
+    await startFresh();
+    await clickDom('.cold-open button');
+    await sleep(400);
+
     const dead = await harvest('deadfall');
-    check('deadfall gives wood by hand', dead.ok);
+    check('deadfall gives wood by tap-and-walk', dead.ok, dead.reason ?? '');
     const rock = await harvest('rock');
     const palm = await harvest('coconutpalm');
-    let inv = (await live()).inventory;
+    const inv = (await live()).inventory;
     check('a rock outcrop gives stone', inv.stone >= 1, `stone ${inv.stone}`);
-    check('a coconut palm gives coconut and fibre', inv.coconut >= 1 && inv.fiber >= 1, `coconut ${inv.coconut}, fibre ${inv.fiber}`);
+    check('a coconut palm gives coconut and husk fibre', inv.coconut >= 1 && inv.fiber >= 1, `coconut ${inv.coconut}, fibre ${inv.fiber}`);
     void rock; void palm;
 
-    //  Top up to the recipe deterministically (foraging exact counts by touch is flaky),
-    //  then craft the axe through the card — the four gates.
+    //  Craft the axe through the card, now reached by its own secondary button.
     await editSave('state.inventory.wood = 3; state.inventory.stone = 2; state.inventory.fiber = 2;');
-    check('the craft-axe action is offered once the parts are in hand', await clickDom('.action'));
+    check('the Craft button opens the card', await clickDom('.secondary-action'));
     await sleep(400);
-    await shot('c03-04-craftcard');
-    check('the craft card is a panel with the gates', await page.$('.craft .gates') !== null);
+    await shot('c04-05-craftcard');
+    check('the craft card shows the gates with source hints', await page.$('.craft .gates') !== null);
     check('the axe can be made', await clickDom('.craft .craft-btn'));
     await sleep(600);
     const afterCraft = await live();
     check('the axe is crafted and the parts spent', afterCraft.tools.axe === true && afterCraft.inventory.wood === 0, `axe ${afterCraft.tools.axe}`);
     check('the craft was traced', afterCraft.trace.msToFirstCraft !== null);
 
-    //  Fell a standing tree — axe only, big yield.
+    //  #5 — fell a standing tree with the axe (the verb the axe unlocks, made discoverable).
     const woodBeforeFell = (await live()).inventory.wood;
-    const felled = await harvest('tree', 4600);
-    check('a standing tree can be felled with the axe', felled.ok, felled.reason ?? '');
+    const felled = await harvest('tree', 34);
+    check('REGRESSION #5 — a standing tree can be felled with the axe (the axe DOES something)', felled.ok, felled.reason ?? '');
     const afterFell = await live();
     check('the felled tree yields timber (treeWoodYield)', afterFell.inventory.wood - woodBeforeFell === TUNE.treeWoodYield, `+${afterFell.inventory.wood - woodBeforeFell}`);
     check('felling trains woodcutting', afterFell.skills.woodcutting.xp > 0 || afterFell.skills.woodcutting.level > 1);
-    await shot('c03-05-felled');
+    await shot('c04-06-felled');
 
-    //  Open the sealed crash box — first loot.
-    const box = await harvest('crashbox', 2400);
-    check('the sealed crash box opens with the axe', box.ok);
+    //  Open the sealed crash box — first loot, axe-gated.
+    const box = await harvest('crashbox', 40);
+    check('the sealed crash box opens with the axe', box.ok, box.reason ?? '');
     const afterBox = await live();
     check('the box yields the flask and fibre', afterBox.tools.flask === true && afterBox.inventory.fiber > afterCraft.inventory.fiber, `flask ${afterBox.tools.flask}`);
 
-    //  Drink at the pond: get thirsty first (save surgery), then walk to the pond and drink.
+    //  Drink at the pond by TAPPING the water (no button).
     await editSave('state.thirst = 40;');
-    const pond = await page.evaluate(() => { const s = window.__drift; return s ? null : null; });
-    void pond;
     const POND = { x: -22, y: 8 };
     const thirstBeforeDrink = (await live()).thirst;
     let atPondDist = await approach(POND.x, POND.y, 40);
-    if (atPondDist > 11) atPondDist = await approach(POND.x, POND.y, 20); // one more push through the trees
-    const reached = (() => { return atPondDist; })();
-    check('the pond bank is reachable on foot', reached <= 11, `${reached.toFixed(1)} m from the water`);
-    check('drinking at the pond is offered when close', await clickDom('.action'));
-    await sleep(400);
+    if (atPondDist > 11) atPondDist = await approach(POND.x, POND.y, 20);
+    check('the pond bank is reachable on foot', atPondDist <= 11, `${atPondDist.toFixed(1)} m from the water`);
+    await faceNode(POND.x, POND.y);
+    await tapWorld(POND.x, POND.y, 55);
+    await sleep(1400); // a few auto-sips while standing in the water
     const afterDrink = await live();
-    check('drinking restores thirst', afterDrink.thirst > thirstBeforeDrink + 1, `${thirstBeforeDrink.toFixed(1)} → ${afterDrink.thirst.toFixed(1)}`);
+    check('tapping the pond drinks and restores thirst', afterDrink.thirst > thirstBeforeDrink + 1, `${thirstBeforeDrink.toFixed(1)} → ${afterDrink.thirst.toFixed(1)}`);
     check('the first drink was traced', afterDrink.trace.msToFirstDrink !== null);
-    await shot('c03-06-pond');
+    await shot('c04-07-pond');
 
-    //  Eat: get hungry, forage a berry within reach or grant one, then eat.
-    //  Away from the pond, thirst full and flask empty, so the secondary button is Eat
-    //  (not Fill flask / Drink flask — those outrank eating when they apply).
-    await editSave('state.player = { x: 0, y: 104 }; state.thirst = 100; state.tools.flaskSips = 0; state.hunger = 40; state.inventory.berries = 2;');
+    //  Eat by TAPPING a food chip in the pack (eating is not a world object).
+    await editSave('state.player = { x: 0, y: 104 }; state.thirst = 100; state.hunger = 40; state.inventory.berries = 2;');
     const hungerBeforeEat = (await live()).hunger;
-    check('an Eat action appears when hungry with food', await clickDom('.secondary-action'));
+    check('a tappable food chip is shown when carrying food', await page.$('.chip.food[data-food="berries"]') !== null);
+    await clickDom('.chip.food[data-food="berries"]');
     await sleep(300);
     const afterEat = await live();
-    check('eating restores hunger', afterEat.hunger > hungerBeforeEat, `${hungerBeforeEat} → ${afterEat.hunger}`);
+    check('tapping the food chip eats and restores hunger', afterEat.hunger > hungerBeforeEat, `${hungerBeforeEat} → ${afterEat.hunger}`);
 
     //  The idle hint fires and is contextual.
     const hintsBefore = await page.evaluate(() => window.__drift.hints().shown);
@@ -298,11 +451,10 @@ async function main() {
 
     // ---- A4: death and respawn ----
     console.log('\nA4 — death and respawn (active play can kill)');
-    //  Set every vital empty with a sliver of health, then a tick should kill and respawn.
     await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');
-    await sleep(1600); // the render loop ticks; health runs out fast
+    await sleep(3200); // the render loop ticks health from a sliver to zero — give it room
     const deathShowing = await panelOpen();
-    await shot('c03-07-death'); // after the panel is confirmed up, so the image shows it
+    await shot('c04-08-death');
     check('a death overlay appears when health runs out in play', deathShowing);
     const dying = await live();
     check('the death was counted and a cause recorded', dying.trace.deaths >= 1 && dying.lastDeathCause !== null, `cause: ${dying.lastDeathCause}`);
@@ -315,7 +467,7 @@ async function main() {
     console.log('\nA4 — absence and the vitals report');
     await editSave('state.thirst = 60; state.hunger = 55;');
     const beforeAway = await goAway(4);
-    await shot('c03-08-report');
+    await shot('c04-09-report');
     check('the morning report is on screen', await panelOpen());
     const reopened = await live();
     const gh = reopened.gameHoursElapsed - beforeAway.gameHoursElapsed;
@@ -335,7 +487,7 @@ async function main() {
     } else if (software) {
         check('frame rate measured (SOFTWARE — not a verdict on A3)', frame.samples > 60, `median ${frame.median} fps under SwiftShader`);
     } else {
-        check(`median frame rate ≥ floor (${TUNE.fpsFloorMedian}) on the bigger island`, frame.median >= TUNE.fpsFloorMedian, `median ${frame.median} fps, 1% low ${frame.onePercentLow} fps`);
+        check(`median frame rate ≥ floor (${TUNE.fpsFloorMedian})`, frame.median >= TUNE.fpsFloorMedian, `median ${frame.median} fps, 1% low ${frame.onePercentLow} fps, p95 ${frame.p95FrameMs} ms`);
     }
 
     const beforeHide = await live();
@@ -349,7 +501,7 @@ async function main() {
     check('state survives backgrounding, clock kept running', afterHide.inventory.wood === beforeHide.inventory.wood && afterHide.gameHoursElapsed >= beforeHide.gameHoursElapsed);
 
     const cold = await browser.newPage();
-    await cold.setViewport({ width: 412, height: 915, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await cold.setViewport({ width: 915, height: 412, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const cdp = await cold.createCDPSession();
     await cdp.send('Network.enable');
     await cdp.send('Network.clearBrowserCache');
@@ -359,7 +511,7 @@ async function main() {
     await cold.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: 90_000 });
     const coldMs = Date.now() - t0;
     await cold.close();
-    check(`cold 4G load within ${TUNE.coldLoadBudgetSeconds} s (bigger island)`, coldMs <= TUNE.coldLoadBudgetSeconds * 1000, `${coldMs} ms`);
+    check(`cold 4G load within ${TUNE.coldLoadBudgetSeconds} s`, coldMs <= TUNE.coldLoadBudgetSeconds * 1000, `${coldMs} ms`);
 
     // ---- Hygiene ----
     console.log('\nHygiene');

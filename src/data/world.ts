@@ -111,6 +111,14 @@ export function createNodes(): WoodNode[] {
         node('cp1', 'coconutpalm', -40, 52),
         node('cp2', 'coconutpalm', 36, 48),
 
+        // Reeds — tap, fibre. The OBVIOUS fibre source (D-043): clustered at the pond's edge
+        // where the ground is wet, and a few scattered along the way inland.
+        node('rd1', 'reed', POND.x + 8, POND.y + 4),
+        node('rd2', 'reed', POND.x - 6, POND.y + 7),
+        node('rd3', 'reed', POND.x + 3, POND.y - 8),
+        node('rd4', 'reed', -18, 62),
+        node('rd5', 'reed', 16, 58),
+
         // Berry bushes — tap, in the grass.
         node('bb1', 'berrybush', -14, 40),
         node('bb2', 'berrybush', 18, 36),

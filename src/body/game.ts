@@ -1,10 +1,13 @@
 /**
- * BODY — the game: the render loop, the camera rig, collision, and the wiring between a
- * touch and the brain that decides what it means.
+ * BODY — the game: the render loop, a camera that glides, and a world you touch directly.
  *
- * Every rule this file obeys comes from `/src/brain`. Cycle 03 adds a lot of verbs — drink,
- * eat, forage, craft, chop, open the box, die and wake — but each is the same shape: the
- * body asks the brain, the brain answers, the body draws it and plays a cue.
+ * Cycle 04 is the feel cycle. Every rule still comes from `/src/brain`; what changed is
+ * how a touch reaches it. The Cycle 03 verbs lived in a prioritized HUD button stack, which
+ * starved "Build fire" whenever "Craft axe" applied (wood is both fire fuel and an axe
+ * part) — the root cause of the director's "fire won't build until night/axe" (D-040/D-042).
+ * The fix is architectural: **tap the thing to use the thing.** In range it acts; out of
+ * range the castaway walks there and then acts. Buttons survive only for placement (Build
+ * fire), the craft card, and settings. Every blocked interaction says why.
  */
 
 import { Engine } from '@babylonjs/core/Engines/engine';
@@ -20,13 +23,11 @@ import {
     canBuildFire,
     canCraftAxe,
     canDrinkAtPond,
-    canDrinkFlask,
     canFeedFire,
     canFillFlask,
     craftAxe,
     distance,
     drinkAtPond,
-    drinkFlask,
     eat,
     feedFire,
     fillFlask,
@@ -40,10 +41,11 @@ import {
     timeOfDay,
     type Food,
     type GatherResult,
-    type MorningReport
+    type MorningReport,
+    type NodeKind
 } from '../brain';
 import { TUNE } from '../data/tune';
-import { COLD_OPEN, POND, WALKABLE_RADIUS, WRECK } from '../data/world';
+import { COLD_OPEN, POND, WALKABLE_RADIUS } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { Controls } from './controls';
 import { FireView, NodeViews, PlayerView, type NodeView } from './entities';
@@ -51,6 +53,7 @@ import {
     addSettingsButton,
     Hud,
     levelToast,
+    pickupToast,
     showColdOpen,
     showCraftCard,
     showDeath,
@@ -60,6 +63,26 @@ import {
 import { Island } from './island';
 import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session } from './runtime';
 import { RENDER } from './theme';
+
+/** What the player has tapped and wants to reach, if anything. */
+type Pending =
+    | { kind: 'node'; id: string }
+    | { kind: 'fire' }
+    | { kind: 'pond' }
+    | null;
+
+/** Human names for the first-pickup toasts (D-043). */
+const KIND_LABEL: Partial<Record<NodeKind, string>> = {
+    driftwood: 'Driftwood',
+    deadfall: 'Deadfall — firewood',
+    tree: 'Timber',
+    rock: 'Stone',
+    berrybush: 'Berries — food',
+    coconutpalm: 'Coconut & husk fibre',
+    reed: 'Reeds — fibre for the axe',
+    shellfish: 'Shellfish — food',
+    crashbox: 'Salvage'
+};
 
 export class Game {
     private engine: Engine;
@@ -73,18 +96,29 @@ export class Game {
     private controls: Controls;
     private cues = new Cues();
 
+    //  Camera orbit: the drag updates the *target*; the actual angle chases it (smoothed).
     private yaw = Math.PI;
     private pitch = 0.28;
+    private targetYaw = Math.PI;
+    private targetPitch = 0.28;
     private facing = Math.PI;
+    private camPos = new Vector3(0, 5, -6);
+    private camTarget = new Vector3(0, 2, 0);
+    private camReady = false;
 
+    //  Movement carries momentum now — acceleration, not instant velocity.
+    private velX = 0;
+    private velZ = 0;
+
+    //  Direct-world interaction: where the tap wants to go, and any auto-hold in progress.
+    private pending: Pending = null;
     private holdNodeId: string | null = null;
     private holdStartedAt = 0;
-    private drinkHolding = false;
-    private drinkAccumMs = 0;
+    private pondDrinkAccumMs = 0;
+    private pickedUpKinds = new Set<NodeKind>();
 
     private lastActivityAt = now();
     private lastFrameAt = now();
-    private consecutiveFailures = 0;
     private lookSensitivity: number = TUNE.lookSensitivity;
     private deathShown = false;
 
@@ -113,12 +147,17 @@ export class Game {
         this.nodes = new NodeViews(this.scene, state.nodes, (x, z) => this.island.heightAt(x, z));
         this.lookSensitivity = readSensitivity();
 
-        this.hud = new Hud(this.overlay, () => this.onPrimaryAction(), () => this.onSecondaryAction());
+        this.hud = new Hud(
+            this.overlay,
+            () => this.onBuildFire(),
+            () => this.openCraftCard(),
+            (food) => this.onEatFood(food)
+        );
         addSettingsButton(this.overlay, () => this.openSettings());
 
         this.controls = new Controls(this.canvas, this.overlay, {
-            onPressWorld: (x, y) => this.onPressWorld(x, y),
-            onReleaseWorld: () => this.onReleaseWorld(),
+            onPressWorld: () => false, //  No press-claim: everything is a tap or the stick now.
+            onReleaseWorld: () => {},
             onTap: (x, y) => this.onTap(x, y),
             onActivity: () => { this.lastActivityAt = now(); this.cues.unlock(); }
         });
@@ -174,14 +213,14 @@ export class Game {
             grantControl();
             this.cues.unlock();
             this.lastActivityAt = now();
-            this.showHint('Driftwood on the sand. Walk over and take it.');
+            this.showHint('Tap the driftwood on the sand. You will walk over and take it.');
         });
     }
 
     private openReport(report: MorningReport): void {
         runtime.panelOpen = true;
         this.controls.releaseAll();
-        this.cancelHold();
+        this.clearPending();
         grantControl();
         showMorningReport(this.overlay, report, () => {
             runtime.panelOpen = false;
@@ -196,7 +235,7 @@ export class Game {
         if (runtime.panelOpen) return;
         runtime.panelOpen = true;
         this.controls.releaseAll();
-        this.cancelHold();
+        this.clearPending();
         showSettings(this.overlay, this.lookSensitivity,
             (value) => { this.lookSensitivity = value; writeSensitivity(value); },
             () => { runtime.panelOpen = false; this.lastActivityAt = now(); });
@@ -225,142 +264,183 @@ export class Game {
         return null;
     }
 
-    private pickedPond(screenX: number, screenY: number): boolean {
+    private pickHitPoint(screenX: number, screenY: number): { x: number; z: number } | null {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
-        if (hit?.hit && hit.pickedMesh?.metadata?.pond) return true;
-        if (hit?.hit && hit.pickedPoint) return distance(hit.pickedPoint.x, hit.pickedPoint.z, POND.x, POND.y) <= POND.radius + TUNE.pondTapSlack;
-        return false;
-    }
-
-    private pickedFire(screenX: number, screenY: number): boolean {
-        const state = session().state;
-        if (!state.fire.built) return false;
-        const rect = this.canvas.getBoundingClientRect();
-        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
-        if (hit?.hit && hit.pickedMesh?.metadata?.fire) return true;
-        if (hit?.hit && hit.pickedPoint) return distance(hit.pickedPoint.x, hit.pickedPoint.z, state.fire.x, state.fire.y) <= TUNE.fireTapRadius;
-        return false;
-    }
-
-    // ---- Input -----------------------------------------------------------
-
-    /** A press claims the gesture only if it starts a hold — a deadfall/tree/rock/palm salvage, or a drink. */
-    private onPressWorld(screenX: number, screenY: number): boolean {
-        if (runtime.panelOpen) return false;
-
-        //  Holding on the pond, while close and thirsty, drinks.
-        if (this.pickedPond(screenX, screenY) && canDrinkAtPond(session().state)) {
-            this.drinkHolding = true;
-            this.drinkAccumMs = 0;
-            this.cues.startBed(CUES.gather);
-            return true;
+        if (hit?.hit && hit.pickedMesh?.metadata?.pond) return { x: POND.x, z: POND.y };
+        if (hit?.hit && hit.pickedMesh?.metadata?.fire) {
+            const f = session().state.fire;
+            return { x: f.x, z: f.y };
         }
-
-        const view = this.pickNode(screenX, screenY);
-        if (!view) return false;
-        if (nodeSpec(view.node.kind).interaction !== 'hold') return false;
-        if (!this.inReach(view)) return false;
-        if (nodeSpec(view.node.kind).needsAxe && !session().state.tools.axe) {
-            this.registerFailure('You need an axe for that.');
-            return false;
-        }
-
-        this.holdNodeId = view.node.id;
-        this.holdStartedAt = now();
-        this.cues.play(CUES.target);
-        this.cues.startBed(CUES.gather);
-        return true;
+        return hit?.hit && hit.pickedPoint ? { x: hit.pickedPoint.x, z: hit.pickedPoint.z } : null;
     }
 
-    private onReleaseWorld(): void {
-        this.cancelHold();
-    }
+    // ---- The tap — the one input path ------------------------------------
 
+    /**
+     * A tap sets an intention. The frame loop walks the castaway to it and acts on arrival.
+     * A tap that lands on nothing interactive is a look-around, not a failure.
+     */
     private onTap(screenX: number, screenY: number): void {
         if (runtime.panelOpen) return;
         this.lastActivityAt = now();
 
-        if (this.pickedFire(screenX, screenY)) { this.tryFeedFire(); return; }
-
-        const view = this.pickNode(screenX, screenY);
-        if (!view) return; // empty ground / look
-
-        if (!this.inReach(view)) { this.registerFailure('Too far. Walk closer, then tap it.'); return; }
-
-        const spec = nodeSpec(view.node.kind);
-        if (spec.needsAxe && !session().state.tools.axe) {
-            this.registerFailure(view.node.kind === 'crashbox' ? 'The box is sealed. You need an axe.' : 'You need an axe for that.');
+        //  A node under (or near) the finger wins.
+        const node = this.pickNode(screenX, screenY);
+        if (node) {
+            this.pending = { kind: 'node', id: node.node.id };
+            this.cues.play(CUES.target);
             return;
         }
-        if (spec.interaction === 'tap') {
+
+        //  Otherwise, the fire or the pond, by the point the ray struck.
+        const point = this.pickHitPoint(screenX, screenY);
+        if (!point) return;
+
+        const s = session().state;
+        if (s.fire.built && distance(point.x, point.z, s.fire.x, s.fire.y) <= TUNE.fireTapRadius + 1.5) {
+            this.pending = { kind: 'fire' };
+            this.cues.play(CUES.target);
+            return;
+        }
+        if (distance(point.x, point.z, POND.x, POND.y) <= POND.radius + TUNE.pondTapSlack + 1.5) {
+            this.pending = { kind: 'pond' };
+            this.cues.play(CUES.target);
+            return;
+        }
+        //  Empty ground: just look there. No pending.
+    }
+
+    /** The world point a pending interaction wants to reach. */
+    private pendingTarget(): { x: number; z: number } | null {
+        if (!this.pending) return null;
+        if (this.pending.kind === 'node') {
+            const view = this.nodes.find(this.pending.id);
+            return view && view.node.available ? { x: view.node.x, z: view.node.y } : null;
+        }
+        if (this.pending.kind === 'fire') {
+            const f = session().state.fire;
+            return f.built ? { x: f.x, z: f.y } : null;
+        }
+        return { x: POND.x, z: POND.y }; // pond: aim at the centre; the reach check uses the bank
+    }
+
+    private clearPending(): void {
+        this.pending = null;
+        this.cancelHold();
+    }
+
+    /** True if the player is within reach of the pending target (pond measured to its bank). */
+    private pendingInReach(): boolean {
+        if (!this.pending) return false;
+        const s = session().state;
+        if (this.pending.kind === 'pond') return isAtPond(s);
+        const t = this.pendingTarget();
+        if (!t) return false;
+        return distance(s.player.x, s.player.y, t.x, t.z) <= TUNE.interactRadiusM;
+    }
+
+    // ---- Executing an arrived interaction --------------------------------
+
+    private actOnArrival(): void {
+        if (!this.pending) return;
+        const s = session().state;
+
+        if (this.pending.kind === 'fire') {
+            this.tryFeedFire();
+            this.pending = null;
+            return;
+        }
+
+        if (this.pending.kind === 'pond') {
+            if (canDrinkAtPond(s)) { this.doDrink(); }
+            else if (canFillFlask(s)) { this.doFillFlask(); this.pending = null; }
+            else { this.explain('The flask is full and so are you.'); this.pending = null; }
+            return; // drinking keeps the pending alive to allow repeat sips while held nearby
+        }
+
+        //  A node: tap-kind gathers at once; hold-kind starts an auto-hold (the castaway
+        //  works it), the LDOE "walk over and chop" beat.
+        const view = this.nodes.find(this.pending.id);
+        if (!view || !view.node.available) { this.pending = null; return; }
+
+        if (nodeSpec(view.node.kind).needsAxe && !s.tools.axe) {
+            this.explain(view.node.kind === 'crashbox' ? 'The box is sealed. You need an axe.' : 'You need an axe for that.');
+            this.pending = null;
+            return;
+        }
+
+        if (nodeSpec(view.node.kind).interaction === 'tap') {
             this.gather(view);
-        } else {
-            this.showHint(view.node.kind === 'crashbox' ? 'Press and hold the box to break it open.' : 'Press and hold to work it free.');
+            this.pending = null;
+        } else if (this.holdNodeId !== view.node.id) {
+            this.holdNodeId = view.node.id;
+            this.holdStartedAt = now();
+            this.cues.startBed(CUES.gather);
         }
     }
 
-    private inReach(view: NodeView): boolean {
+    private doDrink(): void {
+        //  A sip at most every ~600 ms of standing in the water, so a tap is one gulp and
+        //  loitering tops you up.
+        if (now() - this.pondDrinkAccumMs < 600) return;
+        this.pondDrinkAccumMs = now();
         const s = session().state;
-        return distance(s.player.x, s.player.y, view.node.x, view.node.y) <= TUNE.interactRadius;
+        if (drinkAtPond(s)) {
+            this.cues.play(CUES.drink);
+            session().markFirstDrink(msSinceControl());
+            session().persist(now());
+            this.lastActivityAt = now();
+        }
+        if (!canDrinkAtPond(s)) this.pending = null; // full
     }
 
-    // ---- Gathering -------------------------------------------------------
+    private doFillFlask(): void {
+        if (fillFlask(session().state)) {
+            this.cues.play(CUES.drink);
+            this.floatText('flask filled');
+            session().persist(now());
+            this.lastActivityAt = now();
+        }
+    }
 
     private cancelHold(): void {
         this.holdNodeId = null;
-        this.drinkHolding = false;
         this.nodes.hideHold();
         this.cues.stopBed(CUES.gather);
     }
 
     private stepHold(): void {
-        if (this.drinkHolding) { this.stepDrink(); return; }
         if (!this.holdNodeId) return;
-
         const view = this.nodes.find(this.holdNodeId);
-        if (!view || !view.node.available || !this.inReach(view)) { this.cancelHold(); return; }
-
+        if (!view || !view.node.available || distance(session().state.player.x, session().state.player.y, view.node.x, view.node.y) > TUNE.interactRadiusM) {
+            this.cancelHold();
+            return;
+        }
         const seconds = nodeHoldSeconds(session().state, view.node);
         const progress = Math.min(1, (now() - this.holdStartedAt) / (seconds * 1000));
         this.nodes.showHold(view, progress, this.island.heightAt(view.node.x, view.node.y));
-
         if (progress >= 1) {
             const done = view;
             this.cancelHold();
+            this.pending = null;
             this.gather(done);
-        }
-    }
-
-    private stepDrink(): void {
-        const s = session().state;
-        if (!canDrinkAtPond(s)) { this.cancelHold(); return; }
-        this.drinkAccumMs += now() - this.lastFrameAt < 0 ? 0 : Math.min(now() - this.lastFrameAt, 100);
-        //  A sip every ~700 ms of holding at the pond.
-        if (this.drinkAccumMs >= 700) {
-            this.drinkAccumMs = 0;
-            if (drinkAtPond(s)) {
-                this.cues.play(CUES.drink);
-                session().markFirstDrink(msSinceControl());
-                session().persist(now());
-                this.lastActivityAt = now();
-            }
-            if (!canDrinkAtPond(s)) this.cancelHold(); // full
         }
     }
 
     private gather(view: NodeView): void {
         const result = gatherNode(session().state, view.node.id);
         if (!result.ok) {
-            if (result.reason === 'need-axe') this.registerFailure('You need an axe for that.');
+            this.explain(result.reason === 'need-axe' ? 'You need an axe for that.' : 'Nothing there.');
             return;
         }
         this.nodes.sync(session().state);
         this.playGatherCue(result);
         this.floatText(this.gainLabel(result));
+        this.firstPickupToast(view.node.kind);
 
         if (result.gained.wood) session().markFirstWood(msSinceControl());
-        if (result.foundFlask) this.showHint('A water flask — fill it at the pond and carry a drink inland.');
+        if (result.foundFlask) this.showHint('A water flask — fill it at the pond, carry a drink inland.');
         if (result.levelsGained > 0 && result.skill) {
             const level = session().state.skills[result.skill].level;
             levelToast(this.overlay, result.skill === 'woodcutting' ? 'Woodcutting' : 'Foraging', level);
@@ -368,15 +448,21 @@ export class Game {
 
         session().persist(now());
         this.lastActivityAt = now();
-        this.consecutiveFailures = 0;
         this.hud.hideHint();
+    }
+
+    private firstPickupToast(kind: NodeKind): void {
+        if (this.pickedUpKinds.has(kind)) return;
+        this.pickedUpKinds.add(kind);
+        const label = KIND_LABEL[kind];
+        if (label) pickupToast(this.overlay, label);
     }
 
     private playGatherCue(result: GatherResult): void {
         const cue: CueKey =
             result.kind === 'tree' ? CUES.fell
             : result.kind === 'crashbox' ? CUES.unlock
-            : result.kind === 'driftwood' || result.kind === 'shellfish' || result.kind === 'berrybush' ? CUES.pickup
+            : result.kind === 'driftwood' || result.kind === 'shellfish' || result.kind === 'berrybush' || result.kind === 'reed' ? CUES.pickup
             : CUES.collected;
         this.cues.play(cue);
     }
@@ -394,60 +480,18 @@ export class Game {
         return parts.join('  ');
     }
 
-    // ---- The action buttons ---------------------------------------------
+    // ---- Buttons: placement and crafting only ----------------------------
 
-    private onPrimaryAction(): void {
+    /** Build fire — available whenever wood suffices, day OR night (the D-040/D-042 fix). */
+    private onBuildFire(): void {
         const s = session().state;
-        if (isAtPond(s) && canDrinkAtPond(s)) { if (drinkAtPond(s)) { this.cues.play(CUES.drink); session().markFirstDrink(msSinceControl()); session().persist(now()); } return; }
-        if (canCraftAxe(s) || (!s.tools.axe && (s.inventory.wood > 0 || s.inventory.stone > 0 || s.inventory.fiber > 0))) { this.openCraftCard(); return; }
-        if (!s.fire.built) { if (canBuildFire(s)) this.ignite(); else this.deniedFire(); return; }
-        this.tryFeedFire();
-    }
-
-    private onSecondaryAction(): void {
-        const s = session().state;
-        //  At the pond: fill the flask. Away: drink from a full flask, else eat.
-        if (canFillFlask(s)) { if (fillFlask(s)) { this.cues.play(CUES.drink); this.floatText('flask filled'); session().persist(now()); this.lastActivityAt = now(); } return; }
-        if (canDrinkFlask(s)) { if (drinkFlask(s)) { this.cues.play(CUES.drink); session().persist(now()); this.lastActivityAt = now(); } return; }
-        const food = this.bestFood();
-        if (food) { if (eat(s, food)) { this.cues.play(CUES.eat); this.floatText(`ate ${food}`); session().persist(now()); this.lastActivityAt = now(); } }
-    }
-
-    private bestFood(): Food | null {
-        const s = session().state;
-        if (s.hunger >= TUNE.hungerMax) return null;
-        if (s.inventory.shellfish > 0) return 'shellfish';
-        if (s.inventory.coconut > 0) return 'coconut';
-        if (s.inventory.berries > 0) return 'berries';
-        return null;
-    }
-
-    private openCraftCard(): void {
-        if (runtime.panelOpen) return;
-        runtime.panelOpen = true;
-        this.controls.releaseAll();
-        this.cancelHold();
-        const s = session().state;
-        showCraftCard(this.overlay, { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber },
-            () => {
-                runtime.panelOpen = false;
-                if (craftAxe(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the axe is yours');
-                    session().markFirstCraft(msSinceControl());
-                    session().persist(now());
-                    this.showHint('Now the standing trees — and that sealed box — will answer.');
-                }
-                this.lastActivityAt = now();
-            },
-            () => { runtime.panelOpen = false; this.lastActivityAt = now(); });
-    }
-
-    private ignite(): void {
-        const s = session().state;
+        if (!canBuildFire(s)) { this.deniedFire(); return; }
         const x = s.player.x + Math.sin(this.facing) * TUNE.fireBuildOffsetM;
         const z = s.player.y + Math.cos(this.facing) * TUNE.fireBuildOffsetM;
-        if (!buildFire(s, x, z)) return;
+        //  Clear-ground check: do not lay the fire inside a trunk or rock.
+        const dyn = this.nodes.obstacles();
+        const clear = this.island.resolveCollision(x, z, TUNE.fireCollisionRadius, dyn);
+        if (!buildFire(s, clear.x, clear.z)) return;
         this.fire.flare();
         this.cues.play(CUES.ignition);
         this.cues.startBed(CUES.fireloop);
@@ -473,14 +517,49 @@ export class Game {
         const s = session().state;
         this.cues.play(CUES.denied);
         const short = Math.max(0, TUNE.woodPerFire - s.inventory.wood);
-        this.showHint(s.fire.built ? 'No wood left. Fell a tree for more.' : `Not enough wood — ${short} more for a fire.`);
+        this.showHint(s.fire.built ? 'No wood to add. Fell a tree or gather more.' : `Not enough wood — ${short} more for a fire.`);
     }
 
-    private registerFailure(message: string): void {
+    private onEatFood(food: Food): void {
+        const s = session().state;
+        if (eat(s, food)) {
+            this.cues.play(CUES.eat);
+            this.floatText(`ate ${food}`);
+            session().persist(now());
+            this.lastActivityAt = now();
+        } else {
+            this.explain(s.hunger >= TUNE.hungerMax ? 'You are not hungry.' : `No ${food} to eat.`);
+        }
+    }
+
+    private openCraftCard(): void {
+        if (runtime.panelOpen) return;
+        runtime.panelOpen = true;
+        this.controls.releaseAll();
+        this.clearPending();
+        const s = session().state;
+        showCraftCard(this.overlay, { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber },
+            () => {
+                runtime.panelOpen = false;
+                if (craftAxe(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the axe is yours');
+                    session().markFirstCraft(msSinceControl());
+                    session().persist(now());
+                    this.showHint('Now tap a standing tree, or that sealed box, to use it.');
+                }
+                this.lastActivityAt = now();
+            },
+            () => { runtime.panelOpen = false; this.lastActivityAt = now(); });
+    }
+
+    // ---- Feedback --------------------------------------------------------
+
+    /** State the reason an interaction did not happen (D-042). */
+    private explain(message: string): void {
         session().markFailedTap();
-        this.consecutiveFailures += 1;
         this.cues.play(CUES.denied);
-        if (this.consecutiveFailures >= 2) { this.showHint(message); this.consecutiveFailures = 0; }
+        this.showHint(message);
     }
 
     private showHint(message: string): void {
@@ -511,26 +590,27 @@ export class Game {
         const stamp = now();
         const deltaMs = stamp - this.lastFrameAt;
         sampleFrame(deltaMs);
+        const dt = Math.min(deltaMs, 100) / 1000;
 
         const s = session();
         const died = s.tick(stamp);
         const state = s.state;
-
         if (died && !this.deathShown) this.openDeath();
 
         if (!runtime.panelOpen) {
-            this.stepMovement(Math.min(deltaMs, 100) / 1000);
+            this.stepMovement(dt);
+            this.stepInteraction();
             this.stepHold();
         }
 
-        this.updateCamera();
+        this.updateCamera(dt);
         this.island.update(state.gameHoursElapsed);
 
         const groundAtFire = state.fire.built ? this.island.heightAt(state.fire.x, state.fire.y) : 0;
         this.fire.update(state, groundAtFire, this.nightFactor(state.gameHoursElapsed));
 
         this.nodes.sync(state);
-        this.nodes.highlight(this.nearestInReach());
+        this.nodes.highlight(this.highlightTarget());
 
         this.paintHud(state);
         this.stepIdleHint();
@@ -542,68 +622,147 @@ export class Game {
         if (!runtime.sceneReady) runtime.sceneReady = true;
     }
 
+    /**
+     * Movement with momentum. The desired velocity comes from the stick (manual) or from
+     * walking to a pending target (auto). The actual velocity accelerates toward it, so
+     * starts and stops ease instead of snapping — half of what "smooth" means on a phone.
+     */
     private stepMovement(dt: number): void {
         const state = session().state;
         const stick = this.controls.read();
-        if (stick.magnitude <= 0) return;
 
-        const forward = new Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-        const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-        const move = forward.scale(-stick.y).add(right.scale(stick.x)).normalize().scale(TUNE.walkSpeedMps * stick.magnitude * dt);
+        let desiredX = 0;
+        let desiredZ = 0;
 
-        let x = state.player.x + move.x;
-        let z = state.player.y + move.z;
+        if (stick.magnitude > 0) {
+            //  Manual steering cancels any walk-to intention.
+            if (this.pending) this.clearPending();
+            const forward = new Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+            const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+            const dir = forward.scale(-stick.y).add(right.scale(stick.x));
+            const len = Math.hypot(dir.x, dir.z) || 1;
+            const speed = TUNE.walkSpeedMps * stick.magnitude;
+            desiredX = (dir.x / len) * speed;
+            desiredZ = (dir.z / len) * speed;
+        } else if (this.pending && !this.pendingInReach()) {
+            const t = this.pendingTarget();
+            if (t) {
+                const dx = t.x - state.player.x;
+                const dz = t.z - state.player.y;
+                const len = Math.hypot(dx, dz) || 1;
+                //  Ease off in the last metre so the castaway settles beside the target.
+                const speed = TUNE.walkSpeedMps * Math.min(1, len / 1.5);
+                desiredX = (dx / len) * speed;
+                desiredZ = (dz / len) * speed;
+            }
+        }
 
-        //  Collision: push out of trees, rocks, the box, and the fire pit (A6).
-        const dynamic = this.nodes.obstacles();
+        //  Accelerate toward the desired velocity (m/s²), rather than jumping to it.
+        const accel = TUNE.moveAccelMps2 * dt;
+        this.velX = approachScalar(this.velX, desiredX, accel);
+        this.velZ = approachScalar(this.velZ, desiredZ, accel);
+
+        const speedNow = Math.hypot(this.velX, this.velZ);
+        if (speedNow < 0.001) { this.velX = 0; this.velZ = 0; return; }
+
+        let x = state.player.x + this.velX * dt;
+        let z = state.player.y + this.velZ * dt;
+
+        const dyn = this.nodes.obstacles();
         const fireObstacle = this.fire.obstacle(state);
-        if (fireObstacle) dynamic.push(fireObstacle);
-        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dynamic);
+        if (fireObstacle) dyn.push(fireObstacle);
+        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dyn);
         x = resolved.x;
         z = resolved.z;
 
-        //  The sea is the edge of the world: slide along it rather than stop.
         const radius = Math.hypot(x, z);
         if (radius > WALKABLE_RADIUS) { const k = WALKABLE_RADIUS / radius; x *= k; z *= k; }
 
         state.player.x = x;
         state.player.y = z;
 
-        const heading = Math.atan2(move.x, move.z);
-        this.facing = turnToward(this.facing, heading, TUNE.turnRateDegPerSecond * dt);
+        //  Turn to face travel with a frame-rate-independent slerp — smoother than a fixed
+        //  degrees-per-second cap, and the second half of "smooth".
+        const heading = Math.atan2(this.velX, this.velZ);
+        this.facing = slerpAngle(this.facing, heading, TUNE.turnSlerpSpeed, dt);
 
         session().markFirstMove(msSinceControl());
         this.lastActivityAt = now();
-
-        if (this.holdNodeId) {
-            const view = this.nodes.find(this.holdNodeId);
-            if (view && !this.inReach(view)) this.cancelHold();
-        }
     }
 
-    private updateCamera(): void {
+    /** Once the walk-to has arrived, act. */
+    private stepInteraction(): void {
+        if (this.pending && this.pendingInReach()) this.actOnArrival();
+        else if (this.pending && !this.pendingTarget()) this.pending = null; // target vanished
+    }
+
+    private updateCamera(dt: number): void {
+        //  The drag moves a *target* angle; the actual angle chases it — smoothed look.
         if (!runtime.panelOpen) {
             const look = this.controls.takeLook(this.lookSensitivity);
-            this.yaw += look.yaw;
-            this.pitch = clamp(this.pitch + look.pitch, (TUNE.cameraPitchMinDeg * Math.PI) / 180, (TUNE.cameraPitchMaxDeg * Math.PI) / 180);
+            this.targetYaw += look.yaw;
+            this.targetPitch = clamp(this.targetPitch + look.pitch, (TUNE.cameraPitchMinDeg * Math.PI) / 180, (TUNE.cameraPitchMaxDeg * Math.PI) / 180);
         }
+        const lookA = frameLerp(TUNE.cameraLookSmoothing, dt);
+        this.yaw += shortestAngle(this.yaw, this.targetYaw) * lookA;
+        this.pitch += (this.targetPitch - this.pitch) * lookA;
 
         this.placePlayerFromState();
 
         const state = session().state;
         const groundY = this.island.heightAt(state.player.x, state.player.y);
-        const target = new Vector3(state.player.x, groundY + this.player.eyeHeight, state.player.y);
+        const desiredTarget = new Vector3(state.player.x, groundY + this.player.eyeHeight, state.player.y);
 
         const horizontal = Math.cos(this.pitch) * TUNE.cameraDistanceM;
         const height = Math.sin(this.pitch) * TUNE.cameraDistanceM + TUNE.cameraHeightM;
-        const desired = new Vector3(
+        let desired = new Vector3(
             state.player.x - Math.sin(this.yaw) * horizontal,
             groundY + height,
             state.player.y - Math.cos(this.yaw) * horizontal
         );
-        desired.y = Math.max(desired.y, this.island.heightAt(desired.x, desired.z) + 0.9);
-        this.camera.position.copyFrom(desired);
-        this.camera.setTarget(target);
+        desired = this.avoidCameraClip(desiredTarget, desired);
+
+        //  Damped follow: the camera glides after the player instead of being welded to it.
+        if (!this.camReady) { this.camPos.copyFrom(desired); this.camTarget.copyFrom(desiredTarget); this.camReady = true; }
+        const followA = frameLerp(TUNE.cameraFollowLerp, dt);
+        this.camPos = lerpVec(this.camPos, desired, followA);
+        this.camTarget = lerpVec(this.camTarget, desiredTarget, Math.min(1, followA * 1.6));
+
+        this.camera.position.copyFrom(this.camPos);
+        this.camera.setTarget(this.camTarget);
+    }
+
+    /**
+     * Keep the camera out of the terrain and off the far side of trunks/rocks — no clipping
+     * (A6). Analytic, not a raycast: shorten the boom until the point is clear of every
+     * obstacle and above ground, which is cheap and never tunnels.
+     */
+    private avoidCameraClip(target: Vector3, desired: Vector3): Vector3 {
+        const dir = desired.subtract(target);
+        const full = dir.length();
+        if (full < 0.01) return desired;
+        dir.scaleInPlace(1 / full);
+
+        const dyn = this.nodes.obstacles();
+        let dist = full;
+        for (let d = full; d >= 1.4; d -= 0.4) {
+            const px = target.x + dir.x * d;
+            const pz = target.z + dir.z * d;
+            const py = target.y + dir.y * d;
+            const groundClear = py > this.island.heightAt(px, pz) + 0.5;
+            let obstacleClear = true;
+            for (const o of this.island.staticObstacles) {
+                if ((px - o.x) ** 2 + (pz - o.z) ** 2 < (o.radius + 0.6) ** 2) { obstacleClear = false; break; }
+            }
+            if (obstacleClear) {
+                for (const o of dyn) {
+                    if ((px - o.x) ** 2 + (pz - o.z) ** 2 < (o.radius + 0.6) ** 2) { obstacleClear = false; break; }
+                }
+            }
+            if (groundClear && obstacleClear) { dist = d; break; }
+            dist = Math.max(1.4, d - 0.4);
+        }
+        return new Vector3(target.x + dir.x * dist, target.y + dir.y * dist, target.z + dir.z * dist);
     }
 
     private placePlayerFromState(): void {
@@ -611,10 +770,15 @@ export class Game {
         this.player.place(s.player.x, this.island.heightAt(s.player.x, s.player.y), s.player.y, this.facing);
     }
 
-    private nearestInReach(): NodeView | null {
+    /** The node to highlight: the pending one, else the nearest in reach. */
+    private highlightTarget(): NodeView | null {
+        if (this.pending?.kind === 'node') {
+            const v = this.nodes.find(this.pending.id);
+            if (v?.node.available) return v;
+        }
         const s = session().state;
         let best: NodeView | null = null;
-        let bestD: number = TUNE.interactRadius;
+        let bestD: number = TUNE.interactRadiusM;
         for (const view of this.nodes.views) {
             if (!view.node.available) continue;
             const d = distance(s.player.x, s.player.y, view.node.x, view.node.y);
@@ -633,44 +797,39 @@ export class Game {
 
     private paintHud(state: ReturnType<typeof session>['state']): void {
         const sheltered = isSheltered(state);
-        const atPond = isAtPond(state);
-        let goal: string;
-        let action = { label: '', visible: false, ready: false };
-        let secondary = { label: '', visible: false };
 
-        if (atPond && canDrinkAtPond(state)) {
-            action = { label: 'Drink', visible: true, ready: true };
-            goal = 'Fresh water. Hold to drink, or fill your flask.';
-        } else if (!state.tools.axe && canCraftAxe(state)) {
-            action = { label: 'Craft axe', visible: true, ready: true };
-            goal = 'You have the parts. Make the axe.';
-        } else if (!state.tools.axe && (state.inventory.wood + state.inventory.stone + state.inventory.fiber) > 0) {
-            const s = axeShortfall(state);
-            action = { label: 'Craft axe', visible: true, ready: false };
-            goal = `Axe needs ${s.wood} wood, ${s.stone} stone, ${s.fiber} fibre more.`;
-        } else if (!state.fire.built) {
+        //  Build fire: its OWN button, gated only on wood (day or night). It no longer
+        //  competes in a priority slot with Craft — the root cause of the C03 fire defect.
+        let action = { label: '', visible: false, ready: false };
+        if (!state.fire.built) {
             const short = Math.max(0, TUNE.woodPerFire - state.inventory.wood);
-            const ready = short === 0;
-            action = { label: ready ? 'Build fire' : `Build fire (${short} short)`, visible: state.inventory.wood > 0, ready };
-            goal = ready ? 'Enough wood. Build the fire.' : `Gather ${TUNE.woodPerFire} wood for a fire.`;
-        } else if (isFireLit(state)) {
-            action = { label: 'Add wood', visible: canFeedFire(state), ready: true };
-            goal = `Fire burning — about ${fireBurnHoursRemaining(state).toFixed(1)} game hours left.`;
-        } else {
-            action = { label: 'Add wood', visible: canFeedFire(state), ready: true };
-            goal = 'The fire is out. Add wood to bring it back.';
+            action = { label: short === 0 ? 'Build fire' : `Build fire (${short} short)`, visible: state.inventory.wood > 0, ready: short === 0 };
         }
 
-        //  Secondary: fill flask at the pond, drink flask away from it, or eat.
-        if (canFillFlask(state)) secondary = { label: 'Fill flask', visible: true };
-        else if (canDrinkFlask(state)) secondary = { label: 'Drink flask', visible: true };
-        else if (this.bestFood()) secondary = { label: 'Eat', visible: true };
+        //  Craft: its own button whenever the axe is not yet made.
+        let secondary = { label: '', visible: false };
+        if (!state.tools.axe) {
+            secondary = { label: canCraftAxe(state) ? 'Craft axe' : 'Craft…', visible: true };
+        }
 
         this.hud.update({
             warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health,
             sheltered, inventory: state.inventory, tools: state.tools,
-            gameHoursElapsed: state.gameHoursElapsed, goal, action, secondary, skills: state.skills
+            gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, secondary, skills: state.skills
         });
+    }
+
+    private goalLine(state: ReturnType<typeof session>['state']): string {
+        if (!state.tools.axe && !canCraftAxe(state)) {
+            const s = axeShortfall(state);
+            const needs = [s.wood && `${s.wood} wood`, s.stone && `${s.stone} stone`, s.fiber && `${s.fiber} fibre`].filter(Boolean).join(', ');
+            if (needs) return `For an axe, still need ${needs}. Tap things to gather.`;
+        }
+        if (!state.tools.axe && canCraftAxe(state)) return 'You have the parts — Craft the axe.';
+        if (!state.fire.built && state.inventory.wood >= TUNE.woodPerFire) return 'Enough wood. Build the fire.';
+        if (!state.fire.built) return `Gather ${TUNE.woodPerFire} wood, then build a fire.`;
+        if (isFireLit(state)) return `Fire burning — about ${fireBurnHoursRemaining(state).toFixed(1)} game hours left.`;
+        return 'The fire is out. Tap it to add wood.';
     }
 
     private stepIdleHint(): void {
@@ -682,13 +841,13 @@ export class Game {
 
     private contextualHint(): string {
         const s = session().state;
-        if (s.thirst <= TUNE.thirstLowHintAt) return 'You are thirsty. There is a pond inland, west of the trees.';
-        if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'You have food. Eat before hunger bites.';
+        if (s.thirst <= TUNE.thirstLowHintAt) return 'Thirsty. Tap the pond inland, west of the trees, to drink.';
+        if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';
-        if (!s.tools.axe) return 'Wood, stone, and fibre make an axe. Fibre comes from the palms.';
-        if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough. Build the fire.';
-        if (!s.fire.built) return 'Fell a tree for real timber, then build a fire.';
-        if (!isFireLit(s)) return 'The fire is out. Add wood.';
+        if (!s.tools.axe) return 'An axe needs wood, stone, and fibre. Reeds by the pond are fibre.';
+        if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough wood. Build the fire.';
+        if (!s.fire.built) return 'Tap a standing tree to chop it, then build a fire.';
+        if (!isFireLit(s)) return 'The fire is out. Tap it to add wood.';
         if (!isSheltered(s)) return 'Stand in the firelight to warm up.';
         return 'You are warming. Close the app — the island keeps the time.';
     }
@@ -699,13 +858,14 @@ export class Game {
         this.deathShown = true;
         runtime.panelOpen = true;
         this.controls.releaseAll();
-        this.cancelHold();
+        this.clearPending();
         this.cues.stopAllBeds();
         const s = session().state;
         showDeath(this.overlay, s.lastDeathCause ?? 'your wounds', s.trace.deaths, () => {
             runtime.panelOpen = false;
             this.deathShown = false;
             session().acknowledgeDeath(now());
+            this.velX = 0; this.velZ = 0;
             this.placePlayerFromState();
             this.lastFrameAt = now();
             this.lastActivityAt = now();
@@ -752,12 +912,31 @@ function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
 }
 
-function turnToward(from: number, to: number, maxDegrees: number): number {
-    const maxRadians = (maxDegrees * Math.PI) / 180;
-    let delta = to - from;
-    while (delta > Math.PI) delta -= Math.PI * 2;
-    while (delta < -Math.PI) delta += Math.PI * 2;
-    return from + clamp(delta, -maxRadians, maxRadians);
+/** Move a scalar toward a target by at most `maxStep`. */
+function approachScalar(value: number, target: number, maxStep: number): number {
+    const delta = target - value;
+    if (Math.abs(delta) <= maxStep) return target;
+    return value + Math.sign(delta) * maxStep;
 }
 
-void WRECK; // silhouette lives in island.ts; imported here only to keep world coords in one place
+/** The signed shortest angular difference from `from` to `to`, in radians. */
+function shortestAngle(from: number, to: number): number {
+    let d = to - from;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+}
+
+/** Frame-rate-independent lerp factor: at 60 fps it equals `perFrame`. */
+function frameLerp(perFrame: number, dt: number): number {
+    return 1 - Math.pow(1 - perFrame, dt * 60);
+}
+
+/** Slerp an angle toward a target at `rate` per second (frame-rate independent). */
+function slerpAngle(from: number, to: number, rate: number, dt: number): number {
+    return from + shortestAngle(from, to) * (1 - Math.exp(-rate * dt));
+}
+
+function lerpVec(a: Vector3, b: Vector3, t: number): Vector3 {
+    return new Vector3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+}

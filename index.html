@@ -6,6 +6,7 @@
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#0b1220" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -120,6 +121,10 @@
             padding: 2px 7px;
         }
         .chip.tool { color: #0c1420; background: var(--warm); border-color: #ffe6a3; }
+        /* Food chips are tappable — the direct-world "tap the thing to use it" for eating. */
+        .chip.food { pointer-events: auto; cursor: pointer; border-color: rgba(143, 191, 122, 0.55); }
+        .chip.food:active { transform: scale(0.94); }
+        .chip.food::after { content: " ·eat"; color: var(--dim); font-weight: 500; }
 
         .hud-bottom {
             position: absolute;
@@ -322,6 +327,7 @@
         }
         .gate.met { color: var(--good); border-color: rgba(143, 191, 122, 0.5); }
         .gate.unmet { color: var(--danger); }
+        .gate-hint { font-size: 12px; color: var(--dim); text-align: left; margin: -3px 4px 3px; }
         .death-count { color: var(--dim); font-size: 14px; }
 
         /* Level-up toast. */
@@ -344,6 +350,55 @@
         .level-toast.visible { opacity: 1; transform: translate(-50%, 0); }
         .level-toast strong { color: var(--warm); }
         .level-toast span { color: var(--dim); font-size: 13px; }
+
+        /* First-pickup identity toast — names a new resource once (D-043). */
+        .pickup-toast {
+            position: absolute;
+            left: 50%;
+            top: 22%;
+            transform: translate(-50%, -8px);
+            text-align: center;
+            padding: 10px 18px;
+            border-radius: 10px;
+            background: rgba(9, 14, 22, 0.9);
+            border: 1px solid rgba(143, 191, 122, 0.55);
+            color: var(--text);
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 360ms ease, transform 360ms ease;
+            pointer-events: none;
+        }
+        .pickup-toast.visible { opacity: 1; transform: translate(-50%, 0); }
+        .pickup-toast strong { color: var(--warm); }
+        .pickup-toast span { color: var(--dim); font-size: 12px; }
+
+        /* ---- Rotate-to-landscape prompt (D-041) ---- */
+        #rotate-prompt {
+            position: fixed;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            text-align: center;
+            padding: 24px;
+            background: #05080f;
+            color: var(--text);
+            z-index: 60;
+        }
+        #rotate-prompt.show { display: flex; }
+        #rotate-prompt .rotate-icon {
+            font-size: 54px;
+            color: var(--warm);
+            animation: rotate-hint 2.4s ease-in-out infinite;
+        }
+        #rotate-prompt p { margin: 0; font-size: 20px; font-weight: 700; }
+        #rotate-prompt span { color: var(--dim); font-size: 14px; }
+        @keyframes rotate-hint {
+            0%, 40% { transform: rotate(0deg); }
+            60%, 100% { transform: rotate(90deg); }
+        }
 
         /* ---- Transient feedback ---- */
 
@@ -393,7 +448,7 @@
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .wood.pulse, .float-text, .ignition-flash { animation: none; }
+            .wood.pulse, .float-text, .ignition-flash, #rotate-prompt .rotate-icon { animation: none; }
         }
     </style>
 </head>

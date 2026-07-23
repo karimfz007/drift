@@ -35,7 +35,7 @@ describe('state — the fresh run', () => {
 
     it('has every node kind the pressure loop needs', () => {
         const kinds = new Set(run().nodes.map((n) => n.kind));
-        for (const kind of ['driftwood', 'deadfall', 'tree', 'rock', 'berrybush', 'coconutpalm', 'shellfish', 'crashbox']) {
+        for (const kind of ['driftwood', 'deadfall', 'tree', 'rock', 'berrybush', 'coconutpalm', 'reed', 'shellfish', 'crashbox']) {
             expect(kinds.has(kind as never)).toBe(true);
         }
     });
@@ -116,13 +116,31 @@ describe('state — the axe gate', () => {
         expect(s.inventory.fiber).toBeGreaterThanOrEqual(TUNE.crashBoxFiber);
     });
 
-    it('coconut palms give coconut and the pre-axe fibre, and train foraging', () => {
+    it('coconut palms give coconut and the pre-axe husk fibre, and train foraging', () => {
         const s = run();
         const result = gatherNode(s, 'cp1');
         expect(result.ok).toBe(true);
         expect(result.gained.coconut).toBe(1);
-        expect(result.gained.fiber).toBe(TUNE.fiberPerCoconutPalm);
+        expect(result.gained.fiber).toBe(TUNE.palmHuskFiberYield);
         expect(result.skill).toBe('foraging');
+    });
+
+    it('reeds are the obvious fibre source — a plain tap, no axe (D-043)', () => {
+        const s = run();
+        const reed = s.nodes.find((n) => n.kind === 'reed')!;
+        const result = gatherNode(s, reed.id);
+        expect(result.ok).toBe(true);
+        expect(result.gained.fiber).toBe(TUNE.reedFiberYield);
+        expect(result.skill).toBe('foraging');
+    });
+
+    it('reeds alone can cover the axe recipe fibre by hand, no palm needed', () => {
+        const s = run();
+        let fiber = 0;
+        for (const reed of s.nodes.filter((n) => n.kind === 'reed')) {
+            fiber += gatherNode(s, reed.id).gained.fiber ?? 0;
+        }
+        expect(fiber).toBeGreaterThanOrEqual(TUNE.axeFiberCost);
     });
 });
 

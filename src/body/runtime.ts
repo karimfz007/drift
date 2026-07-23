@@ -34,12 +34,24 @@ export const runtime = {
 // ---- Frame-rate probe ---------------------------------------------------
 
 const frameSamples: number[] = [];
+const frameTimes: number[] = [];
 
-/** Record one frame's instantaneous FPS. Called from the render loop. */
+/** Record one frame's instantaneous FPS and its frame time. Called from the render loop. */
 export function sampleFrame(deltaMs: number): void {
     if (deltaMs <= 0) return;
     frameSamples.push(1000 / deltaMs);
     if (frameSamples.length > RENDER.fpsSampleWindow) frameSamples.shift();
+    //  Frame TIME, not rate: the jank the p95 budget (A3, C04) actually measures. A single
+    //  long frame is a stutter you feel; the p95 catches whether stutters are the norm.
+    frameTimes.push(deltaMs);
+    if (frameTimes.length > RENDER.fpsSampleWindow) frameTimes.shift();
+}
+
+/** The 95th-percentile frame time (ms) over the rolling window — the jank metric (A3). */
+export function frameTimeP95(): number {
+    if (frameTimes.length === 0) return 0;
+    const sorted = [...frameTimes].sort((a, b) => a - b);
+    return Math.round(sorted[Math.floor(sorted.length * 0.95)] * 10) / 10;
 }
 
 /**
@@ -134,6 +146,7 @@ function installDebugHook(): void {
         fps: () => ({
             median: fpsMedian(),
             onePercentLow: fpsOnePercentLow(),
+            p95FrameMs: frameTimeP95(),
             samples: frameSampleCount()
         }),
         bodyTrace: () => readBodyTrace(),

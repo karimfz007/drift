@@ -7,6 +7,8 @@
 | Campfire | Fixture | Build at player's spot | Res: wood ×5 · Know: innate (v1) · Time | Warmth, light; later cooking and deterrence | Sanctuary and relief — the first crisis resolved | **C01** |
 | Bow-drill fire-starting | Method | — | Folded into the campfire for v1; splits out when the Firecraft skill lands | — | Ritual of firecraft | P1 |
 | Stone · plant fiber · flint · clay · sand · vines · coconut | Resources | Forage / mine | Per entry, when shipped | Materials | Breadth of making — the island as a workshop | P1 |
+| Reeds / tall grass | Resource | Gather near the pond and inland (tap/hold) | Time only | Fibre for cordage and crafting | Legibility — the material that looks like what it makes | **C04** |
+| Stone (rock outcrops) · Fibre (reeds + palm husks) · Coconut · Berries · Shellfish | Resources | Rock: hold. Reeds: gather. Palm: hold (husk fibre, visible at the trunk base). Berries/shellfish: tap | Time only (v1) | Axe recipe (wood+stone+fibre); food/water | The island as a workshop, made teachable (D-043) | **C03–C04** |
 | Fresh water | Resource | Source, then purification | Per entry, when shipped | Thirst | Planning pressure — the second survival rhythm | P1 |
 | Raw meat · fish · eggs · mussels · clams · edible plants | Food | Hunt / fish / collect | Per entry, when shipped | Hunger | Provisioning rhythm; patient anticipation (fishing) | P1 |
 | Crude axe · pick · spear · knife · digging stick · fishing line | Tools | Craft — or found in boxes and salvage loot | Four gates specified in their cycle | Unlock and speed the core verbs | Visible mastery — tools change how actions feel | P1 |

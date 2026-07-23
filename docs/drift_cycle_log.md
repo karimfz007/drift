@@ -73,6 +73,15 @@
 | `pondTapSlack` | 1 | C03+ | Extra metres of forgiveness tapping the pond (D-038) |
 | `tapMaxMs` / `tapMaxMovePx` | 320 / 14 | C03+ | A press this short and still is a tap, not a look-drag (moved from the body, D-038) |
 | `thirstLowHintAt` / `hungerLowHintAt` / `healthLowHintAt` | 35 / 30 / 30 | C03+ | At or below, the HUD bar reads "low" AND a hint fires — one threshold, so they agree (D-038) |
+| `interactRadiusM` | 2.5 | C04 | Reach for a direct-world interaction (tap the thing to use it, D-042) |
+| `cameraFollowLerp` | 0.12 | C04 | How fast the camera catches up to the player — damped follow, no snap |
+| `cameraLookSmoothing` | 0.15 | C04 | How fast yaw/pitch chase the drag target — smoothed look |
+| `turnSlerpSpeed` | 10 | C04 | How fast the castaway turns to face travel (frame-rate-independent slerp) |
+| `moveAccelMps2` | 14 | C04 | Acceleration/deceleration on foot — no instant velocity |
+| `frameTimeP95BudgetMs` | 33 | C04 | Jank budget: p95 frame time through a scripted move-and-orbit run (A3) |
+| `reedFiberYield` | 2 | C04 | Fibre per reed clump — the material that looks like what it makes (D-043) |
+| `palmHuskFiberYield` | 2 | C04 | Husk fibre per palm (was `fiberPerCoconutPalm`; renamed for legibility, D-043) |
+| `rotatePromptEnabled` | true | C04 | Portrait shows a rotate-to-landscape prompt (D-041) |
 
 *C03 adds the three vitals, death/respawn, the first tool and loot, and two seed skills. Rows marked **C03+** are derived constants C2 added under the tune law to express the spec's behaviour (food values, node yields, fibre source, health regen). The D-011 offline floors (`*OfflineFloor`) make **offline death impossible** — proven by a property test, not asserted (A1).*
 
@@ -269,7 +278,7 @@ C3's standing note for the next cycle: the allow-list-by-string design is inhere
 ---
 
 ## CYCLE 03 — "The Island Pushes Back"
-**Phase 1 · Tier: Opus-class · Status: SHIPPED — audited PASS-WITH-NOTES, all notes fixed; awaiting PLAYTEST · Opened 2026-07-23 · Shipped 2026-07-23 · The pressure cycle (D-036 … D-039)**
+**Phase 1 · Tier: Opus-class · Status: CLOSED — systems pass, feel fails the LDOE bar; five defects → C04 (D-040) · Opened 2026-07-23 · Shipped 2026-07-23 · Closed 2026-07-23 · The pressure cycle (D-036 … D-039)**
 
 **GOAL:** Turn the island from scenery into a survival situation — three vital clocks, real death and respawn, the first tool earned through the four gates, the first loot, and the first visible mystery — all flowing through the untouched reconcile spine with D-011's floors protecting absence.
 
@@ -348,3 +357,41 @@ A1–A7 all verified independently. C3 read `reconcile.ts`/`vitals.ts` end to en
 **One blocking defect: a fourth purity bypass** — a *relative* import tunnelling into node_modules, past a check that judged relative paths only for body imports. Same root cause as the prior three, so it was **fixed by generalisation, not another special case** (D-038): every import is now judged by the package that owns the file it resolves to. All five bypass shapes reproduced and confirmed caught. Five notes also fixed: the body's collision/gesture numbers moved into `tune.ts` (the class D-026 established); the HUD "low" thresholds now share the hint system's constants; `save.ts` clamps vitals on load (a tampered negative health can no longer be held negative — pinned by a new test); D-025 formally resolved on the record (D-039); and the harness's death screenshot now fires after the overlay is confirmed up.
 
 C3's standing note for Cycle 04: the purity checker has now been generalised to close the *class* of syntax-vs-resolution bypasses, which should end the four-cycle run; and the tune-law sweep matters more as C04 adds construction footprints and reach checks. The audit's value, a fourth time running, was the one defect invisible to reading the code — the constitutional check guarding the whole architecture had a hole, and now has the generalisation that should close the family for good.
+
+---
+
+## CYCLE 04 — "Second Nature"
+**Phase 1 · Tier: Opus-class · Status: OPEN · Opened 2026-07-23 · The feel cycle (D-040 … D-043)**
+
+**GOAL:** Make the phone disappear — landscape presentation, a camera that glides, and a world you touch directly, with every Cycle 03 defect root-caused, fixed, and regression-locked.
+
+**PROMISE:** Moving, looking, and touching the island feels like second nature — smoother than Last Day on Earth.
+
+**HYPOTHESIS:** Landscape + camera smoothing + tap-the-world interaction is what "fluid" actually means on a phone; feel is architecture, not polish.
+
+**PLAYTEST QUESTION:** Held sideways — is it smoother than Last Day on Earth, and did every tap either do what you expected or tell you why not?
+
+**SCOPE IN (build in stage order):**
+
+- **Stage 0 — Landscape-first.** UI relaid for landscape (HUD corners, stick lower-left, look zone right, craft/settings top); portrait shows a rotate prompt; web-app manifest with landscape orientation; fullscreen + orientation lock requested on first interaction where supported; safe-area insets respected.
+- **Stage 1 — Camera and movement feel.** Damped camera follow (`cameraFollowLerp`) and smoothed look (`cameraLookSmoothing`) with a proper sensitivity curve for landscape; character turns by slerp toward movement (`turnSlerpSpeed`); movement acceleration/deceleration (`moveAccelMps2`) instead of instant velocity; camera collision so it never clips terrain or trees; render interpolation/frame pacing so look-while-moving has no stutter; FOV retuned for landscape. Harness gains a **jank metric**: p95 frame time ≤ `frameTimeP95BudgetMs` through a scripted move-and-orbit run.
+- **Stage 2 — Direct-world interaction (D-042).** Tap any interactive object: in range it acts; out of range the character path-walks to it and then acts (tap-to-move-and-use). Interaction radius per object with a subtle in-range highlight; hold-to-gather stays on gather nodes; tap fire → add wood / relight (range-gated); tap pond edge → drink; tap tree → chop **with the axe auto-used** (pre-axe: "Needs an axe"); tap crash box → open (same gate). Every blocked interaction states its reason. Buttons reduced to: **Build fire** (enabled whenever wood ≥ cost, day or night, placed at the player with a clear-ground check), the craft card, and settings. **Root-cause requirement:** identify and document in the as-built *why* fire was unavailable until night/axe in C03, and add a harness regression: *at game start, daytime, no axe, gather 5 wood → Build fire is enabled and works.*
+- **Stage 3 — Resource legibility (D-043).** Reed clumps near the pond and scattered (fibrous silhouette, gather for fiber); palm husks visible at trunk bases; craft-card source hints under missing materials; first-pickup identity toasts; hints cover the new interaction model.
+- **Stage 4 — Audit & ship.** Deploy; archive `/builds/c04/`; tag `c04`; smoke green including the new regressions; C3 audit; on PASS, as-built + play URL.
+
+**SCOPE OUT (explicit):** construction, bed, upkeep, energy/sleep, storage, Havok (all C05); threats/combat (C06); new vitals, new tools, fishing, cooking, purification; first-person; island growth; PWA install/service worker; multiplayer.
+
+**ACCEPTANCE CHECKS:**
+- **A1** — Brain suite green; reed nodes covered; zero regressions (the brain barely changes this cycle — that is itself the check).
+- **A2** — Purity green (all five bypass classes still caught).
+- **A3** — Landscape lays out correctly on-device; portrait shows the rotate prompt; cold load ≤ budget; median FPS ≥ floor **and p95 frame time ≤ `frameTimeP95BudgetMs`** through the scripted move-and-orbit run.
+- **A4** — Interaction truth, scripted in the harness: day-one pre-axe fire regression passes; all object interactions range-gated (a far tap walks then acts — never remote action); tap-tree pre-axe explains, post-axe chops; box likewise; every block states a reason.
+- **A5** — URL live; `/builds/c04/` archived; `c04` tag; as-built appended (including the C03 fire-gating root cause); c01–c03 archives intact.
+- **A6** — Camera: no snap on look start/stop, no clipping through terrain or trees in the scripted orbit, character turns smoothly, sensitivity persists.
+- **A7** — Feel: reeds read as fiber at a glance; craft card teaches sources; first-pickup toasts fire once each; in-range highlight is subtle but noticeable; walk-to-and-use feels like one motion.
+
+**TUNE INTRODUCED:** see ledger — rows marked C04.
+
+**AS-BUILT:** *(pending — C2 at SHIP)*
+
+**AUDIT:** *(pending — C3)*

@@ -23,6 +23,7 @@ export type NodeKind =
     | 'rock'
     | 'berrybush'
     | 'coconutpalm'
+    | 'reed'
     | 'shellfish'
     | 'crashbox';
 

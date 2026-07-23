@@ -191,7 +191,33 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             fronds.position.y = 3.3;
             fronds.isPickable = true;
             fronds.metadata = { nodeId: node.id };
+            //  A fibrous husk ring around the trunk's base — the visible source of the palm's
+            //  fibre (D-043), so the material reads before you gather it.
+            const husk = CreateCylinder(`nh_${node.id}`, { height: 0.9, diameterTop: 0.95, diameterBottom: 1.15, tessellation: 7 }, scene);
+            husk.material = materials.reed;
+            husk.parent = trunk;
+            husk.position.y = -3.0;
+            husk.isPickable = true;
+            husk.metadata = { nodeId: node.id };
             return at(trunk, 3.25, 1.0, TUNE.palmCollisionRadius);
+        }
+        case 'reed': {
+            //  A clump of tall thin blades — a fibrous silhouette that reads as "the material
+            //  that looks like what it makes" (D-043). One parent blade, a few splayed around it.
+            const blade = CreateCylinder(`n_${node.id}`, { height: 2.4, diameterTop: 0.02, diameterBottom: 0.12, tessellation: 4 }, scene);
+            blade.material = materials.reed;
+            for (let b = 0; b < 5; b++) {
+                const extra = CreateCylinder(`nr_${node.id}_${b}`, { height: 1.7 + (b % 3) * 0.5, diameterTop: 0.02, diameterBottom: 0.1, tessellation: 4 }, scene);
+                extra.material = materials.reed;
+                extra.parent = blade;
+                const a = b * 1.257;
+                extra.position.set(Math.cos(a) * 0.28, (extra.getBoundingInfo().boundingBox.extendSize.y) - 1.2, Math.sin(a) * 0.28);
+                extra.rotation.z = Math.cos(a) * 0.22;
+                extra.rotation.x = Math.sin(a) * 0.22;
+                extra.isPickable = true;
+                extra.metadata = { nodeId: node.id };
+            }
+            return at(blade, 1.2, 0.7, 0);
         }
         case 'shellfish': {
             const m = CreateSphere(`n_${node.id}`, { diameter: 0.7, segments: 5 }, scene);
@@ -217,6 +243,7 @@ interface NodeMaterials {
     bush: StandardMaterial;
     palm: StandardMaterial;
     frond: StandardMaterial;
+    reed: StandardMaterial;
     shell: StandardMaterial;
     box: StandardMaterial;
     halo: StandardMaterial;
@@ -237,6 +264,7 @@ export class NodeViews {
             bush: flat(scene, 'm_bush', [0.28, 0.34, 0.18]),
             palm: flat(scene, 'm_palm', PALETTE.trunk),
             frond: flat(scene, 'm_frond', PALETTE.canopy),
+            reed: flat(scene, 'm_reed', [0.55, 0.58, 0.28]),
             shell: flat(scene, 'm_shell', [0.7, 0.66, 0.6]),
             box: flat(scene, 'm_box', [0.5, 0.42, 0.3]),
             halo: haloMaterial(scene)
@@ -483,6 +511,6 @@ export class FireView {
 /** Keep the node-kind union honest against the mesh builder at compile time. */
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,
-    berrybush: true, coconutpalm: true, shellfish: true, crashbox: true
+    berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true
 };
 void _EXHAUSTIVE;

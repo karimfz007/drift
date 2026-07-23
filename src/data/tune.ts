@@ -91,6 +91,23 @@ export const TUNE = {
     tapMaxMs: 320,
     tapMaxMovePx: 14,
 
+    // ---- Feel: camera, movement, interaction (C04 — D-040…D-042) -----------
+    /** [TUNE] C04 — reach for a direct-world interaction (tap the thing to use it, D-042). */
+    interactRadiusM: 2.5,
+    /** [TUNE] C04 — how fast the camera catches up to the player each frame (0..1). Damped
+     *  follow — the camera glides after you instead of being welded to you (D-040 #1). */
+    cameraFollowLerp: 0.12,
+    /** [TUNE] C04 — how fast yaw/pitch chase the drag target (0..1). Smoothed look, no snap. */
+    cameraLookSmoothing: 0.15,
+    /** [TUNE] C04 — how fast the castaway turns to face travel, as a slerp rate (per second). */
+    turnSlerpSpeed: 10,
+    /** [TUNE] C04 — acceleration and deceleration on foot, m/s². No instant velocity. */
+    moveAccelMps2: 14,
+    /** [TUNE] C04 — jank budget: p95 frame time (ms) through a scripted move-and-orbit (A3). */
+    frameTimeP95BudgetMs: 33,
+    /** [TUNE] C04 — portrait shows a rotate-to-landscape prompt; the game plays sideways (D-041). */
+    rotatePromptEnabled: true,
+
     // ---- Movement and camera (C02) -----------------------------------------
     /** [TUNE] C02 — metres per second on foot. */
     walkSpeedMps: 3.5,
@@ -182,8 +199,12 @@ export const TUNE = {
     treeWoodYield: 8,
     /** [TUNE] C03+ — stone per rock outcrop. */
     stoneNodeYield: 2,
-    /** [TUNE] C03+ — coir fibre per coconut palm: the pre-axe fibre source, so the recipe is reachable. */
-    fiberPerCoconutPalm: 2,
+    /** [TUNE] C04 — husk fibre per coconut palm (was `fiberPerCoconutPalm`; renamed for the D-043
+     *  legibility pass — palms show husks at the trunk base). A pre-axe fibre source. */
+    palmHuskFiberYield: 2,
+    /** [TUNE] C04 — fibre per reed clump: the *obvious* fibre source, the material that looks
+     *  like what it makes (D-043). Reeds grow by the pond and scattered inland. */
+    reedFiberYield: 2,
     /** [TUNE] C03+ — the sealed crash box's contents, opened only with the axe. */
     crashBoxFiber: 3,
     crashBoxFlask: 1,

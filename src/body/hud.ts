@@ -49,7 +49,12 @@ export class Hud {
 
     private secondaryButton!: HTMLButtonElement;
 
-    constructor(overlay: HTMLElement, onAction: () => void, onSecondary: () => void = () => {}) {
+    constructor(
+        overlay: HTMLElement,
+        onAction: () => void,
+        onSecondary: () => void = () => {},
+        onEat: (food: 'berries' | 'coconut' | 'shellfish') => void = () => {}
+    ) {
         this.root = document.createElement('div');
         this.root.className = 'hud';
         this.root.innerHTML = `
@@ -88,6 +93,16 @@ export class Hud {
         this.secondaryButton = this.root.querySelector('.secondary-action') as HTMLButtonElement;
         this.secondaryButton.addEventListener('click', (e) => { e.stopPropagation(); onSecondary(); });
         this.secondaryButton.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        //  Food chips eat directly — eating is not a world object, so it stays out of the
+        //  world-tap model and off the button stack (D-042). One tap on the chip, one bite.
+        this.invRow.addEventListener('pointerdown', (e) => e.stopPropagation());
+        this.invRow.addEventListener('click', (e) => {
+            const chip = (e.target as HTMLElement).closest('[data-food]') as HTMLElement | null;
+            if (!chip) return;
+            e.stopPropagation();
+            onEat(chip.dataset.food as 'berries' | 'coconut' | 'shellfish');
+        });
 
         this.hintBox = document.createElement('div');
         this.hintBox.className = 'hint';
@@ -142,6 +157,7 @@ export class Hud {
             wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
             coconut: 'Coconut', shellfish: 'Shellfish'
         };
+        const edible = new Set(['berries', 'coconut', 'shellfish']);
         const chips: string[] = [];
         for (const [name, val] of items) {
             if (name === 'axe') {
@@ -149,7 +165,10 @@ export class Hud {
             } else if (name === 'flask') {
                 if (val) chips.push(`<span class="chip tool">Flask · ${val}</span>`);
             } else if (typeof val === 'number' && val > 0) {
-                chips.push(`<span class="chip">${label[name]} ${val}</span>`);
+                //  Food chips are tappable ("Eat" affordance); materials are plain.
+                const eat = edible.has(name) ? ` data-food="${name}" role="button" title="Tap to eat"` : '';
+                const cls = edible.has(name) ? 'chip food' : 'chip';
+                chips.push(`<span class="${cls}"${eat}>${label[name]} ${val}</span>`);
             }
         }
         this.invRow.innerHTML = chips.join('');
@@ -228,8 +247,18 @@ export function showCraftCard(
 ): void {
     const el = panel(overlay, 'craft');
     const need = { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost };
-    const row = (name: string, h: number, n: number) =>
-        `<div class="gate ${h >= n ? 'met' : 'unmet'}"><span>${name}</span><span>${h} / ${n}</span></div>`;
+    //  When a part is short, say where it comes from — the C03 defect was fibre feeling
+    //  sourceless (D-040/D-043). A met gate needs no hint; a short one names the source.
+    const source: Record<string, string> = {
+        Wood: 'driftwood on the sand, deadfall by the trees',
+        Stone: 'grey rock outcrops on the beach',
+        Fibre: 'reeds at the pond, or a coconut palm'
+    };
+    const row = (name: string, h: number, n: number) => {
+        const met = h >= n;
+        const hint = met ? '' : `<div class="gate-hint">from ${source[name]}</div>`;
+        return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${name}</span><span>${h} / ${n}</span></div>${hint}`;
+    };
     const ready = have.wood >= need.wood && have.stone >= need.stone && have.fiber >= need.fiber;
     el.innerHTML = `
         <h2>Crude axe</h2>
@@ -257,6 +286,16 @@ export function levelToast(overlay: HTMLElement, skill: string, level: number): 
     overlay.appendChild(el);
     requestAnimationFrame(() => el.classList.add('visible'));
     window.setTimeout(() => { el.classList.remove('visible'); window.setTimeout(() => el.remove(), 400); }, 2600);
+}
+
+/** First-time identity toast: names a resource the first time it is picked up (D-043). */
+export function pickupToast(overlay: HTMLElement, label: string): void {
+    const el = document.createElement('div');
+    el.className = 'pickup-toast';
+    el.innerHTML = `<strong>${label}</strong><br><span>new to your pack</span>`;
+    overlay.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+    window.setTimeout(() => { el.classList.remove('visible'); window.setTimeout(() => el.remove(), 400); }, 2200);
 }
 
 export function showSettings(overlay: HTMLElement, current: number, onPick: (v: number) => void, onClose: () => void): void {

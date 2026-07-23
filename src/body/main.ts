@@ -3,12 +3,17 @@
  */
 
 import { Game } from './game';
+import { installLandscape } from './orientation';
 import { runtime, startRuntime } from './runtime';
 
 function boot(): void {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
     const overlay = document.getElementById('ui') as HTMLElement | null;
     if (!canvas || !overlay) throw new Error('The page is missing its canvas or UI layer');
+
+    //  Landscape-first presentation (D-041): rotate prompt while upright, fullscreen + lock
+    //  on the first touch. Installed before the game so the prompt can show during load.
+    installLandscape();
 
     //  Load (or start) the run before a single mesh exists: the morning report belongs to
     //  the absence that just ended, not to whatever the renderer manages to show first.

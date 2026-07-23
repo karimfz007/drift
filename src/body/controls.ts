@@ -5,11 +5,16 @@
  * (D-020): two input paths mean one of them is silently broken on somebody's device.
  * Priority is resolved once, in `onDown`, and never revisited mid-gesture:
  *
- *   1. A press that lands on a wood node or the fire is an interaction, wherever it is.
+ *   1. A press the game claims as a world interaction (reserved; the direct-world model
+ *      of Cycle 04 resolves interactions on the *tap*, so `onPressWorld` returns false and
+ *      this branch is dormant — the hook stays for a future press-and-drag verb).
  *   2. Otherwise, a press in the lower-left is the movement stick.
  *   3. Otherwise, it is the look drag — and if it never really moved, it was a tap.
  *
- * That order is what makes "the wood is behind the joystick" not a trap.
+ * Since Cycle 04 every verb is a tap: a quick jab anywhere sets an intention, and the game
+ * walks the castaway to it and acts on arrival (D-042). Holding a spot does nothing — the
+ * work happens automatically once you are in reach — so "the wood is behind the joystick"
+ * is not a trap, and neither is "I didn't know I had to hold."
  */
 
 import { TUNE } from '../data/tune';
