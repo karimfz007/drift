@@ -3,6 +3,9 @@
 
 ---
 
+**D-044 · 2026-07-23 — Crew reorganization for token economy (director).**
+SON Operator added (Sonnet high, chat) for daily orchestration, triage, and drafting specs/packages/deltas; **C1 becomes Supervisor** (top tier: constitution, forks, MAJOR-artifact audits, cycle-close verdicts). **C2 default drops to Sonnet high** with per-block Opus escalation (the handoff block's tier line) or per-blockage escalation (an architecture-level problem C2 cannot crack in two attempts → tell the Director "flip to Opus for this", then back). C01–C04 ran Opus as architecture-founding cycles — correct spend, that era is closed. **C3 stays Sonnet.** Supervision loop: MAJOR artifacts (cycle specs, handoff packages, constitutional deltas) are audited by C1 pre-handoff when flagged; a KEY REPORT goes to C1 at every CLOSE. Ops → v1.4 (§1 crew table + supervision loop, §6 token economy). *Status: standing.* — C2
+
 **D-043 · 2026-07-23 — Resource legibility: the fiber lesson.**
 The director found fiber only by exhausting alternatives — palms were the *designed* source, but the game never taught it, which fails Experience rule 1 even when the design is sound. Fixes: **reed/tall-grass clumps** added near the pond and scattered inland as the visually obvious fiber source (fibrous silhouette); palms keep husk fiber with visible husks at the trunk base; the craft card shows a source hint under any missing material ("Fibre — reeds by the pond, palm husks"); first-time pickups toast their identity. *Status: standing.*
 
