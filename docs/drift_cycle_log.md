@@ -548,3 +548,25 @@ A1–A6 independently verified, not taken on the as-built's word:
 **One carried-forward note, not remediated.** `onTap`'s per-kind forgiveness radius uses a hardcoded `+ 1.5` (metres) on top of each object's own tune-law radius — present for fire and pond since C04, and this cycle simply extended the same pattern consistently to shelter and storage rather than introducing a new instance of it. Not blocking (it predates this cycle and was already latent through C04's audit), but worth a `tune.ts` row (e.g. `tapForgivenessM`) the next time the tune-law sweep runs.
 
 The audit's value this cycle was smaller than in prior cycles — every code-level claim in the as-built checked out on direct reading, and the harness's one crash was exactly the documented environment flakiness rather than a surprise. The one real finding was a documentation gap the acceptance checks claimed was satisfied but wasn't; it is now.
+
+---
+
+## PERFECT pass (C05) — FIX 4: tap-to-fell's fourth shape (D-045/D-049)
+
+**C1 scoped diagnostic ruling, on the live build.** The director's re-test of tap-to-fell failed in a new shape: fell one tree, tap a second, unrelated object — zero reaction, no highlight, no sound, no reason. C04's conditional close (D-045) was void pending this pass.
+
+**REPRODUCE FIRST, per the ruling's own order.** `tools/smoke.mjs` gained sequential-interaction coverage it had never had: fell A → tap B; fell → gather → fell; fell → tap-crate. The existing 75/75 single-action suite passed cleanly precisely because it never exercised a SECOND interaction right after a fell — that gap reproduced the report reliably.
+
+**Root cause, confirmed via `window.__driftScene.pick()` rather than assumed:** `NodeViews.sync()` (`src/body/entities.ts`) disabled a spent node's mesh for *rendering* (`setEnabled(false)`) but never touched `isPickable` — a separate Babylon flag picking does not infer from enabled state. A felled tree's invisible geometry stayed a live pick target, silently intercepting a ray meant for whatever stood near or behind it. Confirmed concretely twice: a raw pick at a storage crate built near a just-felled tree returned the felled tree's own mesh and metadata, not the crate's; after the fix, the same pick correctly returned the crate.
+
+**Branch executed, per the ruling's pre-committed decision tree:** this is post-action interaction state — a stale, disposed-mesh hit-list — not the tap-detection/pointer-routing class of the three priors (stick-held tap; cache staleness; the untracked-pointerId bug). Fixed at that layer: `NodeViews.sync()` now clears `isPickable` on a spent node's full mesh hierarchy (trunk *and* canopy; palm *and* fronds/husk; a reed's blade *and* its four extras), not just the parent — general, not special-cased to trees. Regression-locked in `tools/smoke.mjs`. **The input-layer strike count stays at three**; no rewrite, no Opus escalation (D-049).
+
+**Also shipped, per the ruling's "either branch also ships":**
+- **Fail-loud law.** Silence is never a legal outcome. `onTap`'s fallback now distinguishes a genuinely empty-ground tap (terrain, or nothing hit — a look-around, owed no explanation) from a tap that hit some other real, unrecognised pickable mesh (now routed through the existing `explain()`/`markFailedTap()` path — a player-visible reason plus a `trace.failedInteractionTaps` breadcrumb). Regression-locked: emptying the storage crate and inventory, then tapping the crate, now visibly explains and traces instead of vanishing.
+- **Visible tool carriage.** The axe, once made, is worn on the castaway — a haft and head parented to the hip, always visible, no equip step (ownership is the only gate) — instead of living only in a HUD chip. The Build panel's axe item now reads "Owned." Confirmed via screenshot before/after crafting.
+
+**Verification:** purity ✓, docs-integrity ✓ (49 decisions, every reference resolves), typecheck ✓, 128 brain tests ✓ (unchanged — this fix lives entirely in the body), **device harness: a clean 82/82** after killing 18 stray `chrome.exe` processes accumulated across this session's many hours of runs (one intermediate attempt hit the same documented `Input.dispatchTouchEvent` timeout signature; killing stray processes and retrying resolved it cleanly, consistent with every other environment-flake episode this session).
+
+**Doc deltas applied:** D-049 (decisions log); `drift_state.md` regenerated — the crew-composition fork was already resolved (D-047), the process-gap note already marked remediated (D-046), and the Cycle 04 conditional close is now marked **resolved**: the condition (a live re-test) was exercised, found a real fourth failure, and D-045's own rule correctly did not fire the input-layer rewrite since the cause sat in a different layer. This fix joins the **C05 PERFECT queue** for the director's next pass.
+
+**AUDIT:** *(pending — C3 spot-audit)*

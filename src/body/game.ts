@@ -286,23 +286,31 @@ export class Game {
         return null;
     }
 
-    private pickHitPoint(screenX: number, screenY: number): { x: number; z: number } | null {
+    /**
+     * `unexpectedMesh` is set when the ray hit some OTHER pickable mesh — not terrain, not a
+     * recognised candidate — so `onTap` can tell "genuinely empty ground, just look there"
+     * (no explanation owed) apart from "hit something real that produced no verb" (D-042's
+     * fail-loud law: silence is never a legal outcome for the latter).
+     */
+    private pickHitPoint(screenX: number, screenY: number): { x: number; z: number; unexpectedMesh: string | null } | null {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
-        if (hit?.hit && hit.pickedMesh?.metadata?.pond) return { x: POND.x, z: POND.y };
+        if (hit?.hit && hit.pickedMesh?.metadata?.pond) return { x: POND.x, z: POND.y, unexpectedMesh: null };
         if (hit?.hit && hit.pickedMesh?.metadata?.fire) {
             const f = session().state.fire;
-            return { x: f.x, z: f.y };
+            return { x: f.x, z: f.y, unexpectedMesh: null };
         }
         if (hit?.hit && hit.pickedMesh?.metadata?.shelter) {
             const sh = session().state.shelter;
-            return { x: sh.x, z: sh.y };
+            return { x: sh.x, z: sh.y, unexpectedMesh: null };
         }
         if (hit?.hit && hit.pickedMesh?.metadata?.storage) {
             const st = session().state.storage;
-            return { x: st.x, z: st.y };
+            return { x: st.x, z: st.y, unexpectedMesh: null };
         }
-        return hit?.hit && hit.pickedPoint ? { x: hit.pickedPoint.x, z: hit.pickedPoint.z } : null;
+        if (!hit?.hit || !hit.pickedPoint) return null;
+        const meshName = hit.pickedMesh?.name ?? null;
+        return { x: hit.pickedPoint.x, z: hit.pickedPoint.z, unexpectedMesh: meshName === 'terrain' ? null : meshName };
     }
 
     // ---- The tap — the one input path ------------------------------------
@@ -360,6 +368,19 @@ export class Game {
             this.cues.play(CUES.target);
             return;
         }
+        //  Fail-loud law (D-046(d) ruling, D-045 lineage): the ray hit something real that
+        //  isn't terrain and isn't a recognised candidate — every currently-interactive mesh
+        //  is one of the cases above, so reaching this with a name means either a genuinely
+        //  new object type nobody wired up yet, or a picking regression like the one this
+        //  ruling root-caused (a spent node's mesh staying pickable). Either way, silence is
+        //  never a legal outcome: say so, and leave a trace breadcrumb, instead of a tap that
+        //  vanishes with no visible cause.
+        if (point.unexpectedMesh) {
+            this.explain('Nothing to do there.');
+            this.clearPending();
+            return;
+        }
+
         //  Empty ground: just look there — and drop any pending intention. This is the
         //  player's explicit "never mind" gesture now that manual steering no longer cancels
         //  a pending on its own (FIX 1, 2026-07-23 handoff).
@@ -984,6 +1005,7 @@ export class Game {
     private placePlayerFromState(): void {
         const s = session().state;
         this.player.place(s.player.x, this.island.heightAt(s.player.x, s.player.y), s.player.y, this.facing);
+        this.player.syncTools(s.tools.axe);
     }
 
     /** The node to highlight: the pending one, else the nearest in reach. */

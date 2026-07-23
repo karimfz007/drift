@@ -84,6 +84,8 @@ export class PlayerView {
     readonly root: Mesh;
     private pack: Mesh;
     private shadow: Mesh;
+    private axe: Mesh;
+    private axeShown = false;
 
     constructor(scene: Scene) {
         this.root = CreateCapsule('player', { height: PLAYER_HEIGHT, radius: 0.34, tessellation: 8, subdivisions: 1 }, scene);
@@ -96,6 +98,23 @@ export class PlayerView {
         this.pack.position = new Vector3(0, 0.16, -0.36);
         this.pack.isPickable = false;
 
+        //  Visible tool carriage (D-046(d) ruling): once crafted, the axe is on the
+        //  character, not just a HUD chip — a haft + head parented to the hip, angled
+        //  across the back. No equip step exists; owning it is wearing it.
+        const haft = CreateCylinder('axeHaft', { height: 0.62, diameter: 0.05, tessellation: 6 }, scene);
+        haft.material = flat(scene, 'axeHaftMat', PALETTE.trunk);
+        haft.isPickable = false;
+        const head = CreateBox('axeHead', { width: 0.05, height: 0.16, depth: 0.22 }, scene);
+        head.material = flat(scene, 'axeHeadMat', PALETTE.rock);
+        head.parent = haft;
+        head.position.set(0, 0.31, 0);
+        head.isPickable = false;
+        this.axe = haft;
+        this.axe.parent = this.root;
+        this.axe.position.set(-0.3, -0.1, -0.3);
+        this.axe.rotation.set(0.3, 0, Math.PI / 2.6);
+        this.axe.setEnabled(false);
+
         this.shadow = makeShadow(scene, 0.6);
     }
 
@@ -105,6 +124,13 @@ export class PlayerView {
         this.root.rotation.y = facingRadians;
         //  The shadow sits just above the surface at the feet — the fix for the float.
         this.shadow.position.set(x, groundY + 0.03, z);
+    }
+
+    /** Show or hide the carried axe. Owning it is the only gate — there is no equip step. */
+    syncTools(hasAxe: boolean): void {
+        if (hasAxe === this.axeShown) return;
+        this.axeShown = hasAxe;
+        this.axe.setEnabled(hasAxe);
     }
 
     get eyeHeight(): number {
@@ -345,6 +371,15 @@ export class NodeViews {
             view.body.setEnabled(available);
             view.shadow.setEnabled(available);
             if (!available) view.halo.setEnabled(false);
+            //  `setEnabled` only ever governed rendering — `isPickable` is a separate flag
+            //  Babylon's picking never consulted it. A spent node's mesh (and, for a tree or
+            //  palm, every pickable child parented to it: canopy, fronds, husk) stayed a live
+            //  target for `scene.pick()` even invisible, silently intercepting a ray meant for
+            //  whatever stood near or behind it. Root cause of the D-045-lineage report: fell
+            //  one tree, tap a second object nearby, and the felled tree's ghost hit-box eats
+            //  the tap before it ever reaches the real target.
+            view.body.isPickable = available;
+            for (const child of view.body.getChildMeshes()) child.isPickable = available;
         }
     }
 

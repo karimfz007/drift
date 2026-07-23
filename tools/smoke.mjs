@@ -700,6 +700,79 @@ async function main() {
     const afterWithdraw = await live();
     check('tapping storage empty-handed withdraws a batch', afterWithdraw.inventory.wood > 0 && afterWithdraw.storage.stored.wood < afterDeposit.storage.stored.wood, `inv.wood ${afterWithdraw.inventory.wood}, stored.wood ${afterWithdraw.storage.stored.wood}`);
 
+    // ================================================================
+    // C1 DIAGNOSTIC RULING — D-045 lineage: sequential interactions after a fell
+    // ================================================================
+    console.log('\nD-045 lineage — sequential interactions (a felled node must not block the NEXT tap)');
+
+    //  REPRODUCE FIRST (the ruling's own order): the director's live re-test found tap-to-fell
+    //  breaking in a NEW shape — fell one tree, then tap a second, unrelated object, and get
+    //  zero reaction (no highlight, no sound, no reason). Single-action coverage (one fell,
+    //  alone) had passed 75/75; it never exercised a SECOND interaction right after a fell.
+    //  Root cause, confirmed via window.__driftScene.pick(): `NodeViews.sync()` disabled a
+    //  spent node's mesh for RENDERING (`setEnabled(false)`) but never touched `isPickable` —
+    //  a separate Babylon flag picking does not infer from enabled state. The felled tree's
+    //  invisible geometry stayed a live pick target, silently intercepting a ray meant for
+    //  whatever stood near or behind it (here: the storage crate). Fixed generally in
+    //  NodeViews.sync() for every node kind's full mesh hierarchy (trunk AND canopy, palm AND
+    //  fronds/husk, the reed's blade AND its four extras) — not special-cased to trees.
+    //  By this point in the run the player has wandered up near the shelter (~60 m from the
+    //  remaining standing trees, chasing the sleep/repair tests above) — teleporting next to
+    //  a specific tree first keeps this section a test of the SEQUENCE, not of whether
+    //  harvest()'s walk budget can cross the whole island in time (a test-harness concern,
+    //  not a game one).
+    const nearStorageTree = (await live()).nodes
+        .filter((n) => n.kind === 'tree' && n.available)
+        .sort((a, b) => Math.hypot(a.x - afterStorage.storage.x, a.y - afterStorage.storage.y) - Math.hypot(b.x - afterStorage.storage.x, b.y - afterStorage.storage.y))[0];
+    check('setup — a standing tree remains for the sequential-interaction section', !!nearStorageTree, nearStorageTree ? `${nearStorageTree.id} at ${nearStorageTree.x},${nearStorageTree.y}` : 'none left');
+    await editSave(`state.player = { x: ${nearStorageTree.x - 1.5}, y: ${nearStorageTree.y} }; state.tools.axe = true;`);
+    const fellThenTapStorage = await harvest('tree', 34);
+    check('fell a tree, then the very next tap reaches the storage crate (not swallowed by the felled tree\'s ghost mesh)', fellThenTapStorage.ok, fellThenTapStorage.reason ?? '');
+    await editSave('state.inventory.wood = 4;');
+    await approach(afterStorage.storage.x, afterStorage.storage.y, 25);
+    await faceNode(afterStorage.storage.x, afterStorage.storage.y);
+    const storedBefore = (await live()).storage.stored.wood;
+    await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
+    await sleep(400);
+    const afterFellThenStorage = await live();
+    check('REGRESSION — the tap right after a fell deposits into storage, not silence', afterFellThenStorage.inventory.wood === 0 && afterFellThenStorage.storage.stored.wood === storedBefore + 4, `inv.wood ${afterFellThenStorage.inventory.wood}, stored.wood ${storedBefore}→${afterFellThenStorage.storage.stored.wood}`);
+
+    //  Interleave, per the ruling: fell -> gather (a tap-kind node, not hold) -> fell again.
+    //  Reed clumps (rd1-rd3) cluster right by the pond, inland of the trees — teleport there
+    //  first for the same reason as above: testing the sequence, not the walk budget.
+    const nextTree1 = (await live()).nodes.filter((n) => n.kind === 'tree' && n.available)[0];
+    check('setup — a second standing tree remains for the interleave', !!nextTree1, nextTree1 ? nextTree1.id : 'none left');
+    await editSave(`state.player = { x: ${nextTree1.x - 1.5}, y: ${nextTree1.y} }; state.tools.axe = true;`);
+    const interleaveFell1 = await harvest('tree', 34);
+    const nearestReed = (await live()).nodes.filter((n) => n.kind === 'reed' && n.available)[0];
+    await editSave(`state.player = { x: ${nearestReed.x - 1.5}, y: ${nearestReed.y} };`);
+    const interleaveGather = await harvest('reed', 20);
+    const nextTree2 = (await live()).nodes.filter((n) => n.kind === 'tree' && n.available)[0];
+    check('setup — a third standing tree remains for the interleave', !!nextTree2, nextTree2 ? nextTree2.id : 'none left');
+    await editSave(`state.player = { x: ${nextTree2.x - 1.5}, y: ${nextTree2.y} };`);
+    const interleaveFell2 = await harvest('tree', 34);
+    check('REGRESSION — fell -> gather -> fell all complete with no dead tap in between', interleaveFell1.ok && interleaveGather.ok && interleaveFell2.ok, `fell1 ${interleaveFell1.ok}, gather ${interleaveGather.ok}, fell2 ${interleaveFell2.ok}`);
+
+    //  Fail-loud law (D-046(d) ruling): silence is never a legal outcome. A tap that hits
+    //  something real but produces no verb now explains itself and leaves a trace breadcrumb
+    //  (`trace.failedInteractionTaps`) instead of vanishing; a genuinely empty-ground tap
+    //  still explains nothing (it is a look-around, not a failure) — confirmed by the idle
+    //  hint check above already showing 0 spurious hints across this whole run's plain taps.
+    //  Emptied out the crate above, so tapping it carrying nothing hits the existing
+    //  "nothing to store, nothing to take" explain path — a clean, reliable, reproducible
+    //  fail-loud case that costs no scarce world resource.
+    //  Teleport next to the crate rather than trusting approach() to cross whatever distance
+    //  the interleave test above left behind within a fixed budget — the same test-harness
+    //  lesson as the fell setups above: this section tests fail-loud, not the walk budget.
+    await editSave(`state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0 }; state.storage.stored = { wood: 0, stone: 0, fiber: 0 }; state.player = { x: ${afterStorage.storage.x - 1.5}, y: ${afterStorage.storage.y} };`);
+    await approach(afterStorage.storage.x, afterStorage.storage.y, 20);
+    await faceNode(afterStorage.storage.x, afterStorage.storage.y);
+    const failedTapsBefore = (await live()).trace.failedInteractionTaps;
+    await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
+    await sleep(300);
+    const failedTapsAfter = (await live()).trace.failedInteractionTaps;
+    check('fail-loud — a tap that reaches something real but has nothing to do explains why and traces it, never silently', failedTapsAfter > failedTapsBefore, `${failedTapsBefore} → ${failedTapsAfter}`);
+
     // ---- A4: death and respawn ----
     console.log('\nA4 — death and respawn (active play can kill)');
     await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');

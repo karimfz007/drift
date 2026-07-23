@@ -317,7 +317,7 @@ export function showBuildCard(
     el.innerHTML = `
         <div class="build-list">
             ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
-                { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost }, 'Made.', 'Make the axe', 'axe-btn')}
+                { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost }, 'Owned.', 'Make the axe', 'axe-btn')}
             ${buildItemMarkup('Shelter', 'Somewhere to rest — it becomes home.', view.shelter,
                 { wood: TUNE.shelterWoodCost, stone: TUNE.shelterStoneCost, fiber: TUNE.shelterFiberCost }, 'Standing.', 'Raise the shelter', 'shelter-btn')}
             ${buildItemMarkup('Storage', 'A second place to keep what you gather.', view.storage,
