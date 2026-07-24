@@ -81,6 +81,23 @@ export function composeMorningReport(
         );
     }
 
+    // 3c. The renewability law (D-051): what grew back, and what the tide brought in.
+    if (result.driftwoodRestocked) lines.push('The tide left new driftwood along the beach.');
+    if (result.nodesRegrewCount > 0) {
+        lines.push(
+            result.nodesRegrewCount === 1
+                ? 'One of the places you\'d picked clean has grown back.'
+                : `${result.nodesRegrewCount} of the places you'd picked clean have grown back.`
+        );
+    }
+    if (result.salvageSpawnedCount > 0) {
+        lines.push(
+            result.salvageSpawnedCount === 1
+                ? 'The tide left something else on the beach — worth a look.'
+                : `The tide left ${result.salvageSpawnedCount} things on the beach — worth a look.`
+        );
+    }
+
     // 4. Where the clock stands now.
     if (result.dawnBroke && !result.timeAfter.isNight) {
         lines.push('You made it to daylight. The cold eases until dusk.');

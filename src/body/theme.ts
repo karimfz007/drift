@@ -38,7 +38,16 @@ export const PALETTE = {
     thatch: [0.58, 0.48, 0.24],
     thatchDark: [0.38, 0.31, 0.16],
     crateWood: [0.48, 0.36, 0.22],
-    disrepair: [0.32, 0.30, 0.28]
+    disrepair: [0.32, 0.30, 0.28],
+
+    // ---- World truth (D-051) ----
+    /** A small, consistent mark on every harvestable tree/rock — never on the decorative
+     *  treeline or rock field behind them. The mark IS the signal: present = real, absent =
+     *  scenery. Warm and saturated on purpose, so it reads against grass, sand, or stone. */
+    harvestMark: [0.97, 0.74, 0.22],
+    /** The quarry and beach salvage — visually their own thing, not a bigger rock/driftwood. */
+    quarryStone: [0.50, 0.47, 0.46],
+    salvageWood: [0.58, 0.45, 0.30]
 } as const;
 
 /**

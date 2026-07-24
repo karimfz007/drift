@@ -226,16 +226,27 @@ describe('reconcile — warmth clamps', () => {
 });
 
 describe('reconcile — the wood is untouched by time', () => {
-    it('carries inventory and spent nodes through any absence', () => {
+    it('carries inventory through any absence, and spent nodes stay spent until the renewability law regrows them (D-051)', () => {
         const state = freshRun();
         gatherNode(state, 'dw1');
         gatherNode(state, 'df1');
         const woodBefore = state.inventory.wood;
 
+        //  A short ONLINE span (under the report threshold): no tide, no timer elapsed —
+        //  nothing regrows yet.
+        const { state: soon } = reconcile(state, 60);
+        expect(soon.inventory.wood).toBe(woodBefore);
+        expect(soon.nodes.find((n) => n.id === 'dw1')?.available).toBe(false);
+        expect(soon.nodes.find((n) => n.id === 'df1')?.available).toBe(false);
+        expect(soon.nodes.find((n) => n.id === 'dw2')?.available).toBe(true);
+
+        //  A long absence: both have had time to regrow (D-051 — nothing is globally
+        //  exhaustible, only rate/effort). See tests/renewability.test.ts for the full law,
+        //  including driftwood's separate tide-restock (which fires on ANY qualifying
+        //  absence regardless of elapsed time — not what this longer span is testing).
         const { state: after } = reconcile(state, 3 * DAY);
         expect(after.inventory.wood).toBe(woodBefore);
-        expect(after.nodes.find((n) => n.id === 'dw1')?.available).toBe(false);
-        expect(after.nodes.find((n) => n.id === 'df1')?.available).toBe(false);
-        expect(after.nodes.find((n) => n.id === 'dw2')?.available).toBe(true);
+        expect(after.nodes.find((n) => n.id === 'dw1')?.available).toBe(true);
+        expect(after.nodes.find((n) => n.id === 'df1')?.available).toBe(true);
     });
 });

@@ -19,7 +19,17 @@
 
 import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
-import { cloneState, isAtPond, isInDisrepair, isNearShelter, isPlayerInFireRadius } from './state';
+import {
+    activeSalvageCount,
+    cloneState,
+    isAtPond,
+    isInDisrepair,
+    isNearShelter,
+    isPlayerInFireRadius,
+    regrowGameHoursFor,
+    salvageIntervalGameHours,
+    spawnSalvageNode
+} from './state';
 import { deathCauseFrom, healthRatePerGameHour, vitalLowerBound } from './vitals';
 import type { GameState, ReconcileResult, TimeOfDay, VitalDrift } from './types';
 
@@ -183,6 +193,56 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     if (next.storage.built) next.storage.durability = Math.max(0, next.storage.durability - TUNE.structureDurabilityDecayPerGameHour * totalGameHours);
     next.lastSeenMs = state.lastSeenMs + Math.round(elapsedRealSeconds * 1000);
 
+    //  Renewability law (D-051): "no survival-critical resource is globally exhaustible —
+    //  scarcity is rate/effort, never extinction." A simple closed-form check per node, the
+    //  same reasoning as structure decay above — nothing else's rate depends on exactly when
+    //  a node crosses its regrow threshold. `crashbox` is exempt (Infinity): a one-time story
+    //  beat, not a resource.
+    let driftwoodRestocked = false;
+    let nodesRegrewCount = 0;
+    for (const n of next.nodes) {
+        if (n.available) continue;
+        const regrowHours = regrowGameHoursFor(n.kind);
+        if (!Number.isFinite(regrowHours)) continue;
+        const elapsedSinceDepletion = n.depletedAtGameHours === null ? Infinity : next.gameHoursElapsed - n.depletedAtGameHours;
+        if (elapsedSinceDepletion >= regrowHours) {
+            n.available = true;
+            n.depletedAtGameHours = null;
+            if (n.kind === 'quarry') n.pool = TUNE.quarryStoneCapacity;
+            if (n.kind === 'driftwood') driftwoodRestocked = true;
+            else nodesRegrewCount += 1;
+        }
+    }
+    //  Tides restock driftwood on any qualifying absence, regardless of an individual
+    //  node's own timer — a distinct, guaranteed mechanic ("the tide left new driftwood"),
+    //  not just "eventually" like every other kind.
+    if (qualifiesForReport) {
+        for (const n of next.nodes) {
+            if (n.kind === 'driftwood' && !n.available) {
+                n.available = true;
+                n.depletedAtGameHours = null;
+                driftwoodRestocked = true;
+            }
+        }
+    }
+
+    //  Beach salvage (D-051): the same elapsed-game-hours math spawns finds online and
+    //  offline alike — never a wall-clock read, never Math.random(). The schedule always
+    //  advances (even when at the active-count cap, so this loop cannot spin forever on a
+    //  long absence with no room to spawn into).
+    let salvageSpawnedCount = 0;
+    let salvageGuard = 0;
+    let activeSalvage = activeSalvageCount(next.nodes); // O(n) once, not once per iteration
+    while (next.gameHoursElapsed >= next.nextSalvageSpawnAtGameHours && salvageGuard++ < 50_000) {
+        if (activeSalvage < TUNE.salvageMaxActive) {
+            next.nodes.push(spawnSalvageNode(next.salvageSpawnCount));
+            activeSalvage += 1;
+            salvageSpawnedCount += 1;
+        }
+        next.salvageSpawnCount += 1;
+        next.nextSalvageSpawnAtGameHours += salvageIntervalGameHours(next.salvageSpawnCount);
+    }
+
     const drifts: VitalDrift[] = [
         driftOf('warmth', state.warmth, next.warmth, warmthBound),
         driftOf('thirst', state.thirst, next.thirst, thirstBound),
@@ -220,7 +280,10 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             timeAfter: timeOfDay(next.gameHoursElapsed),
             dawnBroke,
             nightFell,
-            qualifiesForReport
+            qualifiesForReport,
+            driftwoodRestocked,
+            nodesRegrewCount,
+            salvageSpawnedCount
         }
     };
 }
@@ -287,6 +350,9 @@ function emptyResult(
         timeAfter: timeBefore,
         dawnBroke: false,
         nightFell: false,
-        qualifiesForReport: false
+        qualifiesForReport: false,
+        driftwoodRestocked: false,
+        nodesRegrewCount: 0,
+        salvageSpawnedCount: 0
     };
 }

@@ -82,6 +82,13 @@ export const TUNE = {
     palmCollisionRadius: 0.5,
     crashboxCollisionRadius: 0.9,
     fireCollisionRadius: 0.9,
+    /** [TUNE] D-051 — the quarry's footprint: a real landmark, wider than any single rock.
+     *  Bounded above by `interactRadiusM` (below): `quarryCollisionRadius + playerCollisionRadius`
+     *  must clear it, or the player's own collision push-out puts them permanently out of
+     *  interact range — a real bug this cycle's harness caught (2.4 + 0.4 = 2.8 > 2.5, so a
+     *  mining tap could arm a hold but the in-range check cancelled it every frame; the
+     *  quarry was silently un-minable at any collision-legal standing distance). */
+    quarryCollisionRadius: 1.6,
     /** [TUNE] C03+ — footprint multiplier for the decorative treeline/rock instances. */
     decorTreeCollisionRadius: 0.7,
     decorRockCollisionScale: 1.4,
@@ -309,7 +316,54 @@ export const TUNE = {
      *  threshold, near-continuous passive decay makes durability<max true almost always,
      *  and repair — checked first — would starve sleep/storage-use nearly every tap, the
      *  same one-condition-always-true bug class that starved Build-fire in C03. */
-    structureRepairThresholdFraction: 0.9
+    structureRepairThresholdFraction: 0.9,
+
+    // ---- Renewability law (D-051) — no resource is globally exhaustible ----
+    /** [TUNE] D-051 — game hours for a spent node of each kind to regrow. First-pass
+     *  numbers; revisit at the next TUNE feedback pass. Ordered fast-to-slow. */
+    shellfishRegrowGameHours: 18,
+    reedRegrowGameHours: 24,
+    driftwoodRegrowGameHours: 12,
+    berrybushRegrowGameHours: 36,
+    coconutpalmRegrowGameHours: 60,
+    rockRegrowGameHours: 72,
+    deadfallRegrowGameHours: 48,
+    treeRegrowGameHours: 96,
+    quarryRegrowGameHours: 120,
+    /** [TUNE] D-051 — below this fraction of `treeRegrowGameHours` elapsed, a regrowing
+     *  tree reads as a bare stump; at or above it, as a sapling — until fully regrown. */
+    treeSaplingAtFraction: 0.5,
+
+    // ---- The stone quarry (D-051) — one large, repeat-minable outcrop ------
+    /** [TUNE] D-051 — total stone the quarry holds before it needs to regrow. */
+    quarryStoneCapacity: 220,
+    /** [TUNE] D-051 — stone spent from the pool per successful mining tap. */
+    quarryYieldPerTap: 4,
+
+    // ---- Beach salvage (D-051, pulled forward from Phase 2) ----------------
+    /** [TUNE] D-051 — real-minute range between salvage spawns while online; reconcile
+     *  advances the same schedule offline, by elapsed game hours (the one clock, D-011). */
+    salvageSpawnMinutesMin: 6,
+    salvageSpawnMinutesMax: 14,
+    /** [TUNE] D-051 — at most this many unclaimed salvage finds exist at once. */
+    salvageMaxActive: 3,
+    /** [TUNE] D-051 — the common salvage rewards: one resource, a modest amount. */
+    salvageWoodAmount: 3,
+    salvageFiberAmount: 2,
+    salvageStoneAmount: 2,
+    /** [TUNE] D-051 — plain odds of the rare bundle over a common single-resource find —
+     *  stated as a number, not dressed up as a loot box (honest-systems law). */
+    salvageBundleOdds: 0.12,
+    /** [TUNE] D-051 — the rare bundle's contents: a genuinely better find, still modest. */
+    salvageBundleWoodAmount: 4,
+    salvageBundleStoneAmount: 3,
+    salvageBundleFiberAmount: 3,
+
+    // ---- Testing aid (D-051 SON addendum) -----------------------------------
+    /** [TUNE] D-051 — "Fast movement (testing)" settings toggle multiplier, applied on top
+     *  of `walkSpeedMps` (itself unchanged). Off by default; a labelled test aid, not a
+     *  gameplay mechanic. */
+    testSpeedMultiplier: 3
 } as const;
 
 export type TuneTable = typeof TUNE;

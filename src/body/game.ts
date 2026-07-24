@@ -100,7 +100,9 @@ const KIND_LABEL: Partial<Record<NodeKind, string>> = {
     coconutpalm: 'Coconut & husk fibre',
     reed: 'Reeds — fibre for the axe',
     shellfish: 'Shellfish — food',
-    crashbox: 'Salvage'
+    crashbox: 'Salvage',
+    quarry: 'Quarried stone',
+    salvage: 'Beach find'
 };
 
 export class Game {
@@ -147,6 +149,9 @@ export class Game {
     private lastActivityAt = now();
     private lastFrameAt = now();
     private lookSensitivity: number = TUNE.lookSensitivity;
+    /** "Fast movement (testing)" — a labelled test aid (D-051 SON addendum), persisted,
+     *  off by default. Multiplies `walkSpeedMps` at use; the base constant never changes. */
+    private testSpeedEnabled = false;
     private deathShown = false;
 
     constructor(
@@ -175,6 +180,7 @@ export class Game {
         const state = session().state;
         this.nodes = new NodeViews(this.scene, state.nodes, (x, z) => this.island.heightAt(x, z));
         this.lookSensitivity = readSensitivity();
+        this.testSpeedEnabled = readTestSpeed();
 
         this.hud = new Hud(
             this.overlay,
@@ -273,8 +279,8 @@ export class Game {
         runtime.panelOpen = true;
         this.controls.releaseAll();
         this.clearPending();
-        showSettings(this.overlay, this.lookSensitivity,
-            (value) => { this.lookSensitivity = value; writeSensitivity(value); },
+        showSettings(this.overlay, this.testSpeedEnabled,
+            (value) => { this.testSpeedEnabled = value; writeTestSpeed(value); },
             () => { runtime.panelOpen = false; this.lastActivityAt = now(); },
             () => this.debugInfoText());
     }
@@ -666,7 +672,7 @@ export class Game {
         const cue: CueKey =
             result.kind === 'tree' ? CUES.fell
             : result.kind === 'crashbox' ? CUES.unlock
-            : result.kind === 'driftwood' || result.kind === 'shellfish' || result.kind === 'berrybush' || result.kind === 'reed' ? CUES.pickup
+            : result.kind === 'driftwood' || result.kind === 'shellfish' || result.kind === 'berrybush' || result.kind === 'reed' || result.kind === 'salvage' ? CUES.pickup
             : CUES.collected;
         this.cues.play(cue);
     }
@@ -912,8 +918,10 @@ export class Game {
         let desiredX = 0;
         let desiredZ = 0;
         //  Exhausted (C05 §3): a soft debuff, never a death vector — the HUD's goal line
-        //  says why, and sleeping at the shelter is the only cure.
-        const speedScale = isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1;
+        //  says why, and sleeping at the shelter is the only cure. "Fast movement (testing)"
+        //  (D-051 SON addendum) multiplies on top — a labelled test aid, `walkSpeedMps` itself
+        //  never changes — so the two stack rather than one silently overriding the other.
+        const speedScale = (isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1) * (this.testSpeedEnabled ? TUNE.testSpeedMultiplier : 1);
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
@@ -1205,8 +1213,14 @@ function readSensitivity(): number {
     }
 }
 
-function writeSensitivity(value: number): void {
-    try { localStorage.setItem(SENSITIVITY_KEY, String(value)); } catch { /* ignore */ }
+const TEST_SPEED_KEY = 'drift.testspeed.v1';
+
+function readTestSpeed(): boolean {
+    try { return localStorage.getItem(TEST_SPEED_KEY) === '1'; } catch { return false; }
+}
+
+function writeTestSpeed(value: boolean): void {
+    try { localStorage.setItem(TEST_SPEED_KEY, value ? '1' : '0'); } catch { /* ignore */ }
 }
 
 function clamp(value: number, min: number, max: number): number {

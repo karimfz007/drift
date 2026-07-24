@@ -80,6 +80,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
 
     if (current.schemaVersion === 1) current = migrateV1toV2(current);
     if (current.schemaVersion === 2) current = migrateV2toV3(current);
+    if (current.schemaVersion === 3) current = migrateV3toV4(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -144,6 +145,41 @@ function migrateV2toV3(envelope: SaveEnvelope): SaveEnvelope {
         wet: fresh.wet,
         shelter: fresh.shelter,
         storage: fresh.storage,
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v3 (Cycle 05: shelter/storage) → v4 (D-051: the renewability law, the quarry, beach
+ * salvage). Everything carries over untouched EXCEPT the node list heals at once: every
+ * node the player had depleted comes back available, on this one migration only — "while
+ * you were away, the island came back to life." New content (the quarry) is merged in from
+ * a fresh state, since an old save has no entry for it at all. No wipe; nothing is lost.
+ */
+function migrateV3toV4(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const fresh = createInitialState(typeof old.startedAtMs === 'number' ? old.startedAtMs : 0);
+    const oldNodes = Array.isArray(old.nodes) ? (old.nodes as Array<Record<string, unknown>>) : [];
+
+    const nodes = fresh.nodes.map((freshNode) => {
+        const match = oldNodes.find((n) => n.id === freshNode.id);
+        if (!match) return freshNode; // new content (the quarry) — the old save never had it
+        return {
+            ...freshNode,
+            x: num(match.x, freshNode.x),
+            y: num(match.y, freshNode.y),
+            available: true, // the heal: everything the player had picked clean comes back
+            depletedAtGameHours: null
+        };
+    });
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        nodes,
+        salvageSpawnCount: fresh.salvageSpawnCount,
+        nextSalvageSpawnAtGameHours: num(old.gameHoursElapsed, 0) + fresh.nextSalvageSpawnAtGameHours,
         schemaVersion: SCHEMA_VERSION
     };
 

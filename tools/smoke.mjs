@@ -55,7 +55,10 @@ const TUNE = {
     reedFiberYield: 2,
     coldLoadBudgetSeconds: 8,
     fpsFloorMedian: 30,
-    frameTimeP95BudgetMs: 33
+    frameTimeP95BudgetMs: 33,
+    quarryYieldPerTap: 4,
+    quarryStoneCapacity: 220,
+    salvageStoneAmount: 2
 };
 
 const results = [];
@@ -219,7 +222,7 @@ async function main() {
     };
 
     const editSave = async (mutateSrc) => {
-        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
         await page.evaluate(({ key, src }) => {
             const env = JSON.parse(localStorage.getItem(key));
             // eslint-disable-next-line no-new-func
@@ -238,25 +241,25 @@ async function main() {
             env.state.lastSeenMs = now;
             localStorage.setItem(key, JSON.stringify(env));
         }, { key: SAVE_KEY, src: mutateSrc });
-        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
         await waitForScene();
         await sleep(1000);
     };
     const goAway = async (minutes) => {
-        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
         const before = await page.evaluate(({ key, ms }) => {
             const env = JSON.parse(localStorage.getItem(key));
             env.savedAtMs -= ms; env.state.lastSeenMs -= ms;
             localStorage.setItem(key, JSON.stringify(env));
             return env.state;
         }, { key: SAVE_KEY, ms: minutes * 60 * 1000 });
-        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2' });
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
         await waitForScene();
         await sleep(1200);
         return before;
     };
     const startFresh = async () => {
-        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
         await page.evaluate(({ s, l }) => { localStorage.removeItem(s); localStorage.removeItem(l); }, { s: SAVE_KEY, l: LOOK_KEY });
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
         await waitForScene();
@@ -555,6 +558,22 @@ async function main() {
     check('a coconut palm gives coconut and husk fibre', inv.coconut >= 1 && inv.fiber >= 1, `coconut ${inv.coconut}, fibre ${inv.fiber}`);
     void rock; void palm;
 
+    //  D-051 gathering-matrix completeness: driftwood, shellfish, and berrybush had brain
+    //  coverage but had never once been gathered through a real tap in this device harness —
+    //  a gap the matrix itself surfaced, closed here rather than just noted. Teleport near
+    //  each cluster first — same lesson as the fell setups elsewhere in this file: this tests
+    //  the gather mechanism, not the harness's incidental walk budget across whatever distance
+    //  the coconut-palm check above happened to leave the player at.
+    await editSave('state.player = { x: 0, y: 90 };');
+    const drift = await harvest('driftwood');
+    check('driftwood gives wood by a plain tap', drift.ok, drift.reason ?? '');
+    await editSave('state.player = { x: 0, y: 101 };');
+    const shell = await harvest('shellfish');
+    check('a shellfish clump gives a shellfish by a plain tap', shell.ok, shell.reason ?? '');
+    await editSave('state.player = { x: 0, y: 35 };');
+    const berry = await harvest('berrybush');
+    check('a berry bush gives berries by a plain tap', berry.ok, berry.reason ?? '');
+
     //  Craft the axe through the Build panel (C05: axe/shelter/storage, own button each).
     await editSave('state.inventory.wood = 3; state.inventory.stone = 2; state.inventory.fiber = 2;');
     check('the Build button opens the panel', await clickDom('.secondary-action'));
@@ -789,7 +808,7 @@ async function main() {
     //  tree's position (`TREES`'s deterministic golden-angle scatter, index 62 as authored),
     //  confirmed once by direct diagnostic before this test was written.
     await editSave(`
-        for (const n of state.nodes) if (n.kind === 'tree') n.available = false;
+        for (const n of state.nodes) if (n.kind === 'tree') { n.available = false; n.depletedAtGameHours = state.gameHoursElapsed; }
         state.player = { x: 21, y: 35 };
         state.tools.axe = true;
     `);
@@ -820,6 +839,128 @@ async function main() {
     await sleep(200);
     const copiedVisible = await page.evaluate(() => { const el = document.querySelector('.debug-copied'); return el ? !el.hasAttribute('hidden') : false; });
     check('tapping it confirms the copy (clipboard write succeeded or a fallback message shows)', copiedVisible);
+    await clickDom('.panel .done');
+    await sleep(300);
+
+    // ================================================================
+    // D-051 — the gathering-layer audit: renewability, the quarry, salvage, fast movement
+    // ================================================================
+    console.log('\nD-051 — renewability law, the quarry, beach salvage, fast movement (testing)');
+
+    //  The quarry: repeat-minable via real taps — it must NOT go silent/unavailable after
+    //  one tap the way every other node kind does. Several real taps in a row, each one
+    //  landing and growing the stone count, is the regression that actually matters here
+    //  (a single successful tap wouldn't catch a "goes unavailable after the first hit").
+    await editSave('state.tools.axe = false; state.inventory.stone = 0;');
+    const quarry = (await live()).nodes.find((n) => n.kind === 'quarry');
+    check('setup — the quarry exists, one large outcrop', !!quarry, quarry ? `${quarry.id} at ${quarry.x},${quarry.y}, pool ${quarry.pool}` : 'missing');
+    await approach(quarry.x, quarry.y, 20);
+    await faceNode(quarry.x, quarry.y);
+    let quarryOk = true, quarryStillAvailable = true;
+    for (let i = 0; i < 3; i++) {
+        const before = await live();
+        await tapWorld(quarry.x, quarry.y, 55);
+        //  The quarry is a HOLD interaction (same swing-and-wait feel as a rock outcrop) —
+        //  give the hold (TUNE.deadfallHoldSeconds worth of real time) a chance to complete
+        //  before reading the result, the same poll pattern harvest() already uses.
+        let landed = false;
+        for (let poll = 0; poll < 8; poll++) {
+            await sleep(400);
+            const cur = await live();
+            if (cur.inventory.stone > before.inventory.stone) { landed = true; break; }
+        }
+        if (!landed) quarryOk = false;
+        const after = await live();
+        if (!after.nodes.find((n) => n.id === quarry.id)?.available) quarryStillAvailable = false;
+    }
+    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone}`);
+    check('REGRESSION — the quarry stays available across multiple taps (does not single-shot deplete like other nodes)', quarryStillAvailable);
+
+    //  Depletes as a whole once its pool is spent, and — the renewability law's actual
+    //  point — comes back once enough time has passed, checked by tapping it for real.
+    await editSave(`
+        const q = state.nodes.find((n) => n.kind === 'quarry');
+        q.pool = ${TUNE.quarryYieldPerTap};
+    `);
+    await tapWorld(quarry.x, quarry.y, 55);
+    for (let poll = 0; poll < 8; poll++) {
+        await sleep(400);
+        const cur = await live();
+        if (!cur.nodes.find((n) => n.id === quarry.id)?.available) break;
+    }
+    const quarryEmptied = await live();
+    check('REGRESSION — the quarry depletes once its pool is fully spent', quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available === false);
+    await editSave(`
+        const q = state.nodes.find((n) => n.kind === 'quarry');
+        q.depletedAtGameHours = state.gameHoursElapsed - 999999; // long enough ago to have regrown
+    `);
+    await sleep(500); // the live frame loop ticks reconcile every frame; give it a beat
+    const quarryRegrown = await live();
+    check('REGRESSION — the quarry regrows to full capacity, not partially (D-051)', quarryRegrown.nodes.find((n) => n.id === quarry.id)?.available === true && quarryRegrown.nodes.find((n) => n.id === quarry.id)?.pool === TUNE.quarryStoneCapacity);
+
+    //  A felled tree, given enough elapsed time, regrows and is fellable again by a real
+    //  tap — not just "the brain says available", the actual body picking/highlight path.
+    //  The D-050 section above deliberately exhausts all 5 real trees (and none of them
+    //  are due to regrow yet at this point in a short harness run) — revive one directly
+    //  so this check's setup is deterministic regardless of what earlier sections left.
+    await editSave(`
+        const t = state.nodes.find((n) => n.kind === 'tree');
+        t.available = true;
+        t.depletedAtGameHours = null;
+    `);
+    const treeNode = await nodeOf('tree');
+    check('setup — a standing tree remains for the regrowth check', !!treeNode, treeNode ? treeNode.id : 'none left');
+    await editSave(`state.tools.axe = true; state.player = { x: ${treeNode.x - 1.5}, y: ${treeNode.y} };`);
+    const felledOnce = await harvest('tree', 34);
+    check('setup — the tree fells once, to test its regrowth', felledOnce.ok, felledOnce.reason ?? '');
+    await editSave(`
+        const t = state.nodes.find((n) => n.id === '${treeNode.id}');
+        t.depletedAtGameHours = state.gameHoursElapsed - 999999;
+        state.player = { x: ${treeNode.x - 1.5}, y: ${treeNode.y} };
+    `);
+    await sleep(500);
+    const regrownTree = await harvest('tree', 34);
+    check('REGRESSION — a regrown tree is fellable again by a real tap (the renewability law end to end)', regrownTree.ok, regrownTree.reason ?? '');
+
+    //  Beach salvage: force one to exist (real spawn timing is minutes, too slow for a
+    //  harness run), then a real tap grants whatever it rolled and it never comes back.
+    //  Clear any already-spawned real salvage nodes first — nodeOf('salvage') picks the
+    //  NEAREST available one of its kind, and this run's online spawn schedule may well have
+    //  put a real one down somewhere closer to the test spot than sv_smoke by now.
+    await editSave(`
+        state.nodes = state.nodes.filter((n) => n.kind !== 'salvage');
+        state.nodes.push({ id: 'sv_smoke', kind: 'salvage', x: 40, y: 100, available: true, depletedAtGameHours: null, salvageLoot: 'stone' });
+        state.player = { x: 34, y: 100 };
+        state.inventory.stone = 0;
+    `);
+    const salvageResult = await harvest('salvage', 20);
+    check('REGRESSION — a real tap on a beach salvage find grants its rolled loot', salvageResult.ok, salvageResult.reason ?? '');
+    const afterSalvage = await live();
+    check('the salvage find granted stone as rolled', afterSalvage.inventory.stone === TUNE.salvageStoneAmount, `stone ${afterSalvage.inventory.stone}`);
+    check('a claimed salvage find never comes back (exempt from regrowth)', afterSalvage.nodes.find((n) => n.id === 'sv_smoke')?.available === false);
+
+    //  "Fast movement (testing)": a real Settings toggle that measurably speeds up walking.
+    await editSave('state.player = { x: 0, y: 104 };');
+    const beforeToggle = await live();
+    await walkToward(beforeToggle.player.x, beforeToggle.player.y - 40, 2.5);
+    const normalDistance = Math.hypot((await live()).player.x - beforeToggle.player.x, (await live()).player.y - beforeToggle.player.y);
+
+    await editSave('state.player = { x: 0, y: 104 };');
+    await clickDom('.settings-button');
+    await sleep(400);
+    const toggleTap = await realTapDom('.test-speed');
+    check('the "Fast movement (testing)" toggle is a real, reachable control', toggleTap.ok, toggleTap.reason ?? '');
+    await clickDom('.panel .done');
+    await sleep(300);
+    const beforeFast = await live();
+    await walkToward(beforeFast.player.x, beforeFast.player.y - 40, 2.5);
+    const fastDistance = Math.hypot((await live()).player.x - beforeFast.player.x, (await live()).player.y - beforeFast.player.y);
+    check('REGRESSION — "Fast movement (testing)" measurably speeds up walking, base walkSpeedMps untouched', fastDistance > normalDistance * 1.5, `normal ${normalDistance.toFixed(1)}m, fast ${fastDistance.toFixed(1)}m`);
+    //  Leave it off for every check that follows — a test aid should not silently outlive
+    //  the test that turned it on.
+    await clickDom('.settings-button');
+    await sleep(400);
+    await realTapDom('.test-speed');
     await clickDom('.panel .done');
     await sleep(300);
 

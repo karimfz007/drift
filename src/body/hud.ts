@@ -356,23 +356,21 @@ export function pickupToast(overlay: HTMLElement, label: string): void {
     window.setTimeout(() => { el.classList.remove('visible'); window.setTimeout(() => el.remove(), 400); }, 2200);
 }
 
-export function showSettings(overlay: HTMLElement, current: number, onPick: (v: number) => void, onClose: () => void, getDebugInfo: () => string): void {
+export function showSettings(overlay: HTMLElement, testSpeedEnabled: boolean, onToggleTestSpeed: (v: boolean) => void, onClose: () => void, getDebugInfo: () => string): void {
     const el = panel(overlay, 'settings');
     el.innerHTML = `
-        <h2>Look sensitivity</h2>
-        <p class="subtitle">How far the camera swings when you drag.</p>
-        <div class="choices">
-            <button type="button" data-value="0.8">Gentle</button>
-            <button type="button" data-value="1.35">Standard</button>
-            <button type="button" data-value="2">Quick</button>
-        </div>
+        <h2>Settings</h2>
+        <label class="toggle-row">
+            <span>Fast movement (testing)</span>
+            <input type="checkbox" class="test-speed">
+        </label>
+        <p class="subtitle">A test aid, not a gameplay mechanic — off by default.</p>
         <button class="quiet copy-debug" type="button">Copy debug info</button>
         <p class="subtitle debug-copied" hidden>Copied — paste it into a message.</p>
         <button class="primary done" type="button">Done</button>`;
-    const buttons = [...el.querySelectorAll<HTMLButtonElement>('.choices button')];
-    const paint = (value: number) => buttons.forEach((b) => b.classList.toggle('on', Number(b.dataset.value) === value));
-    paint(current);
-    for (const b of buttons) b.addEventListener('click', () => { const val = Number(b.dataset.value); paint(val); onPick(val); });
+    const testSpeedInput = el.querySelector<HTMLInputElement>('.test-speed')!;
+    testSpeedInput.checked = testSpeedEnabled;
+    testSpeedInput.addEventListener('change', () => onToggleTestSpeed(testSpeedInput.checked));
     //  Harness-fidelity mandate (C1 ruling, D-050): a report the automated suite never
     //  reproduces needs a way off the director's own phone that isn't "describe it from
     //  memory." This copies the trace, the last 20 taps, and — the number that most often

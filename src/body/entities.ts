@@ -26,7 +26,7 @@ import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
 //  constructed, started, and never drawn — the deep-import tree-shaking trap.
 import '@babylonjs/core/Particles/particleSystemComponent';
 
-import { isFireLit, type GameState, type NodeKind, type WoodNode } from '../brain';
+import { isFireLit, regrowProgress, type GameState, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
@@ -148,23 +148,43 @@ export class PlayerView {
 export interface NodeView {
     node: WoodNode;
     body: Mesh;
+    /** Set only for `tree` — the canopy hides separately at the stump stage (D-051). */
+    canopy?: Mesh;
     halo: Mesh;
     shadow: Mesh;
     /** Footprint radius for collision, or 0 if the player may walk over it. */
     obstacleRadius: number;
+    /** Ground height at this node, and the body mesh's height above it at full scale
+     *  (D-051). A depleted remnant scales the mesh down around its own pivot — without
+     *  also scaling this offset, the shrunken mesh floats at its old, full-height centre
+     *  instead of sitting on the ground. */
+    groundY: number;
+    baseYOffset: number;
+}
+
+/** A short, bright band — the harvestable "blaze mark" (D-051): present = real, absent =
+ *  decorative scenery. Parented to `parent`, offset upward by `y`. */
+function addHarvestMark(scene: Scene, parent: Mesh, y: number, diameter: number, material: StandardMaterial): Mesh {
+    const mark = CreateCylinder(`${parent.name}_mark`, { height: 0.14, diameter, tessellation: 8 }, scene);
+    mark.material = material;
+    mark.parent = parent;
+    mark.position.y = y;
+    mark.isPickable = false;
+    return mark;
 }
 
 /** Build the mesh for one node kind at (x, groundY, z). Returns [mesh, shadowRadius, obstacleRadius]. */
 function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: number, materials: NodeMaterials): {
     mesh: Mesh;
+    canopy?: Mesh;
     shadowRadius: number;
     obstacleRadius: number;
 } {
-    const at = (mesh: Mesh, yOffset: number, shadow: number, obstacle: number) => {
+    const at = (mesh: Mesh, yOffset: number, shadow: number, obstacle: number, canopy?: Mesh) => {
         mesh.position.set(node.x, groundY + yOffset, node.y);
         mesh.isPickable = true;
         mesh.metadata = { nodeId: node.id };
-        return { mesh, shadowRadius: shadow, obstacleRadius: obstacle };
+        return { mesh, canopy, shadowRadius: shadow, obstacleRadius: obstacle };
     };
 
     switch (node.kind) {
@@ -183,7 +203,9 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             return at(m, 0.42, 1.0, 0);
         }
         case 'tree': {
-            //  A standing tree: trunk + canopy, parented so both fell together.
+            //  A standing tree: trunk + canopy, parented so both fell together. The blaze
+            //  mark (D-051) is the entire distinction from the decorative treeline behind
+            //  it — same trunk, same canopy, present here and only here.
             const trunk = CreateCylinder(`n_${node.id}`, { height: 6.0, diameterTop: 0.5, diameterBottom: 0.85, tessellation: 6 }, scene);
             trunk.material = materials.trunk;
             const canopy = CreateCylinder(`nc_${node.id}`, { height: 4.6, diameterTop: 0, diameterBottom: 4.4, tessellation: 7 }, scene);
@@ -192,12 +214,14 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             canopy.position.y = 4.0;
             canopy.isPickable = true;
             canopy.metadata = { nodeId: node.id };
-            return at(trunk, 3.0, 1.1, TUNE.treeCollisionRadius);
+            addHarvestMark(scene, trunk, -1.2, 0.62, materials.harvestMark);
+            return at(trunk, 3.0, 1.1, TUNE.treeCollisionRadius, canopy);
         }
         case 'rock': {
             const m = CreateCylinder(`n_${node.id}`, { height: 1.4, diameterTop: 1.1, diameterBottom: 1.9, tessellation: 5 }, scene);
             m.material = materials.rock;
             m.rotation.y = index * 0.9;
+            addHarvestMark(scene, m, 0.75, 0.45, materials.harvestMark);
             return at(m, 0.5, 1.4, TUNE.rockCollisionRadius);
         }
         case 'berrybush': {
@@ -257,6 +281,40 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             m.rotation.y = 0.4;
             return at(m, 0.5, 1.1, TUNE.crashboxCollisionRadius);
         }
+        case 'quarry': {
+            //  One large, visible outcrop — a cluster, not a single boulder, so it reads as
+            //  bigger and more substantial than the scattered rk1-3 stone at a glance.
+            const main = CreateCylinder(`n_${node.id}`, { height: 2.6, diameterTop: 1.8, diameterBottom: 2.8, tessellation: 6 }, scene);
+            main.material = materials.quarry;
+            //  Offsets kept inside `quarryCollisionRadius` (D-051) — a chunk poking out past
+            //  the collision footprint would let it visually clip through the player.
+            for (const [ox, oz, s] of [[0.87, 0.4, 0.55], [-0.73, 0.53, 0.5], [0.27, -0.87, 0.45]] as const) {
+                const chunk = CreateCylinder(`n_${node.id}_${ox}`, { height: 1.6, diameterTop: 1.2, diameterBottom: 1.9, tessellation: 5 }, scene);
+                chunk.material = materials.quarry;
+                chunk.parent = main;
+                chunk.position.set(ox, -0.5, oz);
+                chunk.scaling.setAll(s * 2);
+                chunk.isPickable = true;
+                chunk.metadata = { nodeId: node.id };
+            }
+            addHarvestMark(scene, main, 1.6, 0.9, materials.harvestMark);
+            return at(main, 1.1, 2.2, TUNE.quarryCollisionRadius);
+        }
+        case 'salvage': {
+            //  Washed-up flotsam: a low crate plus a loose plank, distinct from every other
+            //  silhouette on the beach — never confused for driftwood or the crash box.
+            const crate = CreateBox(`n_${node.id}`, { width: 0.8, height: 0.42, depth: 0.6 }, scene);
+            crate.material = materials.salvage;
+            crate.rotation.y = index * 0.6;
+            const plank = CreateBox(`n_${node.id}_plank`, { width: 1.3, height: 0.08, depth: 0.22 }, scene);
+            plank.material = materials.salvage;
+            plank.parent = crate;
+            plank.position.set(0.5, 0.05, 0.5);
+            plank.rotation.y = 0.5;
+            plank.isPickable = true;
+            plank.metadata = { nodeId: node.id };
+            return at(crate, 0.21, 0.7, 0);
+        }
     }
 }
 
@@ -273,15 +331,24 @@ interface NodeMaterials {
     shell: StandardMaterial;
     box: StandardMaterial;
     halo: StandardMaterial;
+    quarry: StandardMaterial;
+    salvage: StandardMaterial;
+    harvestMark: StandardMaterial;
 }
 
 export class NodeViews {
     readonly views: NodeView[] = [];
     private ring: Mesh;
     private ringTexture: DynamicTexture;
+    private readonly scene: Scene;
+    private readonly materials: NodeMaterials;
+    private readonly heightAt: (x: number, z: number) => number;
+    private nextIndex = 0;
 
     constructor(scene: Scene, nodes: WoodNode[], heightAt: (x: number, z: number) => number) {
-        const materials: NodeMaterials = {
+        this.scene = scene;
+        this.heightAt = heightAt;
+        this.materials = {
             driftwood: flat(scene, 'm_driftwood', PALETTE.driftwood),
             deadfall: flat(scene, 'm_deadfall', PALETTE.deadfall),
             trunk: flat(scene, 'm_trunk', PALETTE.trunk),
@@ -293,27 +360,13 @@ export class NodeViews {
             reed: flat(scene, 'm_reed', [0.55, 0.58, 0.28]),
             shell: flat(scene, 'm_shell', [0.7, 0.66, 0.6]),
             box: flat(scene, 'm_box', [0.5, 0.42, 0.3]),
-            halo: haloMaterial(scene)
+            halo: haloMaterial(scene),
+            quarry: flat(scene, 'm_quarry', PALETTE.quarryStone),
+            salvage: flat(scene, 'm_salvage', PALETTE.salvageWood),
+            harvestMark: flat(scene, 'm_harvestMark', PALETTE.harvestMark)
         };
 
-        nodes.forEach((node, index) => {
-            const ground = heightAt(node.x, node.y);
-            const built = buildNodeMesh(scene, node, ground, index, materials);
-            built.mesh.setEnabled(node.available);
-
-            const halo = CreateDisc(`halo_${node.id}`, { radius: Math.max(1.0, built.obstacleRadius + 0.9), tessellation: 24 }, scene);
-            halo.rotation.x = Math.PI / 2;
-            halo.position.set(node.x, ground + 0.06, node.y);
-            halo.material = materials.halo;
-            halo.isPickable = false;
-            halo.setEnabled(false);
-
-            const shadow = makeShadow(scene, built.shadowRadius);
-            shadow.position.set(node.x, ground + 0.02, node.y);
-            shadow.setEnabled(node.available);
-
-            this.views.push({ node, body: built.mesh, halo, shadow, obstacleRadius: built.obstacleRadius });
-        });
+        for (const node of nodes) this.addView(node);
 
         this.ringTexture = new DynamicTexture('holdRing', { width: 128, height: 128 }, scene, false);
         this.ringTexture.hasAlpha = true;
@@ -329,6 +382,30 @@ export class NodeViews {
         this.ring.material = ringMat;
         this.ring.isPickable = false;
         this.ring.setEnabled(false);
+    }
+
+    /** Build and register the view for one node — at boot, or for a salvage find that
+     *  spawns mid-run (D-051): the view list is not fixed at construction time. */
+    private addView(node: WoodNode): void {
+        const ground = this.heightAt(node.x, node.y);
+        const built = buildNodeMesh(this.scene, node, ground, this.nextIndex++, this.materials);
+        built.mesh.setEnabled(node.available);
+
+        const halo = CreateDisc(`halo_${node.id}`, { radius: Math.max(1.0, built.obstacleRadius + 0.9), tessellation: 24 }, this.scene);
+        halo.rotation.x = Math.PI / 2;
+        halo.position.set(node.x, ground + 0.06, node.y);
+        halo.material = this.materials.halo;
+        halo.isPickable = false;
+        halo.setEnabled(false);
+
+        const shadow = makeShadow(this.scene, built.shadowRadius);
+        shadow.position.set(node.x, ground + 0.02, node.y);
+        shadow.setEnabled(node.available);
+
+        this.views.push({
+            node, body: built.mesh, canopy: built.canopy, halo, shadow, obstacleRadius: built.obstacleRadius,
+            groundY: ground, baseYOffset: built.mesh.position.y - ground
+        });
     }
 
     /** Every available node that blocks the player, for collision this frame. */
@@ -364,13 +441,64 @@ export class NodeViews {
     }
 
     sync(state: GameState): void {
+        //  New nodes (beach salvage spawns, D-051) can appear mid-run — the view list is
+        //  reconciled against live state every frame, not just built once at boot.
+        for (const liveNode of state.nodes) {
+            if (!this.views.some((v) => v.node.id === liveNode.id)) this.addView(liveNode);
+        }
+
         for (const view of this.views) {
             const live = state.nodes.find((n) => n.id === view.node.id);
             const available = live?.available ?? false;
             view.node.available = available;
-            view.body.setEnabled(available);
-            view.shadow.setEnabled(available);
-            if (!available) view.halo.setEnabled(false);
+            view.node.depletedAtGameHours = live?.depletedAtGameHours ?? null;
+
+            //  Renewability law (D-051): a claimed node no longer just vanishes — it reads
+            //  as depleted (a stump, a sapling regrowing, a shrunken remnant) until it comes
+            //  back. `crashbox`/`salvage` are exempt (a one-time beat and a claimed find):
+            //  those still simply disappear, exactly as before.
+            //
+            //  Scaling a mesh shrinks it around its OWN pivot, which sits at the object's
+            //  full-height centre (`baseYOffset` above the ground) — scale alone would leave
+            //  a "stump" floating at the old full-height centre instead of on the ground.
+            //  Repositioning the pivot to `groundY + baseYOffset * scale` keeps its (now
+            //  smaller) base sitting exactly on the ground, for any symmetric mesh.
+            const exempt = view.node.kind === 'crashbox' || view.node.kind === 'salvage';
+            const setScale = (s: number, sy = s) => {
+                view.body.scaling.set(s, sy, s);
+                view.body.position.y = view.groundY + view.baseYOffset * sy;
+            };
+            if (available) {
+                view.body.setEnabled(true);
+                setScale(1);
+                if (view.canopy) view.canopy.setEnabled(true);
+                view.shadow.setEnabled(true);
+            } else if (exempt) {
+                view.body.setEnabled(false);
+                view.shadow.setEnabled(false);
+                view.halo.setEnabled(false);
+            } else if (view.node.kind === 'tree') {
+                const progress = live ? regrowProgress(live, state.gameHoursElapsed) : 0;
+                view.body.setEnabled(true);
+                view.shadow.setEnabled(true);
+                view.halo.setEnabled(false);
+                if (progress < TUNE.treeSaplingAtFraction) {
+                    setScale(1, 0.16); // a bare stump
+                    if (view.canopy) view.canopy.setEnabled(false);
+                } else {
+                    setScale(0.42); // a sapling, growing back
+                    if (view.canopy) view.canopy.setEnabled(true);
+                }
+            } else {
+                //  A general "picked clean" remnant — smaller, not gone (D-051's "depleted
+                //  states read"). Scale is a per-mesh transform, so this works even though
+                //  every node of a kind shares one material instance.
+                view.body.setEnabled(true);
+                view.shadow.setEnabled(true);
+                view.halo.setEnabled(false);
+                setScale(0.32);
+            }
+
             //  `setEnabled` only ever governed rendering — `isPickable` is a separate flag
             //  Babylon's picking never consulted it. A spent node's mesh (and, for a tree or
             //  palm, every pickable child parented to it: canopy, fronds, husk) stayed a live
@@ -654,6 +782,7 @@ export class StorageView {
 /** Keep the node-kind union honest against the mesh builder at compile time. */
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,
-    berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true
+    berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true,
+    quarry: true, salvage: true
 };
 void _EXHAUSTIVE;

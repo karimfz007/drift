@@ -13,6 +13,7 @@
  */
 
 import type { NodeKind, WoodNode } from '../brain/types';
+import { TUNE } from './tune';
 
 /** The island slice: a disc of land in an endless sea. ~250 m across (D-036/A6 scale). */
 export const WORLD = {
@@ -136,12 +137,20 @@ export function createNodes(): WoodNode[] {
         node('tr5', 'tree', 4, 22),
 
         // The sealed crash box — hold, AXE ONLY. On the beach, near the landing.
-        node('box1', 'crashbox', 20, 92)
+        node('box1', 'crashbox', 20, 92),
+
+        // The quarry (D-051) — one large, visible, inland outcrop. High-capacity and
+        // repeat-minable, unlike the scattered rk1-3 stone outcrops it sits apart from.
+        quarryNode('qr1', -46, 22)
     ];
 }
 
 function node(id: string, kind: NodeKind, x: number, z: number): WoodNode {
-    return { id, kind, x, y: z, available: true };
+    return { id, kind, x, y: z, available: true, depletedAtGameHours: null };
+}
+
+function quarryNode(id: string, x: number, z: number): WoodNode {
+    return { ...node(id, 'quarry', x, z), pool: TUNE.quarryStoneCapacity };
 }
 
 /**

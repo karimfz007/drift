@@ -3,8 +3,9 @@
  * Zero rendering engine. The body calls these and then draws the result.
  */
 
+import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
-import { POND, SPAWN, createNodes } from '../data/world';
+import { POND, SPAWN, WORLD, createNodes } from '../data/world';
 import { grantXp, newSkill } from './skills';
 import { applyDrink, applyFood } from './vitals';
 import {
@@ -12,6 +13,7 @@ import {
     type GameState,
     type Inventory,
     type NodeKind,
+    type SalvageLoot,
     type Skills,
     type StorageInventory,
     type Structure,
@@ -38,6 +40,8 @@ export function createInitialState(nowMs: number): GameState {
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
         player: { x: SPAWN.x, y: SPAWN.y },
         nodes: createNodes(),
+        salvageSpawnCount: 0,
+        nextSalvageSpawnAtGameHours: gameHoursFromRealSeconds(TUNE.salvageSpawnMinutesMin * 60),
         settings: { controlMode: 'tap' },
         trace: {
             msToFirstMove: null,
@@ -106,7 +110,9 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
     coconutpalm: { interaction: 'hold', needsAxe: false, skill: 'foraging', holdBaseSeconds: TUNE.deadfallHoldSeconds },
     reed: { interaction: 'tap', needsAxe: false, skill: 'foraging', holdBaseSeconds: 0 },
     shellfish: { interaction: 'tap', needsAxe: false, skill: 'foraging', holdBaseSeconds: 0 },
-    crashbox: { interaction: 'hold', needsAxe: true, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds }
+    crashbox: { interaction: 'hold', needsAxe: true, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
+    quarry: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
+    salvage: { interaction: 'tap', needsAxe: false, skill: null, holdBaseSeconds: 0 }
 };
 
 export function nodeSpec(kind: NodeKind): NodeSpec {
@@ -225,9 +231,52 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             gained.fiber = TUNE.crashBoxFiber;
             foundFlask = TUNE.crashBoxFlask > 0;
             break;
+        case 'quarry': {
+            //  Repeat-minable (D-051): one tap spends from the pool, not the node itself —
+            //  the quarry only "depletes" (below) once the whole pool is spent.
+            const take = Math.min(TUNE.quarryYieldPerTap, node.pool ?? 0);
+            state.inventory.stone += take;
+            gained.stone = take;
+            node.pool = (node.pool ?? 0) - take;
+            break;
+        }
+        case 'salvage': {
+            //  Plain odds, no loot-box dressing (D-051): the reward was rolled once at
+            //  spawn time and simply revealed now.
+            switch (node.salvageLoot) {
+                case 'driftwood':
+                    state.inventory.wood += TUNE.salvageWoodAmount;
+                    gained.wood = TUNE.salvageWoodAmount;
+                    break;
+                case 'cordage':
+                    state.inventory.fiber += TUNE.salvageFiberAmount;
+                    gained.fiber = TUNE.salvageFiberAmount;
+                    break;
+                case 'stone':
+                    state.inventory.stone += TUNE.salvageStoneAmount;
+                    gained.stone = TUNE.salvageStoneAmount;
+                    break;
+                case 'bundle':
+                    state.inventory.wood += TUNE.salvageBundleWoodAmount;
+                    state.inventory.stone += TUNE.salvageBundleStoneAmount;
+                    state.inventory.fiber += TUNE.salvageBundleFiberAmount;
+                    gained.wood = TUNE.salvageBundleWoodAmount;
+                    gained.stone = TUNE.salvageBundleStoneAmount;
+                    gained.fiber = TUNE.salvageBundleFiberAmount;
+                    break;
+            }
+            break;
+        }
     }
 
-    node.available = false;
+    //  The quarry stays available until its pool is actually spent — every other kind is
+    //  single-shot, exactly as before. Either way, depletion is stamped with the game clock
+    //  so the renewability law (reconcile.ts) knows when to start counting toward regrowth.
+    const stillHasPool = node.kind === 'quarry' && (node.pool ?? 0) > 0;
+    if (!stillHasPool) {
+        node.available = false;
+        node.depletedAtGameHours = state.gameHoursElapsed;
+    }
 
     let xpGained = 0;
     let levelsGained = 0;
@@ -237,6 +286,88 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
     }
 
     return { ok: true, reason: null, kind: node.kind, gained, foundFlask, skill: spec.skill, xpGained, levelsGained };
+}
+
+// ---- Renewability law (D-051) -------------------------------------------
+//
+// "No survival-critical resource is globally exhaustible — scarcity is rate/effort, never
+// extinction." `crashbox` is the one deliberate exemption: it is a fixed, one-time story
+// beat (the flask), not a resource, and never regrows.
+
+/** How long, in game hours, a spent node of this kind takes to regrow. Infinity = exempt. */
+export function regrowGameHoursFor(kind: NodeKind): number {
+    switch (kind) {
+        case 'driftwood': return TUNE.driftwoodRegrowGameHours;
+        case 'deadfall': return TUNE.deadfallRegrowGameHours;
+        case 'tree': return TUNE.treeRegrowGameHours;
+        case 'rock': return TUNE.rockRegrowGameHours;
+        case 'berrybush': return TUNE.berrybushRegrowGameHours;
+        case 'coconutpalm': return TUNE.coconutpalmRegrowGameHours;
+        case 'reed': return TUNE.reedRegrowGameHours;
+        case 'shellfish': return TUNE.shellfishRegrowGameHours;
+        case 'quarry': return TUNE.quarryRegrowGameHours;
+        case 'salvage': return Infinity; // claimed and gone; the beach spawns a new one instead
+        case 'crashbox': return Infinity; // exempt: a one-time beat, not a resource
+    }
+}
+
+/**
+ * 0 (just depleted) to 1 (fully regrown / available). Trees additionally read this as a
+ * stump (< `TUNE.treeSaplingAtFraction`) or a sapling (between that and 1) for the body to
+ * draw (D-051's "sapling stages"). Always 1 for an available node or an exempt kind.
+ */
+export function regrowProgress(node: WoodNode, currentGameHours: number): number {
+    if (node.available || node.depletedAtGameHours === null) return 1;
+    const total = regrowGameHoursFor(node.kind);
+    if (!Number.isFinite(total)) return 0;
+    const elapsed = currentGameHours - node.depletedAtGameHours;
+    return Math.max(0, Math.min(1, elapsed / total));
+}
+
+// ---- Beach salvage (D-051, pulled forward from Phase 2) -----------------
+//
+// Reconcile is the only clock the world has (charter §I.8) — so salvage spawns are driven
+// by the SAME elapsed-game-hours math as everything else, online and offline alike, never
+// by `Math.random()` or a wall-clock read. Position and loot are derived from a seed
+// (the spawn count), the same determinism `deadfallYield` already relies on.
+
+/** A small, deterministic 32-bit hash — same technique as `deadfallYield`'s id hash. */
+function hash32(seed: number): number {
+    let h = seed | 0;
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h;
+}
+
+/** A pseudo-random fraction in [0, 1) for this seed, stable across calls (pure). */
+function seedFraction(seed: number): number {
+    return hash32(seed) / 0x100000000;
+}
+
+export function activeSalvageCount(nodes: WoodNode[]): number {
+    return nodes.filter((n) => n.kind === 'salvage' && n.available).length;
+}
+
+/** Game hours until the next salvage spawn is due, drawn from the tuned real-minute range. */
+export function salvageIntervalGameHours(seed: number): number {
+    const span = TUNE.salvageSpawnMinutesMax - TUNE.salvageSpawnMinutesMin;
+    const minutes = TUNE.salvageSpawnMinutesMin + seedFraction(seed) * span;
+    return gameHoursFromRealSeconds(minutes * 60);
+}
+
+const SALVAGE_LOOT_ODDS: ReadonlyArray<SalvageLoot> = ['driftwood', 'cordage', 'stone'];
+
+/** A new salvage node on the beach ring, its position and reward rolled once from `seed`. */
+export function spawnSalvageNode(seed: number): WoodNode {
+    const angle = seedFraction(seed * 2 + 1) * Math.PI * 2;
+    const radius = WORLD.beachRadius + seedFraction(seed * 2 + 2) * (WORLD.islandRadius - WORLD.beachRadius - 4);
+    const x = Math.round(Math.cos(angle) * radius);
+    const y = Math.round(Math.sin(angle) * radius);
+    const loot: SalvageLoot = seedFraction(seed * 2 + 3) < TUNE.salvageBundleOdds
+        ? 'bundle'
+        : SALVAGE_LOOT_ODDS[Math.floor(seedFraction(seed * 2 + 4) * SALVAGE_LOOT_ODDS.length)];
+    return { id: `sv${seed}`, kind: 'salvage', x, y, available: true, depletedAtGameHours: null, salvageLoot: loot };
 }
 
 // ---- Fire (unchanged from Cycle 01) -------------------------------------
