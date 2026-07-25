@@ -22,9 +22,10 @@
  *   node tools/smoke.mjs [url] [--headful] [--software]
  */
 
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { execSync } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
 
 const URL_UNDER_TEST = process.argv[2]?.startsWith('http') ? process.argv[2] : 'http://127.0.0.1:4173/';
@@ -84,7 +85,56 @@ function findChrome() {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Pre-flight sanitation (C1 ruling, structural — not the manual "kill stray Chrome and
+ * retry" this session had been doing by hand every time the bench got corrupted). Three
+ * things, in order: refuse outright if a git worktree operation is mid-flight (this is
+ * exactly how a fresh-context C3 audit's own isolated worktree was pulled out from under
+ * it between turns during the D-052 pass — this run must never start into that same
+ * state); kill stray Chrome processes left over from a prior crashed run, the single
+ * biggest source of this session's documented flakiness; and confirm the target URL is
+ * actually reachable before sinking minutes into a Puppeteer launch against a dead server.
+ */
+async function preflight(url) {
+    console.log('Pre-flight — sanitizing the environment before this run.');
+
+    const gitDir = fileURLToPath(new URL('../.git/', import.meta.url));
+    const indexLock = join(gitDir, 'index.lock');
+    if (existsSync(indexLock)) {
+        console.error(`  REFUSED: ${indexLock} exists — a git operation is in progress. Re-run once it completes.`);
+        process.exit(1);
+    }
+    const worktreesDir = join(gitDir, 'worktrees');
+    if (existsSync(worktreesDir)) {
+        for (const name of readdirSync(worktreesDir)) {
+            const lockFile = join(worktreesDir, name, 'locked');
+            if (existsSync(lockFile)) {
+                console.error(`  REFUSED: worktree "${name}" is locked (${lockFile}) — a worktree operation is in progress. Re-run once it completes.`);
+                process.exit(1);
+            }
+        }
+    }
+    console.log('  No git worktree operation in progress.');
+
+    try {
+        if (process.platform === 'win32') execSync('taskkill /F /IM chrome.exe', { stdio: 'ignore' });
+        else execSync('pkill -f "Chrome" || true', { stdio: 'ignore', shell: '/bin/sh' });
+        console.log('  Killed stray Chrome processes from a prior run.');
+    } catch {
+        console.log('  No stray Chrome processes found.');
+    }
+
+    try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        console.log(`  Target URL responds (${res.status}): ${url}`);
+    } catch (e) {
+        console.error(`  REFUSED: ${url} is not reachable (${e.message}). Start the preview server first.`);
+        process.exit(1);
+    }
+}
+
 async function main() {
+    await preflight(URL_UNDER_TEST);
     mkdirSync(SHOT_DIR, { recursive: true });
     const browser = await puppeteer.launch({
         executablePath: findChrome(),
@@ -157,6 +207,56 @@ async function main() {
         return { ok: true };
     };
     const canvasRect = () => page.evaluate(() => { const r = document.getElementById('game-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; });
+
+    /**
+     * Real visibility, for primary HUD buttons — not "the selector exists" or "a tap on
+     * it succeeded" (both of which only prove reachability in whatever ONE state the
+     * check happened to run in). Computed style (display/visibility/opacity), a real
+     * bounding rect, inside the viewport, not occluded by anything else. The gap this
+     * closes: this harness has tapped `.secondary-action` successfully throughout
+     * C05/D-051/D-052 — every one of those taps happened in a state where the button
+     * legitimately WAS visible; none of them ever proved anything about a state where a
+     * stale visibility condition could hide it entirely (which is exactly what happened
+     * on a real long-running save — see the "Build button" regression below).
+     */
+    const isVisible = async (sel) => {
+        const info = await page.evaluate((selector) => {
+            const el = document.querySelector(selector);
+            if (!el) return { found: false };
+            const cs = getComputedStyle(el);
+            const r = el.getBoundingClientRect();
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            const hasSize = r.width > 0 && r.height > 0;
+            const inViewport = hasSize && cy >= 0 && cy <= window.innerHeight && cx >= 0 && cx <= window.innerWidth;
+            const topEl = inViewport ? document.elementFromPoint(cx, cy) : null;
+            return {
+                found: true,
+                displayNone: cs.display === 'none',
+                visibilityHidden: cs.visibility === 'hidden',
+                opacity: parseFloat(cs.opacity),
+                rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+                hasSize,
+                inViewport,
+                isTopmost: inViewport && (topEl === el || el.contains(topEl))
+            };
+        }, sel);
+        if (!info.found) return { visible: false, reason: 'not-found', ...info };
+        if (info.displayNone) return { visible: false, reason: 'display:none', ...info };
+        if (info.visibilityHidden) return { visible: false, reason: 'visibility:hidden', ...info };
+        if (!(info.opacity > 0)) return { visible: false, reason: `opacity:${info.opacity}`, ...info };
+        if (!info.hasSize) return { visible: false, reason: 'zero-size', ...info };
+        if (!info.inViewport) return { visible: false, reason: 'off-screen', ...info };
+        if (!info.isTopmost) return { visible: false, reason: 'occluded', ...info };
+        return { visible: true, ...info };
+    };
+
+    /**
+     * A screenshot-diff companion — actual pixels, not just DOM introspection. Crops a
+     * fixed, stable screen region (a container that stays laid out regardless of which
+     * child button is shown, not a target's own possibly-collapsed rect) so a check
+     * cannot pass on a DOM flag alone while nothing visibly changed on screen.
+     */
+    const shotOfRect = (rect) => page.screenshot({ clip: { x: Math.max(0, Math.round(rect.x)), y: Math.max(0, Math.round(rect.y)), width: Math.max(1, Math.round(rect.width)), height: Math.max(1, Math.round(rect.height)) } });
 
     //  Dispatch a real PointerEvent with its own pointerId, as a second finger would — used
     //  to reproduce concurrent-touch bugs puppeteer's single-pointer touchscreen API cannot
@@ -1140,6 +1240,47 @@ async function main() {
         check('FIX-5 — the torch lights via a real tap on an active fire', litTorch.torch.lit === true, JSON.stringify(litTorch.torch));
     } else {
         check('FIX-5 — the torch lights via a real tap on an active fire', false, 'setup failed: no fire standing to light it from');
+    }
+
+    // ---- Missing Build button: a stale HUD visibility gate (D-053) ----
+    console.log('\nD-053 — the Build button vanishing on a real, long-running save');
+
+    //  REGRESSION, root cause: paintHud()'s secondary.visible condition gated on
+    //  axe/shelter/storage only — it was never updated when D-052 added the torch as a
+    //  fourth Build-panel item. A director whose save had genuinely built all three
+    //  (exactly what a long real session accumulates) saw the Build button vanish
+    //  entirely, torch still uncrafted and unreachable. No prior harness run ever caught
+    //  it because every scenario in this file opens the Build panel EARLY, before all
+    //  three older items are built — never in the "everything but the torch" state a real
+    //  save reaches. `realTapDom`'s own occlusion check (element exists + a bounding rect
+    //  inside the viewport + nothing else on top) cannot distinguish this: a tap that
+    //  never ran is not the same fact as an element proven absent from the render.
+    //  `isVisible()` (above) checks computed style/rect/occlusion directly instead of
+    //  inferring visibility from whether a tap happened to land.
+    await editSave(`
+        state.tools.axe = true;
+        state.shelter = { built: true, x: 0, y: 0, durability: 100 };
+        state.storage = { built: true, x: 5, y: 0, durability: 100, stored: { wood: 0, stone: 0, fiber: 0 } };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+    `);
+    const buildRowRect = await page.evaluate(() => { const r = document.querySelector('.action-row')?.getBoundingClientRect(); return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null; });
+    const withTorchOwedInfo = await isVisible('.secondary-action');
+    check('REGRESSION — the Build button stays visible with axe/shelter/storage all done, while the torch is still uncrafted', withTorchOwedInfo.visible, JSON.stringify(withTorchOwedInfo));
+    const withTorchOwedShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
+
+    //  The other half: once EVERYTHING (including the torch) is done, the button should
+    //  correctly disappear — proving this isn't just "always show it" overcorrection.
+    await editSave('state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4 };');
+    const allDoneInfo = await isVisible('.secondary-action');
+    check('the Build button correctly hides once axe/shelter/storage/torch are ALL done', !allDoneInfo.visible, JSON.stringify(allDoneInfo));
+    const allDoneShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
+
+    //  Screenshot diff: the same fixed action-row region, in two different states,
+    //  actually renders different pixels — not just two different DOM claims.
+    if (withTorchOwedShot && allDoneShot) {
+        check('REGRESSION — the visibility change is real on screen, not just a DOM flag (screenshot diff)', !withTorchOwedShot.equals(allDoneShot));
+    } else {
+        check('REGRESSION — the visibility change is real on screen, not just a DOM flag (screenshot diff)', false, 'setup failed: .action-row not found');
     }
 
     // ---- Hygiene ----

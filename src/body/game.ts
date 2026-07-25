@@ -1135,11 +1135,19 @@ export class Game {
             action = { label: short === 0 ? 'Build fire' : `Build fire (${short} short)`, visible: state.inventory.wood > 0, ready: short === 0 };
         }
 
-        //  Build: one entry point to the Build panel (axe, shelter, storage), visible
+        //  Build: one entry point to the Build panel (axe, shelter, storage, torch), visible
         //  whenever anything on it is still unbuilt. Each item inside gates independently —
         //  this button is just the door, never a priority slot itself.
+        //
+        //  FIX (real-device report): this condition was never updated when D-052 added the
+        //  torch as a fourth Build-panel item — so once a player had axe + shelter + storage
+        //  all built (exactly what a long-running save accumulates), the button vanished
+        //  entirely, even with the torch still uncrafted and reachable inside the panel. The
+        //  device harness never caught it because every harness scenario opens the Build
+        //  panel EARLY, before all three older items are built — it never exercised the
+        //  "everything but the torch" state a real long session reaches.
         let secondary = { label: '', visible: false };
-        if (!state.tools.axe || !state.shelter.built || !state.storage.built) {
+        if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned) {
             secondary = { label: 'Build', visible: true };
         }
 
