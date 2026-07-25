@@ -24,12 +24,15 @@ import {
     buildStorage,
     canBuildFire,
     canCraftAxe,
+    canCraftTorch,
     canDrinkAtPond,
     canDrinkFlask,
     canFeedFire,
     canFillFlask,
+    canLightTorch,
     canRepairStructure,
     craftAxe,
+    craftTorch,
     distance,
     drinkAtPond,
     drinkFlask,
@@ -42,6 +45,7 @@ import {
     isExhausted,
     isFireLit,
     isSheltered,
+    lightTorch,
     nodeHoldSeconds,
     nodeSpec,
     repairStructure,
@@ -757,6 +761,19 @@ export class Game {
 
     private tryFeedFire(): void {
         const s = session().state;
+        //  FIX-5 (Living Island Track A): lighting an owned, unlit torch takes priority at
+        //  an active fire. This never starves feed-fire the way an ill-considered priority
+        //  once did (D-042's lesson) — `canLightTorch` is only true in the rare, transient
+        //  window right after crafting an unlit torch, never "almost always true" the way
+        //  the C03 bug's gating condition was.
+        if (canLightTorch(s)) {
+            lightTorch(s);
+            this.cues.play(CUES.ignition);
+            this.floatText('torch lit');
+            session().persist(now());
+            this.lastActivityAt = now();
+            return;
+        }
         if (!canFeedFire(s)) { this.deniedFire(); return; }
         feedFire(s);
         this.fire.flare();
@@ -814,9 +831,21 @@ export class Game {
         showBuildCard(
             this.overlay,
             {
+                torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned },
                 axe: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.tools.axe },
                 shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built },
                 storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built }
+            },
+            () => {
+                runtime.panelOpen = false;
+                if (craftTorch(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the torch is yours — light it at a fire');
+                    session().markFirstCraft(msSinceControl());
+                    session().persist(now());
+                    this.showHint('Tap the fire to light your torch.');
+                }
+                this.lastActivityAt = now();
             },
             () => {
                 runtime.panelOpen = false;
@@ -1067,6 +1096,7 @@ export class Game {
         const s = session().state;
         this.player.place(s.player.x, this.island.heightAt(s.player.x, s.player.y), s.player.y, this.facing);
         this.player.syncTools(s.tools.axe);
+        this.player.syncTorch(s.torch.owned, s.torch.lit, this.nightFactor(s.gameHoursElapsed));
     }
 
     /** The node to highlight: the pending one, else the nearest in reach. */
@@ -1153,9 +1183,14 @@ export class Game {
         if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';
         if (!s.tools.axe) return 'An axe needs wood, stone, and fibre. Reeds by the pond are fibre.';
+        if (!s.torch.owned && canCraftTorch(s)) return 'You have the parts for a torch, too — Build panel.';
         if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough wood. Build the fire.';
         if (!s.fire.built) return 'Tap a standing tree to chop it, then build a fire.';
         if (!isFireLit(s)) return 'The fire is out. Tap it to add wood.';
+        //  FIX-5: a low-priority idle nudge only — never inserted into the primary goal
+        //  line above, which stays the carefully-sequenced axe/fire/shelter funnel
+        //  (D-040/D-042). The torch is optional content; it earns a hint, not a gate.
+        if (canLightTorch(s)) return 'Your torch is unlit. Tap the fire to light it.';
         if (!s.shelter.built) return 'The Build panel has more than the axe now — a shelter awaits.';
         if (!isSheltered(s)) return 'Stand in the firelight to warm up.';
         return 'You are warming. Close the app — the island keeps the time.';

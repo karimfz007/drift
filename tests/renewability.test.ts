@@ -10,8 +10,9 @@ import {
     spawnSalvageNode
 } from '../src/brain/state';
 import { deserialize, serialize } from '../src/brain/save';
+import { SCHEMA_VERSION } from '../src/brain/types';
 import { TUNE } from '../src/data/tune';
-import { WORLD } from '../src/data/world';
+import { WALKABLE_RADIUS, WORLD, isWalkablePoint } from '../src/data/world';
 
 function run() {
     return createInitialState(0);
@@ -139,10 +140,27 @@ describe('renewability law (D-051) — no resource is globally exhaustible', () 
 
         const r = Math.hypot(a.x, a.y);
         expect(r).toBeGreaterThanOrEqual(WORLD.beachRadius);
-        expect(r).toBeLessThanOrEqual(WORLD.islandRadius - 2);
+        //  FIX-3 (Living Island Track A): bounded by WALKABLE_RADIUS, not the old, looser
+        //  `islandRadius - 2` (120 m) this assertion used to accept — that bound was wide
+        //  enough to pass even with the sea-adjacent spawn bug (up to 118 m, 10 m past
+        //  WALKABLE_RADIUS' 108 m), which is exactly why it never caught it.
+        expect(r).toBeLessThanOrEqual(WALKABLE_RADIUS);
+        expect(isWalkablePoint(a.x, a.y)).toBe(true);
         expect(['driftwood', 'cordage', 'stone', 'bundle']).toContain(a.salvageLoot);
         expect(a.available).toBe(true);
         expect(a.depletedAtGameHours).toBeNull();
+    });
+
+    it('FIX-3: every salvage spawn is walkable/reachable, across many seeds (property test)', () => {
+        //  Harness note (device-level companion to this): every currently-spawned salvage
+        //  node should also be confirmed path-reachable from a fixed test origin on-device
+        //  — tools/smoke.mjs. This is the brain-level guarantee the geometry itself makes,
+        //  independent of rendering: no seed, ever, produces an unwalkable point.
+        for (let seed = 0; seed < 500; seed++) {
+            const node = spawnSalvageNode(seed);
+            expect(isWalkablePoint(node.x, node.y)).toBe(true);
+            expect(Math.hypot(node.x, node.y)).toBeLessThanOrEqual(WALKABLE_RADIUS);
+        }
     });
 
     it('beach salvage: reconcile spawns finds over time online, capped at salvageMaxActive, seeded not random', () => {
@@ -217,7 +235,9 @@ describe('renewability law (D-051) — no resource is globally exhaustible', () 
 
         const migrated = deserialize(v3Payload);
         expect(migrated).not.toBeNull();
-        expect(migrated!.state.schemaVersion).toBe(4);
+        //  Migration always lands at the CURRENT schema version, whatever it is this
+        //  cycle — a v3 save now rides the full v3→v4→v5 ladder in one deserialize() call.
+        expect(migrated!.state.schemaVersion).toBe(SCHEMA_VERSION);
         expect(migrated!.state.nodes.find((n) => n.id === 'tr1')?.available).toBe(true); // healed
         expect(migrated!.state.nodes.find((n) => n.id === 'rk1')?.available).toBe(true); // healed
         const quarry = migrated!.state.nodes.find((n) => n.id === 'qr1');

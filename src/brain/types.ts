@@ -12,8 +12,12 @@
  *      exhaustible), the stone quarry, and beach salvage spawns. Migration v3→v4 lives in
  *      save.ts and heals an existing save — every depleted node comes back at once ("while
  *      you were away, the island came back to life").
+ * v5 — Living Island Track A FIX package (D-052): the torch (a new carried light source,
+ *      FIX 5) and a per-death log on the trace (FIX 2). Migration v4→v5 lives in save.ts;
+ *      a returning player simply hasn't crafted a torch yet, the same reasoning v2→v3 used
+ *      for shelter/storage.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -98,6 +102,25 @@ export interface Tools {
 }
 
 /**
+ * The torch (Living Island Track A, FIX 5): a carried, consumable light source — the
+ * inverse of the fixed structures below. `owned` is true from the moment it is crafted
+ * (unlit) until its fuel burns out (consumed, not just "off"); `lit` only ever becomes
+ * true at an active fire. Burn-down is handled in reconcile.ts, the same closed-form
+ * treatment as structure durability decay — nothing else's rate depends on exactly when
+ * it crosses zero.
+ */
+export interface TorchState {
+    /** True once crafted; false again once fully burned down. A fresh torch must be
+     *  crafted to replace a spent one — there is no "refuel". */
+    owned: boolean;
+    /** True while lit. Never true unless `owned`; extinguishes itself at 0 fuel. */
+    lit: boolean;
+    /** Game hours of burn remaining. Only ticks down while `lit`; set to
+     *  `TUNE.torchBurnGameHours` on craft. */
+    fuelGameHoursRemaining: number;
+}
+
+/**
  * A placed structure (Cycle 05): the shelter or the storage crate. Both share the same
  * shape — a location and a durability that decays over game hours and pauses the
  * structure's bonus at 0 until repaired. Nothing is ever destroyed (charter honest-systems
@@ -153,6 +176,11 @@ export interface TraceState {
     deaths: number;
     /** Real ms of active (foreground) play since the run started. */
     activeMs: number;
+    /** Every death this run, cause and the game-clock moment it happened (FIX 2) — surfaced
+     *  in the debug export (D-050's tool) so a death-loop report is diagnosable without
+     *  relying on the player's memory of what killed them and when. Unbounded; a run's
+     *  death count is never so large this matters for storage. */
+    deathLog: Array<{ cause: string; gameHoursElapsed: number }>;
 }
 
 /**
@@ -188,6 +216,8 @@ export interface GameState {
     shelter: Structure;
     /** The storage crate (Cycle 05): a second pool for raw materials only. */
     storage: StorageState;
+    /** The carried torch (Living Island Track A, FIX 5). */
+    torch: TorchState;
     player: PlayerState;
     nodes: WoodNode[];
     /** How many salvage nodes have ever been spawned — the id/seed counter (D-051). Also

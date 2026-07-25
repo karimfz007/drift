@@ -58,7 +58,17 @@ const TUNE = {
     frameTimeP95BudgetMs: 33,
     quarryYieldPerTap: 4,
     quarryStoneCapacity: 220,
-    salvageStoneAmount: 2
+    salvageStoneAmount: 2,
+    //  Living Island Track A FIX package (D-052) — mirrors src/data/tune.ts, same
+    //  duplication convention as every constant above.
+    respawnHealthFraction: 0.3,
+    respawnVitalFraction: 0.5,
+    energyCostRockMine: 1.5,
+    torchWoodCost: 2,
+    torchFiberCost: 2,
+    torchBurnGameHours: 4,
+    //  Mirrors src/data/world.ts's WALKABLE_RADIUS (islandRadius 122 - shoreFalloff 12 - 2).
+    walkableRadiusM: 108
 };
 
 const results = [];
@@ -650,11 +660,11 @@ async function main() {
     // ================================================================
     console.log('\nA1–A4 (C05) — construction: shelter, storage, upkeep, sleep');
 
-    //  Build the shelter through the (now three-item) Build panel.
+    //  Build the shelter through the (now four-item, D-052 adds the torch) Build panel.
     await editSave('state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0 };');
     await realTapDom('.secondary-action');
     await sleep(400);
-    check('the Build panel shows all three items', (await page.evaluate(() => document.querySelectorAll('.build-item').length)) === 3);
+    check('the Build panel shows all four items', (await page.evaluate(() => document.querySelectorAll('.build-item').length)) === 4);
     const shelterBuildTap = await realTapDom('.shelter-btn');
     check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
     await sleep(400);
@@ -976,7 +986,16 @@ async function main() {
     if (deathShowing) await realTapDom('.death button');
     await sleep(500);
     const revived = await live();
-    check('REGRESSION — once a shelter is built, respawn wakes you there, not the beach', Math.abs(revived.player.x - afterShelter.shelter.x) < 0.5 && Math.abs(revived.player.y - afterShelter.shelter.y) < 0.5 && revived.health === 100 && revived.inventory.wood === 4, `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}`);
+    //  FIX-2 (Living Island Track A, D-052): a death is no longer a full refill. Health
+    //  wakes at respawnHealthFraction of max, not 100 — this assertion used to encode the
+    //  exploit as correct behavior; it now encodes the fix.
+    check('REGRESSION — once a shelter is built, respawn wakes you there instead of the beach', Math.abs(revived.player.x - afterShelter.shelter.x) < 0.5 && Math.abs(revived.player.y - afterShelter.shelter.y) < 0.5 && revived.inventory.wood === 4, `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}`);
+    //  A generous tolerance, not 0.01: `revived` is read after a real tap + sleep(500),
+    //  and online health regen (healthRegenPerGameHour) keeps ticking the instant no vital
+    //  is empty, the same continuous-drift reason C05's own audit already loosened an
+    //  energy===100 assertion for. The fraction should still land close, just not exact.
+    check('FIX-2 — a death is NOT a full refill: health wakes near respawnHealthFraction, not 100', Math.abs(revived.health - 100 * TUNE.respawnHealthFraction) < 1 && revived.health < 100, `health ${revived.health}`);
+    check('FIX-2 — every death is logged with a cause and a game-clock timestamp', Array.isArray(revived.trace.deathLog) && revived.trace.deathLog.length >= 1 && typeof revived.trace.deathLog[revived.trace.deathLog.length - 1].cause === 'string', JSON.stringify(revived.trace.deathLog?.slice(-1)));
 
     // ---- A4: absence and the morning report ----
     console.log('\nA4 — absence and the vitals report');
@@ -1047,6 +1066,81 @@ async function main() {
     const coldMs = Date.now() - t0;
     await cold.close();
     check(`cold 4G load within ${TUNE.coldLoadBudgetSeconds} s`, coldMs <= TUNE.coldLoadBudgetSeconds * 1000, `${coldMs} ms`);
+
+    // ---- Living Island Track A FIX package (D-052) ----
+    console.log('\nD-052 — Living Island Track A: energy cost, salvage reachability, the torch');
+
+    //  FIX-1: an effortful (hold) gather now visibly costs energy; an instant tap costs
+    //  (essentially) nothing. Proven with real taps, not editSave — the same gatherNode()
+    //  path a player actually exercises. Teleported next to each target first (rather than
+    //  trusting the harness's incidental walk budget, the D-051 lesson) so the measured
+    //  window is dominated by the action itself, not a cross-map walk — ambient per-
+    //  game-hour drain (TUNE.energyDrainPerGameHour) keeps ticking the whole time regardless
+    //  of position, so the tolerance below is sized to comfortably absorb a few real seconds
+    //  of that ambient drain without masking an actual wrong effort cost.
+    await editSave('state.energy = 100; state.tools.axe = false;');
+    const rockTarget = await nodeOf('rock');
+    await editSave(`state.player = { x: ${rockTarget.x - 1.5}, y: ${rockTarget.y} };`);
+    const beforeRockEnergy = (await live()).energy;
+    const rockResult = await harvest('rock', 20);
+    const afterRockEnergy = (await live()).energy;
+    const rockDelta = beforeRockEnergy - afterRockEnergy;
+    check('FIX-1 — mining a rock (effortful) visibly costs energy', rockResult.ok && afterRockEnergy < beforeRockEnergy, `rock ok=${rockResult.ok}, energy ${beforeRockEnergy} -> ${afterRockEnergy}`);
+    check('FIX-1 — the energy cost matches the tuned amount (within incidental ambient drain)', rockResult.ok && Math.abs(rockDelta - TUNE.energyCostRockMine) < 0.3, `delta ${rockDelta.toFixed(2)}, expected ${TUNE.energyCostRockMine}`);
+    const driftTarget = await nodeOf('driftwood');
+    await editSave(`state.player = { x: ${driftTarget.x - 1.5}, y: ${driftTarget.y} };`);
+    const beforeDriftwoodEnergy = (await live()).energy;
+    const driftResult = await harvest('driftwood', 20);
+    const afterDriftwoodEnergy = (await live()).energy;
+    const driftDelta = beforeDriftwoodEnergy - afterDriftwoodEnergy;
+    check('FIX-1 — an instant tap gather (driftwood) costs no EFFORT energy (only incidental ambient drain, well under any effort cost)', driftResult.ok && driftDelta < 0.1, `energy ${beforeDriftwoodEnergy} -> ${afterDriftwoodEnergy} (delta ${driftDelta.toFixed(3)})`);
+
+    //  FIX-3: every currently-spawned salvage node is path-reachable from a fixed test
+    //  origin — the harness-level companion to the brain's own 500-seed property test.
+    //  Real online spawns during this run, PLUS one forced far-radius spawn (the shape of
+    //  the original bug: a seed that used to land past WALKABLE_RADIUS), all checked.
+    await editSave(`
+        state.nodes.push({ id: 'sv_smoke_far', kind: 'salvage', x: 0, y: 105, available: true, depletedAtGameHours: null, salvageLoot: 'stone' });
+    `);
+    const salvageNodesNow = (await live()).nodes.filter((n) => n.kind === 'salvage' && n.available);
+    const ORIGIN = { x: 0, y: 0 }; // the fixed test origin
+    const unreachable = salvageNodesNow.filter((n) => Math.hypot(n.x - ORIGIN.x, n.y - ORIGIN.y) > TUNE.walkableRadiusM);
+    check(`FIX-3 — every currently-spawned salvage node (${salvageNodesNow.length}) is path-reachable from the fixed origin (within ${TUNE.walkableRadiusM} m)`, unreachable.length === 0, unreachable.map((n) => `${n.id}@${n.x},${n.y}`).join(' | '));
+
+    //  FIX-5: the torch — craft via a real tap on the Build panel, then light it via a
+    //  real tap on the fire (reusing the fire this run already built).
+    await editSave(`
+        state.inventory.wood = ${TUNE.torchWoodCost + 5};
+        state.inventory.fiber = ${TUNE.torchFiberCost + 5};
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+    `);
+    const buildOpenTap = await realTapDom('.secondary-action');
+    check('setup — the Build action is reachable to open the panel', buildOpenTap.ok || (await panelOpen()), buildOpenTap.reason ?? '');
+    await sleep(300);
+    const torchCraftTap = await realTapDom('.torch-btn');
+    check('FIX-5 — the torch can be made via a real, reachable tap on the Build panel', torchCraftTap.ok, torchCraftTap.reason ?? '');
+    await sleep(400);
+    const craftedTorch = await live();
+    check('FIX-5 — crafting the torch spends the recipe and yields an unlit, owned torch', craftedTorch.torch.owned === true && craftedTorch.torch.lit === false, JSON.stringify(craftedTorch.torch));
+
+    const fireForTorch = (await live()).fire;
+    if (fireForTorch.built) {
+        //  `built` stays true forever once a fire exists (never deleted, only ever runs
+        //  dry) — by this point in a long continuous run the fire from way back in the
+        //  A4/A7 section has had a full 240-real-minute goAway() plus everything since
+        //  burned through its fuel, so `canLightTorch`'s `isFireLit` check would
+        //  legitimately (and correctly) refuse an out fire. Force it lit and deterministic
+        //  first, the same way every other precondition in this file is forced rather than
+        //  trusted to incidental leftover world state.
+        await editSave(`state.fire.fuel = 5; state.player = { x: ${fireForTorch.x - 1.5}, y: ${fireForTorch.y} };`);
+        await faceNode(fireForTorch.x, fireForTorch.y);
+        await tapWorld(fireForTorch.x, fireForTorch.y, 55);
+        await sleep(500);
+        const litTorch = await live();
+        check('FIX-5 — the torch lights via a real tap on an active fire', litTorch.torch.lit === true, JSON.stringify(litTorch.torch));
+    } else {
+        check('FIX-5 — the torch lights via a real tap on an active fire', false, 'setup failed: no fire standing to light it from');
+    }
 
     // ---- Hygiene ----
     console.log('\nHygiene');

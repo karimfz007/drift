@@ -135,7 +135,7 @@ describe('skills — XP and levels', () => {
 });
 
 describe('death — respawn keeps what you made', () => {
-    it('washes you ashore, restores vitals, keeps inventory/tools/skills, counts the death', () => {
+    it('washes you ashore, wakes you diminished (FIX-2, not a full refill), keeps inventory/tools/skills, counts and logs the death', () => {
         const s = run();
         s.player = { x: 40, y: -30 };
         s.inventory.wood = 12;
@@ -144,17 +144,28 @@ describe('death — respawn keeps what you made', () => {
         s.warmth = 0;
         s.thirst = 0;
         s.health = 0;
+        s.gameHoursElapsed = 12.5;
 
         respawn(s, 'thirst');
 
         expect(s.player.x).toBe(0); // back at spawn
-        expect(s.health).toBe(TUNE.healthMax);
-        expect(s.thirst).toBe(TUNE.thirstMax);
+        //  FIX-2: a death is no longer a free refill. Health and the fast-drainable vitals
+        //  wake diminished; warmth is the one deliberate exception (kept at max — the acute
+        //  killer, a second cold-death right away is out of scope for this interim fix).
+        expect(s.health).toBe(TUNE.healthMax * TUNE.respawnHealthFraction);
+        expect(s.thirst).toBe(TUNE.thirstMax * TUNE.respawnVitalFraction);
+        expect(s.hunger).toBe(TUNE.hungerMax * TUNE.respawnVitalFraction);
+        expect(s.energy).toBe(TUNE.energyMax * TUNE.respawnVitalFraction);
         expect(s.warmth).toBe(TUNE.warmthMax);
+        expect(s.wet).toBe(0);
+        expect(s.health).toBeLessThan(TUNE.healthMax);
+        expect(s.thirst).toBeLessThan(TUNE.thirstMax);
         expect(s.inventory.wood).toBe(12); // kept
         expect(s.tools.axe).toBe(true); // kept
         expect(s.skills.woodcutting.level).toBe(3); // kept
         expect(s.lastDeathCause).toBe('thirst');
         expect(s.trace.deaths).toBe(1);
+        //  FIX-2: every death is logged with its cause and the game-clock moment.
+        expect(s.trace.deathLog).toEqual([{ cause: 'thirst', gameHoursElapsed: 12.5 }]);
     });
 });

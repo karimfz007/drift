@@ -256,6 +256,7 @@ export interface BuildItemView {
 }
 
 export interface BuildCardView {
+    torch: BuildItemView;
     axe: BuildItemView;
     shelter: BuildItemView;
     storage: BuildItemView;
@@ -308,6 +309,7 @@ function buildItemMarkup(
 export function showBuildCard(
     overlay: HTMLElement,
     view: BuildCardView,
+    onCraftTorch: () => void,
     onCraftAxe: () => void,
     onBuildShelter: () => void,
     onBuildStorage: () => void,
@@ -316,6 +318,8 @@ export function showBuildCard(
     const el = panel(overlay, 'build');
     el.innerHTML = `
         <div class="build-list">
+            ${buildItemMarkup('Torch', 'Wood and fibre — light it at any active fire.', view.torch,
+                { wood: TUNE.torchWoodCost, fiber: TUNE.torchFiberCost }, 'Owned.', 'Make the torch', 'torch-btn')}
             ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
                 { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost }, 'Owned.', 'Make the axe', 'axe-btn')}
             ${buildItemMarkup('Shelter', 'Somewhere to rest — it becomes home.', view.shelter,
@@ -329,6 +333,7 @@ export function showBuildCard(
         const btn = el.querySelector(selector);
         btn?.addEventListener('click', () => { if (done) return; done = true; fade(el, action); });
     };
+    bind('.torch-btn', onCraftTorch);
     bind('.axe-btn', onCraftAxe);
     bind('.shelter-btn', onBuildShelter);
     bind('.storage-btn', onBuildStorage);

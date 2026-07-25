@@ -28,8 +28,9 @@ describe('session — death and respawn (C03)', () => {
         expect(session.state.trace.deaths).toBe(1);
         expect(session.state.lastDeathCause).toBeTruthy();
         expect(session.state.player.x).toBe(0); // washed back to spawn
-        expect(session.state.health).toBe(TUNE.healthMax);
-        expect(session.state.thirst).toBe(TUNE.thirstMax);
+        //  FIX-2: a death wakes the castaway diminished, not fully refilled.
+        expect(session.state.health).toBe(TUNE.healthMax * TUNE.respawnHealthFraction);
+        expect(session.state.thirst).toBe(TUNE.thirstMax * TUNE.respawnVitalFraction);
         expect(session.state.inventory.wood).toBe(5); // kept
 
         //  The death is persisted immediately — a crash right after loses nothing.

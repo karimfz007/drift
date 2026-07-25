@@ -191,6 +191,17 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  the vitals above, so exactness here would cost complexity for no observable benefit.
     if (next.shelter.built) next.shelter.durability = Math.max(0, next.shelter.durability - TUNE.structureDurabilityDecayPerGameHour * totalGameHours);
     if (next.storage.built) next.storage.durability = Math.max(0, next.storage.durability - TUNE.structureDurabilityDecayPerGameHour * totalGameHours);
+    //  The torch (FIX-5): a lit torch burns down over elapsed game hours, closed-form —
+    //  like structure decay above, nothing else's rate depends on exactly when it crosses
+    //  zero, so segment-stepping it would cost complexity for no observable benefit. Spent,
+    //  not just "off": a burned-out torch must be recrafted, never simply relit.
+    if (next.torch.owned && next.torch.lit) {
+        next.torch.fuelGameHoursRemaining = Math.max(0, next.torch.fuelGameHoursRemaining - totalGameHours);
+        if (next.torch.fuelGameHoursRemaining <= 0) {
+            next.torch.owned = false;
+            next.torch.lit = false;
+        }
+    }
     next.lastSeenMs = state.lastSeenMs + Math.round(elapsedRealSeconds * 1000);
 
     //  Renewability law (D-051): "no survival-critical resource is globally exhaustible —

@@ -86,6 +86,12 @@ export class PlayerView {
     private shadow: Mesh;
     private axe: Mesh;
     private axeShown = false;
+    private torchHaft: Mesh;
+    private torchTip: Mesh;
+    private torchFlame: ParticleSystem;
+    private torchLight: PointLight;
+    private torchOwnedShown = false;
+    private torchLitShown = false;
 
     constructor(scene: Scene) {
         this.root = CreateCapsule('player', { height: PLAYER_HEIGHT, radius: 0.34, tessellation: 8, subdivisions: 1 }, scene);
@@ -115,7 +121,70 @@ export class PlayerView {
         this.axe.rotation.set(0.3, 0, Math.PI / 2.6);
         this.axe.setEnabled(false);
 
+        //  The torch (FIX-5, Living Island Track A): same "no equip step, owning it is
+        //  carrying it" rule the axe already set, on the opposite hip so the two never
+        //  visually collide. Unlit = haft only, no flame. Lit = flame + a small point
+        //  light, following the tip via `getAbsolutePosition()` each frame (`syncTorch`)
+        //  rather than parenting the light itself — the same manual-update pattern
+        //  FireView already uses for its own light, kept consistent rather than mixed.
+        this.torchHaft = CreateCylinder('torchHaft', { height: 0.5, diameter: 0.045, tessellation: 6 }, scene);
+        this.torchHaft.material = flat(scene, 'torchHaftMat', PALETTE.deadfall);
+        this.torchHaft.isPickable = false;
+        this.torchHaft.parent = this.root;
+        this.torchHaft.position.set(0.3, -0.02, -0.28);
+        this.torchHaft.rotation.set(-0.35, 0, -Math.PI / 2.9);
+        this.torchHaft.setEnabled(false);
+
+        this.torchTip = CreateSphere('torchTip', { diameter: 0.02, segments: 2 }, scene);
+        this.torchTip.isVisible = false;
+        this.torchTip.isPickable = false;
+        this.torchTip.parent = this.torchHaft;
+        this.torchTip.position.set(0, 0.27, 0);
+
+        this.torchLight = new PointLight('torchLight', new Vector3(0, 0, 0), scene);
+        this.torchLight.diffuse = colour(PALETTE.flame);
+        this.torchLight.range = 9;
+        this.torchLight.intensity = 0;
+
+        this.torchFlame = this.buildTorchFlame(scene);
+
         this.shadow = makeShadow(scene, 0.6);
+    }
+
+    private buildTorchFlame(scene: Scene): ParticleSystem {
+        //  A smaller cousin of FireView's own flame texture/technique — kept local rather
+        //  than shared, so this fix does not risk touching the fire's already-proven system.
+        const texture = new DynamicTexture('torchSpark', { width: 24, height: 24 }, scene, false);
+        const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
+        const gradient = ctx.createRadialGradient(12, 12, 0, 12, 12, 12);
+        gradient.addColorStop(0, 'rgba(255,255,255,1)');
+        gradient.addColorStop(0.45, 'rgba(255,220,150,0.75)');
+        gradient.addColorStop(1, 'rgba(255,160,60,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 24, 24);
+        texture.update();
+        texture.hasAlpha = true;
+
+        const system = new ParticleSystem('torchFlames', 30, scene);
+        system.particleTexture = texture as unknown as Texture;
+        system.emitter = new Vector3(0, 0, 0);
+        system.minEmitBox = new Vector3(-0.03, 0, -0.03);
+        system.maxEmitBox = new Vector3(0.03, 0.04, 0.03);
+        system.color1 = new Color4(1, 0.72, 0.28, 1);
+        system.color2 = new Color4(1, 0.42, 0.12, 1);
+        system.colorDead = new Color4(0.35, 0.12, 0.05, 0);
+        system.minSize = 0.1;
+        system.maxSize = 0.22;
+        system.minLifeTime = 0.2;
+        system.maxLifeTime = 0.4;
+        system.emitRate = 22;
+        system.direction1 = new Vector3(-0.2, 1.4, -0.2);
+        system.direction2 = new Vector3(0.2, 2.0, 0.2);
+        system.minEmitPower = 0.3;
+        system.maxEmitPower = 0.7;
+        system.gravity = new Vector3(0, 0.8, 0);
+        system.blendMode = ParticleSystem.BLENDMODE_ADD;
+        return system;
     }
 
     /** Plant the feet on the ground at (x, z), and lay the shadow flat where they land. */
@@ -131,6 +200,31 @@ export class PlayerView {
         if (hasAxe === this.axeShown) return;
         this.axeShown = hasAxe;
         this.axe.setEnabled(hasAxe);
+    }
+
+    /** Show/hide the carried torch and its flame+light, following the tip each frame while
+     *  lit. Call AFTER `place()` so the root's transform this frame is already current —
+     *  `getAbsolutePosition()` reads it fresh. `nightFactor` scales intensity the same way
+     *  the fire's own light does (D-036/FireView), so the torch reads strongest at night
+     *  without ever being fully invisible by day. */
+    syncTorch(owned: boolean, lit: boolean, nightFactor: number): void {
+        if (owned !== this.torchOwnedShown) {
+            this.torchOwnedShown = owned;
+            this.torchHaft.setEnabled(owned);
+        }
+        if (lit !== this.torchLitShown) {
+            this.torchLitShown = lit;
+            if (lit) this.torchFlame.start();
+            else this.torchFlame.stop();
+        }
+        if (lit) {
+            const tip = this.torchTip.getAbsolutePosition();
+            this.torchLight.position.copyFrom(tip);
+            (this.torchFlame.emitter as Vector3).copyFrom(tip);
+            this.torchLight.intensity = 0.3 + 0.8 * nightFactor;
+        } else {
+            this.torchLight.intensity = 0;
+        }
     }
 
     get eyeHeight(): number {
@@ -455,15 +549,29 @@ export class NodeViews {
 
             //  Renewability law (D-051): a claimed node no longer just vanishes — it reads
             //  as depleted (a stump, a sapling regrowing, a shrunken remnant) until it comes
-            //  back. `crashbox`/`salvage` are exempt (a one-time beat and a claimed find):
-            //  those still simply disappear, exactly as before.
+            //  back.
+            //
+            //  DEPLETION VISUALS split by nature (FIX-4, Living Island Track A) — this
+            //  CHANGES which kinds take which treatment, it does not just add a new one.
+            //  A LIVING/mineral node that regrows FROM ITSELF (a tree, a bush, a rock
+            //  outcrop, a palm, the quarry) keeps the shrink-to-remnant-then-regrow
+            //  treatment below — correct, unchanged. A CONSUMED-LOOT node (driftwood,
+            //  deadfall — loose material, not a living thing with a smaller "in-between"
+            //  state — plus the crash box and a claimed salvage find, both one-time finds)
+            //  must never fake a regrow scale: it simply leaves until a fresh one is
+            //  available (the tide, the renewability timer, or a new spawn elsewhere for
+            //  salvage), at full scale, with no shrunken stage in between.
             //
             //  Scaling a mesh shrinks it around its OWN pivot, which sits at the object's
             //  full-height centre (`baseYOffset` above the ground) — scale alone would leave
             //  a "stump" floating at the old full-height centre instead of on the ground.
             //  Repositioning the pivot to `groundY + baseYOffset * scale` keeps its (now
             //  smaller) base sitting exactly on the ground, for any symmetric mesh.
-            const exempt = view.node.kind === 'crashbox' || view.node.kind === 'salvage';
+            const isConsumedLoot =
+                view.node.kind === 'crashbox' ||
+                view.node.kind === 'salvage' ||
+                view.node.kind === 'driftwood' ||
+                view.node.kind === 'deadfall';
             const setScale = (s: number, sy = s) => {
                 view.body.scaling.set(s, sy, s);
                 view.body.position.y = view.groundY + view.baseYOffset * sy;
@@ -473,7 +581,7 @@ export class NodeViews {
                 setScale(1);
                 if (view.canopy) view.canopy.setEnabled(true);
                 view.shadow.setEnabled(true);
-            } else if (exempt) {
+            } else if (isConsumedLoot) {
                 view.body.setEnabled(false);
                 view.shadow.setEnabled(false);
                 view.halo.setEnabled(false);
@@ -490,9 +598,12 @@ export class NodeViews {
                     if (view.canopy) view.canopy.setEnabled(true);
                 }
             } else {
-                //  A general "picked clean" remnant — smaller, not gone (D-051's "depleted
-                //  states read"). Scale is a per-mesh transform, so this works even though
-                //  every node of a kind shares one material instance.
+                //  FIX-4: the LIVING/mineral remnant — rock, quarry, coconut palm, reed,
+                //  shellfish, berrybush. Smaller, not gone (D-051's "depleted states read"),
+                //  and — unlike the consumed-loot branch above — genuinely regrows FROM
+                //  ITSELF, so a shrink is honest here rather than a faked animation. Scale
+                //  is a per-mesh transform, so this works even though every node of a kind
+                //  shares one material instance.
                 view.body.setEnabled(true);
                 view.shadow.setEnabled(true);
                 view.halo.setEnabled(false);

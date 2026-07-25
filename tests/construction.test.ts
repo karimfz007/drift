@@ -8,6 +8,7 @@ import {
     canRepairStructure,
     canSleep,
     createInitialState,
+    gatherNode,
     isExhausted,
     isInDisrepair,
     isNearShelter,
@@ -221,6 +222,84 @@ describe('energy — the 5th vital (soft debuff, never a death vector)', () => {
     });
 });
 
+describe('FIX-1 (Living Island Track A) — energy inversion closed', () => {
+    it('an effortful (hold-interaction) gather visibly costs energy: felling a tree', () => {
+        const s = run();
+        s.tools.axe = true; // trees need the axe, or gatherNode refuses
+        const before = s.energy;
+        const result = gatherNode(s, 'tr1');
+        expect(result.ok).toBe(true);
+        expect(s.energy).toBe(before - TUNE.energyCostTreeChop);
+        expect(s.energy).toBeLessThan(before);
+    });
+
+    it('every hold-interaction kind costs its own tuned amount: deadfall, rock, quarry, palm, crash box', () => {
+        const s = run();
+        s.tools.axe = true;
+        const before = s.energy;
+        gatherNode(s, 'df1'); // deadfall
+        expect(s.energy).toBeCloseTo(before - TUNE.energyCostDeadfallGather, 9);
+        const afterDeadfall = s.energy;
+        gatherNode(s, 'rk1'); // rock
+        expect(s.energy).toBeCloseTo(afterDeadfall - TUNE.energyCostRockMine, 9);
+        const afterRock = s.energy;
+        gatherNode(s, 'qr1'); // quarry, one tap
+        expect(s.energy).toBeCloseTo(afterRock - TUNE.energyCostQuarryMine, 9);
+        const afterQuarry = s.energy;
+        gatherNode(s, 'cp1'); // coconut palm
+        expect(s.energy).toBeCloseTo(afterQuarry - TUNE.energyCostCoconutGather, 9);
+        const afterPalm = s.energy;
+        gatherNode(s, 'box1'); // crash box
+        expect(s.energy).toBeCloseTo(afterPalm - TUNE.energyCostCrashboxOpen, 9);
+    });
+
+    it('the quarry (repeat-minable) charges energy on EVERY tap, not just the first', () => {
+        const s = run();
+        const before = s.energy;
+        gatherNode(s, 'qr1');
+        gatherNode(s, 'qr1');
+        gatherNode(s, 'qr1');
+        expect(s.energy).toBeCloseTo(before - 3 * TUNE.energyCostQuarryMine, 9);
+    });
+
+    it('an instant tap gather (driftwood, berries, reed, shellfish) costs ZERO energy — only holds are effortful', () => {
+        const s = run();
+        const before = s.energy;
+        gatherNode(s, 'dw1'); // driftwood
+        gatherNode(s, 'bb1'); // berrybush
+        gatherNode(s, 'rd1'); // reed
+        gatherNode(s, 'sf1'); // shellfish
+        expect(s.energy).toBe(before); // untouched
+    });
+
+    it('an effortful gather never drives energy negative — clamped at 0', () => {
+        const s = run();
+        s.tools.axe = true;
+        s.energy = 1; // less than any single effortful action's cost
+        const result = gatherNode(s, 'tr1');
+        expect(result.ok).toBe(true);
+        expect(s.energy).toBe(0);
+    });
+
+    it('REGRESSION-LOCK, direction 2: idle/ambient drain (no action at all) stays the small tuned rate, not the old inflated one', () => {
+        //  The other half of the inversion this fix closes: idling must NOT drain energy
+        //  any harder than before, now that effortful actions ALSO cost something. Proven
+        //  independently of the gather tests above — neither direction is assumed from the
+        //  other (per the FIX brief's own instruction).
+        const s = run();
+        const { state } = reconcile(s, realSecondsFromGameHours(1));
+        expect(state.energy).toBeCloseTo(TUNE.energyMax - TUNE.energyDrainPerGameHour, 6);
+        expect(TUNE.energyDrainPerGameHour).toBeLessThan(5); // strictly lower than the pre-FIX rate
+        //  And a gather's cost is on top of, not instead of, the ambient span it occurs in:
+        //  a felled tree during an elapsed hour costs the ambient drain AND the action cost.
+        const s2 = run();
+        s2.tools.axe = true;
+        const { state: afterHour } = reconcile(s2, realSecondsFromGameHours(1));
+        gatherNode(afterHour, 'tr1');
+        expect(afterHour.energy).toBeCloseTo(TUNE.energyMax - TUNE.energyDrainPerGameHour - TUNE.energyCostTreeChop, 6);
+    });
+});
+
 describe('wet — condition, not a vital', () => {
     it('rises fast in the pond and decays on dry land', () => {
         const s = run();
@@ -316,12 +395,12 @@ describe('respawn — the shelter becomes home once built', () => {
         expect(s.player).toEqual({ x: 22, y: -14 });
     });
 
-    it('resets energy to full and wet to 0, same mercy as the other vitals', () => {
+    it('FIX-2: energy wakes at respawnVitalFraction (not full), wet always resets to 0', () => {
         const s = run();
         s.energy = 5;
         s.wet = 90;
         respawn(s, 'thirst');
-        expect(s.energy).toBe(TUNE.energyMax);
+        expect(s.energy).toBe(TUNE.energyMax * TUNE.respawnVitalFraction);
         expect(s.wet).toBe(0);
     });
 });

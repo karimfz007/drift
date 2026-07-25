@@ -81,6 +81,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 1) current = migrateV1toV2(current);
     if (current.schemaVersion === 2) current = migrateV2toV3(current);
     if (current.schemaVersion === 3) current = migrateV3toV4(current);
+    if (current.schemaVersion === 4) current = migrateV4toV5(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -186,6 +187,28 @@ function migrateV3toV4(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v4 (D-051: renewability, quarry, salvage) → v5 (D-052, Living Island Track A FIX
+ * package): the torch (a new carried light source, FIX 5) and a per-death log on the
+ * trace (FIX 2). Everything else carries over untouched; a returning player simply hasn't
+ * crafted a torch yet — the same "hasn't built it yet" reasoning v2→v3 used for
+ * shelter/storage — and an old save's trace gains an empty death log rather than a
+ * fabricated history.
+ */
+function migrateV4toV5(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const fresh = createInitialState(typeof old.startedAtMs === 'number' ? old.startedAtMs : 0);
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        torch: fresh.torch,
+        trace: { ...fresh.trace, ...(isObject(old.trace) ? (old.trace as Partial<GameState['trace']>) : {}) },
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -209,6 +232,7 @@ function hydrate(state: GameState): GameState {
         fire: { ...base.fire, ...state.fire },
         shelter: { ...base.shelter, ...state.shelter },
         storage: { ...base.storage, ...state.storage, stored: { ...base.storage.stored, ...state.storage?.stored } },
+        torch: { ...base.torch, ...state.torch },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },

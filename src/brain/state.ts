@@ -5,7 +5,7 @@
 
 import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
-import { POND, SPAWN, WORLD, createNodes } from '../data/world';
+import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isWalkablePoint } from '../data/world';
 import { grantXp, newSkill } from './skills';
 import { applyDrink, applyFood } from './vitals';
 import {
@@ -38,6 +38,7 @@ export function createInitialState(nowMs: number): GameState {
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax },
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
+        torch: { owned: false, lit: false, fuelGameHoursRemaining: 0 },
         player: { x: SPAWN.x, y: SPAWN.y },
         nodes: createNodes(),
         salvageSpawnCount: 0,
@@ -53,7 +54,8 @@ export function createInitialState(nowMs: number): GameState {
             controlModeSwitches: 0,
             steelThreadComplete: false,
             deaths: 0,
-            activeMs: 0
+            activeMs: 0,
+            deathLog: []
         },
         lastDeathCause: null
     };
@@ -79,10 +81,11 @@ export function cloneState(state: GameState): GameState {
         fire: { ...state.fire },
         shelter: { ...state.shelter },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
+        torch: { ...state.torch },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
         settings: { ...state.settings },
-        trace: { ...state.trace }
+        trace: { ...state.trace, deathLog: [...state.trace.deathLog] }
     };
 }
 
@@ -117,6 +120,31 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
 
 export function nodeSpec(kind: NodeKind): NodeSpec {
     return NODE_SPECS[kind];
+}
+
+/**
+ * Energy spent on ONE successful gather of this kind (FIX-1, Living Island Track A).
+ * Root cause closed: `gatherNode` never charged energy at all — the ambient per-game-hour
+ * drain in reconcile.ts was the only cost that existed, so a felled tree and an idle
+ * minute cost identically nothing extra. Only `hold`-interaction (effortful) kinds cost
+ * anything here — the same distinction `NODE_SPECS` already draws; an instant `tap`
+ * pickup is not exertion the way a timed hold is. Exhaustive by kind (no default) so a
+ * future node kind cannot silently fall through uncosted.
+ */
+export function effortEnergyCostFor(kind: NodeKind): number {
+    switch (kind) {
+        case 'tree': return TUNE.energyCostTreeChop;
+        case 'deadfall': return TUNE.energyCostDeadfallGather;
+        case 'rock': return TUNE.energyCostRockMine;
+        case 'quarry': return TUNE.energyCostQuarryMine;
+        case 'coconutpalm': return TUNE.energyCostCoconutGather;
+        case 'crashbox': return TUNE.energyCostCrashboxOpen;
+        case 'driftwood': return 0;
+        case 'berrybush': return 0;
+        case 'reed': return 0;
+        case 'shellfish': return 0;
+        case 'salvage': return 0;
+    }
 }
 
 export function findNode(state: GameState, nodeId: string): WoodNode | undefined {
@@ -186,6 +214,12 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
     const spec = NODE_SPECS[node.kind];
     const gained: Partial<Inventory> = {};
     let foundFlask = false;
+
+    //  FIX-1 (Living Island Track A): charge the per-action energy cost up front, before
+    //  the yield switch below — every effortful (hold) kind pays; every tap kind pays
+    //  nothing (see effortEnergyCostFor). Clamped at 0: low energy never blocks a gather
+    //  this pass, it only makes the castaway sluggish on foot (isExhausted, unchanged).
+    state.energy = Math.max(0, state.energy - effortEnergyCostFor(node.kind));
 
     switch (node.kind) {
         case 'driftwood':
@@ -358,12 +392,30 @@ export function salvageIntervalGameHours(seed: number): number {
 
 const SALVAGE_LOOT_ODDS: ReadonlyArray<SalvageLoot> = ['driftwood', 'cordage', 'stone'];
 
-/** A new salvage node on the beach ring, its position and reward rolled once from `seed`. */
+/**
+ * A new salvage node on the beach ring, its position and reward rolled once from `seed`.
+ *
+ * FIX-3 (Living Island Track A): the radius band used to run up to `WORLD.islandRadius -
+ * 4` (118 m) — up to 10 m past `WALKABLE_RADIUS` (108 m), landing spawns in the shore
+ * falloff, in or at the water, unreachable on foot. The band is now bounded by
+ * `WALKABLE_RADIUS` itself (minus a shore margin, so a spawn never sits exactly on the
+ * walkability edge either), and every candidate point is validated against
+ * `isWalkablePoint` before it is committed — belt and suspenders, not just a tighter
+ * constant, so a future change to either bound cannot silently reopen this gap.
+ */
 export function spawnSalvageNode(seed: number): WoodNode {
     const angle = seedFraction(seed * 2 + 1) * Math.PI * 2;
-    const radius = WORLD.beachRadius + seedFraction(seed * 2 + 2) * (WORLD.islandRadius - WORLD.beachRadius - 4);
-    const x = Math.round(Math.cos(angle) * radius);
-    const y = Math.round(Math.sin(angle) * radius);
+    const maxRadius = WALKABLE_RADIUS - TUNE.salvageShoreMarginM;
+    const radius = WORLD.beachRadius + seedFraction(seed * 2 + 2) * Math.max(0, maxRadius - WORLD.beachRadius);
+    let x = Math.round(Math.cos(angle) * radius);
+    let y = Math.round(Math.sin(angle) * radius);
+    //  Defensive validation: if this ever computes an unwalkable point (a future constant
+    //  change, a rounding edge case), pull it straight back to the island's centre rather
+    //  than ship an unreachable node — never trust the formula alone.
+    if (!isWalkablePoint(x, y)) {
+        x = 0;
+        y = 0;
+    }
     const loot: SalvageLoot = seedFraction(seed * 2 + 3) < TUNE.salvageBundleOdds
         ? 'bundle'
         : SALVAGE_LOOT_ODDS[Math.floor(seedFraction(seed * 2 + 4) * SALVAGE_LOOT_ODDS.length)];
@@ -506,6 +558,54 @@ export function craftAxe(state: GameState): boolean {
     state.inventory.stone -= TUNE.axeStoneCost;
     state.inventory.fiber -= TUNE.axeFiberCost;
     state.tools.axe = true;
+    return true;
+}
+
+// ---- The torch (FIX-1 pkg item 5, Living Island Track A) — crafting tree entry #1 ------
+//
+// wood + fiber -> unlit torch; light it at any active fire; it burns down over game hours
+// (reconcile.ts) and is spent, not refuelled — craft another. Carried once owned, the same
+// "no equip step, owning it is wearing it" rule the axe already set (D-046(d)).
+
+export function canCraftTorch(state: GameState): boolean {
+    return (
+        !state.torch.owned &&
+        state.inventory.wood >= TUNE.torchWoodCost &&
+        state.inventory.fiber >= TUNE.torchFiberCost
+    );
+}
+
+/** What the torch still needs — for the craft card. */
+export function torchShortfall(state: GameState): { wood: number; fiber: number } {
+    return {
+        wood: Math.max(0, TUNE.torchWoodCost - state.inventory.wood),
+        fiber: Math.max(0, TUNE.torchFiberCost - state.inventory.fiber)
+    };
+}
+
+/** Spend the recipe and make an unlit torch. Returns false if it can't be paid for. */
+export function craftTorch(state: GameState): boolean {
+    if (!canCraftTorch(state)) return false;
+    state.inventory.wood -= TUNE.torchWoodCost;
+    state.inventory.fiber -= TUNE.torchFiberCost;
+    state.torch = { owned: true, lit: false, fuelGameHoursRemaining: TUNE.torchBurnGameHours };
+    return true;
+}
+
+/**
+ * True once an owned, unlit, unspent torch is at a fire that is actually burning. This is
+ * checked (and called) only once the player is already within `interactRadiusM` of the
+ * fire, the same reach every other direct-world interaction uses (D-042) — no separate
+ * radius here.
+ */
+export function canLightTorch(state: GameState): boolean {
+    return state.torch.owned && !state.torch.lit && state.torch.fuelGameHoursRemaining > 0 && isFireLit(state);
+}
+
+/** Light the carried torch from an active fire. Returns false if it can't be lit. */
+export function lightTorch(state: GameState): boolean {
+    if (!canLightTorch(state)) return false;
+    state.torch.lit = true;
     return true;
 }
 
@@ -666,20 +766,33 @@ export function canSleep(state: GameState): boolean {
 
 /**
  * Wake washed ashore after a death. Inventory, tools, skills, fire, and the island are
- * kept (v1 mercy, charter §14); vitals reset so you do not immediately die again, and the
- * cause is recorded for the overlay. Called by the session when reconcile reports a death.
+ * kept (v1 mercy, charter §14); the cause is recorded for the overlay. Called by the
+ * session when reconcile reports a death.
  *
- * Cycle 05 (§2): once a shelter is built, it — not the original beach — is home. Energy
- * and wet reset with the rest of the vitals; a death is a clean slate, not a lingering one.
+ * FIX-2 (Living Island Track A; interim only — the full death design is a later dossier
+ * chapter, not built here): a death used to refill every vital to full — a free-refill
+ * loop indistinguishable from genuinely eating, drinking, and sleeping. Respawn now wakes
+ * the castaway diminished: thirst/hunger/energy at `respawnVitalFraction` (~50%), health
+ * lower still at `respawnHealthFraction` (~30%). Warmth is the one deliberate exception,
+ * kept at max — it is the acute killer (Rule of Threes, charter §I.6), and stacking a
+ * second cold-death on the heels of the first is a tradeoff for the full death chapter to
+ * make, not this interim fix. Wet resets to 0 regardless — a dry wake-up was never part of
+ * the exploit (0 is the already-desired state, not a refill).
+ *
+ * Cycle 05 (§2): once a shelter is built, it — not the original beach — is home.
  */
 export function respawn(state: GameState, cause: string): void {
     state.player = state.shelter.built ? { x: state.shelter.x, y: state.shelter.y } : { x: SPAWN.x, y: SPAWN.y };
     state.warmth = TUNE.warmthMax;
-    state.thirst = TUNE.thirstMax;
-    state.hunger = TUNE.hungerMax;
-    state.health = TUNE.healthMax;
-    state.energy = TUNE.energyMax;
+    state.thirst = TUNE.thirstMax * TUNE.respawnVitalFraction;
+    state.hunger = TUNE.hungerMax * TUNE.respawnVitalFraction;
+    state.energy = TUNE.energyMax * TUNE.respawnVitalFraction;
+    state.health = TUNE.healthMax * TUNE.respawnHealthFraction;
     state.wet = 0;
     state.lastDeathCause = cause;
     state.trace.deaths += 1;
+    //  FIX-2: log every death (cause + the game-clock moment) to the trace, surfaced in
+    //  the debug export (D-050's tool) — a death-loop report should never depend on the
+    //  player's memory of what killed them and when.
+    state.trace.deathLog = [...state.trace.deathLog, { cause, gameHoursElapsed: state.gameHoursElapsed }];
 }

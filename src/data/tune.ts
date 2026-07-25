@@ -190,6 +190,22 @@ export const TUNE = {
     /** [TUNE] C03 — D-011 offline floor for health. Offline death is IMPOSSIBLE (property-tested). */
     healthOfflineFloor: 25,
 
+    // ---- Death and respawn (FIX-1 pkg item 2, Living Island Track A; interim only — the
+    // full death design is a later dossier chapter) ---------------------------------------
+    /** [TUNE] FIX-2 — thirst/hunger/energy wake at this fraction of max on respawn, not
+     *  full. Root cause closed: respawn used to refill every vital to full, an exploitable
+     *  free-refill loop indistinguishable from genuinely eating/drinking/sleeping. Warmth
+     *  is deliberately NOT scaled by this (kept at max, see `respawn()` in state.ts) — it
+     *  is the acute killer (Rule of Threes, charter §I.6), and stacking a second cold-death
+     *  on the heels of the first is a design tradeoff for the full death chapter, not this
+     *  interim fix. */
+    respawnVitalFraction: 0.5,
+    /** [TUNE] FIX-2 — health wakes at this fraction of max — lower than the other vitals on
+     *  purpose (the task's own bracket): a death should read as a real setback, not a
+     *  reset with a coat of paint. Comfortably above 0 so a respawn cannot immediately
+     *  re-trigger the online death path on the very next tick. */
+    respawnHealthFraction: 0.3,
+
     // ---- Food and water (C03) ----------------------------------------------
     /** [TUNE] C03 — thirst restored per drink, at the pond or from a full flask. */
     drinkPerSip: 25,
@@ -225,6 +241,16 @@ export const TUNE = {
     /** [TUNE] C03+ — drinks the water flask carries inland. */
     flaskCapacitySips: 1,
 
+    // ---- The torch (FIX-1 pkg item 5, Living Island Track A) — crafting-tree entry #1 ----
+    /** [TUNE] FIX-5 — torch recipe: wood + fibre only, no stone gate (a simpler, earlier
+     *  craft than the axe — the first entry in the crafting tree, Ch.1). */
+    torchWoodCost: 2,
+    torchFiberCost: 2,
+    /** [TUNE] FIX-5 — game hours a lit torch burns before it is spent and must be
+     *  recrafted. Roughly a third of a night (`nightStartHour`..`dayStartHour` = 12 game
+     *  hours) — enough for one real excursion, not a permanent light. */
+    torchBurnGameHours: 4,
+
     // ---- The Development Tree seed (C03) — mastery changes the action ------
     /** [TUNE] C03 — XP for one meaningful outcome (a felled tree, a foraged meal). Never spam. */
     xpPerMeaningfulAction: 5,
@@ -240,10 +266,33 @@ export const TUNE = {
     // ---- Energy — the 5th vital (C05, "Foundations") -----------------------
     /** [TUNE] C05 — full energy. */
     energyMax: 100,
-    /** [TUNE] C05 — energy lost per game hour, at all times. ~20 game hours to empty — a
-     *  full-day rhythm, not a pressure clock like thirst/hunger. Never feeds health drain
-     *  this cycle (see the C05 spec's SCOPE OUT — a soft debuff only). */
-    energyDrainPerGameHour: 5,
+    /** [TUNE] C05, RETUNED FIX-1 (Living Island Track A) — energy lost per game hour, at
+     *  ALL times regardless of activity — the ambient/idle rate. Root cause of the energy
+     *  inversion this fix closes: this was the ONLY drain that existed, so a punishing hour
+     *  of quarry-mining and an idle hour cost identically nothing extra for the effort.
+     *  Lowered from 5 now that effortful gathers below ALSO charge a per-action cost on top
+     *  of this — an unchanged total-drain feel was the goal, not a harder game. Never feeds
+     *  health drain (see the C05 spec's SCOPE OUT — a soft debuff only). */
+    energyDrainPerGameHour: 2,
+    /** [TUNE] FIX-1 (Living Island Track A) — energy spent per successful EFFORTFUL gather
+     *  (a `hold`-interaction node: deadfall, tree, rock, coconut palm, the crash box,
+     *  quarry — see `NODE_SPECS` in state.ts). Instant `tap` pickups (driftwood, berries,
+     *  reeds, shellfish, salvage) stay free — a tap is not exertion the way a timed hold
+     *  is. Scaled loosely to each action's hold duration/yield; a first pass, open to a
+     *  playtest retune. Clamped at 0 — a gather is never blocked by low energy this pass. */
+    energyCostTreeChop: 4,
+    /** [TUNE] FIX-1 — deadfall: a shorter hold than a standing tree, costs less. */
+    energyCostDeadfallGather: 1.5,
+    /** [TUNE] FIX-1 — a standalone rock outcrop: the same hold length as deadfall. */
+    energyCostRockMine: 1.5,
+    /** [TUNE] FIX-1 — one quarry-mining tap. Charged every tap (the quarry is
+     *  repeat-minable, D-051) — the pool being large is not a reason mining it is free. */
+    energyCostQuarryMine: 2,
+    /** [TUNE] FIX-1 — shaking down a coconut palm. */
+    energyCostCoconutGather: 1.5,
+    /** [TUNE] FIX-1 — forcing open the sealed crash box (one-time; costed for consistency
+     *  with every other hold-interaction verb, not because it recurs). */
+    energyCostCrashboxOpen: 2,
     /** [TUNE] C05 — D-011-style offline floor, for consistency with every other vital —
      *  not required for safety (energy is not a death vector), just kindness. */
     energyOfflineFloor: 15,
@@ -347,6 +396,13 @@ export const TUNE = {
     salvageSpawnMinutesMax: 14,
     /** [TUNE] D-051 — at most this many unclaimed salvage finds exist at once. */
     salvageMaxActive: 3,
+    /** [TUNE] FIX-3 (Living Island Track A) — a salvage spawn's radius is bounded by
+     *  `WALKABLE_RADIUS` minus this margin, in metres, never by `WORLD.islandRadius`
+     *  directly. Root cause closed: the old bound (`islandRadius - 4` = 118 m) reached up
+     *  to 10 m past `WALKABLE_RADIUS` (108 m) — into the shore falloff, unreachable on
+     *  foot. This margin keeps every spawn genuinely inland of the waterline, not just
+     *  technically inside it. */
+    salvageShoreMarginM: 3,
     /** [TUNE] D-051 — the common salvage rewards: one resource, a modest amount. */
     salvageWoodAmount: 3,
     salvageFiberAmount: 2,

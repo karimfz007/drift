@@ -30,6 +30,18 @@ export const WORLD = {
 /** Where the castaway can walk: anywhere on land, kept just clear of the waterline. */
 export const WALKABLE_RADIUS = WORLD.islandRadius - WORLD.shoreFalloff - 2;
 
+/**
+ * True for any point genuinely reachable on foot (FIX-3, Living Island Track A). Root
+ * cause this closes: `spawnSalvageNode`'s old radius bound (`islandRadius - 4` = 118 m)
+ * reached up to 10 m past `WALKABLE_RADIUS` (108 m) — technically "on the island" by the
+ * raw disc math, but inside the shore falloff, in or at the waterline. A general-purpose
+ * check, not a one-off patch, so any future procedural placement (not just salvage) has a
+ * single source of truth for "can the castaway actually stand here."
+ */
+export function isWalkablePoint(x: number, z: number): boolean {
+    return Math.hypot(x, z) <= WALKABLE_RADIUS;
+}
+
 /** Washed ashore on the south beach, facing inland (toward −Z / the treeline). */
 export const SPAWN = { x: 0, y: 104 } as const;
 
