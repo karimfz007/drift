@@ -82,6 +82,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 2) current = migrateV2toV3(current);
     if (current.schemaVersion === 3) current = migrateV3toV4(current);
     if (current.schemaVersion === 4) current = migrateV4toV5(current);
+    if (current.schemaVersion === 5) current = migrateV5toV6(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -209,6 +210,42 @@ function migrateV4toV5(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v5 (D-052: the torch, the death log) → v6 (Ch.1 v3, D-055): the sharp-blade
+ * intermediate, the stone hammer, grades on the axe/torch/shelter, and the null-outcome
+ * combination journal. Everything else carries over untouched. Every ALREADY-owned
+ * axe/torch/shelter heals in at the baseline `serviceable` grade — the honest "we don't
+ * know what grade it would have rolled" answer, never a retroactive upgrade or downgrade;
+ * `serviceable` is defined (see `tune.ts`'s per-grade multiplier tables) to reproduce
+ * every pre-grade constant exactly, so this is functionally invisible to a returning
+ * player. A returning player simply hasn't made a stone hammer or knapped a blade yet,
+ * the same "hasn't built it yet" reasoning every prior migration in this file has used.
+ */
+function migrateV5toV6(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const oldInventory = isObject(old.inventory) ? old.inventory : {};
+    const oldTools = isObject(old.tools) ? old.tools : {};
+    const oldShelter = isObject(old.shelter) ? old.shelter : {};
+    const oldTorch = isObject(old.torch) ? old.torch : {};
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        inventory: { ...(oldInventory as unknown as GameState['inventory']), sharpblade: num(oldInventory.sharpblade, 0) },
+        tools: {
+            ...(oldTools as unknown as GameState['tools']),
+            stoneHammer: Boolean(oldTools.stoneHammer),
+            axeGrade: 'serviceable'
+        },
+        shelter: { ...(oldShelter as unknown as GameState['shelter']), grade: 'serviceable' },
+        torch: { ...(oldTorch as unknown as GameState['torch']), grade: 'serviceable' },
+        craftRollCount: num(old.craftRollCount, 0),
+        knowledge: { nullPairs: [], events: [] },
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -236,6 +273,7 @@ function hydrate(state: GameState): GameState {
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },
+        knowledge: { ...base.knowledge, ...state.knowledge },
         nodes: Array.isArray(state.nodes) && state.nodes.length > 0 ? state.nodes : base.nodes,
         //  Defensive clamp on load. Vitals are now life-and-death, so a corrupt or
         //  hand-edited save must not carry an out-of-band value (a negative health would

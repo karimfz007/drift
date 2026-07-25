@@ -12,6 +12,7 @@ import {
     SCHEMA_VERSION,
     type GameState,
     type Inventory,
+    type ItemGrade,
     type NodeKind,
     type SalvageLoot,
     type Skills,
@@ -33,16 +34,18 @@ export function createInitialState(nowMs: number): GameState {
         energy: TUNE.energyMax,
         wet: 0,
         inventory: emptyInventory(),
-        tools: { axe: false, flask: false, flaskSips: 0 },
+        tools: { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
-        shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax },
+        shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable' },
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
-        torch: { owned: false, lit: false, fuelGameHoursRemaining: 0 },
+        torch: { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' },
         player: { x: SPAWN.x, y: SPAWN.y },
         nodes: createNodes(),
         salvageSpawnCount: 0,
         nextSalvageSpawnAtGameHours: gameHoursFromRealSeconds(TUNE.salvageSpawnMinutesMin * 60),
+        craftRollCount: 0,
+        knowledge: { nullPairs: [], events: [] },
         settings: { controlMode: 'tap' },
         trace: {
             msToFirstMove: null,
@@ -62,7 +65,7 @@ export function createInitialState(nowMs: number): GameState {
 }
 
 export function emptyInventory(): Inventory {
-    return { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0 };
+    return { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
 }
 
 export function emptySkills(): Skills {
@@ -84,6 +87,7 @@ export function cloneState(state: GameState): GameState {
         torch: { ...state.torch },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
+        knowledge: { nullPairs: [...state.knowledge.nullPairs], events: [...state.knowledge.events] },
         settings: { ...state.settings },
         trace: { ...state.trace, deathLog: [...state.trace.deathLog] }
     };
@@ -170,9 +174,12 @@ export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
     if (spec.interaction !== 'hold') return 0;
     if (spec.skill === 'woodcutting') {
         //  Woodcutting mastery shortens the chop — the action gets faster, not the number
-        //  over the tree (§I.9).
+        //  over the tree (§I.9). The axe's OWN grade (Ch.1 v3, D-055) is a second, distinct
+        //  lever on the same stat — skill is the player's mastery, grade is the specific
+        //  tool's own quality; they stack multiplicatively rather than one masking the other.
         const level = state.skills.woodcutting.level;
-        return spec.holdBaseSeconds / (1 + (level - 1) * TUNE.skillSpeedBonusPerLevel);
+        const base = spec.holdBaseSeconds / (1 + (level - 1) * TUNE.skillSpeedBonusPerLevel);
+        return base * axeChopMultiplierFor(state.tools.axeGrade);
     }
     return spec.holdBaseSeconds;
 }
@@ -379,6 +386,61 @@ function seedFraction(seed: number): number {
     return hash32(seed) / 0x100000000;
 }
 
+// ---- Grades (Ch.1 v3, D-055) --------------------------------------------
+//
+// Rolled once at craft time via the SAME seeded-hash determinism salvage loot already
+// uses above — plain, stated odds (honest-systems law), not loot-box dressing. Checked
+// in a fixed order (crude, serviceable, refined, exceptional); `serviceable` is defined to
+// reproduce every pre-grade constant exactly, so a save migrated at that baseline grade
+// (D-055's v5→v6 migration) feels functionally unchanged.
+
+const GRADE_ROLL_ORDER: ItemGrade[] = ['crude', 'serviceable', 'refined', 'exceptional'];
+
+function gradeOdds(grade: ItemGrade): number {
+    switch (grade) {
+        case 'crude': return TUNE.gradeOddsCrude;
+        case 'serviceable': return TUNE.gradeOddsServiceable;
+        case 'refined': return TUNE.gradeOddsRefined;
+        case 'exceptional': return TUNE.gradeOddsExceptional;
+    }
+}
+
+/** Roll a grade from a seed. Exhaustive over `GRADE_ROLL_ORDER`; the final entry is
+ *  returned unconditionally past its cumulative threshold, a floating-point guard against
+ *  the four odds not summing to exactly 1 in the tune table. */
+export function rollGrade(seed: number): ItemGrade {
+    const roll = seedFraction(seed);
+    let cumulative = 0;
+    for (const grade of GRADE_ROLL_ORDER) {
+        cumulative += gradeOdds(grade);
+        if (roll < cumulative) return grade;
+    }
+    return GRADE_ROLL_ORDER[GRADE_ROLL_ORDER.length - 1];
+}
+
+/** The next craft-roll seed, and advances the counter — the same "counter as seed"
+ *  determinism `salvageSpawnCount` already established. Mutates state. */
+function nextGradeSeed(state: GameState): number {
+    const seed = state.craftRollCount;
+    state.craftRollCount += 1;
+    return seed;
+}
+
+/** The axe's one grade-linked stat: fell speed. Multiplies `treeChopSecondsWithAxe`. */
+export function axeChopMultiplierFor(grade: ItemGrade): number {
+    return TUNE.axeGradeChopMultiplier[grade];
+}
+
+/** The torch's one grade-linked stat: burn duration. */
+export function torchBurnGameHoursFor(grade: ItemGrade): number {
+    return TUNE.torchBurnGameHours * TUNE.torchGradeBurnMultiplier[grade];
+}
+
+/** The shelter's one grade-linked stat: its warmth-drain multiplier (lower is better). */
+export function shelterWarmthMultiplierFor(grade: ItemGrade): number {
+    return TUNE.shelterGradeWarmthMultiplier[grade];
+}
+
 export function activeSalvageCount(nodes: WoodNode[]): number {
     return nodes.filter((n) => n.kind === 'salvage' && n.available).length;
 }
@@ -532,32 +594,82 @@ export function eat(state: GameState, food: Food): boolean {
 }
 
 // ---- Crafting: the crude axe (the four gates made concrete) --------------
+//
+// Ch.1 v3 (D-055): the axe now needs a knapped sharp blade, not raw stone directly — the
+// stone hammer + knapping (below) is the new Tier-0 step that unlocks it. An axe made
+// before this change is untouched (the boolean `tools.axe` doesn't get re-evaluated);
+// only a NEW craft goes through the new recipe.
 
 export function canCraftAxe(state: GameState): boolean {
     return (
         !state.tools.axe &&
         state.inventory.wood >= TUNE.axeWoodCost &&
-        state.inventory.stone >= TUNE.axeStoneCost &&
+        state.inventory.sharpblade >= TUNE.axeSharpbladeCost &&
         state.inventory.fiber >= TUNE.axeFiberCost
     );
 }
 
 /** What the axe still needs — for the craft card. */
-export function axeShortfall(state: GameState): { wood: number; stone: number; fiber: number } {
+export function axeShortfall(state: GameState): { wood: number; sharpblade: number; fiber: number } {
     return {
         wood: Math.max(0, TUNE.axeWoodCost - state.inventory.wood),
-        stone: Math.max(0, TUNE.axeStoneCost - state.inventory.stone),
+        sharpblade: Math.max(0, TUNE.axeSharpbladeCost - state.inventory.sharpblade),
         fiber: Math.max(0, TUNE.axeFiberCost - state.inventory.fiber)
     };
 }
 
-/** Spend the recipe and make the axe. Returns false if it can't be paid for. */
+/** Spend the recipe and make the axe. Returns false if it can't be paid for. Rolls a
+ *  grade (Ch.1 v3, D-055) that scales fell speed only. */
 export function craftAxe(state: GameState): boolean {
     if (!canCraftAxe(state)) return false;
     state.inventory.wood -= TUNE.axeWoodCost;
-    state.inventory.stone -= TUNE.axeStoneCost;
+    state.inventory.sharpblade -= TUNE.axeSharpbladeCost;
     state.inventory.fiber -= TUNE.axeFiberCost;
     state.tools.axe = true;
+    state.tools.axeGrade = rollGrade(nextGradeSeed(state));
+    return true;
+}
+
+// ---- The stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 ----------------
+//
+// The stone hammer's one live verb: knapping raw stone into the sharp-blade intermediate
+// the axe recipe now needs — not a standalone item (C1's "no dead-on-arrival tools" rule).
+
+export function canCraftStoneHammer(state: GameState): boolean {
+    return (
+        !state.tools.stoneHammer &&
+        state.inventory.wood >= TUNE.stoneHammerWoodCost &&
+        state.inventory.stone >= TUNE.stoneHammerStoneCost
+    );
+}
+
+/** What the stone hammer still needs — for the craft card. */
+export function stoneHammerShortfall(state: GameState): { wood: number; stone: number } {
+    return {
+        wood: Math.max(0, TUNE.stoneHammerWoodCost - state.inventory.wood),
+        stone: Math.max(0, TUNE.stoneHammerStoneCost - state.inventory.stone)
+    };
+}
+
+export function craftStoneHammer(state: GameState): boolean {
+    if (!canCraftStoneHammer(state)) return false;
+    state.inventory.wood -= TUNE.stoneHammerWoodCost;
+    state.inventory.stone -= TUNE.stoneHammerStoneCost;
+    state.tools.stoneHammer = true;
+    return true;
+}
+
+/** Knapping: repeatable, not a one-time build — no "done" state, just a standing gate on
+ *  owning the hammer and holding enough raw stone. */
+export function canKnapSharpblade(state: GameState): boolean {
+    return state.tools.stoneHammer && state.inventory.stone >= TUNE.knapStoneCost;
+}
+
+/** Spend raw stone, gain a sharp blade. Returns false if it can't be paid for. */
+export function knapSharpblade(state: GameState): boolean {
+    if (!canKnapSharpblade(state)) return false;
+    state.inventory.stone -= TUNE.knapStoneCost;
+    state.inventory.sharpblade += TUNE.knapSharpbladeYield;
     return true;
 }
 
@@ -588,7 +700,8 @@ export function craftTorch(state: GameState): boolean {
     if (!canCraftTorch(state)) return false;
     state.inventory.wood -= TUNE.torchWoodCost;
     state.inventory.fiber -= TUNE.torchFiberCost;
-    state.torch = { owned: true, lit: false, fuelGameHoursRemaining: TUNE.torchBurnGameHours };
+    const grade = rollGrade(nextGradeSeed(state));
+    state.torch = { owned: true, lit: false, fuelGameHoursRemaining: torchBurnGameHoursFor(grade), grade };
     return true;
 }
 
@@ -647,7 +760,8 @@ export function buildShelter(state: GameState, x: number, y: number): boolean {
     state.inventory.wood -= TUNE.shelterWoodCost;
     state.inventory.stone -= TUNE.shelterStoneCost;
     state.inventory.fiber -= TUNE.shelterFiberCost;
-    state.shelter = { built: true, x, y, durability: TUNE.structureDurabilityMax };
+    const grade = rollGrade(nextGradeSeed(state));
+    state.shelter = { built: true, x, y, durability: TUNE.structureDurabilityMax, grade };
     return true;
 }
 

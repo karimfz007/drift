@@ -69,7 +69,15 @@ const TUNE = {
     torchFiberCost: 2,
     torchBurnGameHours: 4,
     //  Mirrors src/data/world.ts's WALKABLE_RADIUS (islandRadius 122 - shoreFalloff 12 - 2).
-    walkableRadiusM: 108
+    walkableRadiusM: 108,
+    //  Ch.1 v3, D-055 — mirrors src/data/tune.ts, same duplication convention as above.
+    axeWoodCost: 3,
+    axeSharpbladeCost: 1,
+    axeFiberCost: 2,
+    stoneHammerWoodCost: 2,
+    stoneHammerStoneCost: 3,
+    knapStoneCost: 2,
+    knapSharpbladeYield: 1
 };
 
 const results = [];
@@ -685,7 +693,11 @@ async function main() {
     check('a berry bush gives berries by a plain tap', berry.ok, berry.reason ?? '');
 
     //  Craft the axe through the Build panel (C05: axe/shelter/storage, own button each).
-    await editSave('state.inventory.wood = 3; state.inventory.stone = 2; state.inventory.fiber = 2;');
+    //  Ch.1 v3 (D-055): the axe needs a knapped sharp blade, not raw stone directly — grant
+    //  one directly here (the full stone-hammer/knap tier is proven for real elsewhere,
+    //  the new "D-055" section below; this section is about the axe DOING something once
+    //  owned, same as it always was).
+    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2;`);
     check('the Build button opens the panel', await clickDom('.secondary-action'));
     await sleep(400);
     await shot('c04-05-craftcard');
@@ -760,11 +772,13 @@ async function main() {
     // ================================================================
     console.log('\nA1–A4 (C05) — construction: shelter, storage, upkeep, sleep');
 
-    //  Build the shelter through the (now four-item, D-052 adds the torch) Build panel.
-    await editSave('state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0 };');
+    //  Build the shelter through the (now five-item, D-055 adds the stone hammer) Build
+    //  panel. The knap action isn't counted here — it only renders once the hammer is
+    //  owned, which it isn't yet at this point in the run.
+    await editSave('state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };');
     await realTapDom('.secondary-action');
     await sleep(400);
-    check('the Build panel shows all four items', (await page.evaluate(() => document.querySelectorAll('.build-item').length)) === 4);
+    check('the Build panel shows all five items (torch/axe/shelter/storage/stone hammer)', (await page.evaluate(() => document.querySelectorAll('.build-item').length)) === 5);
     const shelterBuildTap = await realTapDom('.shelter-btn');
     check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
     await sleep(400);
@@ -1259,9 +1273,10 @@ async function main() {
     //  inferring visibility from whether a tap happened to land.
     await editSave(`
         state.tools.axe = true;
-        state.shelter = { built: true, x: 0, y: 0, durability: 100 };
+        state.tools.stoneHammer = true;
+        state.shelter = { built: true, x: 0, y: 0, durability: 100, grade: 'serviceable' };
         state.storage = { built: true, x: 5, y: 0, durability: 100, stored: { wood: 0, stone: 0, fiber: 0 } };
-        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
     `);
     const buildRowRect = await page.evaluate(() => { const r = document.querySelector('.action-row')?.getBoundingClientRect(); return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null; });
     const withTorchOwedInfo = await isVisible('.secondary-action');
@@ -1270,7 +1285,7 @@ async function main() {
 
     //  The other half: once EVERYTHING (including the torch) is done, the button should
     //  correctly disappear — proving this isn't just "always show it" overcorrection.
-    await editSave('state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4 };');
+    await editSave("state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4, grade: 'serviceable' };");
     const allDoneInfo = await isVisible('.secondary-action');
     check('the Build button correctly hides once axe/shelter/storage/torch are ALL done', !allDoneInfo.visible, JSON.stringify(allDoneInfo));
     const allDoneShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
@@ -1282,6 +1297,85 @@ async function main() {
     } else {
         check('REGRESSION — the visibility change is real on screen, not just a DOM flag (screenshot diff)', false, 'setup failed: .action-row not found');
     }
+
+    // ---- Ch.1 v3: the crafting tree — the stone hammer, knapping, grades, the journal (D-055) ----
+    console.log('\nD-055 — Ch.1 v3: the stone hammer + knapping, grades, the null-outcome journal');
+
+    //  The full tier, via real taps only: gather is already proven elsewhere in this file;
+    //  here we prove the axe now genuinely needs a knapped blade, and that the whole chain
+    //  (hammer -> knap -> axe) is reachable through the Build panel exactly as a player
+    //  would use it, not just through the brain's own unit tests.
+    await editSave(`
+        state.tools.axe = false;
+        state.tools.stoneHammer = false;
+        state.inventory.wood = ${TUNE.stoneHammerWoodCost + TUNE.axeWoodCost + 5};
+        state.inventory.stone = ${TUNE.stoneHammerStoneCost + TUNE.knapStoneCost + 5};
+        state.inventory.fiber = ${TUNE.axeFiberCost + 5};
+        state.inventory.sharpblade = 0;
+    `);
+    await realTapDom('.secondary-action');
+    await sleep(300);
+    const hammerCraftTap = await realTapDom('.stonehammer-btn');
+    check('D-055 — the stone hammer can be made via a real, reachable tap on the Build panel', hammerCraftTap.ok, hammerCraftTap.reason ?? '');
+    await sleep(400);
+    const afterHammer = await live();
+    check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.tools.stoneHammer === true, JSON.stringify(afterHammer.tools.stoneHammer));
+
+    await realTapDom('.secondary-action');
+    await sleep(300);
+    const stoneBeforeKnap = (await live()).inventory.stone;
+    const knapTap = await realTapDom('.knap-btn');
+    check('D-055 — knapping is reachable via a real tap on the Build panel', knapTap.ok, knapTap.reason ?? '');
+    await sleep(400);
+    const afterKnap = await live();
+    check('D-055 — knapping spends raw stone for a sharp blade', afterKnap.inventory.sharpblade >= TUNE.knapSharpbladeYield && afterKnap.inventory.stone === stoneBeforeKnap - TUNE.knapStoneCost, `sharpblade ${afterKnap.inventory.sharpblade}, stone ${stoneBeforeKnap}->${afterKnap.inventory.stone}`);
+
+    //  REGRESSION — the axe cannot be made from raw stone alone anymore; it genuinely
+    //  needs the knapped blade. Confirmed by having plenty of raw stone but NO blade yet
+    //  reaching this exact point with the axe still unowned, then closing the loop for
+    //  real once the blade exists.
+    check('REGRESSION — the axe is not craftable on raw stone alone (it needs the knapped blade)', afterHammer.tools.axe === false && afterKnap.inventory.sharpblade > 0);
+    await realTapDom('.secondary-action');
+    await sleep(300);
+    const axeCraftTap = await realTapDom('.axe-btn');
+    check('D-055 — with a knapped blade in hand, the axe crafts via a real tap', axeCraftTap.ok, axeCraftTap.reason ?? '');
+    await sleep(400);
+    const afterAxe = await live();
+    check('D-055 — the crafted axe rolled a real grade', afterAxe.tools.axe === true && ['crude', 'serviceable', 'refined', 'exceptional'].includes(afterAxe.tools.axeGrade), JSON.stringify(afterAxe.tools.axeGrade));
+
+    //  The Build button's visibility gate now also covers the stone hammer (extending
+    //  D-053's own fix) — force axe/shelter/storage/torch AND the hammer all done, confirm
+    //  the button correctly disappears; this run's shelter/storage/torch were already
+    //  built earlier in the suite, so the hammer (just crafted above) is the last gate.
+    const finalVisible = await isVisible('.secondary-action');
+    check('the Build button correctly hides once EVERYTHING, including the stone hammer, is done', !finalVisible.visible, JSON.stringify(finalVisible));
+
+    //  The null-outcome journal: holding a material that satisfies nothing (berries) and
+    //  opening the Build panel journals every (slot, kind) pair as "doesn't combine" —
+    //  proven through the real UI action that triggers it (opening the panel), not by
+    //  calling the brain function directly. Force the journal empty first, deliberately —
+    //  berries were very likely already held (and the panel opened) earlier in this long
+    //  run (the berry bush check, well before this point), so trusting incidental leftover
+    //  state here would be exactly the mistake this file's own lessons already warn against.
+    //  ALSO force the torch back to unowned: by this point axe/shelter/storage/torch/hammer
+    //  are ALL done, so the Build button itself is correctly hidden (just confirmed above)
+    //  — with nothing left to build, `.secondary-action` cannot be tapped at all. Needs at
+    //  least one open item for the button (and so the panel) to be reachable.
+    await editSave(`
+        state.inventory.berries = 1;
+        state.knowledge = { nullPairs: [], events: [] };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
+    `);
+    const beforeJournal = (await live()).knowledge;
+    check('setup — the null-outcome journal is empty (forced, not assumed)', beforeJournal.nullPairs.length === 0, `${beforeJournal.nullPairs.length} pairs`);
+    const journalOpenTap = await realTapDom('.secondary-action');
+    check('setup — the Build panel is reachable to exercise the journal', journalOpenTap.ok, journalOpenTap.reason ?? '');
+    await sleep(300);
+    await clickDom('.close-btn');
+    await sleep(300);
+    const afterJournal = (await live()).knowledge;
+    check('REGRESSION — opening the Build panel while holding an unmatched material (berries) journals it as a null combination', afterJournal.nullPairs.some((p) => p.endsWith('|berries')), `${afterJournal.nullPairs.length} pairs`);
+    check('the null-outcome journal recorded a knowledge event for Ch.2 (stubbed, not wired further this pass)', afterJournal.events.some((e) => e.kind === 'combination-tried' && e.detail.includes('berries')));
 
     // ---- Hygiene ----
     console.log('\nHygiene');

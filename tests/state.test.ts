@@ -3,13 +3,15 @@ import {
     buildFire,
     canBuildFire,
     canFeedFire,
+    craftStoneHammer,
     createInitialState,
     deadfallYield,
     feedFire,
     fireBurnHoursRemaining,
     gatherNode,
     isFireLit,
-    isSheltered
+    isSheltered,
+    knapSharpblade
 } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 import { SPAWN } from '../src/data/world';
@@ -40,16 +42,21 @@ describe('state — the fresh run', () => {
         }
     });
 
-    it('leaves everything the axe recipe needs reachable by hand', () => {
+    it('leaves everything the axe recipe needs reachable by hand — gather, then knap the blade (Ch.1 v3, D-055)', () => {
         const s = run();
-        //  Gather all the pre-axe nodes and confirm they cover the recipe.
+        //  Gather all the pre-axe nodes and confirm they cover the tier: enough raw
+        //  materials for the stone hammer, then enough stone left over to knap a blade.
         for (const node of s.nodes) {
             if (node.kind === 'tree' || node.kind === 'crashbox') continue;
             gatherNode(s, node.id);
         }
-        expect(s.inventory.wood).toBeGreaterThanOrEqual(TUNE.axeWoodCost);
-        expect(s.inventory.stone).toBeGreaterThanOrEqual(TUNE.axeStoneCost);
+        expect(s.inventory.wood).toBeGreaterThanOrEqual(TUNE.axeWoodCost + TUNE.stoneHammerWoodCost);
+        expect(s.inventory.stone).toBeGreaterThanOrEqual(TUNE.stoneHammerStoneCost + TUNE.knapStoneCost);
         expect(s.inventory.fiber).toBeGreaterThanOrEqual(TUNE.axeFiberCost);
+
+        expect(craftStoneHammer(s)).toBe(true);
+        expect(knapSharpblade(s)).toBe(true);
+        expect(s.inventory.sharpblade).toBeGreaterThanOrEqual(TUNE.axeSharpbladeCost);
     });
 });
 

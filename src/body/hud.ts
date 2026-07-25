@@ -248,9 +248,12 @@ export function showDeath(overlay: HTMLElement, cause: string, deaths: number, o
     requestAnimationFrame(() => el.classList.add('visible'));
 }
 
+/** A material key the Build panel can gate a recipe on (Ch.1 v3, D-055 adds sharpblade). */
+type BuildMaterial = 'wood' | 'stone' | 'fiber' | 'sharpblade';
+
 /** One buildable's cost and current holdings, for the Build panel. */
 export interface BuildItemView {
-    have: Partial<Record<'wood' | 'stone' | 'fiber', number>>;
+    have: Partial<Record<BuildMaterial, number>>;
     /** Already built/crafted — the item shows as done, no button. */
     done: boolean;
 }
@@ -260,6 +263,17 @@ export interface BuildCardView {
     axe: BuildItemView;
     shelter: BuildItemView;
     storage: BuildItemView;
+    /** The stone hammer (Ch.1 v3, D-055) — a fifth, one-time Build-panel entry. */
+    stoneHammer: BuildItemView;
+}
+
+/** Knapping (Ch.1 v3, D-055): repeatable, not a one-time build — no "done" state, just a
+ *  standing stone-cost gate, shown only once the hammer is owned. */
+export interface KnapView {
+    owned: boolean;
+    stoneHave: number;
+    stoneCost: number;
+    sharpbladeHave: number;
 }
 
 //  When a part is short, say where it comes from — the C03 defect was fibre feeling
@@ -267,14 +281,15 @@ export interface BuildCardView {
 const MATERIAL_SOURCE: Record<string, string> = {
     Wood: 'driftwood on the sand, deadfall by the trees',
     Stone: 'grey rock outcrops on the beach',
-    Fibre: 'reeds at the pond, or a coconut palm'
+    Fibre: 'reeds at the pond, or a coconut palm',
+    'Sharp blade': 'knap raw stone with a stone hammer, below'
 };
 
 function buildItemMarkup(
     title: string,
     subtitle: string,
     item: BuildItemView,
-    need: Partial<Record<'wood' | 'stone' | 'fiber', number>>,
+    need: Partial<Record<BuildMaterial, number>>,
     doneLabel: string,
     buttonLabel: string,
     buttonClass: string
@@ -282,8 +297,8 @@ function buildItemMarkup(
     if (item.done) {
         return `<div class="build-item done"><h2>${title}</h2><p class="subtitle">${doneLabel}</p></div>`;
     }
-    const labels: Record<string, string> = { wood: 'Wood', stone: 'Stone', fiber: 'Fibre' };
-    const rows = (Object.keys(need) as Array<'wood' | 'stone' | 'fiber'>).map((key) => {
+    const labels: Record<BuildMaterial, string> = { wood: 'Wood', stone: 'Stone', fiber: 'Fibre', sharpblade: 'Sharp blade' };
+    const rows = (Object.keys(need) as BuildMaterial[]).map((key) => {
         const n = need[key] ?? 0;
         const h = item.have[key] ?? 0;
         const met = h >= n;
@@ -291,7 +306,7 @@ function buildItemMarkup(
         const hint = met ? '' : `<div class="gate-hint">from ${MATERIAL_SOURCE[label]}</div>`;
         return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${label}</span><span>${h} / ${n}</span></div>${hint}`;
     }).join('');
-    const ready = (Object.keys(need) as Array<'wood' | 'stone' | 'fiber'>).every((key) => (item.have[key] ?? 0) >= (need[key] ?? 0));
+    const ready = (Object.keys(need) as BuildMaterial[]).every((key) => (item.have[key] ?? 0) >= (need[key] ?? 0));
     return `
         <div class="build-item">
             <h2>${title}</h2>
@@ -301,18 +316,36 @@ function buildItemMarkup(
         </div>`;
 }
 
+/** Knapping's own small markup — repeatable, so never a "done" state like the crafts
+ *  above; just a standing gate, shown only once the stone hammer is owned. */
+function knapMarkup(view: KnapView): string {
+    if (!view.owned) return '';
+    const met = view.stoneHave >= view.stoneCost;
+    return `
+        <div class="build-item knap-item">
+            <h2>Knap a sharp blade</h2>
+            <p class="subtitle">Turn raw stone into the blade the axe needs. Repeatable.</p>
+            <div class="gates"><div class="gate ${met ? 'met' : 'unmet'}"><span>Stone</span><span>${view.stoneHave} / ${view.stoneCost}</span></div></div>
+            <p class="subtitle">Sharp blades in hand: ${view.sharpbladeHave}</p>
+            <button class="primary knap-btn" type="button" ${met ? '' : 'disabled'}>${met ? 'Knap a blade' : 'Not enough stone'}</button>
+        </div>`;
+}
+
 /**
- * The Build panel (C05): axe, shelter, and storage, each independently gated — a page each,
- * never a shared priority slot (that is exactly the bug class D-040/D-042 fixed once
- * already; a second shared slot here would only invite it back).
+ * The Build panel (C05, +stone hammer at Ch.1 v3/D-055): every entry independently
+ * gated — a page each, never a shared priority slot (that is exactly the bug class
+ * D-040/D-042 fixed once already; a second shared slot here would only invite it back).
  */
 export function showBuildCard(
     overlay: HTMLElement,
     view: BuildCardView,
+    knap: KnapView,
     onCraftTorch: () => void,
     onCraftAxe: () => void,
     onBuildShelter: () => void,
     onBuildStorage: () => void,
+    onCraftStoneHammer: () => void,
+    onKnapSharpblade: () => void,
     onClose: () => void
 ): void {
     const el = panel(overlay, 'build');
@@ -321,11 +354,14 @@ export function showBuildCard(
             ${buildItemMarkup('Torch', 'Wood and fibre — light it at any active fire.', view.torch,
                 { wood: TUNE.torchWoodCost, fiber: TUNE.torchFiberCost }, 'Owned.', 'Make the torch', 'torch-btn')}
             ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
-                { wood: TUNE.axeWoodCost, stone: TUNE.axeStoneCost, fiber: TUNE.axeFiberCost }, 'Owned.', 'Make the axe', 'axe-btn')}
+                { wood: TUNE.axeWoodCost, sharpblade: TUNE.axeSharpbladeCost, fiber: TUNE.axeFiberCost }, 'Owned.', 'Make the axe', 'axe-btn')}
             ${buildItemMarkup('Shelter', 'Somewhere to rest — it becomes home.', view.shelter,
                 { wood: TUNE.shelterWoodCost, stone: TUNE.shelterStoneCost, fiber: TUNE.shelterFiberCost }, 'Standing.', 'Raise the shelter', 'shelter-btn')}
             ${buildItemMarkup('Storage', 'A second place to keep what you gather.', view.storage,
                 { wood: TUNE.storageWoodCost, stone: TUNE.storageStoneCost }, 'Set.', 'Set the crate', 'storage-btn')}
+            ${buildItemMarkup('Stone hammer', 'Tier 0. Its one job: knapping stone into a blade, below.', view.stoneHammer,
+                { wood: TUNE.stoneHammerWoodCost, stone: TUNE.stoneHammerStoneCost }, 'Owned.', 'Make the hammer', 'stonehammer-btn')}
+            ${knapMarkup(knap)}
         </div>
         <button class="quiet close-btn" type="button">Close</button>`;
     let done = false;
@@ -337,6 +373,8 @@ export function showBuildCard(
     bind('.axe-btn', onCraftAxe);
     bind('.shelter-btn', onBuildShelter);
     bind('.storage-btn', onBuildStorage);
+    bind('.stonehammer-btn', onCraftStoneHammer);
+    bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
     requestAnimationFrame(() => el.classList.add('visible'));
 }

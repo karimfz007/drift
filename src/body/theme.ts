@@ -47,7 +47,16 @@ export const PALETTE = {
     harvestMark: [0.97, 0.74, 0.22],
     /** The quarry and beach salvage — visually their own thing, not a bigger rock/driftwood. */
     quarryStone: [0.50, 0.47, 0.46],
-    salvageWood: [0.58, 0.45, 0.30]
+    salvageWood: [0.58, 0.45, 0.30],
+
+    // ---- Grades (Ch.1 v3, D-055) ----
+    /** A small mesh-level tell on the axe/torch/shelter, per grade — the same "drawn, not
+     *  just stated" rule the harvest mark already set. Crude reads dull/rough, exceptional
+     *  reads bright/precious; the two middle grades are a plain, quiet gradient between. */
+    gradeCrude: [0.42, 0.40, 0.38],
+    gradeServiceable: [0.62, 0.60, 0.58],
+    gradeRefined: [0.45, 0.62, 0.78],
+    gradeExceptional: [0.93, 0.78, 0.28]
 } as const;
 
 /**

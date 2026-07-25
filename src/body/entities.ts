@@ -26,12 +26,36 @@ import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
 //  constructed, started, and never drawn — the deep-import tree-shaking trap.
 import '@babylonjs/core/Particles/particleSystemComponent';
 
-import { isFireLit, regrowProgress, type GameState, type NodeKind, type WoodNode } from '../brain';
+import { isFireLit, regrowProgress, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
+
+/** Grade → colour (Ch.1 v3, D-055) — the same "drawn, not just stated" rule the harvest
+ *  mark already set for real-vs-decorative. One shared lookup for every graded item. */
+const GRADE_COLOR: Record<ItemGrade, readonly number[]> = {
+    crude: PALETTE.gradeCrude,
+    serviceable: PALETTE.gradeServiceable,
+    refined: PALETTE.gradeRefined,
+    exceptional: PALETTE.gradeExceptional
+};
+
+/** A small stud — the grade tell. Parented to `parent`, offset by (x, y, z), coloured by
+ *  grade. Unlike the harvest mark (present/absent), this one's material is set once, at
+ *  creation, from whichever grade the item actually rolled. */
+function addGradeMark(scene: Scene, parent: Mesh, grade: ItemGrade, x: number, y: number, z: number): Mesh {
+    const mark = CreateSphere(`${parent.name}_grade`, { diameter: 0.06, segments: 6 }, scene);
+    const material = new StandardMaterial(`${parent.name}_gradeMat`, scene);
+    material.diffuseColor = colour(GRADE_COLOR[grade]);
+    material.specularColor = new Color3(0.4, 0.4, 0.4);
+    mark.material = material;
+    mark.parent = parent;
+    mark.position.set(x, y, z);
+    mark.isPickable = false;
+    return mark;
+}
 
 const PLAYER_HEIGHT = 1.8;
 
@@ -86,12 +110,14 @@ export class PlayerView {
     private shadow: Mesh;
     private axe: Mesh;
     private axeShown = false;
+    private axeGradeMat: StandardMaterial;
     private torchHaft: Mesh;
     private torchTip: Mesh;
     private torchFlame: ParticleSystem;
     private torchLight: PointLight;
     private torchOwnedShown = false;
     private torchLitShown = false;
+    private torchGradeMat: StandardMaterial;
 
     constructor(scene: Scene) {
         this.root = CreateCapsule('player', { height: PLAYER_HEIGHT, radius: 0.34, tessellation: 8, subdivisions: 1 }, scene);
@@ -115,6 +141,10 @@ export class PlayerView {
         head.parent = haft;
         head.position.set(0, 0.31, 0);
         head.isPickable = false;
+        //  The grade tell (Ch.1 v3, D-055) — a small stud on the head, recoloured the
+        //  first time the axe is shown (its grade is rolled at craft time, never after).
+        const axeGradeMark = addGradeMark(scene, head, 'serviceable', 0, 0.09, 0.12);
+        this.axeGradeMat = axeGradeMark.material as StandardMaterial;
         this.axe = haft;
         this.axe.parent = this.root;
         this.axe.position.set(-0.3, -0.1, -0.3);
@@ -134,6 +164,10 @@ export class PlayerView {
         this.torchHaft.position.set(0.3, -0.02, -0.28);
         this.torchHaft.rotation.set(-0.35, 0, -Math.PI / 2.9);
         this.torchHaft.setEnabled(false);
+
+        //  The grade tell (Ch.1 v3, D-055) — same rule as the axe's, on the haft.
+        const torchGradeMark = addGradeMark(scene, this.torchHaft, 'serviceable', 0, 0.16, 0);
+        this.torchGradeMat = torchGradeMark.material as StandardMaterial;
 
         this.torchTip = CreateSphere('torchTip', { diameter: 0.02, segments: 2 }, scene);
         this.torchTip.isVisible = false;
@@ -195,11 +229,15 @@ export class PlayerView {
         this.shadow.position.set(x, groundY + 0.03, z);
     }
 
-    /** Show or hide the carried axe. Owning it is the only gate — there is no equip step. */
-    syncTools(hasAxe: boolean): void {
+    /** Show or hide the carried axe. Owning it is the only gate — there is no equip step.
+     *  `grade` is rolled once at craft time (Ch.1 v3, D-055) and never changes again, so
+     *  the mark's colour is only ever set on the shown-transition, matching the pattern
+     *  `axeShown` already uses to skip redundant work. */
+    syncTools(hasAxe: boolean, grade: ItemGrade): void {
         if (hasAxe === this.axeShown) return;
         this.axeShown = hasAxe;
         this.axe.setEnabled(hasAxe);
+        if (hasAxe) this.axeGradeMat.diffuseColor = colour(GRADE_COLOR[grade]);
     }
 
     /** Show/hide the carried torch and its flame+light, following the tip each frame while
@@ -207,10 +245,11 @@ export class PlayerView {
      *  `getAbsolutePosition()` reads it fresh. `nightFactor` scales intensity the same way
      *  the fire's own light does (D-036/FireView), so the torch reads strongest at night
      *  without ever being fully invisible by day. */
-    syncTorch(owned: boolean, lit: boolean, nightFactor: number): void {
+    syncTorch(owned: boolean, lit: boolean, nightFactor: number, grade: ItemGrade): void {
         if (owned !== this.torchOwnedShown) {
             this.torchOwnedShown = owned;
             this.torchHaft.setEnabled(owned);
+            if (owned) this.torchGradeMat.diffuseColor = colour(GRADE_COLOR[grade]);
         }
         if (lit !== this.torchLitShown) {
             this.torchLitShown = lit;
@@ -794,6 +833,7 @@ export class ShelterView {
     private roofMaterial: StandardMaterial;
     private shadow: Mesh;
     private built = false;
+    private gradeMat: StandardMaterial;
 
     constructor(scene: Scene) {
         //  A lean-to: two angled support poles and a sloped thatch roof between them.
@@ -804,6 +844,7 @@ export class ShelterView {
         this.root.isPickable = true;
         this.root.metadata = { shelter: true };
 
+        let firstPole: Mesh | null = null;
         for (const side of [-1, 1]) {
             const pole = CreateCylinder(`shelterPole${side}`, { height: 2.1, diameter: 0.16, tessellation: 6 }, scene);
             pole.material = flat(scene, 'shelterPoleMat', PALETTE.trunk);
@@ -811,7 +852,11 @@ export class ShelterView {
             pole.position.set(0, -1.05, side * 1.05);
             pole.rotation.x = 0.5; // undo the parent's tilt so poles stand vertical
             pole.isPickable = false;
+            if (!firstPole) firstPole = pole;
         }
+        //  The grade tell (Ch.1 v3, D-055) — same rule as the axe's/torch's, on a pole.
+        const gradeMark = addGradeMark(scene, firstPole!, 'serviceable', 0, 0.9, 0);
+        this.gradeMat = gradeMark.material as StandardMaterial;
 
         this.shadow = makeShadow(scene, 2.2);
         this.setBuilt(false);
@@ -830,7 +875,13 @@ export class ShelterView {
 
     update(state: GameState, groundY: number): void {
         const built = state.shelter.built;
-        if (built !== this.built) this.setBuilt(built);
+        if (built !== this.built) {
+            this.setBuilt(built);
+            //  Grade is rolled once at build time (Ch.1 v3, D-055) and never changes —
+            //  only set the mark's colour on this transition, the same pattern the axe
+            //  and torch already use.
+            if (built) this.gradeMat.diffuseColor = colour(GRADE_COLOR[state.shelter.grade]);
+        }
         if (!built) return;
 
         this.root.position.set(state.shelter.x, groundY + 2.05, state.shelter.y);

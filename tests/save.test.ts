@@ -161,6 +161,66 @@ describe('save — A1: a Cycle 02 save migrates to Cycle 03', () => {
     });
 });
 
+describe('save — a v5 (D-052) save migrates to v6 (Ch.1 v3, D-055)', () => {
+    /** A realistic v5 save: axe/torch/shelter all owned, no grade/sharpblade/stoneHammer
+     *  fields at all — exactly what a save from before this pass looks like. */
+    function v5Save(): string {
+        const state = {
+            schemaVersion: 5,
+            startedAtMs: 1_700_000_000_000,
+            lastSeenMs: 1_700_000_300_000,
+            gameHoursElapsed: 20,
+            inventory: { wood: 4, stone: 6, fiber: 2, berries: 0, coconut: 0, shellfish: 0 },
+            tools: { axe: true, flask: true, flaskSips: 1 },
+            shelter: { built: true, x: 10, y: -5, durability: 88 },
+            torch: { owned: true, lit: false, fuelGameHoursRemaining: 3 },
+            trace: { deathLog: [{ cause: 'thirst', gameHoursElapsed: 5 }] }
+        };
+        return JSON.stringify({ schemaVersion: 5, savedAtMs: 1_700_000_300_000, state });
+    }
+
+    it('heals every already-owned axe/torch/shelter to the baseline serviceable grade — never a retroactive up/downgrade', () => {
+        const envelope = deserialize(v5Save());
+        expect(envelope).not.toBeNull();
+        const s = envelope!.state;
+
+        expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+        expect(s.tools.axe).toBe(true); // kept
+        expect(s.tools.axeGrade).toBe('serviceable');
+        expect(s.shelter.built).toBe(true); // kept
+        expect(s.shelter.grade).toBe('serviceable');
+        expect(s.torch.owned).toBe(true); // kept
+        expect(s.torch.grade).toBe('serviceable');
+        // Fuel/durability carry over untouched — the heal is grade only, not a refill.
+        expect(s.shelter.durability).toBe(88);
+        expect(s.torch.fuelGameHoursRemaining).toBe(3);
+    });
+
+    it("gains the new Ch.1 v3 fields — hasn't made a hammer or knapped a blade yet", () => {
+        const envelope = deserialize(v5Save());
+        const s = envelope!.state;
+        expect(s.inventory.sharpblade).toBe(0);
+        expect(s.tools.stoneHammer).toBe(false);
+        expect(s.craftRollCount).toBe(0);
+        expect(s.knowledge).toEqual({ nullPairs: [], events: [] });
+    });
+
+    it('keeps everything else untouched — inventory, the death log, position', () => {
+        const envelope = deserialize(v5Save());
+        const s = envelope!.state;
+        expect(s.inventory.wood).toBe(4);
+        expect(s.inventory.stone).toBe(6);
+        expect(s.trace.deathLog).toEqual([{ cause: 'thirst', gameHoursElapsed: 5 }]);
+        expect(s.gameHoursElapsed).toBe(20);
+    });
+
+    it('is idempotent — migrating then serialising round-trips as v6', () => {
+        const once = deserialize(v5Save());
+        const twice = deserialize(serialize(once!.state, once!.savedAtMs));
+        expect(twice!.state).toEqual(once!.state);
+    });
+});
+
 describe('save — a tampered save cannot carry an out-of-band vital (C3 audit, C03)', () => {
     it('clamps a negative or over-max vital on load', () => {
         const tampered = {

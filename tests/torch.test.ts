@@ -33,7 +33,12 @@ describe('FIX-5 (Living Island Track A) — the torch, crafting-tree entry #1', 
         expect(craftTorch(s)).toBe(true);
         expect(s.inventory.wood).toBe(3);
         expect(s.inventory.fiber).toBe(1);
-        expect(s.torch).toEqual({ owned: true, lit: false, fuelGameHoursRemaining: TUNE.torchBurnGameHours });
+        expect(s.torch.owned).toBe(true);
+        expect(s.torch.lit).toBe(false);
+        //  A grade was rolled (Ch.1 v3, D-055) — one of the four, and fuel matches whatever
+        //  that grade's burn-duration multiplier says. The grade roll itself is covered in
+        //  tests/grades.test.ts; this test is about the recipe spend, not the roll.
+        expect(['crude', 'serviceable', 'refined', 'exceptional']).toContain(s.torch.grade);
     });
 
     it('cannot be crafted twice while one is already owned', () => {
@@ -82,6 +87,11 @@ describe('FIX-5 (Living Island Track A) — the torch, crafting-tree entry #1', 
         s.inventory.wood = TUNE.torchWoodCost * 2 + TUNE.woodPerFire;
         s.inventory.fiber = TUNE.torchFiberCost * 2;
         craftTorch(s);
+        //  This test is about the burn-down MECHANISM, not the grade roll (covered
+        //  separately in tests/grades.test.ts) — force the baseline grade so the duration
+        //  math below is exact rather than whatever this seed happened to roll.
+        s.torch.grade = 'serviceable';
+        s.torch.fuelGameHoursRemaining = TUNE.torchBurnGameHours;
         buildFire(s, 0, 0);
         lightTorch(s);
 
@@ -106,6 +116,8 @@ describe('FIX-5 (Living Island Track A) — the torch, crafting-tree entry #1', 
         s.inventory.wood = TUNE.torchWoodCost;
         s.inventory.fiber = TUNE.torchFiberCost;
         craftTorch(s);
+        s.torch.grade = 'serviceable';
+        s.torch.fuelGameHoursRemaining = TUNE.torchBurnGameHours;
         const { state } = reconcile(s, realSecondsFromGameHours(100));
         expect(state.torch.owned).toBe(true);
         expect(state.torch.lit).toBe(false);

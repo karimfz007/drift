@@ -32,6 +32,7 @@ import {
     canLightTorch,
     canRepairStructure,
     craftAxe,
+    craftStoneHammer,
     craftTorch,
     distance,
     drinkAtPond,
@@ -45,9 +46,11 @@ import {
     isExhausted,
     isFireLit,
     isSheltered,
+    knapSharpblade,
     lightTorch,
     nodeHoldSeconds,
     nodeSpec,
+    recordCombinationAttempts,
     repairStructure,
     timeOfDay,
     useStorage,
@@ -828,14 +831,22 @@ export class Game {
         this.controls.releaseAll();
         this.clearPending();
         const s = session().state;
+        //  Ch.1's null-outcome journal (D-055): evaluate every recipe slot against every
+        //  material currently held, once per panel-open — cheap, and the only place this
+        //  needs to run, since nothing about a slot/material match depends on anything
+        //  that changes between opens.
+        recordCombinationAttempts(s);
+        session().persist(now());
         showBuildCard(
             this.overlay,
             {
                 torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned },
-                axe: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.tools.axe },
+                axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe },
                 shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built },
-                storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built }
+                storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built },
+                stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer }
             },
+            { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {
                 runtime.panelOpen = false;
                 if (craftTorch(session().state)) {
@@ -860,6 +871,26 @@ export class Game {
             },
             () => { runtime.panelOpen = false; this.onBuildShelter(); },
             () => { runtime.panelOpen = false; this.onBuildStorage(); },
+            () => {
+                runtime.panelOpen = false;
+                if (craftStoneHammer(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the stone hammer is yours');
+                    session().markFirstCraft(msSinceControl());
+                    session().persist(now());
+                    this.showHint('Open Build again to knap a sharp blade.');
+                }
+                this.lastActivityAt = now();
+            },
+            () => {
+                runtime.panelOpen = false;
+                if (knapSharpblade(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('+1 sharp blade');
+                    session().persist(now());
+                }
+                this.lastActivityAt = now();
+            },
             () => { runtime.panelOpen = false; this.lastActivityAt = now(); }
         );
     }
@@ -1095,8 +1126,8 @@ export class Game {
     private placePlayerFromState(): void {
         const s = session().state;
         this.player.place(s.player.x, this.island.heightAt(s.player.x, s.player.y), s.player.y, this.facing);
-        this.player.syncTools(s.tools.axe);
-        this.player.syncTorch(s.torch.owned, s.torch.lit, this.nightFactor(s.gameHoursElapsed));
+        this.player.syncTools(s.tools.axe, s.tools.axeGrade);
+        this.player.syncTorch(s.torch.owned, s.torch.lit, this.nightFactor(s.gameHoursElapsed), s.torch.grade);
     }
 
     /** The node to highlight: the pending one, else the nearest in reach. */
@@ -1147,7 +1178,7 @@ export class Game {
         //  panel EARLY, before all three older items are built — it never exercised the
         //  "everything but the torch" state a real long session reaches.
         let secondary = { label: '', visible: false };
-        if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned) {
+        if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
             secondary = { label: 'Build', visible: true };
         }
 
@@ -1166,7 +1197,7 @@ export class Game {
         }
         if (!state.tools.axe && !canCraftAxe(state)) {
             const s = axeShortfall(state);
-            const needs = [s.wood && `${s.wood} wood`, s.stone && `${s.stone} stone`, s.fiber && `${s.fiber} fibre`].filter(Boolean).join(', ');
+            const needs = [s.wood && `${s.wood} wood`, s.sharpblade && `${s.sharpblade} sharp blade`, s.fiber && `${s.fiber} fibre`].filter(Boolean).join(', ');
             if (needs) return `For an axe, still need ${needs}. Tap things to gather.`;
         }
         if (!state.tools.axe && canCraftAxe(state)) return 'You have the parts — Craft the axe.';
@@ -1190,7 +1221,9 @@ export class Game {
         if (s.thirst <= TUNE.thirstLowHintAt) return 'Thirsty. Tap the pond inland, west of the trees, to drink.';
         if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';
-        if (!s.tools.axe) return 'An axe needs wood, stone, and fibre. Reeds by the pond are fibre.';
+        if (!s.tools.axe && !s.tools.stoneHammer) return 'An axe needs a knapped blade — make the stone hammer first (Build panel).';
+        if (!s.tools.axe && s.inventory.sharpblade < TUNE.axeSharpbladeCost) return 'Knap some stone into a blade for the axe (Build panel).';
+        if (!s.tools.axe) return 'You have a blade — gather wood and fibre for the axe.';
         if (!s.torch.owned && canCraftTorch(s)) return 'You have the parts for a torch, too — Build panel.';
         if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough wood. Build the fire.';
         if (!s.fire.built) return 'Tap a standing tree to chop it, then build a fire.';

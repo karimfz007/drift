@@ -219,9 +219,12 @@ export const TUNE = {
     shellfishHungerValue: 22,
 
     // ---- The first tool and loot (C03) — the four gates made concrete ------
-    /** [TUNE] C03 — crude axe recipe: wood + stone + fibre. Knowledge is innate in v1. */
+    /** [TUNE] C03 — crude axe recipe: wood + a blade + fibre. Knowledge is innate in v1.
+     *  Ch.1 v3 (D-055) replaced the direct `axeStoneCost` with `axeSharpbladeCost` — the
+     *  axe now needs a knapped blade, not raw stone directly; the stone hammer + knapping
+     *  is the new Tier-0 step that unlocks it. */
     axeWoodCost: 3,
-    axeStoneCost: 2,
+    axeSharpbladeCost: 1,
     axeFiberCost: 2,
     /** [TUNE] C03 — real seconds to fell a standing tree, at level 1, with the axe. */
     treeChopSecondsWithAxe: 4,
@@ -328,10 +331,12 @@ export const TUNE = {
     shelterFiberCost: 3,
     /** [TUNE] C05 — metres from the shelter its bonuses (warmth relief, faster drying) reach. */
     shelterRadius: 6,
-    /** [TUNE] C05 — within the shelter's radius, warmth's NIGHT-TIME DRAIN (not the fire's
-     *  regen) is multiplied by this — a partial relief independent of the fire, so the
-     *  shelter's value shows even between fire visits. */
-    shelterWarmthDrainMultiplier: 0.5,
+    /** [TUNE] C05, replaced by a per-grade table at Ch.1 v3 (D-055) — see
+     *  `shelterGradeWarmthMultiplier` below. Within the shelter's radius, warmth's
+     *  NIGHT-TIME DRAIN (not the fire's regen) is multiplied by the built shelter's own
+     *  grade entry — a partial relief independent of the fire, so the shelter's value
+     *  shows even between fire visits. `serviceable` (0.5) reproduces this constant's old
+     *  value exactly, so a shelter healed to that grade on migration feels unchanged. */
     /** [TUNE] C05 — how far in front of the player the shelter is placed, in metres — the
      *  same "an arm's length ahead" reasoning as the fire (`fireBuildOffsetM`). */
     shelterBuildOffsetM: 2.2,
@@ -419,7 +424,39 @@ export const TUNE = {
     /** [TUNE] D-051 — "Fast movement (testing)" settings toggle multiplier, applied on top
      *  of `walkSpeedMps` (itself unchanged). Off by default; a labelled test aid, not a
      *  gameplay mechanic. */
-    testSpeedMultiplier: 3
+    testSpeedMultiplier: 3,
+
+    // ---- The stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 -------------
+    /** [TUNE] D-055 — stone hammer recipe: a cheap Tier-0 craft, wood + stone. */
+    stoneHammerWoodCost: 2,
+    stoneHammerStoneCost: 3,
+    /** [TUNE] D-055 — raw stone spent per knap; a refining ratio, not 1:1 — the sharp
+     *  blade is a step up from the raw material, not a relabel of it. */
+    knapStoneCost: 2,
+    /** [TUNE] D-055 — sharp blades produced per knap. */
+    knapSharpbladeYield: 1,
+
+    // ---- Grades (Ch.1 v3, D-055) — rolled once at craft time ----------------
+    /** [TUNE] D-055 — plain, stated odds for the grade roll (honest-systems law, no
+     *  loot-box dressing) — crude is common, exceptional is rare. Same order every
+     *  roll checks: crude, then serviceable, then refined, then exceptional. First-pass
+     *  numbers; revisit at the next TUNE feedback pass. */
+    gradeOddsCrude: 0.5,
+    gradeOddsServiceable: 0.35,
+    gradeOddsRefined: 0.12,
+    gradeOddsExceptional: 0.03,
+    /** [TUNE] D-055 — axe fell-speed by grade, multiplying `treeChopSecondsWithAxe`
+     *  (below 1 is faster). `serviceable` reproduces the old flat rate exactly, so an
+     *  axe healed to that grade on migration chops at the same speed as before grades
+     *  existed. */
+    axeGradeChopMultiplier: { crude: 1.2, serviceable: 1.0, refined: 0.85, exceptional: 0.65 },
+    /** [TUNE] D-055 — torch burn-hours by grade, multiplying `torchBurnGameHours`.
+     *  `serviceable` reproduces the pre-grade duration exactly. */
+    torchGradeBurnMultiplier: { crude: 0.7, serviceable: 1.0, refined: 1.4, exceptional: 2.0 },
+    /** [TUNE] D-055 — shelter's warmth-drain multiplier by grade (replaces the old flat
+     *  `shelterWarmthDrainMultiplier`; lower is better, same meaning as before).
+     *  `serviceable` (0.5) reproduces the pre-grade value exactly. */
+    shelterGradeWarmthMultiplier: { crude: 0.65, serviceable: 0.5, refined: 0.35, exceptional: 0.2 }
 } as const;
 
 export type TuneTable = typeof TUNE;

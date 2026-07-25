@@ -2,15 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
     axeShortfall,
     canCraftAxe,
+    canCraftStoneHammer,
     canDrinkAtPond,
+    canKnapSharpblade,
     craftAxe,
+    craftStoneHammer,
     createInitialState,
     drinkAtPond,
     drinkFlask,
     eat,
     fillFlask,
     isAtPond,
-    respawn
+    knapSharpblade,
+    respawn,
+    stoneHammerShortfall
 } from '../src/brain/state';
 import { grantXp, newSkill, skillMultiplier, xpToNextLevel } from '../src/brain/skills';
 import { TUNE } from '../src/data/tune';
@@ -21,12 +26,12 @@ function run() {
 }
 
 describe('crafting — the crude axe (four gates)', () => {
-    it('needs wood, stone and fibre, and refuses without them', () => {
+    it('needs wood, a sharp blade, and fibre, and refuses without them', () => {
         const s = run();
         expect(canCraftAxe(s)).toBe(false);
         expect(axeShortfall(s)).toEqual({
             wood: TUNE.axeWoodCost,
-            stone: TUNE.axeStoneCost,
+            sharpblade: TUNE.axeSharpbladeCost,
             fiber: TUNE.axeFiberCost
         });
         expect(craftAxe(s)).toBe(false);
@@ -36,24 +41,89 @@ describe('crafting — the crude axe (four gates)', () => {
     it('spends exactly the recipe and yields the axe', () => {
         const s = run();
         s.inventory.wood = TUNE.axeWoodCost + 1;
-        s.inventory.stone = TUNE.axeStoneCost;
+        s.inventory.sharpblade = TUNE.axeSharpbladeCost;
         s.inventory.fiber = TUNE.axeFiberCost + 2;
         expect(canCraftAxe(s)).toBe(true);
         expect(craftAxe(s)).toBe(true);
         expect(s.tools.axe).toBe(true);
         expect(s.inventory.wood).toBe(1);
-        expect(s.inventory.stone).toBe(0);
+        expect(s.inventory.sharpblade).toBe(0);
         expect(s.inventory.fiber).toBe(2);
     });
 
     it('cannot be crafted twice', () => {
         const s = run();
         s.inventory.wood = 99;
-        s.inventory.stone = 99;
+        s.inventory.sharpblade = 99;
         s.inventory.fiber = 99;
         craftAxe(s);
         expect(canCraftAxe(s)).toBe(false);
         expect(craftAxe(s)).toBe(false);
+    });
+});
+
+describe('crafting — the stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 unlocks the axe', () => {
+    it('the hammer needs wood and stone, and refuses without them', () => {
+        const s = run();
+        expect(canCraftStoneHammer(s)).toBe(false);
+        expect(stoneHammerShortfall(s)).toEqual({ wood: TUNE.stoneHammerWoodCost, stone: TUNE.stoneHammerStoneCost });
+        expect(craftStoneHammer(s)).toBe(false);
+    });
+
+    it('spends exactly the recipe and yields the hammer; cannot be made twice', () => {
+        const s = run();
+        s.inventory.wood = TUNE.stoneHammerWoodCost;
+        s.inventory.stone = TUNE.stoneHammerStoneCost + 5;
+        expect(craftStoneHammer(s)).toBe(true);
+        expect(s.tools.stoneHammer).toBe(true);
+        expect(s.inventory.wood).toBe(0);
+        expect(s.inventory.stone).toBe(5);
+        expect(canCraftStoneHammer(s)).toBe(false);
+        expect(craftStoneHammer(s)).toBe(false);
+    });
+
+    it('knapping needs the hammer, even with enough stone', () => {
+        const s = run();
+        s.inventory.stone = 99;
+        expect(canKnapSharpblade(s)).toBe(false);
+        expect(knapSharpblade(s)).toBe(false);
+        expect(s.inventory.sharpblade).toBe(0);
+    });
+
+    it('knapping spends raw stone for sharp blades, and is repeatable — no "done" state', () => {
+        const s = run();
+        s.tools.stoneHammer = true;
+        s.inventory.stone = TUNE.knapStoneCost * 2;
+        expect(knapSharpblade(s)).toBe(true);
+        expect(s.inventory.stone).toBe(TUNE.knapStoneCost);
+        expect(s.inventory.sharpblade).toBe(TUNE.knapSharpbladeYield);
+        // Repeatable: knap again with the stone left over.
+        expect(canKnapSharpblade(s)).toBe(true);
+        expect(knapSharpblade(s)).toBe(true);
+        expect(s.inventory.stone).toBe(0);
+        expect(s.inventory.sharpblade).toBe(TUNE.knapSharpbladeYield * 2);
+    });
+
+    it('refuses to knap without enough stone', () => {
+        const s = run();
+        s.tools.stoneHammer = true;
+        s.inventory.stone = TUNE.knapStoneCost - 1;
+        expect(canKnapSharpblade(s)).toBe(false);
+        expect(knapSharpblade(s)).toBe(false);
+    });
+
+    it('the full tier: gather, make the hammer, knap a blade, then the axe recipe is met', () => {
+        const s = run();
+        s.inventory.wood = TUNE.stoneHammerWoodCost + TUNE.axeWoodCost;
+        s.inventory.stone = TUNE.stoneHammerStoneCost + TUNE.knapStoneCost;
+        s.inventory.fiber = TUNE.axeFiberCost;
+        expect(canCraftAxe(s)).toBe(false); // no sharp blade yet
+
+        expect(craftStoneHammer(s)).toBe(true);
+        expect(knapSharpblade(s)).toBe(true);
+        expect(canCraftAxe(s)).toBe(true);
+        expect(craftAxe(s)).toBe(true);
+        expect(s.tools.axe).toBe(true);
     });
 });
 

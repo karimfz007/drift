@@ -28,6 +28,7 @@ import {
     isPlayerInFireRadius,
     regrowGameHoursFor,
     salvageIntervalGameHours,
+    shelterWarmthMultiplierFor,
     spawnSalvageNode
 } from './state';
 import { deathCauseFrom, healthRatePerGameHour, vitalLowerBound } from './vitals';
@@ -113,7 +114,7 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         const warmthRate = lit && sheltered
             ? TUNE.warmthRegenPerGameHourAtFire
             : nightNow
-                ? -TUNE.warmthDrainPerGameHourNight * (shelterActive ? TUNE.shelterWarmthDrainMultiplier : 1) * wetWarmthMultiplier
+                ? -TUNE.warmthDrainPerGameHourNight * (shelterActive ? shelterWarmthMultiplierFor(state.shelter.grade) : 1) * wetWarmthMultiplier
                 : 0;
         const thirstRate = -TUNE.thirstDrainPerGameHour;
         const hungerRate = -TUNE.hungerDrainPerGameHour;

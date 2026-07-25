@@ -16,8 +16,16 @@
  *      FIX 5) and a per-death log on the trace (FIX 2). Migration v4→v5 lives in save.ts;
  *      a returning player simply hasn't crafted a torch yet, the same reasoning v2→v3 used
  *      for shelter/storage.
+ * v6 — Ch.1 v3, buildable content (D-055): the sharp-blade intermediate (a new carried
+ *      material, knapped from raw stone with the new stone hammer); the stone hammer
+ *      itself (a new Tier-0 tool); a grade (crude/serviceable/refined/exceptional) on the
+ *      axe/torch/shelter; and the null-outcome combination journal (Ch.1's knowledge
+ *      layer). Migration v5→v6 lives in save.ts; a returning player simply hasn't knapped
+ *      a blade or made a hammer yet, and every ALREADY-owned axe/torch/shelter heals in at
+ *      the baseline `serviceable` grade — the honest "we don't know what grade it would
+ *      have rolled" answer, never a retroactive upgrade or downgrade.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -80,7 +88,8 @@ export interface PlayerState {
 
 /**
  * What the castaway is carrying. Counts, all of them — the minimal inventory the spec
- * asks for. `wood` is Cycle 01's; the rest are Cycle 03's materials and food.
+ * asks for. `wood` is Cycle 01's; berries/coconut/shellfish are Cycle 03's; `sharpblade`
+ * is Ch.1 v3 (D-055) — a refined material, knapped from raw stone, not gathered directly.
  */
 export interface Inventory {
     wood: number;
@@ -89,7 +98,22 @@ export interface Inventory {
     berries: number;
     coconut: number;
     shellfish: number;
+    sharpblade: number;
 }
+
+/** Every kind of carried material — the key set `Inventory` actually holds. Ch.1 v3's
+ *  material-family/tag schema (`src/brain/materials.ts`) is keyed by this. */
+export type MaterialKind = keyof Inventory;
+
+/**
+ * Grade (Ch.1 v3, D-055): four tiers, rolled once at craft time via a seeded hash — the
+ * same determinism technique `deadfallYield`/`spawnSalvageNode` already use, not a fresh
+ * mechanic. Exactly ONE functional stat moves per item type with grade (never more): the
+ * axe's fell speed, the torch's burn duration, the shelter's warmth bonus. Cosmetic too —
+ * a small mesh-level tell per grade, the same pattern as the harvest blaze-mark/depletion-
+ * stump system (grade is drawn, not just stated).
+ */
+export type ItemGrade = 'crude' | 'serviceable' | 'refined' | 'exceptional';
 
 /** Tools and carried gear. Booleans in v1; each is a made-or-found milestone. */
 export interface Tools {
@@ -99,6 +123,11 @@ export interface Tools {
     flask: boolean;
     /** Drinks currently in the flask (0..flaskCapacitySips). */
     flaskSips: number;
+    /** The stone hammer (Ch.1 v3, D-055): Tier-0 — its one live verb is knapping raw
+     *  stone into the sharp-blade intermediate the axe now needs. */
+    stoneHammer: boolean;
+    /** Rolled once at craft time (Ch.1 v3, D-055); scales fell speed only. */
+    axeGrade: ItemGrade;
 }
 
 /**
@@ -116,8 +145,10 @@ export interface TorchState {
     /** True while lit. Never true unless `owned`; extinguishes itself at 0 fuel. */
     lit: boolean;
     /** Game hours of burn remaining. Only ticks down while `lit`; set to
-     *  `TUNE.torchBurnGameHours` on craft. */
+     *  `torchBurnGameHoursFor(grade)` on craft. */
     fuelGameHoursRemaining: number;
+    /** Rolled once at craft time (Ch.1 v3, D-055); scales burn duration only. */
+    grade: ItemGrade;
 }
 
 /**
@@ -132,6 +163,14 @@ export interface Structure {
     y: number;
     /** 0–100. At 0 the structure's bonus pauses until repaired; never deleted. */
     durability: number;
+}
+
+/** The shelter specifically — the one structure with a grade (Ch.1 v3, D-055): its
+ *  warmth bonus, and only its warmth bonus, scales with it. Storage has no grade — the
+ *  spec names exactly one stat per item TYPE, and storage has none listed. */
+export interface ShelterState extends Structure {
+    /** Rolled once at build time; scales the warmth-drain-reduction bonus only. */
+    grade: ItemGrade;
 }
 
 /** The storage crate's contents — raw materials only, a second pool from personal carry. */
@@ -184,6 +223,31 @@ export interface TraceState {
 }
 
 /**
+ * A knowledge event — Ch.1's null-outcome journal recording that trying is itself
+ * knowledge (D-055). Ch.2 (knowledge/experimenting) does not exist yet in this codebase;
+ * this is the stub hook for it — recorded, unwired beyond that, ready for Ch.2 to read.
+ */
+export interface KnowledgeEvent {
+    kind: 'combination-tried';
+    /** Plain-language detail — e.g. "wood does not satisfy the axe's blade slot." */
+    detail: string;
+    gameHoursElapsed: number;
+}
+
+/**
+ * The null-outcome combination journal (Ch.1 v3, D-055): every (recipe slot, material
+ * kind) pair tried and found NOT to combine, so it is never re-evaluated. Encoded as
+ * `${slotId}|${materialKind}` strings — a Set expressed as a JSON-safe array, the same
+ * plain-array convention `trace.deathLog` already uses for small, append-only history.
+ */
+export interface KnowledgeState {
+    nullPairs: string[];
+    /** Unbounded, matching `trace.deathLog`'s own precedent — tiny data, a knowledge
+     *  event only fires once per pair ever, never per frame. */
+    events: KnowledgeEvent[];
+}
+
+/**
  * The whole run. Everything the game needs to be reconstructed from a cold start.
  * Serialised verbatim into the save (see save.ts).
  */
@@ -213,7 +277,7 @@ export interface GameState {
     fire: FireState;
     /** The lean-to (Cycle 05): warmth-drain relief and faster drying in its radius; once
      *  built, it is also where death and absence respawn the castaway (D-042/C05 §2). */
-    shelter: Structure;
+    shelter: ShelterState;
     /** The storage crate (Cycle 05): a second pool for raw materials only. */
     storage: StorageState;
     /** The carried torch (Living Island Track A, FIX 5). */
@@ -228,6 +292,12 @@ export interface GameState {
      *  the same way it advances everything else — by math over elapsed time, identically
      *  online and offline (D-051). */
     nextSalvageSpawnAtGameHours: number;
+    /** How many crafts (of any kind) have ever rolled a grade — the seed counter for each
+     *  roll (Ch.1 v3, D-055), the same "counter as seed" determinism `salvageSpawnCount`
+     *  already established, kept pure (no clock or RNG reads). */
+    craftRollCount: number;
+    /** Ch.1's knowledge layer, v3 (D-055): the null-outcome combination journal. */
+    knowledge: KnowledgeState;
     settings: Settings;
     trace: TraceState;
 
