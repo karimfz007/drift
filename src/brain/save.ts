@@ -7,6 +7,7 @@
  */
 
 import { TUNE } from '../data/tune';
+import { freshDomainScores } from './knowledge';
 import { SCHEMA_VERSION, type GameState } from './types';
 import { createInitialState } from './state';
 
@@ -83,6 +84,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 3) current = migrateV3toV4(current);
     if (current.schemaVersion === 4) current = migrateV4toV5(current);
     if (current.schemaVersion === 5) current = migrateV5toV6(current);
+    if (current.schemaVersion === 6) current = migrateV6toV7(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -239,7 +241,37 @@ function migrateV5toV6(envelope: SaveEnvelope): SaveEnvelope {
         shelter: { ...(oldShelter as unknown as GameState['shelter']), grade: 'serviceable' },
         torch: { ...(oldTorch as unknown as GameState['torch']), grade: 'serviceable' },
         craftRollCount: num(old.craftRollCount, 0),
-        knowledge: { nullPairs: [], events: [] },
+        //  This step's own concern is only the fields named in its own doc comment above
+        //  (sharpblade/hammer/grades); `domains` did not exist until v7 and is filled in by
+        //  `migrateV6toV7` immediately after — TS still requires a complete `KnowledgeState`
+        //  here, so a fresh set stands in for one step, replaced one migration later.
+        knowledge: { nullPairs: [], events: [], domains: freshDomainScores() },
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v6 (Ch.1 v3: grades, the stone hammer, the null-outcome journal) → v7 (Ch.2, "The
+ * Knowledge Model"): every unit gains a per-domain score (`knowledge.domains`). A
+ * returning player's `nullPairs`/`events` carry over exactly as they were; `domains`
+ * starts fresh at the innate floor for every domain — no retroactive Understanding credit
+ * for null pairs discovered before this chapter shipped. The honest "we don't know what it
+ * would have been" answer, the same reasoning D-055's own grade migration already used for
+ * an axe/torch/shelter healing to `serviceable` rather than a fabricated roll.
+ */
+function migrateV6toV7(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const oldKnowledge = isObject(old.knowledge) ? old.knowledge : {};
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        knowledge: {
+            nullPairs: Array.isArray(oldKnowledge.nullPairs) ? (oldKnowledge.nullPairs as string[]) : [],
+            events: Array.isArray(oldKnowledge.events) ? (oldKnowledge.events as GameState['knowledge']['events']) : [],
+            domains: freshDomainScores()
+        },
         schemaVersion: SCHEMA_VERSION
     };
 
@@ -273,7 +305,11 @@ function hydrate(state: GameState): GameState {
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },
-        knowledge: { ...base.knowledge, ...state.knowledge },
+        knowledge: {
+            ...base.knowledge,
+            ...state.knowledge,
+            domains: { ...base.knowledge.domains, ...state.knowledge?.domains }
+        },
         nodes: Array.isArray(state.nodes) && state.nodes.length > 0 ? state.nodes : base.nodes,
         //  Defensive clamp on load. Vitals are now life-and-death, so a corrupt or
         //  hand-edited save must not carry an out-of-band value (a negative health would

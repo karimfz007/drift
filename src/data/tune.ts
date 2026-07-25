@@ -456,7 +456,43 @@ export const TUNE = {
     /** [TUNE] D-055 — shelter's warmth-drain multiplier by grade (replaces the old flat
      *  `shelterWarmthDrainMultiplier`; lower is better, same meaning as before).
      *  `serviceable` (0.5) reproduces the pre-grade value exactly. */
-    shelterGradeWarmthMultiplier: { crude: 0.65, serviceable: 0.5, refined: 0.35, exceptional: 0.2 }
+    shelterGradeWarmthMultiplier: { crude: 0.65, serviceable: 0.5, refined: 0.35, exceptional: 0.2 },
+
+    // ---- Ch.2, "The Knowledge Model" (MAJOR artifact) — domain scores ------
+    /** [TUNE] Ch.2 — every domain score's ceiling (Technique/Understanding/Adaptation). */
+    knowledgeScoreMax: 100,
+    /** [TUNE] Ch.2 — every domain starts here, not zero — most domains sit untouched for a
+     *  long time (no producer exists yet for Foraging & medicine, Mechanical systems,
+     *  Electrical & radio, or Navigation & seamanship this pass), and that is correct, not
+     *  a gap to fill artificially. */
+    knowledgeInnateFloor: 5,
+    /** [TUNE] Ch.2 — the evaluator's per-event ceiling for a Technique/Understanding delta
+     *  (`evaluateLearningEvent` in knowledge.ts). First-pass numbers; revisit at the next
+     *  TUNE feedback pass, the same as every other freshly introduced system this project
+     *  has shipped (grades, energy costs, regrow hours). */
+    knowledgeTechniqueMaxDelta: 1.5,
+    knowledgeUnderstandingMaxDelta: 1.2,
+    /** [TUNE] Ch.2 — how Understanding splits between "it mattered" (consequence) and "I
+     *  thought about it" (reflection); the two sum to 1 so a factor pair both at 1
+     *  saturates the Understanding formula exactly at its ceiling, no more. */
+    knowledgeReflectionWeight: 0.6,
+    knowledgeConsequenceWeight: 0.4,
+    /** [TUNE] Ch.2 — the "trying" channel's baseline factors for an ordinary successful
+     *  gather/build/craft: feedback stays high across the board (every direct-world action
+     *  is immediately visible in hand, D-042); consequence and reflection are modest —
+     *  routine survival play, not a crisis or a deliberate study session. Challenge/novelty
+     *  are NOT here — they are each domain's own remaining headroom (`tryFactorsFor` in
+     *  knowledge.ts), never a flat constant. */
+    tryingFeedbackFactor: 0.9,
+    tryingConsequenceFactor: 0.25,
+    tryingReflectionFactor: 0.3,
+    /** [TUNE] Ch.2 — a null-outcome combination attempt's factors (D-055's journal, wired
+     *  for real this pass): novelty and feedback are both effectively certain — the
+     *  journal's own dedup guarantees this is genuinely the first time this exact pair has
+     *  been tried, and the Build panel makes the non-match legible at a glance. */
+    nullOutcomeNoveltyFactor: 1,
+    nullOutcomeFeedbackFactor: 1,
+    nullOutcomeReflectionFactor: 0.4
 } as const;
 
 export type TuneTable = typeof TUNE;

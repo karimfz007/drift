@@ -6,6 +6,7 @@ import {
     serialize,
     type SaveEnvelope
 } from '../src/brain/save';
+import { freshDomainScores } from '../src/brain/knowledge';
 import { buildFire, createInitialState, gatherNode } from '../src/brain/state';
 import { SCHEMA_VERSION } from '../src/brain/types';
 import { TUNE } from '../src/data/tune';
@@ -202,7 +203,10 @@ describe('save — a v5 (D-052) save migrates to v6 (Ch.1 v3, D-055)', () => {
         expect(s.inventory.sharpblade).toBe(0);
         expect(s.tools.stoneHammer).toBe(false);
         expect(s.craftRollCount).toBe(0);
-        expect(s.knowledge).toEqual({ nullPairs: [], events: [] });
+        //  Migrating a v5 save runs the WHOLE ladder, through v7 (Ch.2) too — domains
+        //  arrive fresh at the innate floor, the same "hasn't happened yet" honesty as
+        //  every other field this migration heals.
+        expect(s.knowledge).toEqual({ nullPairs: [], events: [], domains: freshDomainScores() });
     });
 
     it('keeps everything else untouched — inventory, the death log, position', () => {
@@ -216,6 +220,69 @@ describe('save — a v5 (D-052) save migrates to v6 (Ch.1 v3, D-055)', () => {
 
     it('is idempotent — migrating then serialising round-trips as v6', () => {
         const once = deserialize(v5Save());
+        const twice = deserialize(serialize(once!.state, once!.savedAtMs));
+        expect(twice!.state).toEqual(once!.state);
+    });
+});
+
+describe('save — a v6 (Ch.1 v3, D-055) save migrates to v7 (Ch.2, "The Knowledge Model")', () => {
+    /** A realistic v6 save: the null-outcome journal has real entries (from a real Build
+     *  panel session before Ch.2 existed), but no `domains` field at all — exactly what a
+     *  save from before this pass looks like. */
+    function v6Save(): string {
+        const state = {
+            schemaVersion: 6,
+            startedAtMs: 1_700_000_000_000,
+            lastSeenMs: 1_700_000_300_000,
+            gameHoursElapsed: 30,
+            inventory: { wood: 2, stone: 1, fiber: 0, berries: 3, coconut: 0, shellfish: 0, sharpblade: 1 },
+            tools: { axe: true, flask: false, flaskSips: 0, stoneHammer: true, axeGrade: 'refined' },
+            craftRollCount: 4,
+            knowledge: {
+                nullPairs: ['axe-blade|wood', 'shelter-walls|fiber'],
+                events: [{ kind: 'combination-tried', detail: 'wood does not satisfy axe-blade', gameHoursElapsed: 12 }]
+                // no `domains` at all — this field did not exist at v6
+            },
+            trace: { deathLog: [] }
+        };
+        return JSON.stringify({ schemaVersion: 6, savedAtMs: 1_700_000_300_000, state });
+    }
+
+    it('gains every domain fresh at the innate floor — no retroactive Understanding credit for pre-Ch.2 null pairs', () => {
+        const envelope = deserialize(v6Save());
+        expect(envelope).not.toBeNull();
+        const s = envelope!.state;
+
+        expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+        expect(Object.keys(s.knowledge.domains).length).toBe(7);
+        for (const domain of Object.values(s.knowledge.domains)) {
+            expect(domain).toEqual({
+                technique: TUNE.knowledgeInnateFloor,
+                understanding: TUNE.knowledgeInnateFloor,
+                adaptation: TUNE.knowledgeInnateFloor
+            });
+        }
+    });
+
+    it('keeps the pre-existing null-outcome journal exactly as it was', () => {
+        const envelope = deserialize(v6Save());
+        const s = envelope!.state;
+        expect(s.knowledge.nullPairs).toEqual(['axe-blade|wood', 'shelter-walls|fiber']);
+        expect(s.knowledge.events).toHaveLength(1);
+        expect(s.knowledge.events[0].detail).toBe('wood does not satisfy axe-blade');
+    });
+
+    it('keeps everything else untouched — the axe grade, the hammer, the blade in hand', () => {
+        const envelope = deserialize(v6Save());
+        const s = envelope!.state;
+        expect(s.tools.axeGrade).toBe('refined');
+        expect(s.tools.stoneHammer).toBe(true);
+        expect(s.inventory.sharpblade).toBe(1);
+        expect(s.craftRollCount).toBe(4);
+    });
+
+    it('is idempotent — migrating then serialising round-trips as v7', () => {
+        const once = deserialize(v6Save());
         const twice = deserialize(serialize(once!.state, once!.savedAtMs));
         expect(twice!.state).toEqual(once!.state);
     });

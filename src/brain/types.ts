@@ -24,8 +24,16 @@
  *      a blade or made a hammer yet, and every ALREADY-owned axe/torch/shelter heals in at
  *      the baseline `serviceable` grade — the honest "we don't know what grade it would
  *      have rolled" answer, never a retroactive upgrade or downgrade.
+ * v7 — Ch.2, "The Knowledge Model" (MAJOR artifact, AUDITED-GO): a per-domain
+ *      `KnowledgeState.domains` (Technique/Understanding/Adaptation, seven domains, every
+ *      score starting at an innate floor). Brain-layer only — no new player-facing UI
+ *      surface (Ch.4 owns the reveal). Migration v6→v7 lives in save.ts; a returning
+ *      player's `nullPairs`/`events` carry over untouched, and every domain starts fresh
+ *      at the innate floor — no retroactive Understanding credit for null pairs discovered
+ *      before this chapter shipped, the same "we don't know what it would have been"
+ *      honesty D-055's own grade migration already established.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -235,6 +243,33 @@ export interface KnowledgeEvent {
 }
 
 /**
+ * Ch.2, "The Knowledge Model" (v7): the seven domains a unit's knowledge is tracked across.
+ * Most will sit untouched for a long time — Mechanical systems, Electrical & radio, and
+ * Navigation & seamanship have no producer anywhere in this codebase yet, and that is
+ * correct, not a gap (src/brain/knowledge.ts).
+ */
+export type KnowledgeDomain =
+    | 'survivalcraft'
+    | 'foragingMedicine'
+    | 'harvestingFabrication'
+    | 'construction'
+    | 'mechanicalSystems'
+    | 'electricalRadio'
+    | 'navigationSeamanship';
+
+/**
+ * One domain's three scores (Ch.2, v7). All start at `TUNE.knowledgeInnateFloor`, never
+ * zero — see `freshDomainScore` in knowledge.ts. `adaptation` has no producer this pass
+ * (C1 amendment A) — it stays at the innate floor for every domain until a later pass
+ * feeds it; see knowledge.ts's own doc comment for exactly what that producer would do.
+ */
+export interface DomainScore {
+    technique: number;
+    understanding: number;
+    adaptation: number;
+}
+
+/**
  * The null-outcome combination journal (Ch.1 v3, D-055): every (recipe slot, material
  * kind) pair tried and found NOT to combine, so it is never re-evaluated. Encoded as
  * `${slotId}|${materialKind}` strings — a Set expressed as a JSON-safe array, the same
@@ -245,6 +280,10 @@ export interface KnowledgeState {
     /** Unbounded, matching `trace.deathLog`'s own precedent — tiny data, a knowledge
      *  event only fires once per pair ever, never per frame. */
     events: KnowledgeEvent[];
+    /** Ch.2 (v7): one score per domain. Never reduced by `reconcile` — offline absence may
+     *  cost warmth or hunger; it can never cost what the unit has learned (C1 amendment B,
+     *  property-tested in tests/vitals.test.ts alongside the offline-death-impossible law). */
+    domains: Record<KnowledgeDomain, DomainScore>;
 }
 
 /**

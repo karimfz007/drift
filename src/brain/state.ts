@@ -6,6 +6,8 @@
 import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isWalkablePoint } from '../data/world';
+import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying } from './knowledge';
+import { recipeDomain } from './recipes';
 import { grantXp, newSkill } from './skills';
 import { applyDrink, applyFood } from './vitals';
 import {
@@ -45,7 +47,7 @@ export function createInitialState(nowMs: number): GameState {
         salvageSpawnCount: 0,
         nextSalvageSpawnAtGameHours: gameHoursFromRealSeconds(TUNE.salvageSpawnMinutesMin * 60),
         craftRollCount: 0,
-        knowledge: { nullPairs: [], events: [] },
+        knowledge: { nullPairs: [], events: [], domains: freshDomainScores() },
         settings: { controlMode: 'tap' },
         trace: {
             msToFirstMove: null,
@@ -87,7 +89,11 @@ export function cloneState(state: GameState): GameState {
         torch: { ...state.torch },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
-        knowledge: { nullPairs: [...state.knowledge.nullPairs], events: [...state.knowledge.events] },
+        knowledge: {
+            nullPairs: [...state.knowledge.nullPairs],
+            events: [...state.knowledge.events],
+            domains: cloneDomainScores(state.knowledge.domains)
+        },
         settings: { ...state.settings },
         trace: { ...state.trace, deathLog: [...state.trace.deathLog] }
     };
@@ -319,6 +325,12 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
         node.depletedAtGameHours = state.gameHoursElapsed;
     }
 
+    //  Ch.2, item 4: only the verbs the ruling names (felling/quarrying/salvage) train a
+    //  domain — `domainForNodeKind` returns null for every other kind, left at the innate
+    //  floor this pass, on purpose.
+    const learningDomain = domainForNodeKind(node.kind);
+    if (learningDomain) recordTrying(state, learningDomain);
+
     let xpGained = 0;
     let levelsGained = 0;
     if (spec.skill) {
@@ -502,6 +514,7 @@ export function buildFire(state: GameState, x: number, y: number): boolean {
     if (!canBuildFire(state)) return false;
     state.inventory.wood -= TUNE.woodPerFire;
     state.fire = { built: true, fuel: TUNE.woodPerFire, x, y };
+    recordTrying(state, 'survivalcraft');
     return true;
 }
 
@@ -513,6 +526,7 @@ export function feedFire(state: GameState): boolean {
     if (!canFeedFire(state)) return false;
     state.inventory.wood -= 1;
     state.fire.fuel = Math.min(TUNE.fireMaxFuel, state.fire.fuel + 1);
+    recordTrying(state, 'survivalcraft');
     return true;
 }
 
@@ -548,6 +562,7 @@ export function canDrinkAtPond(state: GameState): boolean {
 export function drinkAtPond(state: GameState): boolean {
     if (!canDrinkAtPond(state)) return false;
     state.thirst = applyDrink(state.thirst);
+    recordTrying(state, 'survivalcraft');
     return true;
 }
 
@@ -571,6 +586,7 @@ export function drinkFlask(state: GameState): boolean {
     if (!canDrinkFlask(state)) return false;
     state.thirst = applyDrink(state.thirst);
     state.tools.flaskSips -= 1;
+    recordTrying(state, 'survivalcraft');
     return true;
 }
 
@@ -590,6 +606,7 @@ export function eat(state: GameState, food: Food): boolean {
     state.inventory[food] -= 1;
     state.hunger = applied.hunger;
     state.thirst = applied.thirst;
+    recordTrying(state, 'survivalcraft');
     return true;
 }
 
@@ -627,6 +644,7 @@ export function craftAxe(state: GameState): boolean {
     state.inventory.fiber -= TUNE.axeFiberCost;
     state.tools.axe = true;
     state.tools.axeGrade = rollGrade(nextGradeSeed(state));
+    recordTrying(state, recipeDomain('axe'));
     return true;
 }
 
@@ -656,6 +674,7 @@ export function craftStoneHammer(state: GameState): boolean {
     state.inventory.wood -= TUNE.stoneHammerWoodCost;
     state.inventory.stone -= TUNE.stoneHammerStoneCost;
     state.tools.stoneHammer = true;
+    recordTrying(state, recipeDomain('stonehammer'));
     return true;
 }
 
@@ -670,6 +689,7 @@ export function knapSharpblade(state: GameState): boolean {
     if (!canKnapSharpblade(state)) return false;
     state.inventory.stone -= TUNE.knapStoneCost;
     state.inventory.sharpblade += TUNE.knapSharpbladeYield;
+    recordTrying(state, recipeDomain('knap'));
     return true;
 }
 
@@ -702,6 +722,7 @@ export function craftTorch(state: GameState): boolean {
     state.inventory.fiber -= TUNE.torchFiberCost;
     const grade = rollGrade(nextGradeSeed(state));
     state.torch = { owned: true, lit: false, fuelGameHoursRemaining: torchBurnGameHoursFor(grade), grade };
+    recordTrying(state, recipeDomain('torch'));
     return true;
 }
 
@@ -719,6 +740,7 @@ export function canLightTorch(state: GameState): boolean {
 export function lightTorch(state: GameState): boolean {
     if (!canLightTorch(state)) return false;
     state.torch.lit = true;
+    recordTrying(state, 'survivalcraft');
     return true;
 }
 
@@ -762,6 +784,7 @@ export function buildShelter(state: GameState, x: number, y: number): boolean {
     state.inventory.fiber -= TUNE.shelterFiberCost;
     const grade = rollGrade(nextGradeSeed(state));
     state.shelter = { built: true, x, y, durability: TUNE.structureDurabilityMax, grade };
+    recordTrying(state, recipeDomain('shelter'));
     return true;
 }
 
@@ -786,6 +809,7 @@ export function buildStorage(state: GameState, x: number, y: number): boolean {
     state.inventory.wood -= TUNE.storageWoodCost;
     state.inventory.stone -= TUNE.storageStoneCost;
     state.storage = { built: true, x, y, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } };
+    recordTrying(state, recipeDomain('storage'));
     return true;
 }
 
@@ -816,6 +840,9 @@ export function repairStructure(state: GameState, which: RepairTarget): boolean 
     state.inventory.wood -= 1;
     const structure = state[which];
     structure.durability = Math.min(TUNE.structureDurabilityMax, structure.durability + TUNE.repairDurabilityPerWood);
+    //  "Building shelter/storage/repair -> Construction" — one domain regardless of which
+    //  structure, since both live there anyway.
+    recordTrying(state, 'construction');
     return true;
 }
 

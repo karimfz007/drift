@@ -541,7 +541,10 @@ export class Game {
         if (!view || !view.node.available) { this.pending = null; return; }
 
         if (nodeSpec(view.node.kind).needsAxe && !s.tools.axe) {
-            this.explain(view.node.kind === 'crashbox' ? 'The box is sealed. You need an axe.' : 'You need an axe for that.');
+            //  Ch.2 item 6 (feedback must be perceivable): the nearest TRUE reason, not a
+            //  flat "you need an axe" — see `axeNearestReason` below.
+            const reason = this.axeNearestReason(s);
+            this.explain(view.node.kind === 'crashbox' ? `The box is sealed. ${reason}` : reason);
             this.pending = null;
             return;
         }
@@ -648,7 +651,7 @@ export class Game {
     private gather(view: NodeView): void {
         const result = gatherNode(session().state, view.node.id);
         if (!result.ok) {
-            this.explain(result.reason === 'need-axe' ? 'You need an axe for that.' : 'Nothing there.');
+            this.explain(result.reason === 'need-axe' ? this.axeNearestReason(session().state) : 'Nothing there.');
             return;
         }
         this.nodes.sync(session().state);
@@ -1215,15 +1218,27 @@ export class Game {
         this.showHint(this.contextualHint());
     }
 
+    /**
+     * The nearest TRUE reason the axe isn't ready yet (Ch.2 item 6, feedback must be
+     * perceivable): a flat "you need an axe" hard-gates without saying what to actually do
+     * next. Names whichever step of the Tier-0 chain (stone hammer → knapped blade →
+     * wood/fibre) is the one genuinely blocking right now. Callers only reach this once
+     * `!s.tools.axe` is already established — every branch below is reachable. Shared by
+     * the idle hint and both tap-explain sites that used to hardcode the flat message.
+     */
+    private axeNearestReason(s: ReturnType<typeof session>['state']): string {
+        if (!s.tools.stoneHammer) return 'You need a stone hammer first — knap a blade, then make the axe (Build panel).';
+        if (s.inventory.sharpblade < TUNE.axeSharpbladeCost) return 'You need a knapped blade for the axe (Build panel).';
+        return 'You have a blade — you need wood and fibre for the axe.';
+    }
+
     private contextualHint(): string {
         const s = session().state;
         if (isExhausted(s)) return s.shelter.built ? 'You are exhausted. Tap the shelter to sleep.' : 'You are exhausted. Building a shelter gives you somewhere to sleep.';
         if (s.thirst <= TUNE.thirstLowHintAt) return 'Thirsty. Tap the pond inland, west of the trees, to drink.';
         if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';
-        if (!s.tools.axe && !s.tools.stoneHammer) return 'An axe needs a knapped blade — make the stone hammer first (Build panel).';
-        if (!s.tools.axe && s.inventory.sharpblade < TUNE.axeSharpbladeCost) return 'Knap some stone into a blade for the axe (Build panel).';
-        if (!s.tools.axe) return 'You have a blade — gather wood and fibre for the axe.';
+        if (!s.tools.axe) return this.axeNearestReason(s);
         if (!s.torch.owned && canCraftTorch(s)) return 'You have the parts for a torch, too — Build panel.';
         if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough wood. Build the fire.';
         if (!s.fire.built) return 'Tap a standing tree to chop it, then build a fire.';

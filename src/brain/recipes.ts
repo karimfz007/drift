@@ -13,8 +13,9 @@
  */
 
 import { TUNE } from '../data/tune';
+import { applyLearningEvent, nullOutcomeFactors } from './knowledge';
 import { materialSatisfies, type MaterialRequirement } from './materials';
-import type { GameState, MaterialKind } from './types';
+import type { GameState, KnowledgeDomain, MaterialKind } from './types';
 
 export interface RecipeSlot {
     id: string;
@@ -24,6 +25,10 @@ export interface RecipeSlot {
 
 export interface Recipe {
     id: string;
+    /** Ch.2 (v7): which domain this recipe trains — both for a real craft (wired at each
+     *  craft function's own call site in state.ts, via `recipeDomain` below) and for a
+     *  null-outcome attempt against one of its slots (wired right here). */
+    domain: KnowledgeDomain;
     slots: RecipeSlot[];
 }
 
@@ -33,6 +38,10 @@ export function allRecipes(): Recipe[] {
     return [
         {
             id: 'torch',
+            //  The torch is a warmth/fire item, not a harvesting tool — Survivalcraft,
+            //  the same domain `buildFire`/`feedFire`/`lightTorch` train (Ch.2 item 4's
+            //  "warmth/fire" bucket), not Harvesting & fabrication.
+            domain: 'survivalcraft',
             slots: [
                 { id: 'torch-handle', require: { tag: 'woodwork' }, amount: TUNE.torchWoodCost },
                 { id: 'torch-binding', require: { tag: 'textile' }, amount: TUNE.torchFiberCost }
@@ -40,6 +49,10 @@ export function allRecipes(): Recipe[] {
         },
         {
             id: 'axe',
+            //  Fabrication of a harvesting tool — the same domain "knapping" (below)
+            //  already trains; leaving it out while knapping counts would be an arbitrary
+            //  inconsistency, not scope discipline (Ch.2 as-built states this judgment call).
+            domain: 'harvestingFabrication',
             slots: [
                 { id: 'axe-handle', require: { tag: 'woodwork' }, amount: TUNE.axeWoodCost },
                 { id: 'axe-blade', require: { tag: 'blade' }, amount: TUNE.axeSharpbladeCost },
@@ -48,6 +61,7 @@ export function allRecipes(): Recipe[] {
         },
         {
             id: 'shelter',
+            domain: 'construction',
             slots: [
                 { id: 'shelter-frame', require: { tag: 'woodwork' }, amount: TUNE.shelterWoodCost },
                 { id: 'shelter-walls', require: { tag: 'masonry' }, amount: TUNE.shelterStoneCost },
@@ -56,6 +70,7 @@ export function allRecipes(): Recipe[] {
         },
         {
             id: 'storage',
+            domain: 'construction',
             slots: [
                 { id: 'storage-frame', require: { tag: 'woodwork' }, amount: TUNE.storageWoodCost },
                 { id: 'storage-walls', require: { tag: 'masonry' }, amount: TUNE.storageStoneCost }
@@ -63,6 +78,8 @@ export function allRecipes(): Recipe[] {
         },
         {
             id: 'stonehammer',
+            //  Fabrication of the tool that unlocks knapping — same reasoning as the axe.
+            domain: 'harvestingFabrication',
             slots: [
                 { id: 'stonehammer-handle', require: { tag: 'woodwork' }, amount: TUNE.stoneHammerWoodCost },
                 { id: 'stonehammer-head', require: { tag: 'masonry' }, amount: TUNE.stoneHammerStoneCost }
@@ -70,9 +87,22 @@ export function allRecipes(): Recipe[] {
         },
         {
             id: 'knap',
+            //  "Knapping" is one of the ruling's own four named Harvesting & fabrication verbs.
+            domain: 'harvestingFabrication',
             slots: [{ id: 'knap-input', require: { tag: 'masonry' }, amount: TUNE.knapStoneCost }]
         }
     ];
+}
+
+/** Which domain a recipe (by id) trains — the single source of truth `Recipe.domain`
+ *  above already is; this just spares every craft call site in state.ts from re-deriving
+ *  `allRecipes()` and re-deciding matching logic. Throws on an unknown id — every caller
+ *  passes one of the six literal ids `allRecipes()` itself defines, so this can only fire
+ *  on a real typo, not a runtime data case worth a soft fallback. */
+export function recipeDomain(id: string): KnowledgeDomain {
+    const recipe = allRecipes().find((r) => r.id === id);
+    if (!recipe) throw new Error(`recipeDomain: unknown recipe id "${id}"`);
+    return recipe.domain;
 }
 
 const MATERIAL_KINDS: MaterialKind[] = ['wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish', 'sharpblade'];
@@ -104,6 +134,12 @@ export function recordCombinationAttempts(state: GameState): void {
                     detail: `${kind} does not satisfy ${recipe.id}'s ${slot.id} requirement`,
                     gameHoursElapsed: state.gameHoursElapsed
                 });
+                //  Ch.2, item 3: wire the existing stub for real. A genuine null attempt
+                //  IS knowledge — a small, Understanding-ONLY gain in the recipe's own
+                //  domain (Technique stays exactly 0, by `nullOutcomeFactors`'s own zero
+                //  challenge — nothing was actually made). Only reachable here because the
+                //  three guards above already prove this pair is genuinely new.
+                applyLearningEvent(state, recipe.domain, nullOutcomeFactors());
             }
         }
     }

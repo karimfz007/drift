@@ -8,6 +8,7 @@
 
 import { TUNE } from '../data/tune';
 import { realSecondsFromGameHours } from './clock';
+import { recordTrying } from './knowledge';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, respawn } from './state';
@@ -116,6 +117,8 @@ export class Session {
         outcome.state.energy = TUNE.energyMax;
         outcome.state.lastSeenMs = nowMs;
         this.state = outcome.state;
+        //  "Drinking/eating/sleeping/warmth/fire -> Survivalcraft" (Ch.2 item 4).
+        recordTrying(this.state, 'survivalcraft');
 
         this.handleDeath(outcome, nowMs);
         const report = composeMorningReport(outcome.result, this.state);

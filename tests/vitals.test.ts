@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reconcile } from '../src/brain/reconcile';
+import { KNOWLEDGE_DOMAINS } from '../src/brain/knowledge';
 import { buildFire, createInitialState } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
@@ -10,6 +11,19 @@ const DAY = 86400;
 
 function fresh(): GameState {
     return createInitialState(1_700_000_000_000);
+}
+
+//  A deterministic pseudo-random sweep — no Math.random (forbidden in the brain's world,
+//  and it would make failures unreproducible). Shared by both this file's property tests:
+//  the pre-existing offline-death-impossible law (A1) and Ch.2's own offline-knowledge law
+//  (amendment B) below, per the ruling's own "property-test this alongside the existing
+//  offline-death test" instruction.
+function rng(seed: number): () => number {
+    let s = seed >>> 0;
+    return () => {
+        s = (s * 1664525 + 1013904223) >>> 0;
+        return s / 0xffffffff;
+    };
 }
 
 describe('vitals — the three clocks drain at their tuned rates', () => {
@@ -109,17 +123,9 @@ describe('vitals — death is possible in active play', () => {
 });
 
 describe('vitals — THE LAW: offline death is impossible (property test, A1)', () => {
-    //  A deterministic pseudo-random sweep — no Math.random (forbidden in the brain's
-    //  world, and it would make failures unreproducible). This is the headline claim of
-    //  the whole cycle (D-011): for ANY starting state and ANY elapsed time, a span long
-    //  enough to earn a report can never reduce health to zero.
-    function rng(seed: number): () => number {
-        let s = seed >>> 0;
-        return () => {
-            s = (s * 1664525 + 1013904223) >>> 0;
-            return s / 0xffffffff;
-        };
-    }
+    //  This is the headline claim of the whole cycle (D-011): for ANY starting state and
+    //  ANY elapsed time, a span long enough to earn a report can never reduce health to
+    //  zero.
 
     it('for 3000 random states × random long absences, health stays above zero', () => {
         const rand = rng(20260723);
@@ -181,6 +187,67 @@ describe('vitals — THE LAW: offline death is impossible (property test, A1)', 
         expect(state.hunger).toBe(TUNE.hungerOfflineFloor);
         expect(state.warmth).toBe(TUNE.warmthOfflineFloor);
         expect(state.health).toBeGreaterThanOrEqual(TUNE.healthOfflineFloor);
+    });
+});
+
+describe('knowledge — THE LAW: it never decays offline (property test, Ch.2 amendment B)', () => {
+    //  C1's amendment B, binding: "reconcile must never reduce any KnowledgeState value.
+    //  Absence can cost warmth/hunger; it can never cost what the unit has learned."
+    //  Property-tested alongside the pre-existing offline-death-impossible law above, the
+    //  same sweep shape (random states × random long absences), reusing this file's own
+    //  seeded `rng`.
+
+    it('for 2000 random domain-score states × random long absences, no score ever falls', () => {
+        const rand = rng(20260725);
+        //  Same shape as the offline-death sweep above: up to 30 game-days in the bulk
+        //  loop; the absurd 1000-day case gets its own dedicated, fast single-call
+        //  assertion instead (the second `it` below), not a multiplier on 2000 iterations.
+        const offlineSpans = [
+            TUNE.morningReportMinRealMinutes * 60,
+            10 * 60,
+            HOUR,
+            8 * HOUR,
+            DAY,
+            3 * DAY,
+            30 * DAY
+        ];
+
+        for (let i = 0; i < 2000; i++) {
+            const s = createInitialState(0);
+            //  Start every domain somewhere plausible — from the innate floor up to the
+            //  ceiling, never below the floor (a real save could never get there either).
+            for (const domain of KNOWLEDGE_DOMAINS) {
+                s.knowledge.domains[domain] = {
+                    technique: TUNE.knowledgeInnateFloor + rand() * (TUNE.knowledgeScoreMax - TUNE.knowledgeInnateFloor),
+                    understanding: TUNE.knowledgeInnateFloor + rand() * (TUNE.knowledgeScoreMax - TUNE.knowledgeInnateFloor),
+                    adaptation: TUNE.knowledgeInnateFloor + rand() * (TUNE.knowledgeScoreMax - TUNE.knowledgeInnateFloor)
+                };
+            }
+            //  A populated null-outcome journal too, to prove reconcile leaves the WHOLE
+            //  knowledge state alone, not just the new domains field.
+            s.knowledge.nullPairs = ['axe-blade|wood', 'shelter-walls|fiber'];
+            s.knowledge.events = [{ kind: 'combination-tried', detail: 'wood does not satisfy axe-blade', gameHoursElapsed: 0 }];
+
+            const before = s.knowledge;
+            const span = offlineSpans[Math.floor(rand() * offlineSpans.length)];
+            const { state } = reconcile(s, span);
+
+            for (const domain of KNOWLEDGE_DOMAINS) {
+                expect(state.knowledge.domains[domain].technique).toBeGreaterThanOrEqual(before.domains[domain].technique);
+                expect(state.knowledge.domains[domain].understanding).toBeGreaterThanOrEqual(before.domains[domain].understanding);
+                expect(state.knowledge.domains[domain].adaptation).toBeGreaterThanOrEqual(before.domains[domain].adaptation);
+            }
+            expect(state.knowledge.nullPairs.length).toBeGreaterThanOrEqual(before.nullPairs.length);
+            expect(state.knowledge.events.length).toBeGreaterThanOrEqual(before.events.length);
+        }
+    });
+
+    it('a domain sitting at the innate floor with a long absence stays exactly there — reconcile never even reads it', () => {
+        const s = createInitialState(0);
+        const { state } = reconcile(s, 1000 * DAY);
+        for (const domain of KNOWLEDGE_DOMAINS) {
+            expect(state.knowledge.domains[domain]).toEqual(s.knowledge.domains[domain]);
+        }
     });
 });
 

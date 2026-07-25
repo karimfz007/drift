@@ -77,7 +77,9 @@ const TUNE = {
     stoneHammerWoodCost: 2,
     stoneHammerStoneCost: 3,
     knapStoneCost: 2,
-    knapSharpbladeYield: 1
+    knapSharpbladeYield: 1,
+    //  Ch.2, "The Knowledge Model" — mirrors src/data/tune.ts, same duplication convention.
+    knowledgeInnateFloor: 5
 };
 
 const results = [];
@@ -1376,6 +1378,98 @@ async function main() {
     const afterJournal = (await live()).knowledge;
     check('REGRESSION — opening the Build panel while holding an unmatched material (berries) journals it as a null combination', afterJournal.nullPairs.some((p) => p.endsWith('|berries')), `${afterJournal.nullPairs.length} pairs`);
     check('the null-outcome journal recorded a knowledge event for Ch.2 (stubbed, not wired further this pass)', afterJournal.events.some((e) => e.kind === 'combination-tried' && e.detail.includes('berries')));
+
+    // ---- Ch.2, "The Knowledge Model" — domain scores wired for real (MAJOR artifact) ----
+    console.log('\nCh.2 — the knowledge model: domain scores trained by real taps, the null-outcome journal wired for real');
+
+    //  Reuses the hammer/knap/axe taps already exercised in the D-055 section above — zero
+    //  new taps needed to prove Harvesting & fabrication genuinely moves with real
+    //  fabrication use, each craft building on the last.
+    check('Ch.2 — crafting the stone hammer trains Harvesting & fabrication (Technique) off the innate floor', afterHammer.knowledge.domains.harvestingFabrication.technique > TUNE.knowledgeInnateFloor, JSON.stringify(afterHammer.knowledge.domains.harvestingFabrication));
+    check('Ch.2 — knapping trains Harvesting & fabrication further still', afterKnap.knowledge.domains.harvestingFabrication.technique > afterHammer.knowledge.domains.harvestingFabrication.technique, `${afterHammer.knowledge.domains.harvestingFabrication.technique} -> ${afterKnap.knowledge.domains.harvestingFabrication.technique}`);
+    check('Ch.2 — crafting the axe trains Harvesting & fabrication further still', afterAxe.knowledge.domains.harvestingFabrication.technique > afterKnap.knowledge.domains.harvestingFabrication.technique, `${afterKnap.knowledge.domains.harvestingFabrication.technique} -> ${afterAxe.knowledge.domains.harvestingFabrication.technique}`);
+
+    //  A real hold-to-fell trains the same domain — a FRESH, forced-standing tree, not
+    //  assumed regrowth timing (this file's own repeated lesson about incidental state).
+    await editSave(`
+        const t = state.nodes.find(n => n.id === 'tr1');
+        if (t) { t.available = true; t.depletedAtGameHours = null; }
+        state.tools.axe = true;
+        state.player = { x: -10, y: 45.7 };
+    `);
+    const beforeFellKnowledge = await live();
+    await faceNode(-10, 44);
+    await tapWorld(-10, 44, 55); // arms the auto-hold; the update loop progresses it in real time
+    let felledForKnowledge = false;
+    for (let i = 0; i < 15; i++) {
+        const av = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'tr1')?.available);
+        if (av === false) { felledForKnowledge = true; break; }
+        await sleep(400);
+    }
+    await sleep(300);
+    const afterFellKnowledge = await live();
+    check(
+        'Ch.2 — felling a tree via a real hold-to-fell trains Harvesting & fabrication',
+        felledForKnowledge && afterFellKnowledge.knowledge.domains.harvestingFabrication.technique > beforeFellKnowledge.knowledge.domains.harvestingFabrication.technique,
+        `felled=${felledForKnowledge}, ${beforeFellKnowledge.knowledge.domains.harvestingFabrication.technique} -> ${afterFellKnowledge.knowledge.domains.harvestingFabrication.technique}`
+    );
+
+    //  A tap-kind gather that ISN'T one of item 4's named verbs (driftwood) trains NOTHING
+    //  at all — proven across every domain, not just asserted from the ruling's own prose.
+    await editSave(`
+        const d = state.nodes.find(n => n.id === 'dw1');
+        if (d) { d.available = true; d.depletedAtGameHours = null; }
+        state.player = { x: -8, y: 92 };
+    `);
+    const beforeDriftwood = await live();
+    await faceNode(-8, 96);
+    await tapWorld(-8, 96, 55);
+    await sleep(400);
+    const afterDriftwood = await live();
+    const everyDomainUnchanged = Object.keys(afterDriftwood.knowledge.domains).every(
+        (d) => JSON.stringify(afterDriftwood.knowledge.domains[d]) === JSON.stringify(beforeDriftwood.knowledge.domains[d])
+    );
+    check('Ch.2 — gathering driftwood (an unmapped verb) trains nothing at all — every domain unchanged, not just the untouched ones', everyDomainUnchanged);
+
+    //  Item 3: the null-outcome attempt proven above (berries journaled against every
+    //  recipe's slots) is ALSO a genuine Understanding-only gain — reusing the very same
+    //  before/after `.knowledge` snapshots the journal check above already captured, since
+    //  berries fails a slot in an axe recipe (Harvesting & fabrication).
+    check(
+        "Ch.2, item 3 — the same null-outcome attempt trains Understanding (not Technique) in the recipe's own domain",
+        afterJournal.domains.harvestingFabrication.understanding > beforeJournal.domains.harvestingFabrication.understanding &&
+            afterJournal.domains.harvestingFabrication.technique === beforeJournal.domains.harvestingFabrication.technique,
+        `HF understanding ${beforeJournal.domains.harvestingFabrication.understanding} -> ${afterJournal.domains.harvestingFabrication.understanding}, technique unchanged: ${afterJournal.domains.harvestingFabrication.technique === beforeJournal.domains.harvestingFabrication.technique}`
+    );
+
+    //  Item 6 (feedback must be perceivable): the axe gate now names the NEAREST true
+    //  reason instead of a flat "you need an axe" — proven via the real explain-toast text
+    //  (`window.__drift.hints().last`), across two distinct blocking states.
+    await editSave(`
+        const t = state.nodes.find(n => n.id === 'tr1');
+        if (t) { t.available = true; t.depletedAtGameHours = null; }
+        state.tools.axe = false;
+        state.tools.stoneHammer = false;
+        state.player = { x: -10, y: 45.7 };
+    `);
+    await faceNode(-10, 44);
+    await tapWorld(-10, 44, 55);
+    await sleep(300);
+    const hintNoHammer = await page.evaluate(() => window.__drift.hints().last);
+    check('Ch.2 item 6 — no axe, no stone hammer: the tap-explain names the stone hammer, not a flat "need an axe"', /stone hammer/i.test(hintNoHammer), `"${hintNoHammer}"`);
+
+    await editSave(`
+        state.tools.stoneHammer = true;
+        state.inventory.sharpblade = 0;
+        const t = state.nodes.find(n => n.id === 'tr1');
+        if (t) { t.available = true; t.depletedAtGameHours = null; }
+        state.player = { x: -10, y: 45.7 };
+    `);
+    await faceNode(-10, 44);
+    await tapWorld(-10, 44, 55);
+    await sleep(300);
+    const hintNoBlade = await page.evaluate(() => window.__drift.hints().last);
+    check('Ch.2 item 6 — hammer owned but no blade: the reason updates to name the blade specifically, not the same flat message', /blade/i.test(hintNoBlade), `"${hintNoBlade}"`);
 
     // ---- Hygiene ----
     console.log('\nHygiene');
