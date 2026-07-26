@@ -86,6 +86,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 5) current = migrateV5toV6(current);
     if (current.schemaVersion === 6) current = migrateV6toV7(current);
     if (current.schemaVersion === 7) current = migrateV7toV8(current);
+    if (current.schemaVersion === 8) current = migrateV8toV9(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -297,6 +298,34 @@ function migrateV7toV8(envelope: SaveEnvelope): SaveEnvelope {
         ...(old as unknown as GameState),
         fatigue: 0,
         resting: false,
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v8 (Ch.6: the body model) → v9 (tree parity, D-059): 14 treeline positions became real
+ * harvestable tree nodes. **A returning player would never see them without this step** —
+ * `hydrate` deliberately keeps a save's own `nodes` array (that is what preserves which
+ * nodes you have depleted), so new world content has to be merged in explicitly. Exactly
+ * the shape v3→v4 used when the quarry was added.
+ *
+ * Every node the save already has is kept EXACTLY as it is, including its depleted state
+ * and regrow timestamp — a tree the player felled an hour ago stays felled and keeps
+ * counting down. Only genuinely new ids are appended, available and ready. Nothing is
+ * healed, reset, or reordered: this migration adds, and does nothing else.
+ */
+function migrateV8toV9(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+    const fresh = createInitialState(typeof old.startedAtMs === 'number' ? old.startedAtMs : 0);
+    const oldNodes = Array.isArray(old.nodes) ? (old.nodes as GameState['nodes']) : [];
+    const known = new Set(oldNodes.map((n) => n.id));
+    const added = fresh.nodes.filter((n) => !known.has(n.id));
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        nodes: [...oldNodes, ...added],
         schemaVersion: SCHEMA_VERSION
     };
 

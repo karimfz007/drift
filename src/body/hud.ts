@@ -32,6 +32,12 @@ export interface HudView {
     sheltered: boolean;
     inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number };
     tools: { axe: boolean; flask: boolean; flaskSips: number };
+    /** Carry load (D-059). Shown as a chip only once past the top band — below that the
+     *  system genuinely has no effect and a permanent readout would be noise. Root cause it
+     *  addresses: carry weight was not surfaced ANYWHERE in the body layer, so a player had
+     *  no way to notice a band change, and past the Heavy threshold nothing changed again
+     *  either. Honest-systems: this reports real state, never a scare number. */
+    carry: { kg: number; overloaded: boolean };
     gameHoursElapsed: number;
     goal: string;
     action: { label: string; visible: boolean; ready: boolean };
@@ -155,7 +161,11 @@ export class Hud {
             ['coconut', v.inventory.coconut],
             ['shellfish', v.inventory.shellfish],
             ['axe', v.tools.axe],
-            ['flask', v.tools.flask ? (v.tools.flaskSips > 0 ? 'full' : 'empty') : false]
+            ['flask', v.tools.flask ? (v.tools.flaskSips > 0 ? 'full' : 'empty') : false],
+            //  D-059: part of the inventory key so the chip repaints when the load changes,
+            //  not only when a stack count does. Rounded to whole kg — the same precision
+            //  the vitals labels use, and the number shown is the true carried mass.
+            ['carry', v.carry.overloaded ? `over:${Math.round(v.carry.kg)}` : false]
         ];
         const key = JSON.stringify(items);
         if (key === this.lastInv) return;
@@ -174,6 +184,11 @@ export class Hud {
                 //  A full flask is tappable (a carried drink); an empty one is just a chip.
                 if (val === 'full') chips.push(`<span class="chip tool drink" data-drink="flask" role="button" title="Tap to drink">Flask · full</span>`);
                 else if (val) chips.push(`<span class="chip tool">Flask · ${val}</span>`);
+            } else if (name === 'carry') {
+                //  D-059: only shown once the load is genuinely past the top band, where
+                //  extra weight starts costing continuously. Below that the system has no
+                //  effect and a permanent readout would be noise.
+                if (val) chips.push(`<span class="chip warn" title="Overloaded — slower on foot, and every effort costs more">Overloaded · ${Math.round(v.carry.kg)} kg</span>`);
             } else if (typeof val === 'number' && val > 0) {
                 //  Food chips are tappable ("Eat" affordance); materials are plain.
                 const eat = edible.has(name) ? ` data-food="${name}" role="button" title="Tap to eat"` : '';

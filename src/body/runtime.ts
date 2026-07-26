@@ -35,7 +35,12 @@ export const runtime = {
     //  Harness-fidelity mandate (D-050): the same text the settings panel's "Copy debug
     //  info" button copies to the clipboard, readable directly so a regression can assert
     //  on its content without touching clipboard permissions at all.
-    debugInfo: (() => '') as () => string
+    debugInfo: (() => '') as () => string,
+    //  Render-cost readout (D-059), installed by the game like the probes above. Tree parity
+    //  converted 14 decorative thin-instances into real interactive nodes — thin instances
+    //  batch into one draw call per source, a real node is its own mesh — so the swap is not
+    //  free, and the harness reports the actual number rather than the as-built guessing.
+    renderCost: (() => null) as () => { totalMeshes: number; pickableMeshes: number; activeMeshes: number } | null
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -157,6 +162,7 @@ function installDebugHook(): void {
             samples: frameSampleCount()
         }),
         bodyTrace: () => readBodyTrace(),
+        renderCost: () => runtime.renderCost(),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,
         //  the analytic ground height, and the player mesh's feet (D-022).

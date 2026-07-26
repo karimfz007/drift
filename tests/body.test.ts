@@ -6,6 +6,9 @@ import {
     fatigueStatusText,
     loadBandForKg,
     loadBandOf,
+    loadEnergyMultiplierForKg,
+    loadSpeedMultiplierForKg,
+    overloadStepsForKg,
     loadEnergyMultiplierFor,
     loadSpeedMultiplierFor,
     respawnMessageFor
@@ -16,7 +19,7 @@ import { Session } from '../src/brain/session';
 import { buildShelter, createInitialState, respawn } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
-import type { GameState } from '../src/brain/types';
+import { SCHEMA_VERSION, type GameState } from '../src/brain/types';
 
 const DAY = 86400;
 
@@ -81,6 +84,21 @@ describe('body — carry weight and the three load bands (Ch.6 part 1)', () => {
         expect(loadEnergyMultiplierFor('heavy')).toBeGreaterThan(loadEnergyMultiplierFor('working'));
     });
 
+    it('D-059 — overload steps are zero at or below the Heavy threshold, then climb', () => {
+        expect(overloadStepsForKg(0)).toBe(0);
+        expect(overloadStepsForKg(TUNE.loadHeavyAtKg)).toBe(0);
+        expect(overloadStepsForKg(TUNE.loadHeavyAtKg + TUNE.loadOverloadStepKg)).toBeCloseTo(1, 9);
+        expect(overloadStepsForKg(200)).toBeGreaterThan(overloadStepsForKg(100));
+    });
+
+    it('D-059 — the bands below Heavy are completely untouched by overload', () => {
+        //  Everything Ch.6 tuned and tested under 30 kg must behave exactly as it did.
+        expect(loadSpeedMultiplierForKg(0)).toBe(TUNE.loadSpeedMultiplier.light);
+        expect(loadEnergyMultiplierForKg(0)).toBe(TUNE.loadEnergyMultiplier.light);
+        expect(loadSpeedMultiplierForKg(TUNE.loadWorkingAtKg + 1)).toBe(TUNE.loadSpeedMultiplier.working);
+        expect(loadEnergyMultiplierForKg(TUNE.loadHeavyAtKg)).toBe(TUNE.loadEnergyMultiplier.working);
+    });
+
     it('a full trip home from the quarry lands in Working, not Heavy — the tuned intent', () => {
         const s = run();
         s.inventory.stone = 10; // 20 kg
@@ -97,7 +115,11 @@ describe('body — carry weight and the three load bands (Ch.6 part 1)', () => {
         const lightAfter = reconcile(light, oneHour).state.energy;
         const heavyAfter = reconcile(heavy, oneHour).state.energy;
         expect(light.energy - lightAfter).toBeCloseTo(TUNE.energyDrainPerGameHour, 6);
-        expect(heavy.energy - heavyAfter).toBeCloseTo(TUNE.energyDrainPerGameHour * TUNE.loadEnergyMultiplier.heavy, 6);
+        //  D-059: the expectation is now WEIGHT-aware, not band-aware. 40 stone is 80 kg,
+        //  which is 2.5 overload steps past the Heavy threshold, so the true multiplier is
+        //  above the bare band figure. Asserting the band figure here is exactly what made
+        //  the saturation bug invisible to this suite.
+        expect(heavy.energy - heavyAfter).toBeCloseTo(TUNE.energyDrainPerGameHour * loadEnergyMultiplierForKg(80), 6);
         expect(heavyAfter).toBeLessThan(lightAfter);
     });
 });
@@ -415,7 +437,7 @@ describe('body — save migration v7 → v8 (Ch.6)', () => {
 
     it('wakes a returning player with zero fatigue and not resting — never an invented number', () => {
         const s = deserialize(v7Save())!.state;
-        expect(s.schemaVersion).toBe(8);
+        expect(s.schemaVersion).toBe(SCHEMA_VERSION); // the whole ladder runs, now through v9
         expect(s.fatigue).toBe(0);
         expect(s.resting).toBe(false);
     });
@@ -435,6 +457,6 @@ describe('body — save migration v7 → v8 (Ch.6)', () => {
         const once = deserialize(v7Save())!;
         const twice = deserialize(JSON.stringify({ ...once, state: once.state }));
         expect(twice!.state.fatigue).toBe(once.state.fatigue);
-        expect(twice!.state.schemaVersion).toBe(8);
+        expect(twice!.state.schemaVersion).toBe(SCHEMA_VERSION);
     });
 });

@@ -304,6 +304,19 @@ export const TUNE = {
     energyLowThreshold: 25,
     /** [TUNE] C05 — walk-speed multiplier while exhausted (below `energyLowThreshold`). */
     energySlowWalkMultiplier: 0.65,
+    /** [TUNE] D-059 — hold-duration multiplier for an effortful gather while exhausted
+     *  (at or below `energyLowThreshold`). Above 1 = the swing takes LONGER, the same
+     *  "the action gets slower, the reward does not shrink" shape woodcutting skill and axe
+     *  grade already use on this exact stat (§I.9). **Root cause this closes:** through Ch.6
+     *  nothing about energy touched gathering at all — `nodeHoldSeconds` read skill level and
+     *  axe grade only, and `isExhausted` was consumed in exactly three places, all of them
+     *  movement speed or hint text. Mining at 0 energy was byte-identical to mining at 100. */
+    exhaustedHoldMultiplier: 1.8,
+    /** [TUNE] D-059 — hold-duration multiplier at the point of total collapse (energy 0),
+     *  interpolated toward from `exhaustedHoldMultiplier` as energy falls from the low
+     *  threshold to nothing. Gives the last stretch a real gradient instead of a cliff, so
+     *  "nearly spent" and "utterly spent" are not the same thing. */
+    collapsedHoldMultiplier: 2.6,
     /** [TUNE] C05 — game hours a sleep at the shelter advances the clock by (§4). Reuses the
      *  exact reconcile path an absence already uses — a voluntary, floor-protected span. */
     sleepDurationGameHours: 8,
@@ -536,6 +549,24 @@ export const TUNE = {
      *  (`effortEnergyCostFor`, D-052) — reusing that existing plumbing rather than adding a
      *  parallel drain. Light is exactly 1, for the same "invisible until earned" reason. */
     loadEnergyMultiplier: { light: 1, working: 1.25, heavy: 1.6 },
+    /** [TUNE] D-059 — OVERLOAD, past the top band. Root cause of "100 rock produced no
+     *  observable effect": the three bands saturate. `loadHeavyAtKg` is 30, so 16 stone and
+     *  100 stone both read `heavy` and were byte-identical — ×0.7 speed, ×1.6 energy — with
+     *  no cap anywhere to stop the pile growing. Weight past the Heavy threshold now keeps
+     *  costing, continuously, one step at a time. The bands themselves are UNCHANGED, so
+     *  everything Ch.6 tuned and tested below 30 kg behaves exactly as it did. */
+    loadOverloadStepKg: 20,
+    /** [TUNE] D-059 — speed multiplier lost per overload step, and the floor it may never
+     *  cross. **The floor is a safety rail, not a tuning knob**: a castaway must always be
+     *  able to walk home and drop their load, so no amount of weight can ever approach a
+     *  soft-lock. At 200 kg (100 stone) this bottoms out at the floor — the director's
+     *  reported case now moves at roughly half the Heavy-band speed. */
+    loadOverloadSpeedPenaltyPerStep: 0.06,
+    loadOverloadSpeedFloor: 0.35,
+    /** [TUNE] D-059 — energy multiplier added per overload step, and its ceiling. Capped so
+     *  a huge haul is punishing but never instantly drains a full bar. */
+    loadOverloadEnergyPerStep: 0.15,
+    loadOverloadEnergyCeiling: 3,
 
     // ---- Ch.6 — rest, recovery, and fatigue (D-058) ------------------------
     /** [TUNE] Ch.6 — energy recovered per game hour while resting. Replaces C05's instant

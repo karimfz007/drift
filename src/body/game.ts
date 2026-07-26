@@ -50,8 +50,9 @@ import {
     isSheltered,
     knapSharpblade,
     lightTorch,
-    loadBandOf,
-    loadSpeedMultiplierFor,
+    carriedWeightKg,
+    isOverloaded,
+    loadSpeedMultiplierOf,
     nodeHoldSeconds,
     nodeSpec,
     recordCombinationAttempts,
@@ -226,6 +227,19 @@ export class Game {
         runtime.cameraReadout = () => ({ yaw: this.yaw, pitch: this.pitch });
         runtime.groundAt = (x, z) => this.island.heightAt(x, z);
         runtime.playerFeetY = () => this.player.feetY;
+        //  D-059: live render cost, so tree parity's price is a reported number rather than
+        //  an assumption. Pickable count matters twice over — every pickable mesh is work
+        //  for each interaction raycast, not just for the renderer.
+        runtime.renderCost = () => {
+            const meshes = this.scene.meshes ?? [];
+            let pickable = 0;
+            for (const m of meshes) if (m.isPickable) pickable += 1;
+            return {
+                totalMeshes: meshes.length,
+                pickableMeshes: pickable,
+                activeMeshes: this.scene.getActiveMeshes().length
+            };
+        };
         runtime.projectToScreen = (worldX: number, worldZ: number) => {
             const y = this.island.heightAt(worldX, worldZ) + 0.4;
             const projected = Vector3.Project(
@@ -995,7 +1009,10 @@ export class Game {
         const speedScale =
             (isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1) *
             (this.testSpeedEnabled ? TUNE.testSpeedMultiplier : 1) *
-            loadSpeedMultiplierFor(loadBandOf(state));
+            //  D-059: weight-aware, not band-aware. The banded form saturated at the Heavy
+            //  threshold, so 100 stone moved exactly as fast as 16 — the director's report.
+            //  Floored inside `loadSpeedMultiplierOf` so no load can approach a soft-lock.
+            loadSpeedMultiplierOf(state);
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
@@ -1199,6 +1216,7 @@ export class Game {
         this.hud.update({
             warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health, energy: state.energy,
             sheltered, inventory: state.inventory, tools: state.tools,
+            carry: { kg: carriedWeightKg(state), overloaded: isOverloaded(state) },
             gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, secondary, skills: state.skills
         });
     }

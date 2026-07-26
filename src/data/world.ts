@@ -142,11 +142,17 @@ export function createNodes(): WoodNode[] {
         node('df2', 'deadfall', 22, 56),
 
         // Standing trees — hold, AXE ONLY, big wood yield. Just inside the treeline.
+        // tr1–tr5 are the original authored five; tr6+ are the treeline spots promoted to
+        // real nodes at D-059 to bring trees to parity with how rocks already work (see
+        // HARVESTABLE_TREE_SPOTS above). Ids stay stable across loads because the promotion
+        // is a deterministic stride over a deterministic scatter — which is what lets the
+        // save migration match them up.
         node('tr1', 'tree', -10, 44),
         node('tr2', 'tree', 12, 42),
         node('tr3', 'tree', -28, 34),
         node('tr4', 'tree', 26, 30),
         node('tr5', 'tree', 4, 22),
+        ...HARVESTABLE_TREE_SPOTS.map(([x, z], i) => node(`tr${i + 6}`, 'tree', x, z)),
 
         // The sealed crash box — hold, AXE ONLY. On the beach, near the landing.
         node('box1', 'crashbox', 20, 92),
@@ -169,7 +175,12 @@ function quarryNode(id: string, x: number, z: number): WoodNode {
  * The decorative treeline and rock field — visual density behind the choppable nodes,
  * drawn as thin instances (two draw calls). Not interactive. Each entry is [x, z, height].
  */
-export const TREES: ReadonlyArray<readonly [number, number, number]> = (() => {
+/**
+ * Every authored treeline position — the deterministic scatter that composes the forest
+ * silhouette. Split below into the ones that are REAL, harvestable nodes and the ones that
+ * stay decorative scenery.
+ */
+const TREE_SPOTS: ReadonlyArray<readonly [number, number, number]> = (() => {
     const out: Array<[number, number, number]> = [];
     //  A ring of forest just inside the treeline, authored by a deterministic scatter so
     //  the silhouette is composed, not random, and identical every load.
@@ -189,6 +200,49 @@ export const TREES: ReadonlyArray<readonly [number, number, number]> = (() => {
     }
     return out;
 })();
+
+/**
+ * TREE PARITY (D-059). The director reported the same disease D-051 already cured once for
+ * the original five-tree scarcity: nearly every tree on the island was decorative scenery,
+ * visually identical to the handful that were real, so a tap on one of the ~101 fakes fell
+ * silently through to the terrain (D-051's own root cause — a decorative instance is
+ * `isPickable: false`, and the fail-loud law is structurally blind to a pure miss).
+ *
+ * The fix is matched to how ROCKS already work rather than to a guessed number. Measured
+ * before changing anything: **3 real rock nodes against 14 decorative meshes — 3:14, or
+ * 17.6% of all rock objects being real.** Trees were 5 against 101, i.e. 4.7%. Promoting
+ * `PROMOTED_TREE_COUNT` of the authored spots to real nodes brings trees to 19:87 — 17.9%
+ * — the closest whole-tree match to the rock ratio available (18 real would give 16.98%,
+ * further off).
+ *
+ * Promotion walks the spot list on a fixed stride rather than taking a contiguous block, so
+ * the harvestable trees are spread evenly around the whole treeline instead of clustering
+ * in one arc — a player should not have to learn which quadrant is the "real" forest.
+ * Everything downstream is the EXISTING machinery, untouched: these become ordinary `tree`
+ * nodes, so they inherit the blaze mark, the axe gate, the stump/sapling depleted states,
+ * and the 96-hour regrowth exactly as tr1–tr5 always did. This is content scope, not a new
+ * system.
+ */
+const PROMOTED_TREE_COUNT = 14;
+
+const PROMOTED_TREE_INDICES: ReadonlySet<number> = (() => {
+    const picks = new Set<number>();
+    if (TREE_SPOTS.length > 0) {
+        const stride = TREE_SPOTS.length / PROMOTED_TREE_COUNT;
+        for (let i = 0; i < PROMOTED_TREE_COUNT; i++) picks.add(Math.floor(i * stride));
+    }
+    return picks;
+})();
+
+/** The authored spots promoted to real, harvestable tree nodes (D-059). */
+export const HARVESTABLE_TREE_SPOTS: ReadonlyArray<readonly [number, number, number]> =
+    TREE_SPOTS.filter((_, i) => PROMOTED_TREE_INDICES.has(i));
+
+/** Decorative treeline scenery — every authored spot that was NOT promoted. Thin-instanced
+ *  and `isPickable: false`, exactly as before; a promoted spot is removed from here so no
+ *  position is ever drawn twice. */
+export const TREES: ReadonlyArray<readonly [number, number, number]> =
+    TREE_SPOTS.filter((_, i) => !PROMOTED_TREE_INDICES.has(i));
 
 export const ROCKS: ReadonlyArray<readonly [number, number, number]> = [
     [-52, 84, 1.8], [46, 82, 2.1], [-70, 60, 1.5], [66, 56, 1.7],

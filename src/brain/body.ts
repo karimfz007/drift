@@ -85,8 +85,49 @@ export function loadEnergyMultiplierFor(band: LoadBand): number {
     return TUNE.loadEnergyMultiplier[band];
 }
 
+/**
+ * How far past the Heavy threshold this load is, in whole-and-fractional overload steps.
+ * Zero at or below the threshold, so nothing outside genuine overload is affected at all.
+ */
+export function overloadStepsForKg(kg: number): number {
+    return Math.max(0, (kg - TUNE.loadHeavyAtKg) / TUNE.loadOverloadStepKg);
+}
+
+/**
+ * The weight-aware multipliers (D-059). The three bands SATURATE — that is the whole root
+ * cause of "100 carried rock produced no observable effect": `loadHeavyAtKg` is 30, so 16
+ * stone and 100 stone both read `heavy` and were byte-identical, and no inventory cap
+ * existed anywhere to stop the pile growing. These add a continuous penalty for every
+ * `loadOverloadStepKg` past that threshold, on top of the unchanged band multiplier.
+ *
+ * `loadOverloadSpeedFloor` is a **safety rail, not a tuning knob**: a castaway must always
+ * be able to walk home and put the load down, so no weight can ever approach a soft-lock.
+ */
+export function loadSpeedMultiplierForKg(kg: number): number {
+    const banded = loadSpeedMultiplierFor(loadBandForKg(kg));
+    const penalty = overloadStepsForKg(kg) * TUNE.loadOverloadSpeedPenaltyPerStep;
+    return Math.max(TUNE.loadOverloadSpeedFloor, banded - penalty);
+}
+
+export function loadEnergyMultiplierForKg(kg: number): number {
+    const banded = loadEnergyMultiplierFor(loadBandForKg(kg));
+    const extra = overloadStepsForKg(kg) * TUNE.loadOverloadEnergyPerStep;
+    return Math.min(TUNE.loadOverloadEnergyCeiling, banded + extra);
+}
+
+export function loadSpeedMultiplierOf(state: GameState): number {
+    return loadSpeedMultiplierForKg(carriedWeightKg(state));
+}
+
 export function loadEnergyMultiplierOf(state: GameState): number {
-    return loadEnergyMultiplierFor(loadBandOf(state));
+    return loadEnergyMultiplierForKg(carriedWeightKg(state));
+}
+
+/** True once the load is past the top band — the point where extra weight starts costing
+ *  continuously. Drives the HUD's own carry readout, so the state is perceivable rather
+ *  than only felt (the perceivability convention Ch.2 item 6 set). */
+export function isOverloaded(state: GameState): boolean {
+    return carriedWeightKg(state) > TUNE.loadHeavyAtKg;
 }
 
 // ---- Fatigue ------------------------------------------------------------

@@ -981,7 +981,10 @@ async function main() {
     //  diagnosable from the director's own phone. `debugInfo()` — the exact text "Copy debug
     //  info" copies to the clipboard — must show the resource-exhaustion story plainly.
     const debugInfo = await page.evaluate(() => window.__drift.debugInfo());
-    check('the debug-export text reports 0/5 standing trees remaining, explaining the silence at a glance', /tree: 0\/5/.test(debugInfo), debugInfo.split('\n').find((l) => l.includes('tree:')) ?? 'no tree line found');
+    //  Count-agnostic since D-059: the island's real-tree population is derived from the
+    //  rock ratio, not a hardcoded 5, so pinning the total here would break every time the
+    //  world is retuned. What matters for D-050 is that the export says ZERO are standing.
+    check('the debug-export text reports 0 standing trees remaining, explaining the silence at a glance', /tree: 0\/\d+/.test(debugInfo), debugInfo.split('\n').find((l) => l.includes('tree:')) ?? 'no tree line found');
     check('the debug-export text includes the tap log', /last \d+ taps/.test(debugInfo) && debugInfo.includes('->'), '');
     check('the debug-export text includes the trace', debugInfo.includes('trace:') && debugInfo.includes('failedInteractionTaps'), '');
 
@@ -1674,6 +1677,102 @@ async function main() {
     check('Ch.6 — waking clears fatigue rather than compounding it', afterDeath.fatigue === 0, `fatigue was forced to 70 before the death, now ${afterDeath.fatigue}`);
     const lastDeath = afterDeath.trace.deathLog[afterDeath.trace.deathLog.length - 1];
     check('Ch.6 — the death log records the cause-specific lesson and exactly what was lost', Boolean(lastDeath && lastDeath.message && lastDeath.lost), JSON.stringify(lastDeath));
+
+    // ---- D-059: tree parity, exhaustion teeth, carry weight at scale ----
+    console.log('\nD-059 — tree parity, exhaustion with teeth, carry weight that scales');
+
+    //  FIX-1 — TREE PARITY. The director's report: nearly every tree was decorative, the
+    //  same disease D-051 cured once for the original five. Proven on the live island by
+    //  counting real nodes and then actually felling one of the newly-promoted trees.
+    await editSave('state.tools.axe = true; state.energy = 100; state.inventory.stone = 0;');
+    const parityState = await live();
+    const realTrees = parityState.nodes.filter((n) => n.kind === 'tree');
+    check('D-059 — the island now carries 19 real trees, not 5 (parity with how rocks work)', realTrees.length === 19, `${realTrees.length} real tree nodes`);
+    const promotedTrees = realTrees.filter((n) => !['tr1', 'tr2', 'tr3', 'tr4', 'tr5'].includes(n.id));
+    check('D-059 — 14 of them are the promoted treeline spots', promotedTrees.length === 14, promotedTrees.map((n) => n.id).join(','));
+
+    //  A promoted tree must be genuinely harvestable — not merely present in the node list.
+    const promoted = promotedTrees.find((n) => n.available);
+    if (promoted) {
+        await editSave(`state.player = { x: ${promoted.x - 1.5}, y: ${promoted.y} }; state.tools.axe = true; state.energy = 100;`);
+        const woodBefore = (await live()).inventory.wood;
+        await faceNode(promoted.x, promoted.y);
+        await tapWorld(promoted.x, promoted.y, 55);
+        let promotedFelled = false;
+        for (let i = 0; i < 15; i++) {
+            const st = await live();
+            const n = st.nodes.find((x) => x.id === promoted.id);
+            if (n && !n.available) { promotedFelled = true; break; }
+            await sleep(400);
+        }
+        await sleep(300);
+        const woodAfter = (await live()).inventory.wood;
+        check('D-059 — a PROMOTED tree is genuinely fellable by a real tap, and yields timber', promotedFelled && woodAfter > woodBefore, `${promoted.id} felled=${promotedFelled}, wood ${woodBefore} -> ${woodAfter}`);
+    } else {
+        check('D-059 — a PROMOTED tree is genuinely fellable by a real tap, and yields timber', false, 'setup failed: no available promoted tree');
+    }
+
+    //  RENDER COST, reported rather than assumed. The p95 frame-time budget is law (A3), and
+    //  the earlier budget/fps checks in this same run already gate it; this reports the
+    //  actual scene cost the promotion bought so the number is on the record either way.
+    const cost = await page.evaluate(() => window.__drift.renderCost());
+    if (cost) {
+        console.log(`  RENDER COST — meshes ${cost.totalMeshes}, pickable ${cost.pickableMeshes}, active ${cost.activeMeshes}`);
+        check('D-059 — the promoted trees did not blow out the pickable-mesh count (raycast cost)', cost.pickableMeshes < 200, `${cost.pickableMeshes} pickable meshes`);
+    } else {
+        check('D-059 — render cost is readable from the live scene', false, 'renderCost() returned null');
+    }
+
+    //  FIX-2 — EXHAUSTION HAS TEETH. Root cause was that nothing about energy touched
+    //  gathering at all. Measured as real elapsed wall-clock time to complete the SAME hold
+    //  on the SAME node kind, rested versus spent.
+    const timeToMine = async () => {
+        await editSave(`
+            for (const n of state.nodes) { if (n.kind === 'rock') { n.available = true; n.depletedAtGameHours = null; } }
+        `);
+        const target = await nodeOf('rock');
+        await editSave(`state.player = { x: ${target.x - 1.5}, y: ${target.y} };`);
+        const t0 = Date.now();
+        const res = await harvest('rock', 25);
+        return { ms: Date.now() - t0, ok: res.ok };
+    };
+    await editSave('state.energy = 100;');
+    const restedMine = await timeToMine();
+    await editSave('state.energy = 0;');
+    const spentMine = await timeToMine();
+    check('D-059 — both exhaustion-comparison mining holds actually completed', restedMine.ok && spentMine.ok, `rested ok=${restedMine.ok}, spent ok=${spentMine.ok}`);
+    check('D-059 — REGRESSION: mining at 0 energy takes measurably LONGER than at full (it used to be identical)', spentMine.ms > restedMine.ms, `rested ${restedMine.ms} ms vs spent ${spentMine.ms} ms`);
+
+    //  FIX-3 — CARRY WEIGHT AT SCALE. The director's report: 100 rock produced no observable
+    //  effect. It read `heavy`, exactly as 16 rock did, and the two were byte-identical.
+    await editSave('state.energy = 100; state.inventory.stone = 16;'); // 32 kg, just past Heavy
+    const modestState = await live();
+    await sleep(5000);
+    const modestDrain = modestState.energy - (await live()).energy;
+
+    await editSave('state.energy = 100; state.inventory.stone = 100;'); // 200 kg, the reported case
+    const hugeState = await live();
+    await sleep(5000);
+    const hugeDrain = hugeState.energy - (await live()).energy;
+    check('D-059 — REGRESSION: 100 rock now drains measurably more than 16 rock (the band no longer saturates)', hugeDrain > modestDrain, `16 rock ${modestDrain.toFixed(4)} vs 100 rock ${hugeDrain.toFixed(4)} over the same window`);
+
+    //  And it is PERCEIVABLE — carry weight was not surfaced anywhere in the body layer
+    //  before this fix, so the player had no readout to notice any of it.
+    await sleep(600);
+    const overloadChip = await page.evaluate(() => {
+        const chips = Array.from(document.querySelectorAll('.chip'));
+        const hit = chips.find((c) => /overload/i.test(c.textContent || ''));
+        return hit ? hit.textContent.trim() : null;
+    });
+    check('D-059 — an overloaded castaway is TOLD so in the HUD, not left to guess', Boolean(overloadChip), overloadChip ?? 'no overload chip found');
+
+    await editSave('state.inventory.stone = 0;');
+    await sleep(600);
+    const chipGoneWhenLight = await page.evaluate(() => {
+        const chips = Array.from(document.querySelectorAll('.chip'));
+        return chips.some((c) => /overload/i.test(c.textContent || ''));
+    });
+    check('D-059 — and NOT told so when carrying nothing (the readout is honest, not decorative)', chipGoneWhenLight === false);
 
     // ---- Hygiene ----
     console.log('\nHygiene');

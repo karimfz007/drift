@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reconcile } from '../src/brain/reconcile';
-import { loadBandOf, loadEnergyMultiplierOf } from '../src/brain/body';
+import { loadBandOf, loadEnergyMultiplierForKg, loadEnergyMultiplierOf, loadSpeedMultiplierForKg } from '../src/brain/body';
 import {
     buildShelter,
     buildStorage,
@@ -282,7 +282,41 @@ describe('FIX-1 (Living Island Track A) — energy inversion closed', () => {
         const heavyCost = heavyBefore - heavy.energy;
 
         expect(heavyCost).toBeGreaterThan(lightCost);
-        expect(heavyCost).toBeCloseTo(lightCost * TUNE.loadEnergyMultiplier.heavy, 9);
+        //  D-059: weight-aware, not band-aware — 40 stone is 80 kg, i.e. 2.5 overload steps
+        //  past the Heavy threshold, so the real multiplier exceeds the bare band figure.
+        //  This assertion previously encoded the saturating behaviour that WAS the bug.
+        expect(heavyCost).toBeCloseTo(lightCost * loadEnergyMultiplierForKg(80), 9);
+    });
+
+    it('D-059 REGRESSION — carrying far more keeps costing more; the top band no longer saturates', () => {
+        //  The director's report: 100 rock produced no observable effect. It read `heavy`,
+        //  exactly as 16 rock did, and the two were byte-identical. Now they are not.
+        const modest = run();
+        const enormous = run();
+        modest.inventory.stone = 16; // 32 kg — just past the Heavy threshold
+        enormous.inventory.stone = 100; // 200 kg — the reported case
+        expect(loadBandOf(modest)).toBe('heavy');
+        expect(loadBandOf(enormous)).toBe('heavy'); // same BAND...
+
+        const modestBefore = modest.energy;
+        gatherNode(modest, 'rk1');
+        const modestCost = modestBefore - modest.energy;
+
+        const enormousBefore = enormous.energy;
+        gatherNode(enormous, 'rk1');
+        const enormousCost = enormousBefore - enormous.energy;
+
+        expect(enormousCost).toBeGreaterThan(modestCost); // ...but no longer the same COST
+        expect(loadSpeedMultiplierForKg(200)).toBeLessThan(loadSpeedMultiplierForKg(32));
+    });
+
+    it('D-059 — no load, however absurd, can ever approach a soft-lock on foot', () => {
+        //  The speed floor is a safety rail: a castaway must always be able to walk home and
+        //  put the load down.
+        for (const kg of [200, 1000, 100_000]) {
+            expect(loadSpeedMultiplierForKg(kg)).toBeGreaterThanOrEqual(TUNE.loadOverloadSpeedFloor);
+        }
+        expect(TUNE.loadOverloadSpeedFloor).toBeGreaterThan(0);
     });
 
     it('the quarry (repeat-minable) charges energy on EVERY tap, not just the first', () => {

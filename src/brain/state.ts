@@ -177,10 +177,38 @@ export function deadfallYield(nodeId: string): number {
     return TUNE.deadfallYieldMin + (hash % span);
 }
 
+/**
+ * How much longer an effortful hold takes because the castaway is running on empty
+ * (D-059). 1 while energy is healthy; climbing to `exhaustedHoldMultiplier` at the low
+ * threshold and on to `collapsedHoldMultiplier` at zero, interpolated across that last
+ * stretch so exhaustion has a gradient rather than a cliff.
+ *
+ * **The root cause this closes:** before D-059, energy touched *nothing* about gathering.
+ * `nodeHoldSeconds` read skill level and axe grade only, and `isExhausted` had exactly
+ * three consumers — the movement speed scale and two lines of hint text. A player at 0
+ * energy mined at exactly the speed they mined at 100, which is what the director reported.
+ * Deliberately shaped as a multiplier on the SAME stat skill and grade already scale, so
+ * this reuses that plumbing rather than adding a second, parallel notion of "slower."
+ *
+ * Never blocks the action and never scales the yield: a spent castaway can still work, it
+ * just costs them time — the C05 rule that low energy is a soft debuff, never a wall.
+ */
+export function exhaustionHoldMultiplierFor(energy: number): number {
+    if (energy > TUNE.energyLowThreshold) return 1;
+    const span = TUNE.energyLowThreshold;
+    //  `t` is 0 at the threshold and 1 at empty.
+    const t = span <= 0 ? 1 : Math.max(0, Math.min(1, (span - energy) / span));
+    return TUNE.exhaustedHoldMultiplier + (TUNE.collapsedHoldMultiplier - TUNE.exhaustedHoldMultiplier) * t;
+}
+
 /** Real seconds to complete a hold on this node, at the player's current skill level. */
 export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
     const spec = NODE_SPECS[node.kind];
     if (spec.interaction !== 'hold') return 0;
+    //  D-059: exhaustion lengthens every effortful hold, whatever the node kind — applied
+    //  once here, at the single place hold duration is computed, so no gather verb can be
+    //  added later that silently escapes it.
+    const exhaustion = exhaustionHoldMultiplierFor(state.energy);
     if (spec.skill === 'woodcutting') {
         //  Woodcutting mastery shortens the chop — the action gets faster, not the number
         //  over the tree (§I.9). The axe's OWN grade (Ch.1 v3, D-055) is a second, distinct
@@ -188,9 +216,9 @@ export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
         //  tool's own quality; they stack multiplicatively rather than one masking the other.
         const level = state.skills.woodcutting.level;
         const base = spec.holdBaseSeconds / (1 + (level - 1) * TUNE.skillSpeedBonusPerLevel);
-        return base * axeChopMultiplierFor(state.tools.axeGrade);
+        return base * axeChopMultiplierFor(state.tools.axeGrade) * exhaustion;
     }
-    return spec.holdBaseSeconds;
+    return spec.holdBaseSeconds * exhaustion;
 }
 
 /** Why a gather can't happen right now, or null if it can. */

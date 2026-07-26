@@ -38,8 +38,15 @@
  *      cause-specific respawn message and what the death actually cost. Migration v7→v8
  *      lives in save.ts; a returning player wakes with zero fatigue and not resting — the
  *      honest "we have no record of how tired you were" answer, and the kind one.
+ * v9 — Tree parity (D-059): 14 treeline positions promoted from decorative scenery to real
+ *      harvestable `tree` nodes, bringing trees to the same real:decorative ratio rocks
+ *      already had. Migration v8→v9 lives in save.ts and MERGES the new nodes into an
+ *      existing save's node list — without it a returning player would keep their old
+ *      five-tree island forever, since `hydrate` deliberately preserves a save's own nodes.
+ *      The same "new content is merged in, nothing existing is disturbed" shape v3→v4 used
+ *      for the quarry.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export type ControlMode = 'tap' | 'joystick';
 
