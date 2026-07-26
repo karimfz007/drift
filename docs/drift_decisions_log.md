@@ -3,6 +3,15 @@
 
 ---
 
+**D-060 · 2026-07-26 — Chapter-numbering correction (C1's own process error), and the hygiene law that prevents its recurrence.**
+**The correction.** Canon read **Ch.9 = slicing** because C1's Way-Home renumber was decided at the chat layer and **never shipped as a delta**. C1 records this as its own process error, not SON's flag being wrong. **Definitive numbering, now shipped:** **Ch.9 = "The Way Home"** (endings & maritime; source v0_6/v0_7 §15) · **Ch.10 = The Master Plan** (slicing), always last.
+
+**Why it went undetected for three passes:** every artifact that referenced the number — D-054's own ratification line, the ops v1.6 waypoint table, §4's law (c), the state tracker — was internally consistent with the *stale* value, so nothing contradicted anything. Consistency is not correctness when every copy descends from the same unshipped decision. There was no mechanism by which a chat-layer renumber could ever reach the repo on its own.
+
+**The hygiene law (ops v1.6 → v1.7, §2):** (1) `drift_state.md`'s Dossier tracker is the **single source of truth** for chapter numbering — not the charter, not a ledger entry, not anyone's memory; where the tracker and a conversation disagree, the tracker is right by definition. (2) **A renumber is only real once its delta ships in the same breath as the decree** — chat-layer intent counts for nothing. This is §4's law (b) ("a handoff may never reference spec content that isn't committed") generalised from specs to numbering: **an artifact that only exists in conversation does not exist.**
+
+**Applied this pass:** ops → **v1.7** (v1.6 archived byte-identical), with the C1-blocking list now reading "the Master Plan (Ch.10), and Ch.9 'The Way Home'" in both §3's waypoint table and §4's law (c); the state tracker gains explicit Ch.9 and Ch.10 rows; this ledger entry records the correction and its cause. **Nothing about routing or verification changed** — this is a renaming plus a new hygiene rule, and the D-057 waypoint model is otherwise untouched.
+
 **D-059 · 2026-07-26 — Three director-reported FIX items: tree parity, exhaustion with teeth, carry weight that scales.**
 FIX-tier long session under D-057's doctrine. All three reports were real; each was root-caused before anything was changed, as the ruling required.
 
