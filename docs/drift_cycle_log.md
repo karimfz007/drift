@@ -917,7 +917,48 @@ All three fail loud and refuse to proceed into a known-bad environment rather th
 
 **Brain-layer slice, built under the new long-session doctrine (D-057)** — built, self-verified, C3-audited, and remediated inside one session, closing with a single KEY REPORT rather than surfacing at every stage boundary.
 
-**A process note, stated first because it is the honest opening.** The handoff's PART B said "full chapter text is above this handoff, in SON's message — embed it in the as-built verbatim, don't summarize." **That chapter text did not reach C2** and does not exist anywhere in the repo (searched the whole of `/docs/`, including reference and archive, before starting). D-046(b) makes embedded-inline spec text a standing requirement, so this is a real gap — but the three numbered scope items in the handoff were themselves a complete FUNCTIONAL spec (masses on existing stack types, three bands scaling speed and energy, reuse the existing energy plumbing, recovery as a rate at a tuned multiplier, bounded, fatigue on energy debt with three stages, the cosmetic-only rail, both mandatory property tests, death cost on loose stacks only with tools and KnowledgeState protected). Building from those and flagging the missing verbatim text was judged better than halting with nothing delivered, since the gap is documentation-completeness rather than a missing requirement. **The verbatim embed is owed and unpaid**; paste the chapter text and it drops into this section without touching a line of code.
+**The chapter text, embedded verbatim (D-046(b) satisfied, 2026-07-26).** It did not travel with the original handoff — which said "full chapter text is above this handoff, in SON's message" — and did not exist anywhere in the repo when this slice was built (the whole of `/docs/`, including reference and archive, was searched first). The slice was built from the handoff's three numbered scope items, which were themselves a complete functional spec, and the gap was flagged as owed rather than halting with nothing delivered. It was relayed afterwards and is reproduced here in full, unedited:
+
+> ## LIVING ISLAND DOSSIER — Ch.6: The Body Model
+> Scoped to what's buildable this slice. v0.4's full six-zone inventory (hands/belt/
+> pockets/backpack/storage, mass+bulk+grip per item, hotkey assignment UI) is real,
+> good design — and explicitly deferred, not silently dropped. This chapter ships the
+> brain-layer foundation only, matching Ch.2's own precedent.
+>
+> i. Carry weight. Every resource stack gets a per-unit mass [TUNE]. Total carried
+> weight sums across held resource stacks plus built tools' fixed mass. Three load
+> bands — Light (no effect), Working (modest speed reduction, slightly faster energy
+> drain), Heavy (larger speed reduction, faster energy drain). Dropping v0.4's fourth
+> "Overloaded/drag-only" tier this slice — no mechanic exists yet for it to attach to.
+>
+> ii. Rest redesign — replaces C05's instant time-skip sleep. Time never skips.
+> Sleeping in a bed accelerates energy/warmth recovery over real elapsed time at a
+> bounded multiplier [TUNE], never a jump. Going without sleep accumulates Fatigue.
+> Stages, each perceivable: mild (status text, slower actions) → moderate (a named
+> symptom) → severe (telegraphed, clearly-labeled-as-not-real perceptual distortion —
+> hard rail: must never cause a wrong decision from false game state, cosmetic only)
+> → only at the far, heavily-telegraphed end does it join the existing diminished-
+> danger path warmth/hunger already use. Absence mercy, D-011-mandatory: an absent
+> unit rests itself when sheltered/warm/dry — fatigue can never cross into harm
+> offline, same pattern as Ch.2's "knowledge never decays offline," new vital.
+>
+> iii. Death — interim stays the floor, this adds a real cost and a real lesson.
+> D-052's diminished respawn (50% vitals, health 30%, warmth exempt) is unchanged.
+> New: a small loss of loose, uncarried resources on death — never tools, never
+> KnowledgeState. The existing death log gets a cause-specific respawn line. Hard
+> rails: no refill exploit, no rage-spiral, respawn anchor keeps its meaning.
+
+**Reading the shipped slice against the now-available text — four things it settles, and two it leaves open.** Recorded because the build predated the text, so this is the first chance to check them against each other.
+
+1. **The deferrals match.** The chapter defers v0.4's six-zone inventory and drops the fourth "Overloaded/drag-only" band for want of a mechanic to attach to; the slice shipped exactly three bands and no inventory zones.
+2. **"Time never skips" is satisfied, and is a stronger statement than the handoff's summary carried.** The shipped `sleep()` still advances the clock by `sleepDurationGameHours` through the ordinary reconcile spine — it does not *skip*, it elapses, with recovery as a rate across it. That is what the chapter asks for; C05's instant refill is what it rules out.
+3. **The absence-mercy clause matches, and names the precedent this slice already followed.** "An absent unit rests itself when sheltered/warm/dry — fatigue can never cross into harm offline, same pattern as Ch.2's 'knowledge never decays offline'" is precisely the law implemented and property-tested here, including the sheltered/warm/dry condition (`isRestfulSpot`).
+4. **The honest-systems rail reads the same either way.** "Clearly-labeled-as-not-real perceptual distortion — must never cause a wrong decision from false game state, cosmetic only" is the constraint the slice honoured by deliberately not building the distortion in a brain-layer pass. The chapter's "clearly-labeled-as-not-real" is a *stronger* framing than the handoff summary's, and reinforces rather than changes that call — whoever builds it owes both the cosmetic-only rail and a visible label.
+
+**Open against the chapter text, both stated rather than quietly reconciled:**
+
+- **"a small loss of loose, UNCARRIED resources on death."** The chapter's wording is the same one the handoff carried, and it still admits the reading this slice did not take: the shipped behaviour costs a floored quarter of **carried** stacks and leaves storage untouched (reasoning in part 3 below — what you carried scatters, what you stored is what the crate is for). The chapter adds no disambiguating detail, so the judgment call stands as made and remains a one-line change if C1 intended storage. **This is now the only substantive open question on Ch.6.**
+- **Two stage effects named in the chapter are not built.** "Mild (status text, **slower actions**)" and "moderate (**a named symptom**)" — the slice ships status text at all three stages but no action-speed penalty at mild and no distinct symptom naming at moderate, and fatigue does not join the diminished-danger path at the far end. None of these were in the handoff's three scope items, so they were never in scope for this pass; they are recorded here as genuinely unbuilt rather than treated as delivered.
 
 ### 1 — Carry weight
 
