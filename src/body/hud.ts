@@ -115,8 +115,11 @@ export class Hud {
             if (food) { e.stopPropagation(); onEat(food.dataset.food as 'berries' | 'coconut' | 'shellfish'); return; }
             //  A filled flask is a drink you carry: tap it to sip inland (restores the C03
             //  verb the direct-world model would otherwise have stranded — see D-042 audit).
-            if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); }
-            //  D-063: tapping the carried row anywhere else opens the loadout panel — what
+            //  RETURN, not fall through: without it, drinking from the flask ALSO opened the
+            //  loadout panel below, and an open panel suppresses the idle hint — which is
+            //  how the harness caught it (an empty contextual hint, several checks later).
+            if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); return; }
+            //  D-063: tapping the carried row anywhere ELSE opens the loadout panel — what
             //  you are carrying is the natural way in to how you are carrying it. Stops
             //  propagation either way, so this never leaks a world tap (§9 input safety).
             e.stopPropagation();
