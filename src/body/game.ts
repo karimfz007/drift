@@ -56,6 +56,7 @@ import {
     loadoutView,
     ownedTools,
     stowActiveHand,
+    tryCombine,
     loadSpeedMultiplierOf,
     nodeHoldSeconds,
     nodeSpec,
@@ -236,6 +237,11 @@ export class Game {
         //  D-059: live render cost, so tree parity's price is a reported number rather than
         //  an assumption. Pickable count matters twice over — every pickable mesh is work
         //  for each interaction raycast, not just for the renderer.
+        runtime.tryCombine = (a, b) => {
+            const result = tryCombine(session().state, a as 'wood', b as 'wood');
+            session().persist(now());
+            return result;
+        };
         runtime.renderCost = () => {
             const meshes = this.scene.meshes ?? [];
             let pickable = 0;

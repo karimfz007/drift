@@ -40,7 +40,9 @@ export const runtime = {
     //  converted 14 decorative thin-instances into real interactive nodes — thin instances
     //  batch into one draw call per source, a real node is its own mesh — so the swap is not
     //  free, and the harness reports the actual number rather than the as-built guessing.
-    renderCost: (() => null) as () => { totalMeshes: number; pickableMeshes: number; activeMeshes: number } | null
+    renderCost: (() => null) as () => { totalMeshes: number; pickableMeshes: number; activeMeshes: number } | null,
+    //  D-063: installed by the game; runs the real `tryCombine` and persists the result.
+    tryCombine: (() => null) as (a: string, b: string) => unknown
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -163,6 +165,9 @@ function installDebugHook(): void {
         }),
         bodyTrace: () => readBodyTrace(),
         renderCost: () => runtime.renderCost(),
+        //  D-063: drive a real Try-Combining attempt through the actual brain path, so the
+        //  harness exercises the shipped verb rather than a re-implementation of it.
+        tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,
         //  the analytic ground height, and the player mesh's feet (D-022).

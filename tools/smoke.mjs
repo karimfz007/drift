@@ -1774,6 +1774,86 @@ async function main() {
     });
     check('D-059 — and NOT told so when carrying nothing (the readout is honest, not decorative)', chipGoneWhenLight === false);
 
+    // ---- D-063: embodied inventory, equip/switch, Try-Combining, input safety ----
+    console.log('\nD-063 — the loadout panel, equip/switch, experimentation, and input safety');
+
+    //  ITEM 1 — the panel opens from the carried row and shows all six zones with mass+bulk.
+    await editSave(`
+        state.tools = { axe: true, flask: true, flaskSips: 0, stoneHammer: true, axeGrade: 'serviceable' };
+        state.inventory.wood = 6; state.inventory.stone = 4; state.inventory.fiber = 3;
+        state.loadout = { activeHand: null, supportHand: null, belt: [null,null,null,null], pockets: [null,null] };
+        state.energy = 100;
+    `);
+    const invRowTap = await realTapDom('.inv');
+    check('D-063 — the loadout panel opens from the carried row', invRowTap.ok, invRowTap.reason ?? '');
+    await sleep(500);
+    const panelProbe = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout');
+        if (!el) return null;
+        const names = Array.from(el.querySelectorAll('.zone-name')).map((n) => n.textContent.trim());
+        const load = el.querySelector('.load-line');
+        return { zones: names, load: load ? load.textContent.trim() : '', hasClose: Boolean(el.querySelector('.close-btn')) };
+    });
+    check('D-063 — it shows all SIX access zones (v0_7 §9)', Boolean(panelProbe) && panelProbe.zones.length === 6, panelProbe ? panelProbe.zones.join(' | ') : 'panel not found');
+    check('D-063 — mass AND bulk are both visible', Boolean(panelProbe) && /kg/.test(panelProbe.load) && /bulk/.test(panelProbe.load), panelProbe ? panelProbe.load : '');
+    check('D-063 — there is one obvious close action (§9 input safety)', Boolean(panelProbe) && panelProbe.hasClose);
+
+    //  ITEM 2 — equip via the hands slot, and it shows on the character.
+    const equipTap = await realTapDom('.equip-btn[data-tool="axe"]');
+    check('D-063 — a tool can be taken in hand from the panel (item 2: equip/switch)', equipTap.ok, equipTap.reason ?? '');
+    await sleep(700);
+    const afterEquip = await live();
+    check('D-063 — the axe is genuinely in the active hand', afterEquip.loadout.activeHand === 'axe', JSON.stringify(afterEquip.loadout));
+
+    //  §9 INPUT SAFETY, the hard law: closing the panel must NOT leak a world tap. The
+    //  close button sits over the world; before the fix its own release fell through.
+    await editSave('state.trace.failedInteractionTaps = 0;');
+    await realTapDom('.inv');
+    await sleep(400);
+    const tapsBeforeClose = (await live()).trace.failedInteractionTaps;
+    const closeTap = await realTapDom('.panel.loadout .close-btn');
+    await sleep(700);
+    const afterClose = await live();
+    check('D-063 — the panel closes via its own close button', closeTap.ok, closeTap.reason ?? '');
+    check('D-063 §9 INPUT SAFETY — closing does NOT leak a world tap behind the panel', afterClose.trace.failedInteractionTaps === tapsBeforeClose, `failedTaps ${tapsBeforeClose} -> ${afterClose.trace.failedInteractionTaps}`);
+    const panelGone = await page.evaluate(() => !document.querySelector('.panel.loadout'));
+    check('D-063 — and control is genuinely returned (panel gone, world tappable again)', panelGone);
+
+    //  THE POSITION LAW — a consumed torch empties its slot, never silently refilled.
+    await editSave(`
+        state.torch = { owned: true, lit: true, fuelGameHoursRemaining: 0.2, grade: 'serviceable' };
+        state.loadout.belt[1] = 'torch';
+    `);
+    const beltBefore = (await live()).loadout.belt[1];
+    await goAway(30); // long enough offline for the torch to burn out
+    const beltAfter = (await live()).loadout.belt;
+    check('D-063 §9 LAW — a torch that burns out EMPTIES its belt position, never refilled', beltBefore === 'torch' && beltAfter[1] === null && !beltAfter.includes('torch'), `belt[1] ${beltBefore} -> ${beltAfter[1]}, belt ${JSON.stringify(beltAfter)}`);
+
+    //  ITEM 4 — Try-Combining through the real brain path, on a live build.
+    await editSave(`
+        state.inventory.wood = 20; state.inventory.fiber = 20; state.inventory.berries = 20;
+        state.energy = 100; state.hunger = 100; state.thirst = 100;
+        state.knowledge.nullPairs = []; state.blueprints = []; state.experimentCount = 0;
+        for (const d of Object.keys(state.knowledge.domains)) state.knowledge.domains[d].technique = 100;
+    `);
+    const beforeExp = await live();
+    const expResult = await page.evaluate(() => window.__drift.tryCombine('berries', 'wood'));
+    await sleep(300);
+    const afterNull = await live();
+    check('D-063 item 4 — a no-relationship attempt is journalled, teaching via the D-055 path', expResult && expResult.outcome === 'no-relationship' && afterNull.knowledge.nullPairs.length > beforeExp.knowledge.nullPairs.length, JSON.stringify(expResult && expResult.outcome));
+    check('D-063 item 4 — the attempt cost the body (energy/hunger/thirst/time), win or lose', afterNull.energy < beforeExp.energy && afterNull.hunger < beforeExp.hunger && afterNull.thirst < beforeExp.thirst, `energy ${beforeExp.energy.toFixed(1)}->${afterNull.energy.toFixed(1)}, hunger ${beforeExp.hunger.toFixed(1)}->${afterNull.hunger.toFixed(1)}`);
+
+    let minted = null;
+    for (let i = 0; i < 30; i++) {
+        await page.evaluate(() => { const s = window.__drift.state(); s.energy = 100; s.inventory.wood = 20; s.inventory.fiber = 20; });
+        const r = await page.evaluate(() => window.__drift.tryCombine('wood', 'fiber'));
+        if (r && r.outcome === 'invented') { minted = r; break; }
+    }
+    await sleep(300);
+    const afterMint = await live();
+    check('D-063 item 4 — a real relationship eventually mints a NAMED Blueprint (§10.6)', Boolean(minted && minted.blueprint && minted.blueprint.name), minted ? JSON.stringify(minted.blueprint && minted.blueprint.name) : 'never succeeded in 30 attempts');
+    check('D-063 item 4 — the plan records inputs, version, workmanship and authorship (§10.5)', afterMint.blueprints.length === 1 && afterMint.blueprints[0].version >= 1 && Boolean(afterMint.blueprints[0].workmanship) && Boolean(afterMint.blueprints[0].author), JSON.stringify(afterMint.blueprints[0] ?? null));
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
