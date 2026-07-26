@@ -104,9 +104,13 @@ export class Session {
      * (A1), which this span rides on unmodified. `sleepDurationGameHours` real-seconds
      * comfortably exceeds `morningReportMinRealSeconds`, so this is always the OFFLINE,
      * floored path: sleeping is a deliberate retreat to safety, and inherits the same
-     * guarantee a real absence already has. Energy is refilled on waking; everything else
-     * drifts exactly as an absence of that length would. Returns null if not near a built
-     * shelter.
+     * guarantee a real absence already has. **That "always qualifies" property is also why
+     * `resting` has to be honoured independently of the absence classification** — see
+     * reconcile.ts's fatigue branch and C3 finding B1.
+     *
+     * Energy RECOVERS at a rate on waking (Ch.6, D-058) — it is no longer refilled outright,
+     * which is what this doc comment said through C05. Everything else drifts exactly as an
+     * absence of that length would. Returns null if not near a built shelter.
      */
     sleep(nowMs: number): MorningReport | null {
         if (!canSleep(this.state)) return null;

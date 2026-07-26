@@ -85,8 +85,29 @@ const TUNE = {
     //  its own printed evidence showed every value agreeing exactly — a reminder that this
     //  mirror is part of the harness's correctness, not just a convenience.
     fatigueSevereAt: 80,
-    deathResourceLossFraction: 0.25
+    deathResourceLossFraction: 0.25,
+    fatigueRecoveryPerGameHourResting: 12,
+    sleepDurationGameHours: 8
 };
+
+//  This local TUNE mirror has now produced THREE separate false failures in one pass, each
+//  time by a check comparing a real measurement against `undefined` (which is never true)
+//  and reporting red while its own printed evidence showed the product behaving correctly:
+//  `fatigueSevereAt`, then `fatigueRecoveryPerGameHourResting`/`sleepDurationGameHours`.
+//  A missing key is silent here in a way a missing import never would be, so the mirror is
+//  now self-checking: every value must be a finite number or a plain object of them. This
+//  cannot detect a mirrored value that has DRIFTED from src/data/tune.ts — only that one is
+//  present at all — but absence is the failure mode that actually keeps happening.
+for (const [key, value] of Object.entries(TUNE)) {
+    const ok = typeof value === 'number'
+        ? Number.isFinite(value)
+        : value && typeof value === 'object' && Object.values(value).every((v) => Number.isFinite(v));
+    if (!ok) {
+        console.error(`  REFUSED: the harness's local TUNE mirror has a bad or missing value for "${key}" (${JSON.stringify(value)}).`);
+        console.error('  Add it from src/data/tune.ts — a check comparing against undefined reports red for the wrong reason.');
+        process.exit(1);
+    }
+}
 
 const results = [];
 let failures = 0;
@@ -1577,7 +1598,12 @@ async function main() {
         await sleep(600);
         const afterSleep = await live();
         check('Ch.6 — sleeping from near-empty RECOVERS energy without jumping to full (the instant refill is gone)', afterSleep.energy > beforeSleep.energy && afterSleep.energy < 100, `energy ${beforeSleep.energy.toFixed(1)} -> ${afterSleep.energy.toFixed(1)}`);
-        check('Ch.6 — sleeping sheds fatigue', afterSleep.fatigue < beforeSleep.fatigue, `fatigue ${beforeSleep.fatigue.toFixed(2)} -> ${afterSleep.fatigue.toFixed(2)}`);
+        //  A bare `<` here is what let C3 finding B1 through: it passed on ~0.17 of
+        //  post-wake drift while the real shed (12/hr × 8 h) was silently not happening at
+        //  all. Assert a MEANINGFUL shed instead — anything less than half the tuned amount
+        //  means fatigue is not actually being cleared by sleep.
+        const shedFloor = (TUNE.fatigueRecoveryPerGameHourResting * TUNE.sleepDurationGameHours) / 2;
+        check('Ch.6 — sleeping sheds fatigue by a meaningful amount, not incidental drift', beforeSleep.fatigue - afterSleep.fatigue >= shedFloor, `fatigue ${beforeSleep.fatigue.toFixed(2)} -> ${afterSleep.fatigue.toFixed(2)} (need a drop of at least ${shedFloor})`);
         check('Ch.6 — `resting` is never left switched on after waking', afterSleep.resting === false, `resting ${afterSleep.resting}`);
     } else {
         check('Ch.6 — sleeping from near-empty RECOVERS energy without jumping to full (the instant refill is gone)', false, 'setup failed: no shelter built at this point in the run');

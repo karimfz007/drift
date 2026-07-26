@@ -249,13 +249,22 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  Fatigue is deliberately absent from the health-drain path entirely (see
     //  `healthRatePerGameHour`, untouched by this chapter) — which is what keeps D-011's
     //  offline-death-impossible law intact with a new body state added.
+    //  Branch order IS the law. Recovery first (it can never violate anything), then growth
+    //  guarded explicitly by `!qualifiesForReport` — so the only branch that can RAISE
+    //  fatigue is unreachable across a qualifying absence, by construction rather than by a
+    //  guard bolted on afterwards. Everything else holds.
+    //
+    //  C3 FINDING B1, fixed: an earlier shape tested `qualifiesForReport` FIRST and only
+    //  consulted `restingNow` in the online branch — which made `restingNow` unreachable
+    //  dead code, because a `sleepDurationGameHours` span is 1200 real seconds against a
+    //  120-second report threshold and so ALWAYS qualifies. The effect was that sleeping
+    //  sheltered-but-cold, or sheltered-but-soaked, shed no fatigue at all while still
+    //  recovering energy normally. Being genuinely asleep is now its own sufficient reason
+    //  to shed fatigue, independent of how the spot scores for ambient rest.
     let fatigue = state.fatigue;
-    if (qualifiesForReport) {
-        if (restfulSpot) fatigue = Math.max(0, fatigue - TUNE.fatigueRecoveryPerGameHourResting * totalGameHours);
-        // else: hold. Never grows offline, under any conditions, ever.
-    } else if (restingNow || restfulSpot) {
+    if (restingNow || restfulSpot) {
         fatigue = Math.max(0, fatigue - TUNE.fatigueRecoveryPerGameHourResting * totalGameHours);
-    } else if (energy <= TUNE.energyLowThreshold) {
+    } else if (!qualifiesForReport && energy <= TUNE.energyLowThreshold) {
         fatigue = Math.min(TUNE.fatigueMax, fatigue + TUNE.fatigueGainPerGameHourInDebt * totalGameHours);
     }
     next.fatigue = round(fatigue);

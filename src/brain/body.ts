@@ -32,11 +32,16 @@ import type { GameState, MaterialKind } from './types';
 
 // ---- Carry weight -------------------------------------------------------
 
-/** Every carried material kind, in the same order `MATERIAL_PROFILE` (materials.ts) lists
- *  them — kept as an explicit array so `carriedWeight` iterates a named set rather than
- *  `Object.keys`, and so a new material forces a decision here instead of silently
- *  weighing nothing. */
-const MASS_KINDS: MaterialKind[] = ['wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish', 'sharpblade'];
+/**
+ * Every carried material kind. Derived from `TUNE.materialMassKg`'s OWN keys rather than
+ * hand-listed, and typed as `MaterialKind[]` — so adding a material to `Inventory` without
+ * giving it a mass is a compile error at the TUNE table (the record is
+ * `Record<MaterialKind, number>`), and adding one to the TUNE table without adding it to
+ * `Inventory` is a compile error here. C3 noted the previous hand-written array carried no
+ * such guarantee: it merely looked exhaustive, and a new material would have silently
+ * weighed nothing.
+ */
+const MASS_KINDS = Object.keys(TUNE.materialMassKg) as MaterialKind[];
 
 /** Total carried mass in kg: every resource stack at its per-unit mass, plus the fixed
  *  mass of each owned tool. The torch counts only while owned (it is consumed, not stored),

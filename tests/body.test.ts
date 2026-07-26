@@ -201,13 +201,41 @@ describe('body — fatigue: three perceivable stages, honest at every one', () =
         expect(state.fatigue).toBe(0);
     });
 
-    it('is shed by sleeping', () => {
+    it('is shed by sleeping — by the full tuned amount, not by incidental drift', () => {
         const repo = new MemorySaveRepository();
         const { session } = Session.start(repo, 0);
         shelteredAt(session.state);
         session.state.fatigue = TUNE.fatigueMax;
         session.sleep(1000);
-        expect(session.state.fatigue).toBeLessThan(TUNE.fatigueMax);
+        //  A bare `< fatigueMax` would pass on a fraction of a point of post-wake drift —
+        //  which is exactly how C3 finding B1 slipped past the device harness. Assert the
+        //  real shed: 12/hr over 8 slept hours clears 96, so a full-fatigue castaway wakes
+        //  at or near zero.
+        const shed = TUNE.fatigueRecoveryPerGameHourResting * TUNE.sleepDurationGameHours;
+        expect(session.state.fatigue).toBeLessThanOrEqual(Math.max(0, TUNE.fatigueMax - shed) + 1);
+    });
+
+    it('C3 B1 REGRESSION — sleeping sheds fatigue even when the spot is COLD, not just when it scores restful', () => {
+        //  The defect: `restingNow` was unreachable because every sleep span qualifies as an
+        //  absence, so fatigue shedding fell through to `isRestfulSpot` alone — and a cold
+        //  shelter fails that check. Sleeping recovered energy but shed nothing.
+        const repo = new MemorySaveRepository();
+        const { session } = Session.start(repo, 0);
+        shelteredAt(session.state);
+        session.state.warmth = 5; // well under warmthLowThreshold: not a "restful spot"
+        session.state.fatigue = TUNE.fatigueMax;
+        session.sleep(1000);
+        expect(session.state.fatigue).toBeLessThan(TUNE.fatigueMax - 1);
+    });
+
+    it('C3 B1 REGRESSION — sleeping sheds fatigue even when SOAKED', () => {
+        const repo = new MemorySaveRepository();
+        const { session } = Session.start(repo, 0);
+        shelteredAt(session.state);
+        session.state.wet = TUNE.wetMax; // fails isRestfulSpot's dryness clause
+        session.state.fatigue = TUNE.fatigueMax;
+        session.sleep(1000);
+        expect(session.state.fatigue).toBeLessThan(TUNE.fatigueMax - 1);
     });
 
     it('is never a death vector — it is absent from the health-drain path entirely', () => {
