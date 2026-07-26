@@ -63,7 +63,8 @@ export class Hud {
         onAction: () => void,
         onSecondary: () => void = () => {},
         onEat: (food: 'berries' | 'coconut' | 'shellfish') => void = () => {},
-        onDrinkFlask: () => void = () => {}
+        onDrinkFlask: () => void = () => {},
+        onOpenLoadout: () => void = () => {}
     ) {
         this.root = document.createElement('div');
         this.root.className = 'hud';
@@ -115,6 +116,11 @@ export class Hud {
             //  A filled flask is a drink you carry: tap it to sip inland (restores the C03
             //  verb the direct-world model would otherwise have stranded — see D-042 audit).
             if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); }
+            //  D-063: tapping the carried row anywhere else opens the loadout panel — what
+            //  you are carrying is the natural way in to how you are carrying it. Stops
+            //  propagation either way, so this never leaks a world tap (§9 input safety).
+            e.stopPropagation();
+            onOpenLoadout();
         });
 
         this.hintBox = document.createElement('div');
@@ -458,3 +464,81 @@ export function addSettingsButton(overlay: HTMLElement, onOpen: () => void): voi
 }
 
 void levelProgress; // reserved for a later HUD skill meter
+
+/** Human labels for the six access zones (v0_7 §9, D-063). */
+const ZONE_LABEL: Record<string, string> = {
+    activeHand: 'Active hand',
+    supportHand: 'Support hand',
+    belt: 'Belt',
+    pocket: 'Pockets',
+    backpack: 'Backpack',
+    storage: 'Storage'
+};
+
+const TOOL_LABEL: Record<string, string> = {
+    axe: 'Axe',
+    stoneHammer: 'Stone hammer',
+    torch: 'Torch',
+    flask: 'Flask'
+};
+
+const MATERIAL_LABEL: Record<string, string> = {
+    wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
+    coconut: 'Coconut', shellfish: 'Shellfish', sharpblade: 'Sharp blade'
+};
+
+export interface LoadoutPanelView {
+    zones: Array<{ zone: string; tools: string[]; materials: Array<{ kind: string; count: number }> }>;
+    massKg: number;
+    bulk: number;
+    storageOpen: boolean;
+    /** Which tools can be taken in hand right now, for the equip row (item 2). */
+    equippable: string[];
+    activeHand: string | null;
+}
+
+/**
+ * The loadout panel (v0_7 §9, D-063): all six access zones, contents plus mass and bulk,
+ * and storage inspectable IN PLACE — nothing has to be hauled out to be looked at, which
+ * is the C05 note this unparks.
+ *
+ * Input safety is the caller's (`beginPanel`/`endPanel` in game.ts); this function only
+ * draws and reports intent. The close button is the single obvious close action §9 requires.
+ */
+export function showLoadout(
+    overlay: HTMLElement,
+    view: LoadoutPanelView,
+    onEquip: (tool: string) => void,
+    onStow: () => void,
+    onClose: () => void
+): void {
+    const el = panel(overlay, 'loadout');
+    const zoneRows = view.zones.map((z) => {
+        const tools = z.tools.map((t) => `<span class="chip tool">${TOOL_LABEL[t] ?? t}</span>`).join('');
+        const mats = z.materials.map((m) => `<span class="chip">${MATERIAL_LABEL[m.kind] ?? m.kind} ${m.count}</span>`).join('');
+        const body = tools + mats;
+        const empty = body ? '' : '<span class="subtitle">empty</span>';
+        return `<div class="zone-row"><div class="zone-name">${ZONE_LABEL[z.zone] ?? z.zone}</div><div class="zone-items">${body}${empty}</div></div>`;
+    }).join('');
+
+    //  Item 2 (equip/switch), expressed as the hands zone's own control rather than a
+    //  separate screen: whatever is chosen here goes to the active hand and is worn.
+    const equipRow = view.equippable.length
+        ? `<div class="equip-row">${view.equippable.map((t) =>
+            `<button class="quiet equip-btn${view.activeHand === t ? ' held' : ''}" data-tool="${t}" type="button">${TOOL_LABEL[t] ?? t}</button>`
+          ).join('')}${view.activeHand ? '<button class="quiet stow-btn" type="button">Stow</button>' : ''}</div>`
+        : '<p class="subtitle">Nothing to hold yet.</p>';
+
+    el.innerHTML = `
+        <h2>Carried</h2>
+        <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
+        ${equipRow}
+        <div class="zones">${zoneRows}</div>
+        <button class="primary close-btn" type="button">Close</button>`;
+
+    el.querySelectorAll<HTMLButtonElement>('.equip-btn').forEach((b) => {
+        b.addEventListener('click', () => { onEquip(b.dataset.tool ?? ''); fade(el, onClose); });
+    });
+    el.querySelector<HTMLButtonElement>('.stow-btn')?.addEventListener('click', () => { onStow(); fade(el, onClose); });
+    el.querySelector<HTMLButtonElement>('.close-btn')!.addEventListener('click', () => fade(el, onClose));
+}

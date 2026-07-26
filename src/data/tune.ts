@@ -568,6 +568,52 @@ export const TUNE = {
     loadOverloadEnergyPerStep: 0.15,
     loadOverloadEnergyCeiling: 3,
 
+    // ---- Embodied inventory and access (v0_7 §9, D-063) ---------------------
+    /** [TUNE] §9 — belt positions and pocket positions. Both are *limited* by design:
+     *  the point of a physical quick slot is that it competes for space, otherwise it is
+     *  just a second backpack with a nicer name. */
+    beltPositions: 4,
+    pocketPositions: 2,
+    /** [TUNE] §9 — BULK per unit, the second half of "load is mass + bulk + grip + access."
+     *  Deliberately NOT wired into the load bands: §9 says the bands stay Ch.6's ("this is
+     *  UI on top of that, not a new system"), so bulk is surfaced to the player and used
+     *  for pocket eligibility, and nothing else. Loosely, litres. */
+    materialBulk: {
+        wood: 4,
+        stone: 1.2,
+        fiber: 2.5,
+        berries: 0.4,
+        coconut: 2,
+        shellfish: 0.5,
+        sharpblade: 0.2
+    },
+    /** [TUNE] §9 — bulk per tool, same units. */
+    toolBulk: { axe: 5, flask: 1.5, stoneHammer: 4, torch: 2.5 },
+    /** [TUNE] §9 — a pocket is for SMALL items only: anything bulkier than this cannot be
+     *  assigned to one. The axe and hammer are deliberately above it; the flask and a
+     *  knapped blade are deliberately below. */
+    pocketMaxBulk: 2,
+
+    // ---- Try-Combining / experimentation (v0_7 §10.6, D-063) ----------------
+    /** [TUNE] §10.6 — what one attempt costs the body, win or lose. An experiment is real
+     *  work: it burns energy, time, and both food vitals. Costs are charged on EVERY
+     *  attempt including a failure, which is what stops brute-force enumeration from being
+     *  free — the null-outcome journal makes a repeat attempt free, but only because it is
+     *  already KNOWN, never because trying is cheap. */
+    experimentEnergyCost: 6,
+    experimentGameHours: 0.75,
+    experimentHungerCost: 2.5,
+    experimentThirstCost: 3.5,
+    /** [TUNE] §10.6 — the confidence curve. A first attempt at an unfamiliar combination is
+     *  far from certain; practice in the relevant domain raises both the chance it works and
+     *  how fast it goes. Expressed against the domain's Technique score so it reuses Ch.2's
+     *  existing curve rather than inventing a second progression. */
+    experimentBaseSuccessChance: 0.35,
+    experimentSuccessPerTechnique: 0.006,
+    experimentMaxSuccessChance: 0.95,
+    /** [TUNE] §10.6 — time multiplier at zero Technique, falling toward 1 as it climbs. */
+    experimentSlowStartMultiplier: 1.6,
+
     // ---- Ch.6 — rest, recovery, and fatigue (D-058) ------------------------
     /** [TUNE] Ch.6 — energy recovered per game hour while resting. Replaces C05's instant
      *  refill: sleep is now a RATE over elapsed time, never a jump to full. Deliberately

@@ -10,6 +10,8 @@ export * from './skills';
 export * from './materials';
 export * from './knowledge';
 export * from './body';
+export * from './loadout';
+export * from './experiment';
 export * from './recipes';
 export * from './state';
 export * from './reconcile';

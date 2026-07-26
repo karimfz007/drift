@@ -8,6 +8,7 @@ import { TUNE } from '../data/tune';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isWalkablePoint } from '../data/world';
 import { deathResourceLoss, loadEnergyMultiplierOf, respawnMessageFor } from './body';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying } from './knowledge';
+import { cloneLoadout, freshLoadout } from './loadout';
 import { recipeDomain } from './recipes';
 import { grantXp, newSkill } from './skills';
 import { applyDrink, applyFood } from './vitals';
@@ -51,6 +52,9 @@ export function createInitialState(nowMs: number): GameState {
         nextSalvageSpawnAtGameHours: gameHoursFromRealSeconds(TUNE.salvageSpawnMinutesMin * 60),
         craftRollCount: 0,
         knowledge: { nullPairs: [], events: [], domains: freshDomainScores() },
+        loadout: freshLoadout(),
+        blueprints: [],
+        experimentCount: 0,
         settings: { controlMode: 'tap' },
         trace: {
             msToFirstMove: null,
@@ -97,6 +101,8 @@ export function cloneState(state: GameState): GameState {
             events: [...state.knowledge.events],
             domains: cloneDomainScores(state.knowledge.domains)
         },
+        loadout: cloneLoadout(state.loadout),
+        blueprints: state.blueprints.map((b) => ({ ...b })),
         settings: { ...state.settings },
         trace: { ...state.trace, deathLog: state.trace.deathLog.map((d) => ({ ...d })) }
     };

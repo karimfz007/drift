@@ -20,6 +20,7 @@
 import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
 import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
+import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
     cloneState,
@@ -228,6 +229,11 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         if (next.torch.fuelGameHoursRemaining <= 0) {
             next.torch.owned = false;
             next.torch.lit = false;
+            //  v0_7 §9 (D-063): the torch is CONSUMED, and a physical position holds a
+            //  specific item — so every hand/belt/pocket slot referencing it goes empty
+            //  right here. It is never silently refilled from storage, and no other torch
+            //  is quietly substituted. This is the live case for that law today.
+            syncLoadoutToOwnership(next);
         }
     }
     //  ---- Fatigue (Ch.6, D-058) ----

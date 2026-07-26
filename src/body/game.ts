@@ -51,7 +51,11 @@ import {
     knapSharpblade,
     lightTorch,
     carriedWeightKg,
+    equipToActiveHand,
     isOverloaded,
+    loadoutView,
+    ownedTools,
+    stowActiveHand,
     loadSpeedMultiplierOf,
     nodeHoldSeconds,
     nodeSpec,
@@ -78,6 +82,7 @@ import {
     showBuildCard,
     showColdOpen,
     showDeath,
+    showLoadout,
     showMorningReport,
     showSettings
 } from './hud';
@@ -199,7 +204,8 @@ export class Game {
             () => this.onBuildFire(),
             () => this.openBuildCard(),
             (food) => this.onEatFood(food),
-            () => this.onDrinkFlask()
+            () => this.onDrinkFlask(),
+            () => this.openLoadout()
         );
         addSettingsButton(this.overlay, () => this.openSettings());
 
@@ -273,40 +279,105 @@ export class Game {
         }
     }
 
-    private openColdOpen(): void {
+    /**
+     * INPUT SAFETY (v0_7 §9, treated as HARD LAW, not polish — the source's own framing is
+     * that "permanent death makes input reliability a safety requirement"). Every panel
+     * opens and closes through this pair, so no panel can be added later that forgets a
+     * step.
+     *
+     * On open: take pointer/camera ownership explicitly (`panelOpen` gates the world tap
+     * path), cancel every in-flight gesture (`releaseAll` clears stick, look and any held
+     * world pointer), and drop any pending intention or running hold so nothing resolves
+     * underneath the panel.
+     *
+     * On close: **control is NOT restored on the closing input itself.** `panelOpen` stays
+     * true until that pointer has actually released, because the close button's own
+     * `pointerup`/`click` would otherwise fall straight through to the world and fire a
+     * world tap at whatever happens to be behind the button. That is the specific gap this
+     * closes — the previous code cleared `panelOpen` inside the close handler, which runs
+     * while the closing gesture is still in flight.
+     */
+    private beginPanel(): void {
         runtime.panelOpen = true;
         this.controls.releaseAll();
-        showColdOpen(this.overlay, COLD_OPEN.title, COLD_OPEN.body, () => {
+        this.clearPending();
+        this.cancelHold();
+    }
+
+    private endPanel(then?: () => void): void {
+        //  Defer to the next macrotask AND require the pointer to be up. `pointerup` for the
+        //  closing tap is dispatched before this resolves, so the world never sees it.
+        const restore = () => {
             runtime.panelOpen = false;
-            grantControl();
-            this.cues.unlock();
             this.lastActivityAt = now();
-            this.showHint('Tap the driftwood on the sand. You will walk over and take it.');
+            if (then) then();
+        };
+        if (typeof window === 'undefined') { restore(); return; }
+        window.setTimeout(restore, 0);
+    }
+
+    private openColdOpen(): void {
+        this.beginPanel();
+        showColdOpen(this.overlay, COLD_OPEN.title, COLD_OPEN.body, () => {
+            this.endPanel(() => {
+                grantControl();
+                this.cues.unlock();
+                this.showHint('Tap the driftwood on the sand. You will walk over and take it.');
+            });
         });
     }
 
     private openReport(report: MorningReport): void {
-        runtime.panelOpen = true;
-        this.controls.releaseAll();
-        this.clearPending();
+        this.beginPanel();
         grantControl();
         showMorningReport(this.overlay, report, () => {
-            runtime.panelOpen = false;
-            this.cues.unlock();
-            this.lastActivityAt = now();
-            session().markSteelThreadComplete();
-            session().persist(now());
+            this.endPanel(() => {
+                this.cues.unlock();
+                session().markSteelThreadComplete();
+                session().persist(now());
+            });
         });
+    }
+
+    /**
+     * The loadout panel (v0_7 §9, D-063) — all six access zones, contents plus mass and
+     * bulk, storage inspectable in place. Opens and closes through `beginPanel`/`endPanel`,
+     * so §9's input-safety law applies to it exactly as it does to every other panel.
+     */
+    private openLoadout(): void {
+        if (runtime.panelOpen) return;
+        this.beginPanel();
+        const s = session().state;
+        const view = loadoutView(s);
+        showLoadout(
+            this.overlay,
+            {
+                zones: view.zones.map((z) => ({ zone: z.zone, tools: z.tools, materials: z.materials })),
+                massKg: view.massKg,
+                bulk: view.bulk,
+                storageOpen: view.storageOpen,
+                equippable: ownedTools(s),
+                activeHand: s.loadout.activeHand
+            },
+            (tool) => {
+                const result = equipToActiveHand(session().state, tool as ReturnType<typeof ownedTools>[number]);
+                if (result.ok) {
+                    this.cues.play(CUES.pickup);
+                    this.floatText(`${tool} in hand`);
+                    session().persist(now());
+                }
+            },
+            () => { if (stowActiveHand(session().state)) session().persist(now()); },
+            () => this.endPanel()
+        );
     }
 
     private openSettings(): void {
         if (runtime.panelOpen) return;
-        runtime.panelOpen = true;
-        this.controls.releaseAll();
-        this.clearPending();
+        this.beginPanel();
         showSettings(this.overlay, this.testSpeedEnabled,
             (value) => { this.testSpeedEnabled = value; writeTestSpeed(value); },
-            () => { runtime.panelOpen = false; this.lastActivityAt = now(); },
+            () => this.endPanel(),
             () => this.debugInfoText());
     }
 
@@ -848,8 +919,7 @@ export class Game {
      */
     private openBuildCard(): void {
         if (runtime.panelOpen) return;
-        runtime.panelOpen = true;
-        this.controls.releaseAll();
+        this.beginPanel();
         this.clearPending();
         const s = session().state;
         //  Ch.1's null-outcome journal (D-055): evaluate every recipe slot against every
@@ -869,7 +939,7 @@ export class Game {
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {
-                runtime.panelOpen = false;
+                this.endPanel();
                 if (craftTorch(session().state)) {
                     this.cues.play(CUES.craft);
                     this.floatText('the torch is yours — light it at a fire');
@@ -880,7 +950,7 @@ export class Game {
                 this.lastActivityAt = now();
             },
             () => {
-                runtime.panelOpen = false;
+                this.endPanel();
                 if (craftAxe(session().state)) {
                     this.cues.play(CUES.craft);
                     this.floatText('the axe is yours');
@@ -890,10 +960,10 @@ export class Game {
                 }
                 this.lastActivityAt = now();
             },
-            () => { runtime.panelOpen = false; this.onBuildShelter(); },
-            () => { runtime.panelOpen = false; this.onBuildStorage(); },
+            () => { this.endPanel(); this.onBuildShelter(); },
+            () => { this.endPanel(); this.onBuildStorage(); },
             () => {
-                runtime.panelOpen = false;
+                this.endPanel();
                 if (craftStoneHammer(session().state)) {
                     this.cues.play(CUES.craft);
                     this.floatText('the stone hammer is yours');
@@ -904,7 +974,7 @@ export class Game {
                 this.lastActivityAt = now();
             },
             () => {
-                runtime.panelOpen = false;
+                this.endPanel();
                 if (knapSharpblade(session().state)) {
                     this.cues.play(CUES.craft);
                     this.floatText('+1 sharp blade');
@@ -912,7 +982,7 @@ export class Game {
                 }
                 this.lastActivityAt = now();
             },
-            () => { runtime.panelOpen = false; this.lastActivityAt = now(); }
+            () => this.endPanel()
         );
     }
 
@@ -1311,7 +1381,7 @@ export class Game {
         this.cues.stopAllBeds();
         const s = session().state;
         showDeath(this.overlay, s.lastDeathCause ?? 'your wounds', s.trace.deaths, () => {
-            runtime.panelOpen = false;
+            this.endPanel();
             this.deathShown = false;
             session().acknowledgeDeath(now());
             this.velX = 0; this.velZ = 0;

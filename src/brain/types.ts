@@ -45,8 +45,14 @@
  *      five-tree island forever, since `hydrate` deliberately preserves a save's own nodes.
  *      The same "new content is merged in, nothing existing is disturbed" shape v3→v4 used
  *      for the quarry.
+ * v10 — Embodied inventory + experimentation (v0_7 §9/§10.6, D-063): the six-zone
+ *      `loadout` (hands/belt/pockets as physical positions), and `blueprints` +
+ *      `experimentCount` for Try-Combining. Migration v9→v10 lives in save.ts; a returning
+ *      player gets an empty loadout with nothing positioned and no plans yet — their tools
+ *      are all still owned and simply sit in general carry, which is exactly where they
+ *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -310,6 +316,52 @@ export interface KnowledgeState {
 }
 
 /**
+ * The six physical access zones' state (v0_7 §9, D-063). Hands, belt and pockets hold
+ * SPECIFIC items by position — a quick slot names a position, and the position holds a
+ * thing. When that thing is consumed the position goes empty and is never silently
+ * refilled (enforced by `syncLoadoutToOwnership` in loadout.ts). The backpack is
+ * `GameState.inventory` and nearby storage is `GameState.storage`; neither is duplicated
+ * here, because §9's scope is an access layer over them, not a replacement.
+ */
+export interface LoadoutState {
+    activeHand: ToolId | null;
+    supportHand: ToolId | null;
+    belt: Array<ToolId | null>;
+    pockets: Array<ToolId | null>;
+}
+
+/** Every tool that can occupy a physical access position (v0_7 §9, D-063). */
+export type ToolId = 'axe' | 'stoneHammer' | 'torch' | 'flask';
+
+/**
+ * A Blueprint (v0_7 §10.5/§10.6, D-063): the NAMED PLAN a successful prototype becomes.
+ * Physical by design — §10.5 says plans are "copyable, versioned, teachable, tradable,
+ * stealable, corruptible, comparable against field evidence". This slice ships the object
+ * and its authorship/versioning so those later verbs have something real to act on; the
+ * social half (teaching, trading, theft) is Ch.8's and is deliberately not built here.
+ *
+ * §10.6's rule that a plan reproduces "the relationships, not the original quality for
+ * free" is why `workmanship` is recorded but never re-applied on reproduction.
+ */
+export interface Blueprint {
+    id: string;
+    /** The named plan, e.g. "Knapped blade, hafted". */
+    name: string;
+    /** The recipe id in the Ch.1 tree this plan realises — plans never invent new recipes. */
+    recipeId: string;
+    /** What it was made of, as discovered. */
+    inputs: MaterialKind[];
+    /** Bumped when the same plan is re-derived with a better result — §10.5's versioning. */
+    version: number;
+    /** The grade the original prototype came out at. Recorded as evidence, NOT granted to
+     *  anyone who later works from the plan (§10.6). */
+    workmanship: ItemGrade;
+    /** Who made it. Single-run today; the field exists so authorship survives into Ch.8. */
+    author: string;
+    discoveredAtGameHours: number;
+}
+
+/**
  * The whole run. Everything the game needs to be reconstructed from a cold start.
  * Serialised verbatim into the save (see save.ts).
  */
@@ -377,6 +429,14 @@ export interface GameState {
     craftRollCount: number;
     /** Ch.1's knowledge layer, v3 (D-055): the null-outcome combination journal. */
     knowledge: KnowledgeState;
+    /** The six physical access zones (v0_7 §9, D-063). Hands/belt/pockets hold specific
+     *  items by position; the backpack is `inventory` and nearby storage is `storage`. */
+    loadout: LoadoutState;
+    /** Named plans minted by successful experiments (v0_7 §10.6, D-063). */
+    blueprints: Blueprint[];
+    /** How many experiments have ever been attempted — the id/seed counter for minted
+     *  blueprints, the same "counter as seed" determinism `craftRollCount` established. */
+    experimentCount: number;
     settings: Settings;
     trace: TraceState;
 

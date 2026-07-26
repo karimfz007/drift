@@ -8,6 +8,7 @@
 
 import { TUNE } from '../data/tune';
 import { freshDomainScores } from './knowledge';
+import { freshLoadout } from './loadout';
 import { SCHEMA_VERSION, type GameState } from './types';
 import { createInitialState } from './state';
 
@@ -87,6 +88,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 6) current = migrateV6toV7(current);
     if (current.schemaVersion === 7) current = migrateV7toV8(current);
     if (current.schemaVersion === 8) current = migrateV8toV9(current);
+    if (current.schemaVersion === 9) current = migrateV9toV10(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -332,6 +334,32 @@ function migrateV8toV9(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v9 (tree parity) → v10 (embodied inventory + experimentation, v0_7 §9/§10.6, D-063):
+ * the six-zone `loadout`, plus `blueprints` and `experimentCount`.
+ *
+ * A returning player gets an EMPTY loadout — nothing in hand, nothing on the belt, no
+ * pockets filled — and no plans yet. Every tool they own is still owned; it simply sits in
+ * general carry, which is exactly where it effectively was before positions existed. This
+ * is the honest reading: the game has no record of where they were keeping things, and
+ * inventing positions would be fabricating a history. No blueprint is granted for anything
+ * they already knew how to make either — a plan is a thing you worked out, and the run has
+ * no evidence they ever did.
+ */
+function migrateV9toV10(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        loadout: freshLoadout(),
+        blueprints: [],
+        experimentCount: 0,
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -382,6 +410,11 @@ function hydrate(state: GameState): GameState {
         //  somehow captured it mid-span (a crash during sleep) heals to false rather than
         //  resuming into permanent accelerated recovery.
         resting: false,
+        //  D-063: a hand-edited or partial save must still produce a well-formed loadout —
+        //  the panel indexes belt/pocket positions directly, so a missing array would be a
+        //  crash rather than a cosmetic gap.
+        loadout: { ...base.loadout, ...state.loadout },
+        blueprints: Array.isArray(state.blueprints) ? state.blueprints : base.blueprints,
         schemaVersion: SCHEMA_VERSION
     };
 }
