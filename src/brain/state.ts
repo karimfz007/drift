@@ -6,6 +6,7 @@
 import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isWalkablePoint } from '../data/world';
+import { deathResourceLoss, loadEnergyMultiplierOf, respawnMessageFor } from './body';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying } from './knowledge';
 import { recipeDomain } from './recipes';
 import { grantXp, newSkill } from './skills';
@@ -35,6 +36,8 @@ export function createInitialState(nowMs: number): GameState {
         health: TUNE.healthMax,
         energy: TUNE.energyMax,
         wet: 0,
+        fatigue: 0,
+        resting: false,
         inventory: emptyInventory(),
         tools: { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' },
         skills: emptySkills(),
@@ -95,7 +98,7 @@ export function cloneState(state: GameState): GameState {
             domains: cloneDomainScores(state.knowledge.domains)
         },
         settings: { ...state.settings },
-        trace: { ...state.trace, deathLog: [...state.trace.deathLog] }
+        trace: { ...state.trace, deathLog: state.trace.deathLog.map((d) => ({ ...d })) }
     };
 }
 
@@ -232,7 +235,13 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
     //  the yield switch below — every effortful (hold) kind pays; every tap kind pays
     //  nothing (see effortEnergyCostFor). Clamped at 0: low energy never blocks a gather
     //  this pass, it only makes the castaway sluggish on foot (isExhausted, unchanged).
-    state.energy = Math.max(0, state.energy - effortEnergyCostFor(node.kind));
+    //
+    //  Ch.6 (D-058): scaled by the current load band — working under a heavy pack costs
+    //  more than the same swing unencumbered. This MULTIPLIES the existing D-052 cost
+    //  rather than adding a second drain beside it, so there is still exactly one place
+    //  effortful energy is priced. A `light` band multiplies by exactly 1, leaving the
+    //  pre-Ch.6 numbers bit-for-bit unchanged; a tap kind still costs 0 either way.
+    state.energy = Math.max(0, state.energy - effortEnergyCostFor(node.kind) * loadEnergyMultiplierOf(state));
 
     switch (node.kind) {
         case 'driftwood':
@@ -921,6 +930,17 @@ export function canSleep(state: GameState): boolean {
  * the exploit (0 is the already-desired state, not a refill).
  *
  * Cycle 05 (§2): once a shelter is built, it — not the original beach — is home.
+ *
+ * Ch.6 (D-058) adds the death COST and the lesson. A death now takes a small, floored
+ * fraction of each CARRIED loose resource stack (`deathResourceLoss` in body.ts) — and
+ * nothing else. **Tools survive, stored goods survive, skills survive, and KnowledgeState
+ * survives**: that last one is Ch.2's amendment B, a standing law, which this second
+ * system respects rather than re-litigates. Storage is deliberately untouched too — what
+ * you were carrying scatters where you fell; what you took the trouble to store at home is
+ * exactly the investment a built crate is supposed to protect. The lesson is a
+ * cause-specific respawn message (`respawnMessageFor`), recorded in the death log alongside
+ * what the death actually cost, so "what did that one take from me" is answerable from the
+ * record instead of from memory.
  */
 export function respawn(state: GameState, cause: string): void {
     state.player = state.shelter.built ? { x: state.shelter.x, y: state.shelter.y } : { x: SPAWN.x, y: SPAWN.y };
@@ -930,10 +950,29 @@ export function respawn(state: GameState, cause: string): void {
     state.energy = TUNE.energyMax * TUNE.respawnVitalFraction;
     state.health = TUNE.healthMax * TUNE.respawnHealthFraction;
     state.wet = 0;
+    //  Ch.6: waking is a genuine rest — a death clears accumulated fatigue rather than
+    //  compounding it. The setback is the lost resources and the lost vitals, never a body
+    //  that starts the next attempt already worn out.
+    state.fatigue = 0;
+    state.resting = false;
+    //  Ch.6: the cost. Computed first (pure), then applied, so the log records exactly what
+    //  was taken. Tools/storage/skills/knowledge are not touched by this loop at all.
+    const lost = deathResourceLoss(state);
+    for (const [kind, amount] of Object.entries(lost)) {
+        state.inventory[kind as keyof typeof state.inventory] -= amount;
+    }
+    const message = respawnMessageFor(cause);
     state.lastDeathCause = cause;
     state.trace.deaths += 1;
     //  FIX-2: log every death (cause + the game-clock moment) to the trace, surfaced in
     //  the debug export (D-050's tool) — a death-loop report should never depend on the
-    //  player's memory of what killed them and when.
-    state.trace.deathLog = [...state.trace.deathLog, { cause, gameHoursElapsed: state.gameHoursElapsed }];
+    //  player's memory of what killed them and when. Ch.6 extends the entry with the
+    //  lesson the player was actually shown and what the death cost.
+    state.trace.deathLog = [...state.trace.deathLog, { cause, gameHoursElapsed: state.gameHoursElapsed, message, lost }];
+}
+
+/** The lesson line for the most recent death, for the death overlay. Null when nothing has
+ *  killed the castaway yet, or once the overlay has been acknowledged. */
+export function lastRespawnMessage(state: GameState): string | null {
+    return state.lastDeathCause === null ? null : respawnMessageFor(state.lastDeathCause);
 }

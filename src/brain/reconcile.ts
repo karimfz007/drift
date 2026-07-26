@@ -19,6 +19,7 @@
 
 import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
+import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
 import {
     activeSalvageCount,
     cloneState,
@@ -57,6 +58,17 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     const nearShelter = isNearShelter(state);
     const shelterActive = nearShelter && !isInDisrepair(state.shelter);
     const atPond = isAtPond(state);
+    //  Ch.6 (D-058). All three are fixed for the whole span, like `nearShelter` above:
+    //  the player does not move, pick anything up, or wake mid-reconcile.
+    //  `restingNow` is true only inside a `Session.sleep()` span (types.ts).
+    const restingNow = state.resting;
+    //  Carry weight scales the AMBIENT energy drain, reusing D-052's existing rate rather
+    //  than adding a second one beside it. `light` multiplies by exactly 1.
+    const loadEnergyMultiplier = loadEnergyMultiplierOf(state);
+    //  Whether this spot is good enough to shed fatigue without being asleep — a roof,
+    //  not freezing, not soaked. Drives the "an absent sheltered unit RECOVERS" half of
+    //  Ch.6's offline law below.
+    const restfulSpot = isRestfulSpot(state, nearShelter, isInDisrepair(state.shelter));
 
     // Zero (or nonsensical) elapsed time changes nothing at all.
     if (!(elapsedRealSeconds > 0) || !Number.isFinite(elapsedRealSeconds)) {
@@ -111,15 +123,30 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         const wetWarmthMultiplier = 1 + (TUNE.wetWarmthDrainMultiplierAtMaxWet - 1) * (wetNow / TUNE.wetMax);
 
         // Rates for this segment (per game hour). They stay constant until a boundary.
-        const warmthRate = lit && sheltered
+        const awakeWarmthRate = lit && sheltered
             ? TUNE.warmthRegenPerGameHourAtFire
             : nightNow
                 ? -TUNE.warmthDrainPerGameHourNight * (shelterActive ? shelterWarmthMultiplierFor(state.shelter.grade) : 1) * wetWarmthMultiplier
                 : 0;
+        //  Ch.6: asleep, warmth recovers at its own rate — but never SLOWER than being
+        //  awake in the same spot would have been, so sleeping beside a roaring fire still
+        //  gets the fire's much better rate. `Math.max` is what makes sleep strictly
+        //  non-harmful rather than merely usually-better.
+        const warmthRate = restingNow
+            ? Math.max(awakeWarmthRate, TUNE.warmthRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier)
+            : awakeWarmthRate;
         const thirstRate = -TUNE.thirstDrainPerGameHour;
         const hungerRate = -TUNE.hungerDrainPerGameHour;
         const healthRate = healthRatePerGameHour(thirst, hunger, warmth, health, online);
-        const energyRate = -TUNE.energyDrainPerGameHour;
+        //  Ch.6: THE REST REDESIGN. Asleep, energy RECOVERS at a rate over elapsed time —
+        //  it is never set to full (C05's instant sleep-refill is gone). Awake, the ambient
+        //  drain is scaled by what is being carried. Because this is a rate against the
+        //  `energyMax` ceiling that `clampBand` already enforces, sleeping indefinitely
+        //  cannot produce more than a full energy bar — the bound is structural, not a
+        //  special case, and is regression-tested directly.
+        const energyRate = restingNow
+            ? TUNE.energyRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier
+            : -TUNE.energyDrainPerGameHour * loadEnergyMultiplier;
 
         // The next boundary: the soonest event that changes any rate, in game hours from here.
         let step = endClock - clock;
@@ -203,6 +230,41 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             next.torch.lit = false;
         }
     }
+    //  ---- Fatigue (Ch.6, D-058) ----
+    //  Closed-form over the whole span, the same treatment structure decay and torch burn
+    //  already get: nothing else's rate depends on exactly when fatigue crosses a stage
+    //  boundary, so segment-stepping it would cost complexity for no observable benefit.
+    //  The debt check reads the END-of-span energy because energy falls monotonically while
+    //  awake — end-of-span is where the debt is deepest, and while asleep it rises, so an
+    //  above-threshold end correctly reads as "recovered."
+    //
+    //  THE OFFLINE LAW (Ch.6's analogue of Ch.2's amendment B), enforced STRUCTURALLY by
+    //  this branch order rather than by a guard bolted on afterwards: across a qualifying
+    //  absence, fatigue can only fall or hold — never rise. Absence may cost warmth or
+    //  hunger; it may never hand back a body in worse condition than it was left in. A
+    //  restful spot (roof, not freezing, not soaked) actively recovers; anywhere else
+    //  simply holds. Property-tested in tests/vitals.test.ts alongside the
+    //  offline-death-impossible law itself.
+    //
+    //  Fatigue is deliberately absent from the health-drain path entirely (see
+    //  `healthRatePerGameHour`, untouched by this chapter) — which is what keeps D-011's
+    //  offline-death-impossible law intact with a new body state added.
+    let fatigue = state.fatigue;
+    if (qualifiesForReport) {
+        if (restfulSpot) fatigue = Math.max(0, fatigue - TUNE.fatigueRecoveryPerGameHourResting * totalGameHours);
+        // else: hold. Never grows offline, under any conditions, ever.
+    } else if (restingNow || restfulSpot) {
+        fatigue = Math.max(0, fatigue - TUNE.fatigueRecoveryPerGameHourResting * totalGameHours);
+    } else if (energy <= TUNE.energyLowThreshold) {
+        fatigue = Math.min(TUNE.fatigueMax, fatigue + TUNE.fatigueGainPerGameHourInDebt * totalGameHours);
+    }
+    next.fatigue = round(fatigue);
+    //  `round()` is a 6-decimal snap and can round UP — which, on a held-value offline span,
+    //  could manufacture an increase of ~5e-9 that the law above forbids. Caught by this
+    //  chapter's own property test rather than by inspection. Clamped here so the law holds
+    //  EXACTLY (`fatigueAfter <= fatigueBefore`, no epsilon), not merely to within float dust.
+    if (qualifiesForReport && next.fatigue > state.fatigue) next.fatigue = state.fatigue;
+
     next.lastSeenMs = state.lastSeenMs + Math.round(elapsedRealSeconds * 1000);
 
     //  Renewability law (D-051): "no survival-critical resource is globally exhaustible —
@@ -280,6 +342,8 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             energyAfter: next.energy,
             wetBefore: state.wet,
             wetAfter: next.wet,
+            fatigueBefore: state.fatigue,
+            fatigueAfter: next.fatigue,
             drifts,
             diedDuringSpan,
             deathCause,
@@ -350,6 +414,8 @@ function emptyResult(
         energyAfter: state.energy,
         wetBefore: state.wet,
         wetAfter: state.wet,
+        fatigueBefore: state.fatigue,
+        fatigueAfter: state.fatigue,
         drifts: [],
         diedDuringSpan: false,
         deathCause: null,

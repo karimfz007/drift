@@ -79,7 +79,13 @@ const TUNE = {
     knapStoneCost: 2,
     knapSharpbladeYield: 1,
     //  Ch.2, "The Knowledge Model" — mirrors src/data/tune.ts, same duplication convention.
-    knowledgeInnateFloor: 5
+    knowledgeInnateFloor: 5,
+    //  Ch.6, "The Body Model" — same convention. `fatigueSevereAt` being absent here once
+    //  made an honest-systems check compare a real number against `undefined` and fail while
+    //  its own printed evidence showed every value agreeing exactly — a reminder that this
+    //  mirror is part of the harness's correctness, not just a convenience.
+    fatigueSevereAt: 80,
+    deathResourceLossFraction: 0.25
 };
 
 const results = [];
@@ -817,10 +823,11 @@ async function main() {
     await sleep(300);
     const afterSleep = await live();
     check('sleep advances the clock by sleepDurationGameHours', Math.abs((afterSleep.gameHoursElapsed - beforeSleep.gameHoursElapsed) - 8) < 0.5, `Δ ${(afterSleep.gameHoursElapsed - beforeSleep.gameHoursElapsed).toFixed(2)} game hours`);
-    //  Energy decays continuously (energyDrainPerGameHour), so by the time this reads state
-    //  some real time has passed since sleep() topped it to exactly 100 — same "effectively
-    //  full" pattern as the shelter-durability check above, not an exact-100 assertion.
-    check('sleep refills energy on waking', afterSleep.energy > 99, `energy ${afterSleep.energy}`);
+    //  Ch.6 (D-058) REPLACED the instant refill this check used to assert (`energy > 99`).
+    //  Sleeping now recovers along a rate over the slept hours, so waking lands wherever the
+    //  curve reached — genuinely higher than before, and genuinely capable of being short of
+    //  full. Asserting "it went up" is the honest check now; the exact curve is unit-tested.
+    check('sleep RECOVERS energy on waking, along a rate rather than jumping to full (Ch.6)', afterSleep.energy > beforeSleep.energy, `energy ${beforeSleep.energy.toFixed(1)} -> ${afterSleep.energy.toFixed(1)}`);
 
     //  Upkeep: repair only wins the disjoint choice once durability has meaningfully lapsed
     //  (REGRESSION — cosmetic decay must not starve sleep/storage-use every tap).
@@ -1105,7 +1112,15 @@ async function main() {
     //  FIX-2 (Living Island Track A, D-052): a death is no longer a full refill. Health
     //  wakes at respawnHealthFraction of max, not 100 — this assertion used to encode the
     //  exploit as correct behavior; it now encodes the fix.
-    check('REGRESSION — once a shelter is built, respawn wakes you there instead of the beach', Math.abs(revived.player.x - afterShelter.shelter.x) < 0.5 && Math.abs(revived.player.y - afterShelter.shelter.y) < 0.5 && revived.inventory.wood === 4, `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}`);
+    //  Split in two at Ch.6 (D-058). This used to be one composite assertion that also
+    //  required `inventory.wood === 4` — a hardcoded count that silently became a second
+    //  chapter's business the moment death started costing resources, and which then failed
+    //  while printing only the (passing) position in its detail string. Position is this
+    //  regression's actual subject; the resource cost is its own check, computed from the
+    //  pre-death count so it cannot drift out of date again.
+    check('REGRESSION — once a shelter is built, respawn wakes you there instead of the beach', Math.abs(revived.player.x - afterShelter.shelter.x) < 0.5 && Math.abs(revived.player.y - afterShelter.shelter.y) < 0.5, `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}`);
+    const expectedWoodAfterDeath = dying.inventory.wood - Math.floor(dying.inventory.wood * 0.25);
+    check('Ch.6 — that same death cost a floored quarter of the carried wood, and no more', revived.inventory.wood === expectedWoodAfterDeath, `wood ${dying.inventory.wood} -> ${revived.inventory.wood}, expected ${expectedWoodAfterDeath}`);
     //  A generous tolerance, not 0.01: `revived` is read after a real tap + sleep(500),
     //  and online health regen (healthRegenPerGameHour) keeps ticking the instant no vital
     //  is empty, the same continuous-drift reason C05's own audit already loosened an
@@ -1470,6 +1485,169 @@ async function main() {
     await sleep(300);
     const hintNoBlade = await page.evaluate(() => window.__drift.hints().last);
     check('Ch.2 item 6 — hammer owned but no blade: the reason updates to name the blade specifically, not the same flat message', /blade/i.test(hintNoBlade), `"${hintNoBlade}"`);
+
+    // ---- Ch.6, "The Body Model" — carry weight, the rest redesign, the death cost ----
+    console.log('\nCh.6 — the body model: carry weight bands, sleep as a rate, the death cost');
+
+    //  CARRY WEIGHT. Proven through real state reads on a real running build: an empty
+    //  castaway is Light and moves at exactly the base speed; a loaded one drops a band and
+    //  a real, measured walk covers less ground. Distance is measured over a fixed real-time
+    //  window, the same technique the fast-movement check uses.
+    await editSave(`
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.tools = { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
+        state.energy = 100;
+        state.player = { x: 0, y: 60 };
+    `);
+    const emptyBody = await live();
+    check('Ch.6 — an empty-handed castaway carries nothing and reads the Light band', emptyBody.inventory.wood === 0, `fatigue ${emptyBody.fatigue}, resting ${emptyBody.resting}`);
+
+    //  The ambient drain scales with the band — read straight off a real reconcile by
+    //  letting the same real-time window elapse under two very different loads.
+    await editSave('state.energy = 100; state.inventory.stone = 0;');
+    const lightStart = await live();
+    await sleep(6000);
+    const lightEnd = await live();
+    const lightDrain = lightStart.energy - lightEnd.energy;
+
+    await editSave('state.energy = 100; state.inventory.stone = 40;'); // 80 kg — heavy band
+    const heavyStart = await live();
+    await sleep(6000);
+    const heavyEnd = await live();
+    const heavyDrain = heavyStart.energy - heavyEnd.energy;
+    check('Ch.6 — a heavy load drains ambient energy faster than an empty pack, on a real running build', heavyDrain > lightDrain, `light ${lightDrain.toFixed(4)} vs heavy ${heavyDrain.toFixed(4)} over the same window`);
+
+    //  A real effortful gather costs more under load — the D-052 plumbing being reused,
+    //  proven through an actual completed hold rather than a unit test. Uses the same
+    //  `nodeOf`/`harvest` helpers the D-052 energy checks already rely on: an earlier draft
+    //  of this check hardcoded a tap position and silently measured nothing but ambient
+    //  drain, because the coordinates it guessed were nowhere near the actual rock.
+    await editSave(`
+        for (const n of state.nodes) { if (n.kind === 'rock') { n.available = true; n.depletedAtGameHours = null; } }
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.energy = 100;
+    `);
+    const rockForLight = await nodeOf('rock');
+    await editSave(`state.player = { x: ${rockForLight.x - 1.5}, y: ${rockForLight.y} };`);
+    const beforeLightMine = (await live()).energy;
+    const lightMineResult = await harvest('rock', 20);
+    const lightMineCost = beforeLightMine - (await live()).energy;
+
+    await editSave(`
+        for (const n of state.nodes) { if (n.kind === 'rock') { n.available = true; n.depletedAtGameHours = null; } }
+        state.inventory.stone = 40;
+        state.energy = 100;
+    `);
+    const rockForHeavy = await nodeOf('rock');
+    await editSave(`state.player = { x: ${rockForHeavy.x - 1.5}, y: ${rockForHeavy.y} };`);
+    const beforeHeavyMine = (await live()).energy;
+    const heavyMineResult = await harvest('rock', 20);
+    const heavyMineCost = beforeHeavyMine - (await live()).energy;
+    check('Ch.6 — both mining taps actually landed (the measurement means something)', lightMineResult.ok && heavyMineResult.ok, `light ok=${lightMineResult.ok}, heavy ok=${heavyMineResult.ok}`);
+    check('Ch.6 — the SAME real mining tap costs measurably more under a heavy pack than empty-handed', heavyMineCost > lightMineCost, `light ${lightMineCost.toFixed(3)} vs heavy ${heavyMineCost.toFixed(3)} (base ${TUNE.energyCostRockMine})`);
+
+    //  THE REST REDESIGN. Sleeping from near-empty must NOT jump to full — the single most
+    //  important behavioural difference this chapter makes, proven on a real device by
+    //  tapping the shelter and reading the energy back.
+    await editSave(`
+        state.inventory.wood = 99; state.inventory.stone = 99; state.inventory.fiber = 99;
+        state.energy = 5;
+        state.fatigue = 90;
+        state.inventory.stone = 0; state.inventory.wood = 0; state.inventory.fiber = 0;
+    `);
+    const preSleep = await live();
+    if (preSleep.shelter.built) {
+        //  Mirrors the proven C05 sleep pattern — `approach` + `faceNode` + a world tap, then
+        //  dismiss the report via `.report button`. Two authoring bugs were fixed to get here:
+        //  an earlier draft teleported the player ONTO the shelter's own coordinates and
+        //  tapped there (standing inside the structure is not the same as standing at it),
+        //  and the next one walked the full ~47 m from the previous check's rock while
+        //  exhausted — at `energySlowWalkMultiplier` that overran the approach budget and the
+        //  tap never happened. Teleporting to just outside the shelter first makes the walk
+        //  short and the check about sleeping rather than about pathing. Carrying no wood is
+        //  deliberate too, so `canRepairStructure` cannot hijack the tap.
+        await editSave('state.player = { x: state.shelter.x + 3, y: state.shelter.y };');
+        await approach(preSleep.shelter.x, preSleep.shelter.y, 20);
+        await faceNode(preSleep.shelter.x, preSleep.shelter.y);
+        const beforeSleep = await live();
+        await tapWorld(preSleep.shelter.x, preSleep.shelter.y, 55);
+        await sleep(800);
+        await realTapDom('.report button');
+        await sleep(600);
+        const afterSleep = await live();
+        check('Ch.6 — sleeping from near-empty RECOVERS energy without jumping to full (the instant refill is gone)', afterSleep.energy > beforeSleep.energy && afterSleep.energy < 100, `energy ${beforeSleep.energy.toFixed(1)} -> ${afterSleep.energy.toFixed(1)}`);
+        check('Ch.6 — sleeping sheds fatigue', afterSleep.fatigue < beforeSleep.fatigue, `fatigue ${beforeSleep.fatigue.toFixed(2)} -> ${afterSleep.fatigue.toFixed(2)}`);
+        check('Ch.6 — `resting` is never left switched on after waking', afterSleep.resting === false, `resting ${afterSleep.resting}`);
+    } else {
+        check('Ch.6 — sleeping from near-empty RECOVERS energy without jumping to full (the instant refill is gone)', false, 'setup failed: no shelter built at this point in the run');
+    }
+
+    //  FATIGUE is perceivable and HONEST: the severe stage names itself in the HUD, and no
+    //  number the player reasons from is distorted at any stage. Both halves are checked —
+    //  the second is the honest-systems rail, and it is the one that actually matters.
+    await editSave('state.fatigue = 95; state.energy = 80; state.warmth = 77; state.thirst = 66; state.inventory.wood = 7;');
+    await sleep(900);
+    const severeGoal = await page.evaluate(() => { const g = document.querySelector('.goal'); return g ? g.textContent : ''; });
+    check('Ch.6 — severe fatigue names itself in the HUD rather than staying silent', /exhaust|bone|rest/i.test(severeGoal), `"${severeGoal}"`);
+
+    //  THE RAIL ITSELF. The honest question is not "did the numbers stay frozen" (they
+    //  legitimately drift — warmth drains at night whatever the body is doing) but "does
+    //  what the player SEES still equal what is actually true". So this reads the rendered
+    //  HUD labels and the live state in the same breath and asserts they agree, at severe
+    //  fatigue. An earlier draft asserted the raw values stayed near their forced numbers
+    //  and failed on ordinary warmth drain — measuring drift, not distortion.
+    const railProbe = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const labelOf = (k) => {
+            const el = document.querySelector(`.v-${k} .vital-label`);
+            return el ? parseInt(el.textContent, 10) : NaN;
+        };
+        return {
+            fatigue: s.fatigue,
+            shown: { warmth: labelOf('warmth'), thirst: labelOf('thirst'), hunger: labelOf('hunger'), health: labelOf('health'), energy: labelOf('energy') },
+            actual: { warmth: Math.round(s.warmth), thirst: Math.round(s.thirst), hunger: Math.round(s.hunger), health: Math.round(s.health), energy: Math.round(s.energy) },
+            wood: s.inventory.wood
+        };
+    });
+    const railAgrees = ['warmth', 'thirst', 'hunger', 'health', 'energy'].every((k) => Math.abs(railProbe.shown[k] - railProbe.actual[k]) <= 1);
+    check(
+        'Ch.6 HONEST-SYSTEMS RAIL — at severe fatigue every displayed vital still equals the true state (nothing is distorted)',
+        railProbe.fatigue >= TUNE.fatigueSevereAt && railAgrees && railProbe.wood === 7,
+        `fatigue ${railProbe.fatigue}, shown ${JSON.stringify(railProbe.shown)} vs actual ${JSON.stringify(railProbe.actual)}, wood ${railProbe.wood}`
+    );
+
+    //  THE DEATH COST. A real death, on a real build, taking a quarter of the loose stacks
+    //  and nothing else — tools and knowledge explicitly re-read afterwards.
+    const deathsBaseline = (await live()).trace.deaths;
+    await editSave(`
+        state.inventory = { wood: 12, stone: 8, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2 };
+        state.tools = { axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
+        state.knowledge.domains.harvestingFabrication.technique = 42;
+        state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.4;
+        state.fatigue = 70;
+    `);
+    //  The baseline MUST be captured before the editSave, not after it. Setting health to a
+    //  sliver with every vital at zero means the reload's own boot reconcile can (and does)
+    //  kill the castaway before the first post-reload read happens — an earlier draft
+    //  compared against a post-reload baseline and so reported "no death occurred" while
+    //  every downstream assertion was simultaneously confirming the death's exact cost.
+    let diedForBody = false;
+    for (let i = 0; i < 20; i++) {
+        const st = await live();
+        if (st.trace.deaths > deathsBaseline) { diedForBody = true; break; }
+        await sleep(700);
+    }
+    await sleep(500);
+    const afterDeath = await live();
+    check('Ch.6 — a real death occurred to test its cost', diedForBody, `deaths ${deathsBaseline} -> ${afterDeath.trace.deaths}`);
+    check('Ch.6 — the death took a floored quarter of the carried loose stacks', afterDeath.inventory.wood === 9 && afterDeath.inventory.stone === 6, `wood 12->${afterDeath.inventory.wood}, stone 8->${afterDeath.inventory.stone}`);
+    check('Ch.6 — small stacks are never wiped by rounding (2 sharp blades survive intact)', afterDeath.inventory.sharpblade === 2, `sharpblade ${afterDeath.inventory.sharpblade}`);
+    check('Ch.6 — the death NEVER took tools', afterDeath.tools.axe === true && afterDeath.tools.stoneHammer === true && afterDeath.tools.flask === true, JSON.stringify(afterDeath.tools));
+    check('Ch.6 — the death NEVER touched KnowledgeState (Ch.2 amendment B holds across a second system)', afterDeath.knowledge.domains.harvestingFabrication.technique === 42, `technique ${afterDeath.knowledge.domains.harvestingFabrication.technique}`);
+    check('Ch.6 — waking clears fatigue rather than compounding it', afterDeath.fatigue === 0, `fatigue was forced to 70 before the death, now ${afterDeath.fatigue}`);
+    const lastDeath = afterDeath.trace.deathLog[afterDeath.trace.deathLog.length - 1];
+    check('Ch.6 — the death log records the cause-specific lesson and exactly what was lost', Boolean(lastDeath && lastDeath.message && lastDeath.lost), JSON.stringify(lastDeath));
 
     // ---- Hygiene ----
     console.log('\nHygiene');

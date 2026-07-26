@@ -85,6 +85,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 4) current = migrateV4toV5(current);
     if (current.schemaVersion === 5) current = migrateV5toV6(current);
     if (current.schemaVersion === 6) current = migrateV6toV7(current);
+    if (current.schemaVersion === 7) current = migrateV7toV8(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -278,6 +279,30 @@ function migrateV6toV7(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v7 (Ch.2: the knowledge model) → v8 (Ch.6, "The Body Model"): `fatigue` and `resting`.
+ * A returning player wakes with **zero fatigue and not resting** — the honest "we have no
+ * record of how tired you were" answer, and the kind one: this chapter's own offline law
+ * says absence may never hand back a body in worse condition, and inventing a fatigue
+ * number for a save that predates the system would be doing exactly that. Carry weight
+ * needs no migration at all: it is derived from inventory and tools, which every v7 save
+ * already has. The death log's new per-entry fields are optional by design, so existing
+ * entries stay valid, unrewritten, rather than gaining a fabricated message for a death
+ * that happened before the lesson existed.
+ */
+function migrateV7toV8(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as Record<string, unknown>;
+
+    const state: GameState = {
+        ...(old as unknown as GameState),
+        fatigue: 0,
+        resting: false,
+        schemaVersion: SCHEMA_VERSION
+    };
+
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -321,6 +346,13 @@ function hydrate(state: GameState): GameState {
         health: clampVital(state.health, TUNE.healthMax, base.health),
         energy: clampVital(state.energy, TUNE.energyMax, base.energy),
         wet: clampVital(state.wet, TUNE.wetMax, base.wet),
+        //  Ch.6: fatigue gets the same defensive clamp — a hand-edited or corrupt save must
+        //  not carry an out-of-band value into a system the HUD reads stages off.
+        fatigue: clampVital(state.fatigue, TUNE.fatigueMax, base.fatigue),
+        //  `resting` is a transient of the sleep action, never a saved mode. A save that
+        //  somehow captured it mid-span (a crash during sleep) heals to false rather than
+        //  resuming into permanent accelerated recovery.
+        resting: false,
         schemaVersion: SCHEMA_VERSION
     };
 }

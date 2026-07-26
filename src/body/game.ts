@@ -43,11 +43,15 @@ import {
     fireBurnHoursRemaining,
     gatherNode,
     isAtPond,
+    fatigueStageOf,
+    fatigueStatusText,
     isExhausted,
     isFireLit,
     isSheltered,
     knapSharpblade,
     lightTorch,
+    loadBandOf,
+    loadSpeedMultiplierFor,
     nodeHoldSeconds,
     nodeSpec,
     recordCombinationAttempts,
@@ -984,7 +988,14 @@ export class Game {
         //  says why, and sleeping at the shelter is the only cure. "Fast movement (testing)"
         //  (D-051 SON addendum) multiplies on top — a labelled test aid, `walkSpeedMps` itself
         //  never changes — so the two stack rather than one silently overriding the other.
-        const speedScale = (isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1) * (this.testSpeedEnabled ? TUNE.testSpeedMultiplier : 1);
+        //  Ch.6 (D-058) adds the load band as a third multiplier on the same line, for the
+        //  same reason: it scales `walkSpeedMps` at use and never mutates the constant. A
+        //  `light` band multiplies by exactly 1, so an unencumbered castaway moves exactly
+        //  as they did before this chapter existed.
+        const speedScale =
+            (isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1) *
+            (this.testSpeedEnabled ? TUNE.testSpeedMultiplier : 1) *
+            loadSpeedMultiplierFor(loadBandOf(state));
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
@@ -1198,6 +1209,17 @@ export class Game {
         if (isExhausted(state)) {
             return state.shelter.built ? 'Exhausted — tap the shelter to sleep.' : 'Exhausted. A shelter would give you somewhere to rest.';
         }
+        //  Ch.6 (D-058): fatigue's severe stage is named plainly, right after exhaustion and
+        //  before the build funnel — it is an active body state the player should be able to
+        //  act on. HONEST-SYSTEMS RAIL: this is a truthful status line about a real tracked
+        //  value and nothing more. No number the player reasons from is altered, hidden, or
+        //  distorted at any fatigue stage; the chapter's "perceptual distortion" idea is
+        //  cosmetic-only and deliberately NOT built in this brain-layer slice (see the
+        //  as-built) precisely so it cannot be mistaken for a mechanic that lies.
+        if (fatigueStageOf(state) === 'severe') {
+            const text = fatigueStatusText('severe');
+            if (text) return state.shelter.built ? `${text} Tap the shelter to sleep.` : text;
+        }
         if (!state.tools.axe && !canCraftAxe(state)) {
             const s = axeShortfall(state);
             const needs = [s.wood && `${s.wood} wood`, s.sharpblade && `${s.sharpblade} sharp blade`, s.fiber && `${s.fiber} fibre`].filter(Boolean).join(', ');
@@ -1235,6 +1257,15 @@ export class Game {
     private contextualHint(): string {
         const s = session().state;
         if (isExhausted(s)) return s.shelter.built ? 'You are exhausted. Tap the shelter to sleep.' : 'You are exhausted. Building a shelter gives you somewhere to sleep.';
+        //  Ch.6: the mild/moderate stages get an idle nudge rather than the goal line —
+        //  they are worth naming, but never worth displacing the build funnel over.
+        {
+            const stage = fatigueStageOf(s);
+            if (stage === 'mild' || stage === 'moderate') {
+                const text = fatigueStatusText(stage);
+                if (text) return s.shelter.built ? `${text} The shelter is where you sleep.` : text;
+            }
+        }
         if (s.thirst <= TUNE.thirstLowHintAt) return 'Thirsty. Tap the pond inland, west of the trees, to drink.';
         if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';

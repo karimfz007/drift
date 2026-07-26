@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reconcile } from '../src/brain/reconcile';
+import { loadBandOf, loadEnergyMultiplierOf } from '../src/brain/body';
 import {
     buildShelter,
     buildStorage,
@@ -236,30 +237,67 @@ describe('FIX-1 (Living Island Track A) — energy inversion closed', () => {
     it('every hold-interaction kind costs its own tuned amount: deadfall, rock, quarry, palm, crash box', () => {
         const s = run();
         s.tools.axe = true;
+        //  Ch.6 (D-058): the tuned cost is now SCALED by the load band the castaway is in
+        //  when the swing happens (energy is charged before the yield lands, so the
+        //  multiplier reflects what was already being carried going in). Each step captures
+        //  the live multiplier rather than assuming `light`, so this stays an exact-cost
+        //  assertion instead of being loosened into a tolerance.
+        const step = (id: string, tuned: number) => {
+            const before = s.energy;
+            const multiplier = loadEnergyMultiplierOf(s);
+            gatherNode(s, id);
+            expect(s.energy).toBeCloseTo(before - tuned * multiplier, 9);
+        };
+        step('df1', TUNE.energyCostDeadfallGather); // deadfall
+        step('rk1', TUNE.energyCostRockMine); // rock
+        step('qr1', TUNE.energyCostQuarryMine); // quarry, one tap
+        step('cp1', TUNE.energyCostCoconutGather); // coconut palm
+        step('box1', TUNE.energyCostCrashboxOpen); // crash box
+    });
+
+    it('Ch.6 — an UNENCUMBERED castaway pays exactly the pre-Ch.6 tuned cost, to the digit', () => {
+        //  The "invisible until earned" guarantee: a `light` band multiplies by exactly 1,
+        //  so carry weight cannot silently retune D-052's numbers for a player who isn't
+        //  actually carrying anything.
+        const s = run();
+        expect(loadBandOf(s)).toBe('light');
         const before = s.energy;
-        gatherNode(s, 'df1'); // deadfall
-        expect(s.energy).toBeCloseTo(before - TUNE.energyCostDeadfallGather, 9);
-        const afterDeadfall = s.energy;
-        gatherNode(s, 'rk1'); // rock
-        expect(s.energy).toBeCloseTo(afterDeadfall - TUNE.energyCostRockMine, 9);
-        const afterRock = s.energy;
-        gatherNode(s, 'qr1'); // quarry, one tap
-        expect(s.energy).toBeCloseTo(afterRock - TUNE.energyCostQuarryMine, 9);
-        const afterQuarry = s.energy;
-        gatherNode(s, 'cp1'); // coconut palm
-        expect(s.energy).toBeCloseTo(afterQuarry - TUNE.energyCostCoconutGather, 9);
-        const afterPalm = s.energy;
-        gatherNode(s, 'box1'); // crash box
-        expect(s.energy).toBeCloseTo(afterPalm - TUNE.energyCostCrashboxOpen, 9);
+        gatherNode(s, 'df1');
+        expect(s.energy).toBe(before - TUNE.energyCostDeadfallGather);
+    });
+
+    it('Ch.6 — the same swing costs strictly more under a heavy pack than empty-handed', () => {
+        const light = run();
+        const heavy = run();
+        heavy.inventory.stone = 40; // 80 kg — comfortably past loadHeavyAtKg
+        expect(loadBandOf(light)).toBe('light');
+        expect(loadBandOf(heavy)).toBe('heavy');
+
+        const lightBefore = light.energy;
+        gatherNode(light, 'rk1');
+        const lightCost = lightBefore - light.energy;
+
+        const heavyBefore = heavy.energy;
+        gatherNode(heavy, 'rk1');
+        const heavyCost = heavyBefore - heavy.energy;
+
+        expect(heavyCost).toBeGreaterThan(lightCost);
+        expect(heavyCost).toBeCloseTo(lightCost * TUNE.loadEnergyMultiplier.heavy, 9);
     });
 
     it('the quarry (repeat-minable) charges energy on EVERY tap, not just the first', () => {
         const s = run();
+        //  Same Ch.6 note as above — and this one genuinely crosses a band mid-test as the
+        //  stone piles up, which is exactly the behaviour worth locking: the third tap costs
+        //  more than the first because the castaway is now hauling what the first two gave.
+        let expected = 0;
         const before = s.energy;
-        gatherNode(s, 'qr1');
-        gatherNode(s, 'qr1');
-        gatherNode(s, 'qr1');
-        expect(s.energy).toBeCloseTo(before - 3 * TUNE.energyCostQuarryMine, 9);
+        for (let i = 0; i < 3; i++) {
+            expected += TUNE.energyCostQuarryMine * loadEnergyMultiplierOf(s);
+            gatherNode(s, 'qr1');
+        }
+        expect(s.energy).toBeCloseTo(before - expected, 9);
+        expect(loadBandOf(s)).not.toBe('light'); // it really did get heavier along the way
     });
 
     it('an instant tap gather (driftwood, berries, reed, shellfish) costs ZERO energy — only holds are effortful', () => {
@@ -353,7 +391,7 @@ describe('sleep — reuses the reconcile spine, never lethal', () => {
         expect(session.sleep(0)).toBe(null);
     });
 
-    it('advances the clock by sleepDurationGameHours and refills energy on waking', () => {
+    it('advances the clock by sleepDurationGameHours and RECOVERS energy along a rate (Ch.6 replaced the instant refill)', () => {
         const s = run();
         s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
         buildShelter(s, s.player.x, s.player.y);
@@ -362,7 +400,14 @@ describe('sleep — reuses the reconcile spine, never lethal', () => {
         const before = session.state.gameHoursElapsed;
         const report = session.sleep(1000);
         expect(session.state.gameHoursElapsed).toBeCloseTo(before + TUNE.sleepDurationGameHours, 6);
-        expect(session.state.energy).toBe(TUNE.energyMax);
+        //  This assertion used to read `toBe(TUNE.energyMax)` — C05 set energy to full
+        //  outright on waking. Ch.6 (D-058) replaced that with a recovery RATE: energy
+        //  climbs by the tuned amount over the slept hours and is capped by the ceiling,
+        //  so waking from 10 lands short of full rather than teleporting to it.
+        const gained = TUNE.energyRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier * TUNE.sleepDurationGameHours;
+        expect(session.state.energy).toBeCloseTo(Math.min(TUNE.energyMax, 10 + gained), 4);
+        expect(session.state.energy).toBeLessThan(TUNE.energyMax);
+        expect(session.state.energy).toBeGreaterThan(10);
         expect(report).not.toBe(null);
     });
 

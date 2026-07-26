@@ -112,9 +112,21 @@ export class Session {
         if (!canSleep(this.state)) return null;
 
         const elapsedRealSeconds = realSecondsFromGameHours(TUNE.sleepDurationGameHours);
-        const outcome = reconcile(this.state, elapsedRealSeconds);
+        //  Ch.6 (D-058) — THE REST REDESIGN. C05 ran this span and then set
+        //  `energy = energyMax` outright: an instant jump to full, no matter how long the
+        //  sleep or how empty the castaway started. That line is gone. `resting` is now
+        //  raised for the duration of the span, and reconcile recovers energy and warmth at
+        //  a RATE over the elapsed game hours (`energyRecoveryPerGameHourResting` /
+        //  `warmthRecoveryPerGameHourResting`, both scaled by `sleepRecoveryMultiplier`),
+        //  shedding fatigue as it goes. A sleep from empty therefore may genuinely NOT
+        //  reach full — and sleeping is bounded by the same `energyMax` ceiling everything
+        //  else clamps to, so there is no infinite-recovery exploit in sleeping repeatedly.
+        //  The flag is cleared immediately after the span: `resting` is a transient of this
+        //  action, never a mode the player is left sitting in.
+        const sleepingState = { ...this.state, resting: true };
+        const outcome = reconcile(sleepingState, elapsedRealSeconds);
         outcome.state.trace = this.state.trace;
-        outcome.state.energy = TUNE.energyMax;
+        outcome.state.resting = false;
         outcome.state.lastSeenMs = nowMs;
         this.state = outcome.state;
         //  "Drinking/eating/sleeping/warmth/fire -> Survivalcraft" (Ch.2 item 4).

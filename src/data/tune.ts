@@ -492,7 +492,95 @@ export const TUNE = {
      *  been tried, and the Build panel makes the non-match legible at a glance. */
     nullOutcomeNoveltyFactor: 1,
     nullOutcomeFeedbackFactor: 1,
-    nullOutcomeReflectionFactor: 0.4
+    nullOutcomeReflectionFactor: 0.4,
+
+    // ---- Ch.6, "The Body Model" — carry weight (D-058) ---------------------
+    /** [TUNE] Ch.6 — mass in kg per ONE unit of each carried material. Keyed by the same
+     *  `MaterialKind` set `MATERIAL_PROFILE` (materials.ts) already uses, so a new material
+     *  cannot be added without deciding what it weighs. Rough real-world proportions: stone
+     *  and its knapped blade are the dense ones; fibre and food are near-negligible
+     *  individually and only matter in bulk. First-pass numbers; revisit at the next TUNE
+     *  feedback pass. */
+    materialMassKg: {
+        wood: 1.2,
+        stone: 2.0,
+        fiber: 0.15,
+        berries: 0.1,
+        coconut: 1.4,
+        shellfish: 0.3,
+        sharpblade: 0.4
+    },
+    /** [TUNE] Ch.6 — fixed mass in kg of each owned tool. Charged once when owned, not per
+     *  use — a carried axe weighs the same whether or not you are swinging it. The flask's
+     *  mass is its own; the sips inside it are not separately weighed (a mouthful of water
+     *  is noise against a 1 kg flask). */
+    toolMassKg: {
+        axe: 1.8,
+        flask: 0.9,
+        stoneHammer: 1.5,
+        torch: 0.7
+    },
+    /** [TUNE] Ch.6 — load-band thresholds in kg. At or below `loadWorkingAtKg` the castaway
+     *  is Light (unencumbered); above it, Working; above `loadHeavyAtKg`, Heavy. Sized
+     *  against real early-game carries: a full trip home from the quarry (~10 stone = 20 kg)
+     *  should land in Working, not Heavy — Heavy is for genuine hoarding, not ordinary play. */
+    loadWorkingAtKg: 14,
+    loadHeavyAtKg: 30,
+    /** [TUNE] Ch.6 — walk-speed multiplier per load band, applied on top of `walkSpeedMps`
+     *  (the base constant itself never changes) and stacking with the existing exhaustion
+     *  multiplier. Light is deliberately exactly 1 — an unencumbered castaway moves exactly
+     *  as they did before Ch.6 existed, so this system is invisible until it is earned. */
+    loadSpeedMultiplier: { light: 1, working: 0.88, heavy: 0.7 },
+    /** [TUNE] Ch.6 — energy-cost multiplier per load band. Multiplies BOTH the ambient
+     *  per-game-hour drain (reconcile.ts) and every effortful gather's own cost
+     *  (`effortEnergyCostFor`, D-052) — reusing that existing plumbing rather than adding a
+     *  parallel drain. Light is exactly 1, for the same "invisible until earned" reason. */
+    loadEnergyMultiplier: { light: 1, working: 1.25, heavy: 1.6 },
+
+    // ---- Ch.6 — rest, recovery, and fatigue (D-058) ------------------------
+    /** [TUNE] Ch.6 — energy recovered per game hour while resting. Replaces C05's instant
+     *  refill: sleep is now a RATE over elapsed time, never a jump to full. Deliberately
+     *  sized so a FULL sleep from empty lands short of the ceiling — see
+     *  `sleepRecoveryMultiplier`. A first pass at 9 was caught by this chapter's own
+     *  regression test: 9 × 1.5 × 8 = 108 against a 100 ceiling meant every full sleep
+     *  capped out, making the new curve behaviourally identical to the instant refill it
+     *  was supposed to replace, in exactly the case that matters most. */
+    energyRecoveryPerGameHourResting: 7,
+    /** [TUNE] Ch.6 — warmth recovered per game hour while resting (under a roof, out of the
+     *  weather). Independent of the fire — a bed is its own, slower warmth source. */
+    warmthRecoveryPerGameHourResting: 8,
+    /** [TUNE] Ch.6 — how much faster recovery runs while actually asleep in a bed, versus
+     *  merely at rest. Multiplies both recovery rates above. Chosen against the ceiling on
+     *  purpose: a full `sleepDurationGameHours` (8) sleep recovers 8 × 7 × 1.5 = **84**
+     *  energy, so an ordinarily-tired castaway wakes full, but one who ran themselves to
+     *  empty wakes genuinely short and has to sleep again or push on tired. That gap is the
+     *  whole point of replacing the instant refill — without it, "a rate" and "a jump" are
+     *  the same thing at the only load that matters. */
+    sleepRecoveryMultiplier: 1.5,
+    /** [TUNE] Ch.6 — full fatigue. */
+    fatigueMax: 100,
+    /** [TUNE] Ch.6 — fatigue accrued per game hour while ONLINE and in energy debt (energy
+     *  at or below `energyLowThreshold`). Never accrues offline, ever — see reconcile.ts and
+     *  the property test that locks it (the Ch.6 analogue of Ch.2's amendment B). */
+    fatigueGainPerGameHourInDebt: 3.5,
+    /** [TUNE] Ch.6 — fatigue shed per game hour while resting. Faster than it accrues, so a
+     *  single good sleep genuinely clears a bad day rather than half-clearing it. */
+    fatigueRecoveryPerGameHourResting: 12,
+    /** [TUNE] Ch.6 — the three perceivable stages. Below `fatigueMildAt` the castaway reads
+     *  as fine and no status text shows at all. */
+    fatigueMildAt: 30,
+    fatigueModerateAt: 55,
+    fatigueSevereAt: 80,
+
+    // ---- Ch.6 — death cost (D-058) ------------------------------------------
+    /** [TUNE] Ch.6 — fraction of each CARRIED loose resource stack lost on death. Applied
+     *  with `Math.floor`, so a stack of 1–3 loses nothing and no stack is ever wiped by
+     *  rounding. Tools, stored goods, skills, and KnowledgeState are all untouched (the
+     *  last of those is Ch.2's amendment B, which this second system also respects).
+     *  Sized to be recoverable inside roughly one session: at a realistic death you are
+     *  carrying perhaps 10–20 units total, so this costs 2–5 units, against a single felled
+     *  tree yielding 8 wood — minutes of play, a real sting that is never a setback spiral. */
+    deathResourceLossFraction: 0.25
 } as const;
 
 export type TuneTable = typeof TUNE;

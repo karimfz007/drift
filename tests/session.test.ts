@@ -31,7 +31,9 @@ describe('session — death and respawn (C03)', () => {
         //  FIX-2: a death wakes the castaway diminished, not fully refilled.
         expect(session.state.health).toBe(TUNE.healthMax * TUNE.respawnHealthFraction);
         expect(session.state.thirst).toBe(TUNE.thirstMax * TUNE.respawnVitalFraction);
-        expect(session.state.inventory.wood).toBe(5); // kept
+        //  Ch.6 (D-058): the death costs a floored quarter of the carried stack —
+        //  5 wood × 0.25 = 1 lost, 4 kept. Tools and knowledge are never touched.
+        expect(session.state.inventory.wood).toBe(5 - Math.floor(5 * TUNE.deathResourceLossFraction));
 
         //  The death is persisted immediately — a crash right after loses nothing.
         expect(deserialize(repo.read())!.state.trace.deaths).toBe(1);

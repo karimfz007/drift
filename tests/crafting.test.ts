@@ -230,12 +230,17 @@ describe('death — respawn keeps what you made', () => {
         expect(s.wet).toBe(0);
         expect(s.health).toBeLessThan(TUNE.healthMax);
         expect(s.thirst).toBeLessThan(TUNE.thirstMax);
-        expect(s.inventory.wood).toBe(12); // kept
-        expect(s.tools.axe).toBe(true); // kept
+        //  Ch.6 (D-058): a death now COSTS a floored fraction of each carried loose stack.
+        //  12 wood × 0.25 = 3 lost, 9 kept — a real sting, not a wipe.
+        expect(s.inventory.wood).toBe(12 - Math.floor(12 * TUNE.deathResourceLossFraction));
+        expect(s.tools.axe).toBe(true); // kept — tools are NEVER taken
         expect(s.skills.woodcutting.level).toBe(3); // kept
         expect(s.lastDeathCause).toBe('thirst');
         expect(s.trace.deaths).toBe(1);
-        //  FIX-2: every death is logged with its cause and the game-clock moment.
-        expect(s.trace.deathLog).toEqual([{ cause: 'thirst', gameHoursElapsed: 12.5 }]);
+        //  FIX-2: every death is logged with its cause and the game-clock moment. Ch.6 adds
+        //  the lesson shown and exactly what the death cost.
+        expect(s.trace.deathLog).toHaveLength(1);
+        expect(s.trace.deathLog[0]).toMatchObject({ cause: 'thirst', gameHoursElapsed: 12.5, lost: { wood: 3 } });
+        expect(s.trace.deathLog[0].message).toMatch(/thirst/i);
     });
 });

@@ -32,8 +32,14 @@
  *      at the innate floor — no retroactive Understanding credit for null pairs discovered
  *      before this chapter shipped, the same "we don't know what it would have been"
  *      honesty D-055's own grade migration already established.
+ * v8 — Ch.6, "The Body Model" (D-058): `fatigue` (accrued on energy debt, shed by rest)
+ *      and `resting` (true only while asleep, driving the new recovery rates that replaced
+ *      C05's instant sleep-refill). The death log's entries additionally carry the
+ *      cause-specific respawn message and what the death actually cost. Migration v7→v8
+ *      lives in save.ts; a returning player wakes with zero fatigue and not resting — the
+ *      honest "we have no record of how tired you were" answer, and the kind one.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -226,8 +232,18 @@ export interface TraceState {
     /** Every death this run, cause and the game-clock moment it happened (FIX 2) — surfaced
      *  in the debug export (D-050's tool) so a death-loop report is diagnosable without
      *  relying on the player's memory of what killed them and when. Unbounded; a run's
-     *  death count is never so large this matters for storage. */
-    deathLog: Array<{ cause: string; gameHoursElapsed: number }>;
+     *  death count is never so large this matters for storage.
+     *
+     *  Ch.6 (D-058) extends each entry with the cause-specific respawn message the player
+     *  was actually shown, and `lost` — exactly which carried resources the death cost,
+     *  so "what did that death take from me" is answerable from the record rather than
+     *  from memory. Both are optional: entries written before v8 have neither. */
+    deathLog: Array<{
+        cause: string;
+        gameHoursElapsed: number;
+        message?: string;
+        lost?: Partial<Record<MaterialKind, number>>;
+    }>;
 }
 
 /**
@@ -308,6 +324,23 @@ export interface GameState {
      *  pond, decays on dry land (faster within the shelter's radius), and raises warmth's
      *  drain rate while high — the reason a roof matters even with a fire already lit. */
     wet: number;
+    /**
+     * Ch.6 (D-058): 0–`fatigueMax`. Accrues while ONLINE and in energy debt; shed by rest.
+     * **Never accrues offline, ever** — absence may cost warmth or hunger, but it may never
+     * make the body worse, the same law Ch.2's amendment B set for knowledge. Deliberately
+     * NOT part of the health-drain path: fatigue is a perceivable soft state (three stages,
+     * `fatigueStage` in body.ts), never a death vector, which is what keeps the
+     * offline-death-impossible law (D-011) structurally intact with it added.
+     */
+    fatigue: number;
+    /**
+     * Ch.6 (D-058): true only while actually asleep in a bed. Drives the accelerated
+     * energy/warmth recovery rates and fatigue shedding in `reconcile`, and is cleared the
+     * moment the sleep span ends — this is a transient of the sleep action, never a mode
+     * the player is left sitting in. Replaces C05's instant sleep-refill: recovery is now a
+     * RATE over elapsed time, so a sleep from empty genuinely may not reach full.
+     */
+    resting: boolean;
 
     inventory: Inventory;
     tools: Tools;
@@ -389,6 +422,11 @@ export interface ReconcileResult {
     energyAfter: number;
     wetBefore: number;
     wetAfter: number;
+    /** Ch.6 (D-058): tracked for tests and the sleep summary. No new morning-report line
+     *  this slice — the numbers are honest even unnarrated, the same call energy's own
+     *  C05 introduction made. */
+    fatigueBefore: number;
+    fatigueAfter: number;
     drifts: VitalDrift[];
 
     /**
