@@ -3,6 +3,10 @@
 
 ---
 
+**D-061 · 2026-07-26 — Laws 19-30 (v0_11 §4) RATIFIED as design law, C1 shapings binding:** Law 24 ratified as the ARCHITECTURAL implementation of D-054's first law (private Spawn Island physically unenterable by living players; succession-access design routes to the Castaway Cycle trunk). The §22.2 public-dock nuance LAW-GATED to Ch.8 (world forces within D-011 caps; player-inflicted loss during absence floored at zero in default modes). Law 28 registered as D-011 restated — same law, our number. Doc-series law numbers map through the register; the charter remains supreme.
+
+*(Applied verbatim as supplied. **Note for the register:** `v0_11` is not present in this repo — its §4 law text, and the §22.2 nuance this entry gates, have not travelled inline and are not filed at `/docs/reference/`. This entry records the ratification and its shapings faithfully; the underlying law text remains uncommitted, so per ops v1.7 §4 law (b) nothing may be BUILT against Laws 19–30 until it ships. Law 24's and Law 28's substance is pinned here by their mapping onto D-054 and D-011 respectively, both of which are committed and resolve.)*
+
 **D-060 · 2026-07-26 — Chapter-numbering correction (C1's own process error), and the hygiene law that prevents its recurrence.**
 **The correction.** Canon read **Ch.9 = slicing** because C1's Way-Home renumber was decided at the chat layer and **never shipped as a delta**. C1 records this as its own process error, not SON's flag being wrong. **Definitive numbering, now shipped:** **Ch.9 = "The Way Home"** (endings & maritime; source v0_6/v0_7 §15) · **Ch.10 = The Master Plan** (slicing), always last.
 
