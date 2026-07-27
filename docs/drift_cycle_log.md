@@ -119,6 +119,7 @@
 | `structureDurabilityDecayPerGameHour` | 1 | C05 | Durability lost per game hour — ~4 days from full to 0, long enough that neglect, not attentiveness, triggers it |
 | `repairDurabilityPerWood` | 15 | C05 | Durability restored per wood spent repairing |
 | `masteryTechniqueSpeedBonusAtFull` | 0.6 | D-066 pass | Ch.2 mastery made real: at full **technique** an effortful hold takes `1/(1+this)` of base — a master works in ~62% of a novice's time. Stacks with the per-skill level bonus and the tool's grade |
+| `quarryRegrowGameHours` | **UNUSED** | was C05 | Geology v2 (D-070) made the quarry finite — `regrowGameHoursFor('quarry')` returns `Infinity`, so this value is no longer read. Kept in `tune.ts` only because tests reference it as a time scale |
 | `masteryUnderstandingYieldBonusAtFull` | 0.5 | D-066 pass | Ch.2 mastery made real: at full **understanding** a gather yields `1+this` times base. Normalised ABOVE `knowledgeInnateFloor`, so a novice gets exactly the base. Fractional part resolves from the seeded hash, never `Math.random`; pool-backed nodes draw the bonus from the pool (conservation) |
 | ~~`structureRepairThresholdFraction`~~ | **DELETED** | was C05 | Was 0.9. Never an availability rule — it existed to stop mending stealing the tap. With the 0.4 urgency gate it created a 40–90% band where the shelter could be mended by no input at all. Deleted, not retuned (Gate 0 Part 1) |
 | ~~`structureRepairUrgentFraction`~~ | **DELETED** | was D-065 | Was 0.4. The second half of the same priority hack. Deleted |

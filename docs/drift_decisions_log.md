@@ -3,6 +3,18 @@
 
 ---
 
+**D-070 · 2026-07-27 — GEOLOGY V2: a finite seam, and stone that returns on the tide (Gate 0 item 7).** Verified never previously done — no ledger entry existed, so it was treated as not done, per the ruling's own instruction.
+
+**Two tiers, and the difference between them is the point.** The **quarry is now genuinely finite**: its regrow interval is `Infinity`, reconcile no longer refills its pool, and a seam worked to nothing stays nothing. It visibly empties as you mine it — the pool was already there, it simply never comes back now. **Surface stone stays renewable**, and is reframed as what it physically is: the sea working the shingle over. That gets **its own morning-report line** — *"The sea has turned the shingle over. There is loose stone on the shore again."* — because the island must never silently repopulate itself in view. If a resource came back, the report says so.
+
+**D-051 is not breached, and the law is now stated more precisely.** What may never be globally exhausted is a survival-critical **resource**, not every individual **deposit**. A regression proves it rather than asserting it: mine the seam to nothing, wait a lifetime of game hours, confirm it never returns, then confirm stone is *still* obtainable from surface rock. If that test ever fails, the finite tier has breached the law and must be reverted.
+
+**Fail-then-pass (D-066 b):** with the quarry's regrow interval restored, **3 tests fail**; with the finite tier in place, 16 pass. The old "regrows to full capacity, not partially" assertion was replaced, not deleted — it now asserts the opposite, which is the honest form of a deliberate behaviour change.
+
+*(Scope note: implemented by making the EXISTING quarry the finite tier rather than adding a new `vein` node kind. The spec named either — "the quarry/a rich vein" — and the quarry is already pool-backed, already visibly depletes, and needs no world placement, render path, or save migration. A new kind would have been more code and more risk for the same rule.)*
+
+---
+
 **D-069 · 2026-07-27 — Reception: v0_13 "A Place Worth Leaving"** (director, via the library — corpus reopened per the closure rule's own clause, now **CLOSED again at ten documents, v0_4–v0_13**). Rulings: **Laws 1–12 ADOPTED as design law**, with three shapings — **(a)** Law 1 supersedes the material tier-ladder **as law**: the codex row is reframed as a *typical material sequence, not a rank*; C05's shipped tier + upkeep stand unaffected until the construction slice implements vulnerability-map progression. **(b)** Laws 9–10 and all wreckfall/catastrophe hazard content are **GATED by Law 28/D-011 offline caps**: offline, no unanswerable catastrophe may breach the protected core — secondary losses within caps, forecast where possible, the §18.2 "preserved stone core" pattern is the model. **(c)** Law 5 registers as **Law 21 restated** — one law, our number. §18 persists/does-not-persist + §18.1 continuity + §18.2 overgrown inheritance = **the Castaway Cycle slice's operational spec**, joined to the Survivor's Journal ruling ([[D-068]] — the homestead as the larger carrier). **Arrival-as-archaeology is the confirmed arrival experience.** §15–16 = coverage taxonomies; §11 homestead fauna reconciles with v0_12's population model; §19 confirms the two-island topology; §22's implementation order folds into Ch.10 as the **CONSTRUCTION slice's spine**, carrying the LDOE placement bar and the radial-circle debt with it. Law 12 and the title's thesis are flagged for the charter's next natural version bump as arc language — C1's pen, queued, not urgent. **File pending — v0_13 not yet received as a file by SON; register rows to follow once it arrives.**
 
 ---

@@ -1279,8 +1279,15 @@ async function main() {
     const normalDistance = Math.hypot((await live()).player.x - beforeToggle.player.x, (await live()).player.y - beforeToggle.player.y);
     const walkDiag = await page.evaluate(() => {
         const s = window.__drift.state();
+        //  The remaining suspects for a hard block are the DYNAMIC colliders — fire, shelter,
+        //  storage — which sit wherever this run happened to build them. Static obstacles and
+        //  nodes are already ruled out (nearest rock 8.5 m, nearest node 7.5 m from the stall
+        //  point). Their distance from the stall point is the whole question.
+        const at = (o) => (o && o.built ? { x: o.x, y: o.y, d: +Math.hypot(s.player.x - o.x, s.player.y - o.y).toFixed(2) } : null);
         return { panelOpen: window.__drift.panelOpen(), energy: +s.energy.toFixed(1), fatigue: +(s.fatigue ?? 0).toFixed(1),
-                 inv: s.inventory, yaw: +window.__drift.camera().yaw.toFixed(2) };
+                 inv: s.inventory, yaw: +window.__drift.camera().yaw.toFixed(2),
+                 player: { x: +s.player.x.toFixed(2), y: +s.player.y.toFixed(2) },
+                 fire: at(s.fire), shelter: at(s.shelter), storage: at(s.storage) };
     });
 
     await editSave('state.player = { x: 0, y: 104 };');
