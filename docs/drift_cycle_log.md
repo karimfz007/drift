@@ -118,8 +118,10 @@
 | `structureDurabilityMax` | 100 | C05 | Full durability, for any structure (shelter or storage) |
 | `structureDurabilityDecayPerGameHour` | 1 | C05 | Durability lost per game hour — ~4 days from full to 0, long enough that neglect, not attentiveness, triggers it |
 | `repairDurabilityPerWood` | 15 | C05 | Durability restored per wood spent repairing |
-| `structureRepairThresholdFraction` | 0.9 | C05 | Repair only "counts" (and wins the sleep/storage-use disjoint choice) below this fraction of max — the fix for the repair-threshold starvation bug found during the C05 build |
-| `structureRepairUrgentFraction` | 0.4 | D-065 | And repair only PRE-EMPTS the structure's primary verb (sleep / opening the box) below this fraction. The 0.9 threshold above answers "may I mend?", which is not "should mending take this tap?" — using one for the other starved sleeping and opening from ten game hours after building onward |
+| `masteryTechniqueSpeedBonusAtFull` | 0.6 | D-066 pass | Ch.2 mastery made real: at full **technique** an effortful hold takes `1/(1+this)` of base — a master works in ~62% of a novice's time. Stacks with the per-skill level bonus and the tool's grade |
+| `masteryUnderstandingYieldBonusAtFull` | 0.5 | D-066 pass | Ch.2 mastery made real: at full **understanding** a gather yields `1+this` times base. Normalised ABOVE `knowledgeInnateFloor`, so a novice gets exactly the base. Fractional part resolves from the seeded hash, never `Math.random`; pool-backed nodes draw the bonus from the pool (conservation) |
+| ~~`structureRepairThresholdFraction`~~ | **DELETED** | was C05 | Was 0.9. Never an availability rule — it existed to stop mending stealing the tap. With the 0.4 urgency gate it created a 40–90% band where the shelter could be mended by no input at all. Deleted, not retuned (Gate 0 Part 1) |
+| ~~`structureRepairUrgentFraction`~~ | **DELETED** | was D-065 | Was 0.4. The second half of the same priority hack. Deleted |
 | `shellfishRegrowGameHours` | 18 | D-051 | Fastest-regrowing kind |
 | `reedRegrowGameHours` | 24 | D-051 | |
 | `driftwoodRegrowGameHours` | 12 | D-051 | Also unconditionally tide-restocked on any qualifying absence, independent of this timer |
@@ -1385,8 +1387,6 @@ Neither of the two boundary values (`durability === 40` exactly) is tested, and 
 |---|---|---|
 | `structureDurabilityMax` | `tune.ts:374` | 100 |
 | `structureDurabilityDecayPerGameHour` | `tune.ts:377` | 1 |
-| `structureRepairThresholdFraction` | `tune.ts:386` | 0.9 → **90** |
-| `structureRepairUrgentFraction` | `tune.ts:390` | 0.4 → **40** |
 | `repairDurabilityPerWood` | `tune.ts:380` | 15 |
 | durability at build | `state.ts:851`, `:876` | 100 |
 | decay law | `reconcile.ts:221-222` | linear, floored at 0 |
