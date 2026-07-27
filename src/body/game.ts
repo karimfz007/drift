@@ -461,7 +461,11 @@ export class Game {
                 storageAction: atStorage ? this.storageActionLabelFor(s) : null,
                 repairLabel: atStorage && canRepairStructure(s, 'storage')
                     ? `Mend  ·  +${TUNE.repairDurabilityPerWood} durability`
-                    : null
+                    : null,
+                //  Whatever raw material is actually in hand — experimentation works on what
+                //  you carry, so the list is the carried materials, not a fixed menu.
+                combinable: (['wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish'] as const)
+                    .filter((m) => (s.inventory[m] ?? 0) > 0)
             },
             (tool) => {
                 const result = equipToActiveHand(session().state, tool as ReturnType<typeof ownedTools>[number]);
@@ -474,7 +478,8 @@ export class Game {
             () => { if (stowActiveHand(session().state)) session().persist(now()); },
             () => this.endPanel(),
             () => this.tryUseStorage(),
-            () => this.tryRepair('storage')
+            () => this.tryRepair('storage'),
+            (a, b) => this.onTryCombine(a, b)
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -485,6 +490,28 @@ export class Game {
             this.endPanel();
             console.error('[drift] loadout panel failed to open; control returned.', error);
         }
+    }
+
+    /**
+     * The player's own experimentation, at last reachable (director's playtest). D-063 built
+     * the whole brain for this and shipped it with no entry point; the only caller was the
+     * debug hook. Outcome is reported in plain words, because a null result that says nothing
+     * is indistinguishable from a broken button — which is how this stayed invisible.
+     */
+    private onTryCombine(a: string, b: string): void {
+        const result = tryCombine(session().state, a as 'wood', b as 'wood');
+        session().persist(now());
+        if (result && typeof result === 'object' && 'outcome' in result) {
+            const outcome = (result as { outcome: string; blueprintName?: string }).outcome;
+            if (outcome === 'no-relationship') this.explain('Nothing comes of it. You note that down.');
+            else if (outcome === 'failed') this.explain('It does not hold. Not this time.');
+            else {
+                const name = (result as { blueprintName?: string }).blueprintName;
+                this.floatText(name ? `${name} — you see how it works` : 'Something works');
+                this.cues.play(CUES.unlock);
+            }
+        }
+        this.lastActivityAt = now();
     }
 
     private openSettings(): void {

@@ -573,6 +573,9 @@ export interface LoadoutPanelView {
     storageAction: string | null;
     /** Mend button label, or null when the box does not need (or cannot take) wood. */
     repairLabel: string | null;
+    /** Materials the player can try putting together (Try-Combining, D-063 item 4).
+     *  Empty when there is nothing to experiment with. */
+    combinable: string[];
 }
 
 /**
@@ -590,7 +593,8 @@ export function showLoadout(
     onStow: () => void,
     onClose: () => void,
     onUseStorage: () => void = () => {},
-    onRepairStorage: () => void = () => {}
+    onRepairStorage: () => void = () => {},
+    onTryCombine: (a: string, b: string) => void = () => {}
 ): void {
     const el = panel(overlay, 'loadout');
     const zoneRows = view.zones.map((z) => {
@@ -621,11 +625,31 @@ export function showLoadout(
           }</div>`
         : '';
 
+    //  TRY-COMBINING'S ENTRY POINT (director's playtest). D-063 shipped the whole
+    //  experimentation brain — relationships, blueprint minting, the null-outcome journal —
+    //  and **no way for a player to reach any of it**. The only caller in the body layer was
+    //  `runtime.tryCombine`, the DEBUG hook, which is also what every device check drove: a
+    //  vacuous device pass of exactly the kind D-066 exists to catch. Third time for this
+    //  failure class after the Build button (D-053) and the loadout panel (D-065).
+    //
+    //  It lives here because this is the panel about what you are carrying, and combining is
+    //  a thing you do with what you carry. Pick two, and the button appears.
+    const combineRow = view.combinable.length >= 2
+        ? `<div class="combine-row">
+             <p class="subtitle">Put two things together and see what happens.</p>
+             <div class="combine-chips">${view.combinable.map((m) =>
+                `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
+             ).join('')}</div>
+             <button class="primary try-combine-btn" type="button" disabled>Try combining</button>
+           </div>`
+        : '';
+
     el.innerHTML = `
         <h2>${view.atStorage ? 'The store box' : 'Carried'}</h2>
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
         ${storageRow}
         ${equipRow}
+        ${combineRow}
         <div class="zones">${zoneRows}</div>
         <button class="primary close-btn" type="button">Close</button>`;
 
@@ -635,5 +659,20 @@ export function showLoadout(
     el.querySelector<HTMLButtonElement>('.stow-btn')?.addEventListener('click', () => { onStow(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.use-storage-btn')?.addEventListener('click', () => { onUseStorage(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.repair-btn')?.addEventListener('click', () => { onRepairStorage(); fade(el, onClose); });
+    //  Two-slot selection: tap a chip to pick it, tap again to drop it. The button only
+    //  wakes up when exactly two are chosen, so the verb can never fire half-formed.
+    const picked: string[] = [];
+    const tryBtn = el.querySelector<HTMLButtonElement>('.try-combine-btn');
+    el.querySelectorAll<HTMLButtonElement>('.combine-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            const mat = chip.dataset.mat ?? '';
+            const at = picked.indexOf(mat);
+            if (at >= 0) { picked.splice(at, 1); chip.classList.remove('picked'); }
+            else if (picked.length < 2) { picked.push(mat); chip.classList.add('picked'); }
+            if (tryBtn) tryBtn.disabled = picked.length !== 2;
+        });
+    });
+    tryBtn?.addEventListener('click', () => { if (picked.length === 2) { onTryCombine(picked[0], picked[1]); fade(el, onClose); } });
+
     el.querySelector<HTMLButtonElement>('.close-btn')!.addEventListener('click', () => fade(el, onClose));
 }

@@ -294,6 +294,14 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     let nodesRegrewCount = 0;
     for (const n of next.nodes) {
         if (n.available) continue;
+        //  GEOLOGY V2, the depletion CATEGORY (director's playtest). Surface stone must not
+        //  regrow on a live timer: the player watched a spent rock shrink and then pop back
+        //  to full size in front of them, which is the living-node pattern (trees, bushes —
+        //  things that visibly grow) applied to a mineral. D-070 ruled the opposite for
+        //  stone: it is restocked by the sea, OUT OF VIEW, and narrated in the morning
+        //  report. So `rock` leaves this per-node timer entirely and joins driftwood's
+        //  tide-restock branch below, which only fires on a qualifying absence.
+        if (n.kind === 'rock') continue;
         const regrowHours = regrowGameHoursFor(n.kind);
         if (!Number.isFinite(regrowHours)) continue;
         const elapsedSinceDepletion = n.depletedAtGameHours === null ? Infinity : next.gameHoursElapsed - n.depletedAtGameHours;
@@ -303,7 +311,6 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             //  No quarry refill here any more (GEOLOGY V2): the seam is finite and its
             //  regrow interval is Infinity, so it never reaches this branch at all.
             if (n.kind === 'driftwood') driftwoodRestocked = true;
-            else if (n.kind === 'rock') stoneWashedUp = true;
             else nodesRegrewCount += 1;
         }
     }
@@ -311,6 +318,18 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  node's own timer — a distinct, guaranteed mechanic ("the tide left new driftwood"),
     //  not just "eventually" like every other kind.
     if (qualifiesForReport) {
+        //  The tide works on stone as well as on driftwood — the same guaranteed,
+        //  absence-only restock, so neither can ever repopulate while being watched.
+        for (const n of next.nodes) {
+            if (n.kind === 'rock' && !n.available) {
+                const spentFor = n.depletedAtGameHours === null ? Infinity : next.gameHoursElapsed - n.depletedAtGameHours;
+                if (spentFor >= TUNE.rockRegrowGameHours) {
+                    n.available = true;
+                    n.depletedAtGameHours = null;
+                    stoneWashedUp = true;
+                }
+            }
+        }
         for (const n of next.nodes) {
             if (n.kind === 'driftwood' && !n.available) {
                 n.available = true;

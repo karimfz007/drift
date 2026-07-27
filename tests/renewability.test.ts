@@ -287,3 +287,38 @@ describe('renewability law (D-051) — no resource is globally exhaustible', () 
         expect(restored!.state.nextSalvageSpawnAtGameHours).toBe(state.nextSalvageSpawnAtGameHours);
     });
 });
+
+describe('depletion CATEGORY: stone is restocked by the tide, never in view (director playtest)', () => {
+    //  The complaint was watching a spent rock shrink and then pop back to full size in
+    //  front of the player. That is the LIVING-node pattern — trees and bushes, things that
+    //  visibly grow — applied to a mineral. D-070 ruled the opposite for stone: the sea
+    //  restocks it OUT OF VIEW and the morning report says so. The per-node regrow timer was
+    //  the wrong mechanism for it, so `rock` now uses driftwood's absence-only tide branch.
+    //  Fails on the pre-fix tree, where a short live tick regrows it (D-066 b).
+    it('a spent rock does NOT come back on a short live tick, however long the timer says', () => {
+        const state = run();
+        const rock = findNode(state, 'rk1')!;
+        gatherNode(state, 'rk1');
+        expect(rock.available).toBe(false);
+
+        //  Advance far past the rock's own 72-game-hour regrow interval, but in SMALL LIVE
+        //  TICKS — the player is standing there the whole time, as they would be during a
+        //  long session. Each tick is well under the absence threshold, so none of them may
+        //  ever repopulate the shore under their eyes.
+        let live = state;
+        const tickSeconds = 20; // a chunky live tick, still far below the absence threshold
+        const ticks = Math.ceil(((TUNE.rockRegrowGameHours + 50) * TUNE.dayLengthRealMinutes * 60 / TUNE.gameHoursPerDay) / tickSeconds);
+        for (let i = 0; i < ticks; i++) live = reconcile(live, tickSeconds).state;
+        expect(live.gameHoursElapsed).toBeGreaterThan(TUNE.rockRegrowGameHours);
+        expect(live.nodes.find((n) => n.id === 'rk1')!.available).toBe(false);
+    });
+
+    it('and it IS restocked across a real absence, with the report saying so', () => {
+        const state = run();
+        gatherNode(state, 'rk1');
+        const away = (TUNE.rockRegrowGameHours + 50) * TUNE.dayLengthRealMinutes * 60 / TUNE.gameHoursPerDay;
+        const result = reconcile(state, away);
+        expect(result.state.nodes.find((n) => n.id === 'rk1')!.available).toBe(true);
+        expect(result.result.stoneWashedUp).toBe(true);
+    });
+});

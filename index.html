@@ -214,6 +214,12 @@
         .carried-button .pack-load { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
         /*  Overloaded is the one state the pack must not report quietly (D-059). */
         .carried-button .pack-load.heavy { color: var(--danger); }
+        /*  Try-Combining's surface. Chips are pick-to-select; the button stays disabled
+            until exactly two are chosen, so the verb cannot fire half-formed.  */
+        .panel .combine-row { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+        .panel .combine-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .panel .combine-chip.picked { outline: 2px solid var(--good); color: var(--fg); }
+        .panel .try-combine-btn[disabled] { opacity: 0.45; }
         .panel .storage-row {
             display: flex;
             flex-wrap: wrap;
