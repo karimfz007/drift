@@ -78,7 +78,9 @@
         }
 
         .vital { display: grid; grid-template-columns: 58px 1fr auto; align-items: center; gap: 7px; }
-        .vital-name { font-size: 10px; letter-spacing: 0.12em; color: var(--dim); }
+        /*  11px is this project's legibility floor, enforced by the Gate 0 sweep — the
+            vital labels sat at 10px and were the only text below it. */
+        .vital-name { font-size: 11px; letter-spacing: 0.12em; color: var(--dim); }
 
         .vital-bar {
             width: min(40vw, 190px);
@@ -209,7 +211,7 @@
         .carried-button .pack-body { fill: rgba(150, 116, 74, 0.85); stroke: var(--edge); stroke-width: 1; }
         .carried-button .pack-flap { fill: rgba(94, 71, 44, 0.95); }
         .carried-button .pack-strap { stroke: rgba(150, 116, 74, 0.95); }
-        .carried-button .pack-load { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
+        .carried-button .pack-load { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
         /*  Overloaded is the one state the pack must not report quietly (D-059). */
         .carried-button .pack-load.heavy { color: var(--danger); }
         .panel .storage-row {
