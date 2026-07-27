@@ -567,10 +567,24 @@ describe('sleeping rough — anywhere, always worse (director request)', () => {
         expect(rough.fatigue).toBeGreaterThan(sheltered.fatigue);
     });
 
-    it('shelter-sleep itself is UNCHANGED — this adds a worse option, it does not nerf the good one', () => {
-        //  If this ever fails, the fallback has quietly cost the player their shelter's value.
+    //  C3 finding F5 on D-073: the assertion below used to be `energy > 10` and
+    //  `fatigue < 80` — which passes on a **45% nerf** to the recovery rate, proven by
+    //  experiment. It detected gross breakage and nothing else, while being cited in the
+    //  ledger as the guard protecting shelter-sleep's value. It now bounds the RATE against
+    //  the tune table, so any change to the sheltered numbers has to be deliberate.
+    it('shelter-sleep is UNCHANGED — the rate is bounded, not merely non-zero', () => {
         const sheltered = sleepFrom(true);
-        expect(sheltered.energy).toBeGreaterThan(10);
-        expect(sheltered.fatigue).toBeLessThan(80);
+        //  The bound is an ABSOLUTE number, deliberately not derived from the tune values it
+        //  is guarding. Deriving it was my first attempt and it reproduced the exact flaw
+        //  C3 found: an expectation computed from `energyRecoveryPerGameHourResting` scales
+        //  with any nerf to it, so a 45% cut still passed. A hard figure cannot do that.
+        //
+        //  84 is Ch.6's own shipped arithmetic: 8 game hours x 7/hour x 1.5 = 84. If the
+        //  tune changes, this test FAILS and someone has to decide that on purpose — which
+        //  is the entire job of a guard on a value the ledger promises is unchanged.
+        const SHELTERED_SLEEP_ENERGY_GAIN = 84;
+        const actualGain = sheltered.energy - 10;
+        expect(actualGain).toBeGreaterThan(SHELTERED_SLEEP_ENERGY_GAIN * 0.98);
+        expect(actualGain).toBeLessThanOrEqual(SHELTERED_SLEEP_ENERGY_GAIN * 1.02);
     });
 });

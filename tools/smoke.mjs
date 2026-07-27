@@ -25,7 +25,12 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { acquire as acquireBench } from './bench-lock.mjs';
 import puppeteer from 'puppeteer-core';
+
+//  How long this run will queue for the bench before giving up. Queueing is the default
+//  because a serialized run is what we want; 0 refuses at once, which is what a test wants.
+const BENCH_WAIT_MS = process.env.BENCH_WAIT_MS === undefined ? 30 * 60 * 1000 : Number(process.env.BENCH_WAIT_MS);
 
 const URL_UNDER_TEST = process.argv[2]?.startsWith('http') ? process.argv[2] : 'http://127.0.0.1:4173/';
 const HEADFUL = process.argv.includes('--headful');
@@ -162,31 +167,18 @@ async function preflight(url) {
     //  Two changes: refuse to start at all if another harness is live, and never kill a
     //  browser this run does not own. Chrome launched by this process is tracked and torn
     //  down at exit; anything else is left strictly alone.
-    const lockPath = join(fileURLToPath(new URL('../.smoke/', import.meta.url)), 'harness.lock');
-    mkdirSync(dirname(lockPath), { recursive: true });
-    if (existsSync(lockPath)) {
-        let holder = 'unknown';
-        try { holder = readFileSync(lockPath, 'utf8').trim(); } catch { /* unreadable */ }
-        const [pidText] = holder.split(' ');
-        const otherPid = Number(pidText);
-        let alive = false;
-        if (Number.isFinite(otherPid) && otherPid > 0) {
-            try { process.kill(otherPid, 0); alive = true; } catch { alive = false; }
-        }
-        if (alive) {
-            console.error(`  REFUSED: another harness run is already live (${holder}).`);
-            console.error('  Concurrent runs are forbidden (D-072): they kill each other’s browser and');
-            console.error('  the failures then look like flaky checks. Wait for it, or stop it first.');
-            process.exit(1);
-        }
-        console.log(`  Clearing a stale harness lock (${holder} is no longer running).`);
-        try { unlinkSync(lockPath); } catch { /* raced; fine */ }
+    //  THE BENCH MUTEX (D-072, completed). One exclusive lock over harness runs, builds and
+    //  audits alike — not one lock per activity. The failures this closes were a second
+    //  harness killing the first's browser, and later a second BUILD corrupting a running
+    //  harness's `dist/`. Sharing the bench in any combination has cost four sessions of
+    //  misdiagnosis, so nobody shares it: contenders queue, or refuse.
+    try {
+        await acquireBench('device harness', BENCH_WAIT_MS);
+    } catch (e) {
+        console.error(`  REFUSED: ${e.message}`);
+        process.exit(1);
     }
-    writeFileSync(lockPath, `${process.pid} started ${new Date().toISOString()}`);
-    const releaseLock = () => { try { unlinkSync(lockPath); } catch { /* already gone */ } };
-    process.on('exit', releaseLock);
-    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { releaseLock(); process.exit(1); });
-    console.log('  Bench lock taken — this run owns the harness.');
+    console.log('  Bench mutex acquired — this run owns the bench (harness, builds and audits alike).');
     console.log('  Not killing any Chrome: this run tears down only the browser it launches (D-072).');
 
     try {
@@ -570,16 +562,19 @@ async function main() {
     //  must NOT act — the castaway walks into interactRadiusM first, then acts (D-042; C3 note
     //  N2). This gate (`actOnArrival` runs only when `pendingInReach()`) is shared by every
     //  verb including the fire, so locking it here locks the exact rule that defused the fire.
-    //  We inject the intention via `__drift.intend` rather than a tap: reliably tapping a
-    //  distant 3-D object from a headless projected ground-point is not feasible, but injecting
-    //  the intention IS exactly what a tap does — the game still gates the *action* on reach.
+    //  HAZARD #4 CONVERSION (D-075). This used to inject the intention via `__drift.intend`,
+    //  reasoning that "injecting the intention IS exactly what a tap does". That reasoning is
+    //  exactly what the law forbids: it assumes the path under test rather than exercising
+    //  it, and it is how experimentation shipped unreachable. The palm is now faced and
+    //  tapped for real; the walk-then-act behaviour this check is about is unchanged.
     await editSave('state.player = { x: -40, y: 66 };'); // ~14 m south of coconut palm cp1 (-40,52)
     const availOf = (id) => page.evaluate((i) => window.__drift.state().nodes.find((n) => n.id === i)?.available, id);
     const distTo = async (x, z) => { const s = await live(); return Math.hypot(s.player.x - x, s.player.y - z); };
     const palmNode = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'cp1'));
     check('REGRESSION #3 setup — a coconut palm sits ~14 m out of reach', !!palmNode && palmNode.available, palmNode ? `cp1 at ${palmNode.x},${palmNode.y}` : 'missing');
     const dStart = await distTo(palmNode.x, palmNode.y);
-    await page.evaluate(() => window.__drift.intend('cp1')); // the tap intention, set from afar
+    await faceNode(palmNode.x, palmNode.y);
+    await tapWorld(palmNode.x, palmNode.y, 55); // a REAL tap on the distant palm
     const intended = await page.evaluate(() => window.__drift.pending());
     check('REGRESSION #3 — the intention registers', intended && intended.id === 'cp1');
     await sleep(450); // a beat: 14 m is not yet crossed — it must NOT have acted yet
@@ -2300,23 +2295,48 @@ async function main() {
         state.knowledge.nullPairs = []; state.blueprints = []; state.experimentCount = 0;
         for (const d of Object.keys(state.knowledge.domains)) state.knowledge.domains[d].technique = 100;
     `);
+    //  HAZARD #4 CONVERSION (D-075). This whole section used to call
+    //  `__drift.tryCombine(a, b)` — a DEBUG HOOK — and passed for two packages while the
+    //  feature had **no player entry point at all**. The hook proved the brain worked and
+    //  said nothing about whether a human could reach it. It is now driven the way a player
+    //  drives it: open the pack, pick two chips, press the button.
+    const combineViaPlayerPath = async (a, b) => {
+        const opened = await realTapDom('.carried-button');
+        if (!opened.ok) return { ok: false, reason: `could not open the pack: ${opened.reason}` };
+        await sleep(500);
+        const pickA = await realTapDom(`.combine-chip[data-mat="${a}"]`);
+        const pickB = await realTapDom(`.combine-chip[data-mat="${b}"]`);
+        if (!pickA.ok || !pickB.ok) return { ok: false, reason: `chips unreachable: ${pickA.reason ?? ''} ${pickB.reason ?? ''}` };
+        const armed = await page.evaluate(() => {
+            const btn = document.querySelector('.try-combine-btn');
+            return btn ? { present: true, disabled: btn.disabled } : { present: false };
+        });
+        if (!armed.present || armed.disabled) return { ok: false, reason: `button ${JSON.stringify(armed)}` };
+        const pressed = await realTapDom('.panel.loadout .try-combine-btn');
+        await sleep(900);
+        return { ok: pressed.ok, reason: pressed.reason ?? null };
+    };
+
     const beforeExp = await live();
-    const expResult = await page.evaluate(() => window.__drift.tryCombine('berries', 'wood'));
+    const nullAttempt = await combineViaPlayerPath('berries', 'wood');
     await sleep(300);
     const afterNull = await live();
-    check('D-063 item 4 — a no-relationship attempt is journalled, teaching via the D-055 path', expResult && expResult.outcome === 'no-relationship' && afterNull.knowledge.nullPairs.length > beforeExp.knowledge.nullPairs.length, JSON.stringify(expResult && expResult.outcome));
+    check('D-075 — experimentation is reachable BY THE PLAYER (pack → two chips → button)', nullAttempt.ok, nullAttempt.reason ?? 'ok');
+    check('D-063 item 4 — a no-relationship attempt is journalled, teaching via the D-055 path', afterNull.knowledge.nullPairs.length > beforeExp.knowledge.nullPairs.length, `nullPairs ${beforeExp.knowledge.nullPairs.length} -> ${afterNull.knowledge.nullPairs.length}`);
     check('D-063 item 4 — the attempt cost the body (energy/hunger/thirst/time), win or lose', afterNull.energy < beforeExp.energy && afterNull.hunger < beforeExp.hunger && afterNull.thirst < beforeExp.thirst, `energy ${beforeExp.energy.toFixed(1)}->${afterNull.energy.toFixed(1)}, hunger ${beforeExp.hunger.toFixed(1)}->${afterNull.hunger.toFixed(1)}`);
 
-    let minted = null;
-    for (let i = 0; i < 30; i++) {
-        await page.evaluate(() => { const s = window.__drift.state(); s.energy = 100; s.inventory.wood = 20; s.inventory.fiber = 20; });
-        const r = await page.evaluate(() => window.__drift.tryCombine('wood', 'fiber'));
-        if (r && r.outcome === 'invented') { minted = r; break; }
+    //  ...and a real relationship, minted the same way. Each attempt is a full player
+    //  interaction, so this is deliberately fewer rounds than the old hook loop's 30.
+    let mintedBlueprints = 0;
+    for (let i = 0; i < 12 && mintedBlueprints === 0; i++) {
+        await editSave('state.energy = 100; state.inventory.wood = 20; state.inventory.fiber = 20;');
+        const attempt = await combineViaPlayerPath('wood', 'fiber');
+        if (!attempt.ok) break;
+        mintedBlueprints = (await live()).blueprints.length;
     }
-    await sleep(300);
     const afterMint = await live();
-    check('D-063 item 4 — a real relationship eventually mints a NAMED Blueprint (§10.6)', Boolean(minted && minted.blueprint && minted.blueprint.name), minted ? JSON.stringify(minted.blueprint && minted.blueprint.name) : 'never succeeded in 30 attempts');
-    check('D-063 item 4 — the plan records inputs, version, workmanship and authorship (§10.5)', afterMint.blueprints.length === 1 && afterMint.blueprints[0].version >= 1 && Boolean(afterMint.blueprints[0].workmanship) && Boolean(afterMint.blueprints[0].author), JSON.stringify(afterMint.blueprints[0] ?? null));
+    check('D-063 item 4 — a real relationship eventually mints a NAMED Blueprint (§10.6), via the player path', mintedBlueprints > 0 && Boolean(afterMint.blueprints[0]?.name), afterMint.blueprints[0]?.name ?? 'never succeeded in 12 player attempts');
+    check('D-063 item 4 — the plan records inputs, version, workmanship and authorship (§10.5)', afterMint.blueprints.length >= 1 && afterMint.blueprints[0].version >= 1 && Boolean(afterMint.blueprints[0].workmanship) && Boolean(afterMint.blueprints[0].author), JSON.stringify(afterMint.blueprints[0] ?? null));
 
     // ================================================================
     // GATE 0 SWEEP (automated half). The Android half is the director's own concurrent

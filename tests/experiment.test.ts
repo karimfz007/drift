@@ -272,3 +272,51 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
         expect(hasTried(s, 'wood', 'fiber')).toBe(false);
     });
 });
+
+// ---- F3 remediation: the regression FIX 2 shipped without --------------
+
+describe('experimentation outcomes are a closed contract (C3 finding F3/F2 on D-073)', () => {
+    //  FIX 2 shipped with no regression at all, and the body then tested
+    //  `outcome === 'failed'` — a string that is not one of the five real outcomes — so
+    //  `failed-attempt`, `already-known` AND `refused` were every one of them announced to
+    //  the player as a SUCCESS, with the unlock cue. An `as { outcome: string }` cast is
+    //  what let it compile. This locks the contract the body switches on.
+    const OUTCOMES = ['invented', 'failed-attempt', 'no-relationship', 'already-known', 'refused'];
+
+    it('every outcome tryCombine can return is one of the five named ones', () => {
+        const seen = new Set<string>();
+        for (let i = 0; i < 400; i++) {
+            const s = createInitialState(i);
+            s.energy = i % 3 === 0 ? 0 : 100;          // drive refusals too
+            s.inventory.wood = i % 5; s.inventory.fiber = i % 4; s.inventory.berries = i % 3;
+            for (const d of Object.keys(s.knowledge.domains) as Array<keyof typeof s.knowledge.domains>) {
+                s.knowledge.domains[d].technique = (i * 7) % 100;
+            }
+            const pairs: Array<[string, string]> = [['wood', 'fiber'], ['berries', 'wood'], ['wood', 'wood']];
+            for (const [a, b] of pairs) {
+                const r = tryCombine(s, a as 'wood', b as 'wood');
+                expect(OUTCOMES).toContain(r.outcome);
+                seen.add(r.outcome);
+            }
+        }
+        //  WITNESS (D-066 a): the sweep must actually reach several distinct outcomes, or
+        //  "they are all valid" is a claim about one branch wearing a corpus's clothes.
+        expect(seen.size).toBeGreaterThanOrEqual(3);
+    });
+
+    it('only `invented` carries a blueprint — the success branch cannot be entered without one', () => {
+        //  The body announces a success and names the plan from `result.blueprint`. If any
+        //  non-invented outcome ever carried one, or `invented` ever lacked one, the message
+        //  would lie. This is the assertion that would have caught F2's real damage.
+        for (let i = 0; i < 300; i++) {
+            const s = createInitialState(i);
+            s.energy = 100; s.inventory.wood = 20; s.inventory.fiber = 20;
+            for (const d of Object.keys(s.knowledge.domains) as Array<keyof typeof s.knowledge.domains>) {
+                s.knowledge.domains[d].technique = 100;
+            }
+            const r = tryCombine(s, 'wood', 'fiber');
+            if (r.outcome === 'invented') expect(r.blueprint?.name).toBeTruthy();
+            else expect(r.blueprint).toBeNull();
+        }
+    });
+});

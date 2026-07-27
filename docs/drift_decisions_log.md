@@ -3,6 +3,28 @@
 
 ---
 
+**D-076 · 2026-07-27 — Build law 12, the Effectivity Law** (ratified, applies from ratification, no retroactive audit required). Every ledger law and amendment must declare its **effectivity class**, explicitly, going forward:
+
+**OPERATIVE** — in force against the live game; its satisfying mechanism is **NAMED** (a property test, a code path, an enforced check) and either already exists or lands in the same batch. **A live-game guarantee with no shipped witness is illegal under this law.** *This law's own witness is the docs-integrity check plus C3's audit reading — stated explicitly here so it does not become the first law to violate itself.*
+
+**DESIGN-BINDING** — governs design and future builds; its trigger or slice is **NAMED**; marked explicitly as not-yet-live. The Castaway Cycle's *"nothing implements now"* ([[D-067]]) and the social-economy first law ([[D-054]]) are the canonical precedents.
+
+**The forbidden class is the unmarked middle** — law-shaped prose that claims the present with no witness.
+
+**Rationale:** this law, the Vacuity Law ([[D-066]]), standing hazard #4 ([[D-075]]), and the five-axis evidence status model are one discipline across four domains — **NO CLAIM WITHOUT A WITNESS.** Tests witness code; laws witness mechanisms; reports witness their own audit legs; status witnesses evidence.
+
+**Retroactivity:** applies from ratification forward only — the 74 existing ledger entries are not audited against it, which is what makes ratification against the live ledger safe rather than invalidating.
+
+---
+
+**D-075 · 2026-07-27 — Standing hazard #4 (build law 11): "A debug hook driving a device check is not proof of a player path."**
+
+Every player-facing capability must be device-verified **through the player's own route**: real input on the real visible control (D-053's `isVisible` standard). **Debug hooks may READ state, never DRIVE path verification.** A one-time audit of the existing harness is required — convert every hook-driven check found to a real interaction path, fail-then-pass per the Vacuity Law.
+
+*(Named because it had already happened twice and shipped both times. D-063's experimentation checks drove `__drift.tryCombine()` directly and passed for two packages while the feature had **no player entry point whatsoever** — found only when the director played it (D-073). The same shape put D-063's loadout checks on a panel the `.inv` row never opened. A hook-driven check proves the brain works; it says nothing about whether a human can reach it.)*
+
+---
+
 **D-074 · 2026-07-27 — C3 returned FAIL on D-073; FIX 5 reverted, F2 and F4 fixed.**
 
 **The audit was right and the finding was blocking.** Making the worn pack pickable put an opaque, camera-facing collider between the player and everything they walk up to. Both node resolvers use `scene.pick`, which returns the **nearest** pickable mesh — and a pack worn on a body drawn at the centre of a third-person view is nearer than any target. At interaction range it won the ray: `pickNode`'s exact-hit branch got the pack, and its near-miss fallback then measured from the survivor's own body, ~1.7 m out, past `nodeTapSlack` (0.9). **The gather never fired.**
