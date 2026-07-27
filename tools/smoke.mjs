@@ -852,26 +852,82 @@ async function main() {
 
     //  Upkeep: repair only wins the disjoint choice once durability has meaningfully lapsed
     //  (REGRESSION — cosmetic decay must not starve sleep/storage-use every tap).
-    await editSave('state.shelter.durability = 40; state.inventory.wood = 10;');
+    await editSave('state.shelter.durability = 22; state.inventory.wood = 10;');
     await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
     await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
     await tapWorld(afterShelter.shelter.x, afterShelter.shelter.y, 55);
     await sleep(400);
     const afterRepair = await live();
-    check('a meaningfully damaged shelter repairs (not sleeps) when wood is held', afterRepair.shelter.durability > 40 && afterRepair.inventory.wood === 9, `durability ${afterRepair.shelter.durability.toFixed(1)}, wood ${afterRepair.inventory.wood}`);
+    check('a FAILING shelter repairs (not sleeps) when wood is held', afterRepair.shelter.durability > 22 && afterRepair.inventory.wood === 9, `durability ${afterRepair.shelter.durability.toFixed(1)}, wood ${afterRepair.inventory.wood}`);
+
+    //  URGENT FIX (2026-07-27) REGRESSION — the other half of that rule, which was never
+    //  checked and was wrong: a shelter that is merely worn (repairable, not failing) must
+    //  still SLEEP on a tap. Repair applies below 90% durability and decay is 1/game-hour,
+    //  so from nine game hours after building onward every tap repaired instead, for anyone
+    //  carrying wood. `durability 60` sits squarely in that window.
+    await editSave('state.shelter.durability = 60; state.inventory.wood = 10; state.energy = 12;');
+    await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
+    await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
+    const beforeWornTap = await live();
+    await tapWorld(afterShelter.shelter.x, afterShelter.shelter.y, 55);
+    await sleep(600);
+    const wornReportTap = await realTapDom('.report button');
+    await sleep(400);
+    const afterWornTap = await live();
+    check('URGENT — a merely WORN shelter still sleeps on a tap (repair must not starve it)', wornReportTap.ok && afterWornTap.gameHoursElapsed > beforeWornTap.gameHoursElapsed + 1 && afterWornTap.inventory.wood === 10, `Δhours ${(afterWornTap.gameHoursElapsed - beforeWornTap.gameHoursElapsed).toFixed(2)}, wood ${afterWornTap.inventory.wood}, durability ${afterWornTap.shelter.durability.toFixed(1)}`);
+
+    //  URGENT FIX — the shelter's whole silhouette is the target, not just the roof slab.
+    //  The poles were `isPickable = false`, so a tap on the obvious part of the shelter went
+    //  through to the terrain BEHIND it and resolved to nothing; sleep could only be
+    //  triggered from the one patch of ground where the ray happened to land near the
+    //  centre. Tapping ABOVE the base point is exactly the tap that used to fall through.
+    await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
+    await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
+    const pendBefore = await page.evaluate(() => window.__drift.pending());
+    const shelterScreen = await screenOf(afterShelter.shelter.x, afterShelter.shelter.y);
+    let bodyTapKind = 'no-screen-point';
+    if (shelterScreen) {
+        await tapAt(shelterScreen.x, shelterScreen.y - 40, 55);
+        await sleep(250);
+        const pend = await page.evaluate(() => window.__drift.pending());
+        bodyTapKind = pend ? pend.kind : 'none';
+    }
+    check('URGENT — tapping the shelter BODY (not just the ground at its base) targets it', bodyTapKind === 'shelter', `pending ${pendBefore ? pendBefore.kind : 'none'} -> ${bodyTapKind}`);
 
     //  Storage: the disjoint deposit-vs-withdraw rule, exercised for real.
     await editSave(`state.inventory = { wood: 6, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0 };`);
     await approach(afterStorage.storage.x, afterStorage.storage.y, 20);
     await faceNode(afterStorage.storage.x, afterStorage.storage.y);
+    //  URGENT FIX (2026-07-27): the tap OPENS the box. It used to run a silent bulk move,
+    //  and before that a repair — the director's report was "the storage box shows +15
+    //  durability instead of opening contents", which is repair winning a priority it should
+    //  never have had. Storage durability has decayed by now and the player is holding wood,
+    //  so this is precisely the state that used to repair.
+    const storageDurBefore = (await live()).storage.durability;
     await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
-    await sleep(400);
+    await sleep(600);
+    const storageOpened = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout');
+        if (!el) return null;
+        return {
+            heading: el.querySelector('h2') ? el.querySelector('h2').textContent.trim() : '',
+            hasUse: Boolean(el.querySelector('.use-storage-btn')),
+            opacity: getComputedStyle(el).opacity
+        };
+    });
+    const afterOpenTap = await live();
+    check('URGENT — tapping the storage box OPENS it, and never silently repairs it', Boolean(storageOpened) && afterOpenTap.storage.durability <= storageDurBefore + 0.01 && afterOpenTap.inventory.wood === 6, `panel ${storageOpened ? storageOpened.heading : 'ABSENT'}, durability ${storageDurBefore.toFixed(1)} -> ${afterOpenTap.storage.durability.toFixed(1)}, wood ${afterOpenTap.inventory.wood}`);
+    check('URGENT — the opened box names what the move will do, rather than guessing for you', Boolean(storageOpened) && storageOpened.hasUse);
+    const depositTap = await realTapDom('.panel.loadout .use-storage-btn');
+    await sleep(700);
     const afterDeposit = await live();
-    check('tapping storage while carrying raw materials deposits them', afterDeposit.inventory.wood === 0 && afterDeposit.storage.stored.wood === 6, `inv.wood ${afterDeposit.inventory.wood}, stored.wood ${afterDeposit.storage.stored.wood}`);
+    check('storing from inside the opened box deposits what you carry', depositTap.ok && afterDeposit.inventory.wood === 0 && afterDeposit.storage.stored.wood === 6, `inv.wood ${afterDeposit.inventory.wood}, stored.wood ${afterDeposit.storage.stored.wood}`);
     await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
-    await sleep(400);
+    await sleep(600);
+    const withdrawTap = await realTapDom('.panel.loadout .use-storage-btn');
+    await sleep(700);
     const afterWithdraw = await live();
-    check('tapping storage empty-handed withdraws a batch', afterWithdraw.inventory.wood > 0 && afterWithdraw.storage.stored.wood < afterDeposit.storage.stored.wood, `inv.wood ${afterWithdraw.inventory.wood}, stored.wood ${afterWithdraw.storage.stored.wood}`);
+    check('taking from the opened box empty-handed withdraws a batch', withdrawTap.ok && afterWithdraw.inventory.wood > 0 && afterWithdraw.storage.stored.wood < afterDeposit.storage.stored.wood, `inv.wood ${afterWithdraw.inventory.wood}, stored.wood ${afterWithdraw.storage.stored.wood}`);
 
     // ================================================================
     // C1 DIAGNOSTIC RULING — D-045 lineage: sequential interactions after a fell
@@ -906,9 +962,11 @@ async function main() {
     await faceNode(afterStorage.storage.x, afterStorage.storage.y);
     const storedBefore = (await live()).storage.stored.wood;
     await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
-    await sleep(400);
+    await sleep(600);
+    const fellThenStoreTap = await realTapDom('.panel.loadout .use-storage-btn');
+    await sleep(700);
     const afterFellThenStorage = await live();
-    check('REGRESSION — the tap right after a fell deposits into storage, not silence', afterFellThenStorage.inventory.wood === 0 && afterFellThenStorage.storage.stored.wood === storedBefore + 4, `inv.wood ${afterFellThenStorage.inventory.wood}, stored.wood ${storedBefore}→${afterFellThenStorage.storage.stored.wood}`);
+    check('REGRESSION — the tap right after a fell reaches storage, not silence', fellThenStoreTap.ok && afterFellThenStorage.inventory.wood === 0 && afterFellThenStorage.storage.stored.wood === storedBefore + 4, `inv.wood ${afterFellThenStorage.inventory.wood}, stored.wood ${storedBefore}→${afterFellThenStorage.storage.stored.wood}`);
 
     //  Interleave, per the ruling: fell -> gather (a tap-kind node, not hold) -> fell again.
     //  Reed clumps (rd1-rd3) cluster right by the pond, inland of the trees — teleport there
@@ -940,9 +998,38 @@ async function main() {
     await editSave(`state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0 }; state.storage.stored = { wood: 0, stone: 0, fiber: 0 }; state.player = { x: ${afterStorage.storage.x - 1.5}, y: ${afterStorage.storage.y} };`);
     await approach(afterStorage.storage.x, afterStorage.storage.y, 20);
     await faceNode(afterStorage.storage.x, afterStorage.storage.y);
-    const failedTapsBefore = (await live()).trace.failedInteractionTaps;
+    //  URGENT FIX (2026-07-27) rewrote what this tap does. An empty box is no longer a
+    //  "nothing to do" tap that has to be explained after the fact — the box OPENS and says
+    //  so with its contents in front of you, which is the same fail-loud duty discharged
+    //  earlier and more plainly. So the assertion moves rather than being dropped: the box
+    //  must open, and it must name the empty state instead of showing a dead panel.
     await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
-    await sleep(300);
+    await sleep(600);
+    const emptyBox = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout');
+        if (!el) return null;
+        return {
+            text: el.textContent.replace(/\s+/g, ' ').trim(),
+            hasUse: Boolean(el.querySelector('.use-storage-btn')),
+            opacity: parseFloat(getComputedStyle(el).opacity)
+        };
+    });
+    check('fail-loud — an EMPTY box still opens and says so, rather than doing nothing silently', Boolean(emptyBox) && emptyBox.opacity > 0.5 && !emptyBox.hasUse && /empty/i.test(emptyBox.text), emptyBox ? `opacity ${emptyBox.opacity}, use-btn ${emptyBox.hasUse}` : 'panel ABSENT');
+    await realTapDom('.panel.loadout .close-btn');
+    await sleep(700);
+
+    //  The generic fail-loud law still needs a genuine nothing-to-do tap, so it moves to one
+    //  the new storage behaviour cannot absorb: the pond, with a full flask AND full thirst,
+    //  which is the one branch there that has nothing left to offer. (Not the fire — a wood-
+    //  less fire tap goes through `deniedFire`, which hints but deliberately does NOT mark a
+    //  failed tap, so it would not exercise this law at all.)
+    const FAIL_POND = { x: -22, y: 8 };
+    await editSave('state.thirst = 100; state.tools.flask = true; state.tools.flaskSips = 1;');
+    await approach(FAIL_POND.x, FAIL_POND.y, 40);
+    await faceNode(FAIL_POND.x, FAIL_POND.y);
+    const failedTapsBefore = (await live()).trace.failedInteractionTaps;
+    await tapWorld(FAIL_POND.x, FAIL_POND.y, 55);
+    await sleep(500);
     const failedTapsAfter = (await live()).trace.failedInteractionTaps;
     check('fail-loud — a tap that reaches something real but has nothing to do explains why and traces it, never silently', failedTapsAfter > failedTapsBefore, `${failedTapsBefore} → ${failedTapsAfter}`);
 
@@ -1842,7 +1929,61 @@ async function main() {
         state.energy = 100;
     `);
     const carriedTap = await realTapDom('.carried-button');
-    check('D-063 — the loadout panel opens from its own labelled button', carriedTap.ok, carriedTap.reason ?? '');
+    check('D-063 — the loadout panel opens from the backpack', carriedTap.ok, carriedTap.reason ?? '');
+
+    //  ==== URGENT FIX (2026-07-27) — THE FREEZE REGRESSION ====================
+    //  The shipped bug: `showLoadout` was the one panel that never added the `visible`
+    //  class, and `.panel` is `opacity: 0` until it does. So the panel WAS created, WAS
+    //  full-screen (`inset: 0`) and WAS `pointer-events: auto` — an invisible sheet that
+    //  swallowed every tap, while `panelOpen` made Settings refuse to open too and the
+    //  render loop kept advancing the clock. Total input freeze with time still running.
+    //
+    //  Every previous check here passed straight THROUGH that bug, because "the panel is in
+    //  the DOM and its buttons respond to a scripted tap" is true of an invisible panel.
+    //  These assert what the player actually needs: that they can SEE it, and that the game
+    //  is still theirs afterwards.
+    await sleep(500);
+    const freezeProbe = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout');
+        if (!el) return null;
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return {
+            opacity: parseFloat(style.opacity),
+            visibility: style.visibility,
+            display: style.display,
+            coversScreen: rect.width > window.innerWidth * 0.5 && rect.height > window.innerHeight * 0.5
+        };
+    });
+    check('URGENT — the opened panel is actually VISIBLE, not a transparent sheet over the game', Boolean(freezeProbe) && freezeProbe.opacity > 0.5 && freezeProbe.visibility === 'visible' && freezeProbe.display !== 'none', freezeProbe ? `opacity ${freezeProbe.opacity}, ${freezeProbe.visibility}, ${freezeProbe.display}, covers ${freezeProbe.coversScreen}` : 'panel not found');
+
+    //  Close it, then prove the game is genuinely responsive again — not merely that the
+    //  panel element left the DOM. Settings opening is the exact thing the director found
+    //  dead ("no input responds, including Settings"), so it is the honest liveness probe.
+    await realTapDom('.panel.loadout .close-btn');
+    await sleep(700);
+    const settingsAfterFreeze = await realTapDom('.settings-button');
+    await sleep(600);
+    const settingsUp = await page.evaluate(() => {
+        const el = document.querySelector('.panel.settings');
+        return Boolean(el) && parseFloat(getComputedStyle(el).opacity) > 0.5;
+    });
+    check('URGENT — the game REMAINS RESPONSIVE after the panel is used (Settings still opens)', settingsAfterFreeze.ok && settingsUp, `tap ${settingsAfterFreeze.ok ? 'ok' : settingsAfterFreeze.reason}, settings visible ${settingsUp}`);
+    await realTapDom('.panel.settings .done');
+    await sleep(700);
+
+    //  And the clock must not have been running while the player was locked out of it: the
+    //  backstop counts every time it had to take control back. Above zero means a panel held
+    //  control without ever showing itself — the recovery kept the session alive, but the
+    //  underlying defect is real and this must fail on it.
+    const recoveries = await page.evaluate(() => window.__drift.panelRecoveries());
+    check('URGENT — the freeze backstop never had to fire (no panel held control while invisible)', recoveries === 0, `panelRecoveries ${recoveries}`);
+
+    const reopen = await realTapDom('.carried-button');
+    await sleep(500);
+    check('URGENT — and the backpack still opens after all of that', reopen.ok && (await panelOpen()), reopen.reason ?? '');
+    //  ==== end freeze regression =============================================
+
     await sleep(500);
     const panelProbe = await page.evaluate(() => {
         const el = document.querySelector('.panel.loadout');

@@ -384,6 +384,10 @@ export const TUNE = {
      *  and repair — checked first — would starve sleep/storage-use nearly every tap, the
      *  same one-condition-always-true bug class that starved Build-fire in C03. */
     structureRepairThresholdFraction: 0.9,
+    /** [TUNE] Below this fraction of full durability, mending pre-empts the structure's
+     *  primary verb (sleep / opening storage). Above it, repair is available but never
+     *  steals the tap — see `repairIsUrgent`. 0.4 is ~2.5 days of decay from full. */
+    structureRepairUrgentFraction: 0.4,
 
     // ---- Renewability law (D-051) — no resource is globally exhaustible ----
     /** [TUNE] D-051 — game hours for a spent node of each kind to regrow. First-pass

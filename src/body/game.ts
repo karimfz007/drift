@@ -31,6 +31,7 @@ import {
     canFillFlask,
     canLightTorch,
     canRepairStructure,
+    repairIsUrgent,
     craftAxe,
     craftStoneHammer,
     craftTorch,
@@ -77,6 +78,7 @@ import { Controls } from './controls';
 import { FireView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
 import {
     addCarriedButton,
+    paintBackpackLoad,
     addSettingsButton,
     Hud,
     levelToast,
@@ -172,6 +174,10 @@ export class Game {
      *  off by default. Multiplies `walkSpeedMps` at use; the base constant never changes. */
     private testSpeedEnabled = false;
     private deathShown = false;
+    //  Freeze backstop (see guardPanelLock): when control was taken but nothing visible
+    //  holds it, and when the DOM was last probed for that.
+    private panelMissingSinceMs = 0;
+    private lastPanelProbeAt = 0;
 
     constructor(
         private readonly canvas: HTMLCanvasElement,
@@ -323,6 +329,52 @@ export class Game {
         window.setTimeout(restore, 0);
     }
 
+    /**
+     * The backstop for the whole freeze class (URGENT FIX, 2026-07-27).
+     *
+     * `beginPanel` commits the control transfer *before* the panel is proven to be on
+     * screen, so anything that goes wrong afterwards — a throw mid-render, markup that
+     * never reveals itself — leaves `panelOpen === true` with nothing visible to close.
+     * Every other panel's `if (runtime.panelOpen) return` guard then refuses too, Settings
+     * included, while the render loop keeps ticking the clock. The player is locked out of
+     * their own game with no way back but a reload, and on a permanent-death game that is a
+     * safety failure, not a papercut.
+     *
+     * So: if control is held but no panel is actually *visible* for a full second, the game
+     * takes control back and says so out loud (D-049). One second is long enough that no
+     * legitimate transition trips it — `fade` removes the element 320 ms before `endPanel`
+     * restores, and an open panel is visible within a frame — and short enough that a
+     * player who hit the bug feels a hitch rather than a lockup.
+     *
+     * This is deliberately a *recovery*, not a fix: `panelRecoveries` counting above zero
+     * means something upstream is broken and the harness fails on it.
+     */
+    private guardPanelLock(stamp: number): void {
+        if (!runtime.panelOpen) { this.panelMissingSinceMs = 0; return; }
+        if (typeof document === 'undefined') return;
+        if (stamp - this.lastPanelProbeAt < 100) return;
+        this.lastPanelProbeAt = stamp;
+
+        const panel = this.overlay.querySelector<HTMLElement>('.panel:not(.leaving)');
+        const visible = panel !== null && parseFloat(getComputedStyle(panel).opacity || '0') > 0.01;
+        if (visible) { this.panelMissingSinceMs = 0; return; }
+
+        if (this.panelMissingSinceMs === 0) { this.panelMissingSinceMs = stamp; return; }
+        if (stamp - this.panelMissingSinceMs < 1000) return;
+
+        this.panelMissingSinceMs = 0;
+        runtime.panelRecoveries += 1;
+        console.error(
+            `[drift] input lock recovered: control was held with no visible panel (${panel ? 'panel present but transparent' : 'no panel in the overlay'}).`
+        );
+        for (const stuck of this.overlay.querySelectorAll('.panel')) stuck.remove();
+        runtime.panelOpen = false;
+        this.controls.releaseAll();
+        this.clearPending();
+        this.cancelHold();
+        this.lastActivityAt = stamp;
+    }
+
     private openColdOpen(): void {
         this.beginPanel();
         showColdOpen(this.overlay, COLD_OPEN.title, COLD_OPEN.body, () => {
@@ -351,12 +403,17 @@ export class Game {
      * bulk, storage inspectable in place. Opens and closes through `beginPanel`/`endPanel`,
      * so §9's input-safety law applies to it exactly as it does to every other panel.
      */
-    private openLoadout(): void {
+    private openLoadout(atStorage = false): void {
         if (runtime.panelOpen) return;
         this.beginPanel();
-        const s = session().state;
-        const view = loadoutView(s);
-        showLoadout(
+        //  The open path runs INSIDE the control transfer, so if any of it throws the game
+        //  would be left holding control with nothing on screen to give it back. Hand it
+        //  back immediately and let the error surface (D-049) rather than lock the player
+        //  out. `guardPanelLock` is the backstop for the cases this cannot see.
+        try {
+            const s = session().state;
+            const view = loadoutView(s);
+            showLoadout(
             this.overlay,
             {
                 zones: view.zones.map((z) => ({ zone: z.zone, tools: z.tools, materials: z.materials })),
@@ -364,7 +421,12 @@ export class Game {
                 bulk: view.bulk,
                 storageOpen: view.storageOpen,
                 equippable: ownedTools(s),
-                activeHand: s.loadout.activeHand
+                activeHand: s.loadout.activeHand,
+                atStorage: atStorage && s.storage.built,
+                storageAction: atStorage ? this.storageActionLabelFor(s) : null,
+                repairLabel: atStorage && canRepairStructure(s, 'storage')
+                    ? `Mend  ·  +${TUNE.repairDurabilityPerWood} durability`
+                    : null
             },
             (tool) => {
                 const result = equipToActiveHand(session().state, tool as ReturnType<typeof ownedTools>[number]);
@@ -375,8 +437,14 @@ export class Game {
                 }
             },
             () => { if (stowActiveHand(session().state)) session().persist(now()); },
-            () => this.endPanel()
+            () => this.endPanel(),
+            () => this.tryUseStorage(),
+            () => this.tryRepair('storage')
         );
+        } catch (error) {
+            this.endPanel();
+            console.error('[drift] loadout panel failed to open; control returned.', error);
+        }
     }
 
     private openSettings(): void {
@@ -614,19 +682,22 @@ export class Game {
         }
 
         if (this.pending.kind === 'shelter') {
-            //  Repair-vs-sleep: upkeep first when it applies (carrying wood, durability
-            //  short), else sleep — sleep has no OTHER failure mode once you're this close
-            //  (canSleep only checks range, already satisfied by arrival), so the two never
-            //  starve each other the way an ill-considered priority order once did (D-042).
-            if (canRepairStructure(s, 'shelter')) this.tryRepair('shelter');
+            //  Sleep is what a shelter is FOR, so sleep is what a tap on it does. Mending
+            //  only pre-empts when the shelter is actually failing — the old code ran repair
+            //  whenever it was merely *possible*, which is from nine game hours after it was
+            //  built onward, so anyone carrying wood repaired forever and never slept.
+            if (repairIsUrgent(s, 'shelter')) this.tryRepair('shelter');
             else this.trySleep();
             this.pending = null;
             return;
         }
 
         if (this.pending.kind === 'storage') {
-            if (canRepairStructure(s, 'storage')) this.tryRepair('storage');
-            else this.tryUseStorage();
+            //  Tapping the box opens the box (URGENT FIX, 2026-07-27) — the director's whole
+            //  expectation, and the thing that was never true: the tap used to run a silent
+            //  bulk deposit, and before even that, a repair. Storing, taking and mending are
+            //  now choices you make with the contents in front of you, not lotteries.
+            this.openLoadout(true);
             this.pending = null;
             return;
         }
@@ -709,6 +780,18 @@ export class Game {
         this.floatText(this.storageMovedLabel(result.action, result.moved));
         session().persist(now());
         this.lastActivityAt = now();
+    }
+
+    /**
+     * What the storage tap's one bulk verb will actually do, named before you commit to it.
+     * `useStorage` deposits everything storable you carry, or withdraws a batch if you carry
+     * none — the player could not previously tell which, because the verb was invisible.
+     */
+    private storageActionLabelFor(s: ReturnType<typeof session>['state']): string | null {
+        const keys = ['wood', 'stone', 'fiber'] as const;
+        if (keys.some((k) => s.inventory[k] > 0)) return 'Store what you carry';
+        if (keys.some((k) => s.storage.stored[k] > 0)) return 'Take from the box';
+        return null;
     }
 
     private storageMovedLabel(action: 'deposit' | 'withdraw' | null, moved: Partial<Record<'wood' | 'stone' | 'fiber', number>>): string {
@@ -1037,6 +1120,8 @@ export class Game {
         const state = s.state;
         if (died && !this.deathShown) this.openDeath();
 
+        this.guardPanelLock(stamp);
+
         if (!runtime.panelOpen) {
             this.stepMovement(dt);
             this.stepInteraction();
@@ -1296,6 +1381,7 @@ export class Game {
             carry: { kg: carriedWeightKg(state), overloaded: isOverloaded(state) },
             gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, secondary, skills: state.skills
         });
+        paintBackpackLoad(this.overlay, carriedWeightKg(state), isOverloaded(state));
     }
 
     private goalLine(state: ReturnType<typeof session>['state']): string {
@@ -1382,9 +1468,12 @@ export class Game {
 
     private openDeath(): void {
         this.deathShown = true;
-        runtime.panelOpen = true;
-        this.controls.releaseAll();
-        this.clearPending();
+        //  C3 finding A1 on D-063: this panel was the one that never joined the pair — it
+        //  inlined `panelOpen = true` and skipped `cancelHold()`, so a gather hold running
+        //  at the moment of death survived under the death overlay. Fixed here because it
+        //  is the same input-safety class as the freeze. No death-MODEL change: what dying
+        //  costs and how respawn works are untouched.
+        this.beginPanel();
         this.cues.stopAllBeds();
         const s = session().state;
         showDeath(this.overlay, s.lastDeathCause ?? 'your wounds', s.trace.deaths, () => {

@@ -858,6 +858,20 @@ export class ShelterView {
         const gradeMark = addGradeMark(scene, firstPole!, 'serviceable', 0, 0.9, 0);
         this.gradeMat = gradeMark.material as StandardMaterial;
 
+        //  The whole silhouette is the target, not just the roof (URGENT FIX, 2026-07-27).
+        //  The roof slab was the only pickable part of the shelter and it is 0.18 m thick and
+        //  tilted, so from most angles it presents almost no screen area; the two poles — the
+        //  tall, obvious thing a player actually aims at — were `isPickable = false`, so taps
+        //  on them passed straight through to the terrain BEHIND the shelter, which is past
+        //  the forgiveness radius and therefore resolved to nothing. The result was that sleep
+        //  could only be triggered from the one patch of ground at the base where the ray
+        //  happened to land close enough to the centre. Same family as the Build-button
+        //  visibility gap: the interactive area has to be the area the player can see.
+        for (const part of this.root.getChildMeshes()) {
+            part.isPickable = true;
+            part.metadata = { shelter: true };
+        }
+
         this.shadow = makeShadow(scene, 2.2);
         this.setBuilt(false);
     }

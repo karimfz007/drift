@@ -127,6 +127,11 @@ describe('vitals — THE LAW: offline death is impossible (property test, A1)', 
     //  ANY elapsed time, a span long enough to earn a report can never reduce health to
     //  zero.
 
+    //  An explicit budget, not the 5s default: this walks 3000/2000 random states across
+    //  multi-week absences and genuinely takes ~3.5s alone, so under full-suite parallel
+    //  load it tipped over and failed as a TIMEOUT — read at a glance as the offline-death
+    //  law breaking, which it was not. The iteration count is the strength of the property
+    //  and is not negotiable, so the budget moves instead.
     it('for 3000 random states × random long absences, health stays above zero', () => {
         const rand = rng(20260723);
         //  Spans up to 30 game-days: enough day/night cycles to exercise every rate change
@@ -166,7 +171,7 @@ describe('vitals — THE LAW: offline death is impossible (property test, A1)', 
             expect(state.health).toBeGreaterThan(0);
             expect(Number.isFinite(state.health)).toBe(true);
         }
-    });
+    }, 30_000);
 
     it('even entering offline with every vital already empty, health holds above zero', () => {
         const s = createInitialState(0);
@@ -197,6 +202,11 @@ describe('knowledge — THE LAW: it never decays offline (property test, Ch.2 am
     //  same sweep shape (random states × random long absences), reusing this file's own
     //  seeded `rng`.
 
+    //  An explicit budget, not the 5s default: this walks 3000/2000 random states across
+    //  multi-week absences and genuinely takes ~3.5s alone, so under full-suite parallel
+    //  load it tipped over and failed as a TIMEOUT — read at a glance as the offline-death
+    //  law breaking, which it was not. The iteration count is the strength of the property
+    //  and is not negotiable, so the budget moves instead.
     it('for 2000 random domain-score states × random long absences, no score ever falls', () => {
         const rand = rng(20260725);
         //  Same shape as the offline-death sweep above: up to 30 game-days in the bulk
@@ -240,7 +250,7 @@ describe('knowledge — THE LAW: it never decays offline (property test, Ch.2 am
             expect(state.knowledge.nullPairs.length).toBeGreaterThanOrEqual(before.nullPairs.length);
             expect(state.knowledge.events.length).toBeGreaterThanOrEqual(before.events.length);
         }
-    });
+    }, 30_000);
 
     it('a domain sitting at the innate floor with a long absence stays exactly there — reconcile never even reads it', () => {
         const s = createInitialState(0);

@@ -184,20 +184,39 @@
 
         /* D-063: the loadout panel's entry point. Sits directly under the Look button so
            the two persistent panel openers share one corner and one visual language. */
+        /*  The pack itself, drawn — the affordance for "what am I carrying" is the object,
+            not the word (URGENT FIX, 2026-07-27). Sized past the 44px touch minimum with the
+            load reading under it, so it is both findable and honest at a glance.  */
         .carried-button {
             position: absolute;
             top: calc(66px + var(--safe-top));
             right: 14px;
-            min-width: 62px;
-            min-height: 44px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+            min-width: 56px;
+            min-height: 56px;
+            padding: 5px 6px 4px;
             font: inherit;
-            font-size: 13px;
-            font-weight: 700;
             color: var(--dim);
             background: rgba(12, 20, 32, 0.7);
             border: 1px solid var(--edge);
-            border-radius: 8px;
-            opacity: 0.75;
+            border-radius: 10px;
+            opacity: 0.9;
+        }
+        .carried-button .pack-icon { width: 28px; height: 28px; display: block; }
+        .carried-button .pack-body { fill: rgba(150, 116, 74, 0.85); stroke: var(--edge); stroke-width: 1; }
+        .carried-button .pack-flap { fill: rgba(94, 71, 44, 0.95); }
+        .carried-button .pack-strap { stroke: rgba(150, 116, 74, 0.95); }
+        .carried-button .pack-load { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
+        /*  Overloaded is the one state the pack must not report quietly (D-059). */
+        .carried-button .pack-load.heavy { color: var(--danger); }
+        .panel .storage-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
         }
         /* D-063: the loadout panel's zone rows. */
         .panel.loadout .zone-row { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; }

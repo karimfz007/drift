@@ -3,6 +3,27 @@
 
 ---
 
+**D-065 · 2026-07-27 — The freeze: an invisible panel is not a missing panel. Plus the two hit-test reports, and the entry points the director actually looked for.**
+Reported as a total input freeze — nothing responds, Settings included, while the game clock keeps advancing. The ruling required the mechanism confirmed, not assumed, and specifically asked whether the D-063 `beginPanel`/`endPanel` pair was being bypassed or whether the OPEN path was throwing before control transferred. **Neither.** Nothing threw and nothing was bypassed. `.panel` is `opacity: 0` until the `visible` class is added, and every panel added it at its own call site; `showLoadout` was the one that did not. So the panel WAS created — `inset: 0`, `pointer-events: auto`, full-screen — and was **completely transparent**. It swallowed every tap, `panelOpen` made every other panel's guard (Settings included) refuse to open, and the render loop kept ticking. The player sees the world, taps, nothing happens, time passes. Reproduced empirically before any fix: `opacity: 0`, panel present, close button real and in-viewport at top 352 — invisible, so unfindable. After the fix, `opacity: 1`.
+
+**The invariant now has one owner.** The reveal moved into `panel()` itself and the five duplicate call sites were deleted. "Every panel must remember to reveal itself" was exactly the rule that failed, so a per-call-site duty was the wrong shape for it.
+
+**The backstop, because the class is worse than the instance.** `beginPanel` commits the control transfer *before* the panel is proven to be on screen, so anything failing after that line locks the player out with no way back but a reload — on a permanent-death game, a safety failure. `guardPanelLock` now runs each frame: if control is held with no *visible* panel for a continuous second, the game removes the stuck panels, takes control back, and logs loudly (D-049). `runtime.panelRecoveries` counts every time it fires and the harness fails if it is not zero — the recovery keeps the player playing, the counter makes the defect impossible to ship quietly. `openLoadout`'s open path is additionally wrapped so a throw returns control immediately.
+
+**Why the D-063 checks passed over this.** They asserted the panel was in the DOM and that its buttons answered a scripted tap. Both are true of an invisible panel. The new checks assert what a player needs: computed opacity above 0.5, and — after closing — that **Settings still opens**, which is the exact thing the director found dead.
+
+**The storage box: not a hit-test bug.** D-051's nearest-centre-wins sort is intact and storage resolves correctly. The defect was priority. `canRepairStructure` answers "may I mend this?"; it was being used to answer "should mending take this tap?". Repair applies below 90% durability and decay is 1 per game hour from 100, so **nine game hours after building — and forever after — every tap by a player carrying wood repaired**. "+15 durability instead of opening contents" was that, exactly. Same starvation shape as flask-fill hidden behind drink (FIX 2) and Build-fire behind Craft-axe (C03). New `repairIsUrgent` gates pre-emption on the structure actually failing (`structureRepairUrgentFraction`, 0.4); below that, mending is available but never steals the tap.
+
+**The shelter: the interactive area was not the visible object.** Its only pickable mesh was the roof slab — 0.18 m thick, tilted, nearly no screen area from most angles. Both poles, the tall obvious part of the silhouette, were `isPickable = false`, so taps on them passed through to the terrain BEHIND the shelter, outside the forgiveness radius, and resolved to nothing. Sleep could only be triggered from the one patch of ground where the ray happened to land near the centre — "one specific spot", precisely. Every child mesh now carries the shelter's own metadata. Same family as the Build-button visibility gap.
+
+**The entry points the director expected from the start.** Carried items open from a **drawn backpack** with its live load beneath it, not a button lettered "Carried" — the object it stood for was nowhere on screen, which is why it was never found. Storage opens from **tapping the storage box**, and storing, taking and mending are named choices made with the contents in front of you, rather than one verb the game picked for you silently.
+
+**Also folded in:** C3's D-063 finding **A1** — `openDeath` was the one panel that never joined the pair, inlining `panelOpen = true` and omitting `cancelHold()`, so a gather hold survived under the death card. It now goes through `beginPanel`. No death-MODEL change: what dying costs and how respawn works are untouched, per the standing constraint.
+
+**Harness checks that encoded the old behaviour were rewritten, not deleted** — storage deposit/withdraw now go through the opened box, and the shelter repair check moved to genuinely failing durability, with a new check that a merely *worn* shelter still sleeps. Two long-running property tests (offline-death, knowledge-never-decays) were failing the full suite as 5 s **timeouts**, which reads at a glance as the law breaking; they take ~3.4 s alone, so the budget moved to 30 s and the iteration counts — which are the strength of the properties — did not.
+
+---
+
 **D-064 · 2026-07-27 — Reachability, third strike: the CLASS fix, and a diegetic boundary.**
 The ruling was explicit that this must not be another coordinate patch — root-cause why D-052's own harness check passes cases a real player cannot reach.
 

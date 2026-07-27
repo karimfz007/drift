@@ -18,6 +18,11 @@ export const runtime = {
     isNewRun: true,
     /** True while a blocking overlay owns the screen. Read by the debug hook. */
     panelOpen: false,
+    //  How many times the freeze backstop had to take control back because a panel held it
+    //  without ever showing itself (URGENT FIX, 2026-07-27). Above zero is always a defect:
+    //  the recovery keeps the player playing, the count is what makes the bug impossible to
+    //  ship silently, and the harness asserts it stays 0.
+    panelRecoveries: 0,
     /** How many contextual hints have been shown, and the latest one. */
     hintsShown: 0,
     lastHint: '',
@@ -156,6 +161,7 @@ function installDebugHook(): void {
     (window as unknown as Record<string, unknown>).__drift = {
         state: () => runtime.session?.state ?? null,
         panelOpen: () => runtime.panelOpen,
+        panelRecoveries: () => runtime.panelRecoveries,
         hints: () => ({ shown: runtime.hintsShown, last: runtime.lastHint }),
         sceneReady: () => runtime.sceneReady,
         fps: () => ({

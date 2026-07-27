@@ -221,11 +221,26 @@ function vitalMarkup(key: string, name: string): string {
 
 // ---- Panels -------------------------------------------------------------
 
+/**
+ * Creates a panel **and schedules its own reveal.**
+ *
+ * The reveal belongs here, not at the call sites, because a `.panel` is `inset: 0`,
+ * `pointer-events: auto` and `opacity: 0` until it gets the `visible` class. A panel that
+ * is never revealed is therefore not merely unseen — it is a full-screen invisible sheet
+ * that swallows every tap, while the game's own `panelOpen` gate refuses to open anything
+ * else (Settings included) and the clock keeps advancing. That is indistinguishable from a
+ * total input freeze, and it is exactly what shipped: `showLoadout` was the one panel that
+ * forgot the line, so tapping Carried bricked the session (URGENT FIX, 2026-07-27).
+ *
+ * "Every panel must remember to reveal itself" is the invariant that failed, so the helper
+ * that creates panels now owns it. No call site can get it wrong again.
+ */
 function panel(overlay: HTMLElement, className: string): HTMLElement {
     const element = document.createElement('div');
     element.className = `panel ${className}`;
     overlay.appendChild(element);
     element.addEventListener('pointerdown', (event) => event.stopPropagation());
+    requestAnimationFrame(() => element.classList.add('visible'));
     return element;
 }
 
@@ -238,7 +253,6 @@ export function showColdOpen(overlay: HTMLElement, title: string, body: string, 
     const el = panel(overlay, 'cold-open');
     el.innerHTML = `<h1>${title}</h1><p>${body.replace(/\n/g, '<br>')}</p><button class="primary" type="button">Wake</button>`;
     el.querySelector('button')!.addEventListener('click', () => fade(el, onBegin));
-    requestAnimationFrame(() => el.classList.add('visible'));
 }
 
 export function showMorningReport(overlay: HTMLElement, report: MorningReport, onDismiss: () => void): void {
@@ -247,7 +261,6 @@ export function showMorningReport(overlay: HTMLElement, report: MorningReport, o
     el.innerHTML = `<h2>${report.title}</h2><div class="subtitle">${report.subtitle}</div><div class="lines">${lines}</div><button class="primary" type="button">Back to the island</button>`;
     let done = false;
     el.querySelector('button')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onDismiss); });
-    requestAnimationFrame(() => el.classList.add('visible'));
 }
 
 /** The death overlay: a plain, one-line cause, and a way back (charter §I.18 rule 3). */
@@ -260,7 +273,6 @@ export function showDeath(overlay: HTMLElement, cause: string, deaths: number, o
         <button class="primary" type="button">Wake ashore</button>`;
     let done = false;
     el.querySelector('button')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onWake); });
-    requestAnimationFrame(() => el.classList.add('visible'));
 }
 
 /** A material key the Build panel can gate a recipe on (Ch.1 v3, D-055 adds sharpblade). */
@@ -391,7 +403,6 @@ export function showBuildCard(
     bind('.stonehammer-btn', onCraftStoneHammer);
     bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
-    requestAnimationFrame(() => el.classList.add('visible'));
 }
 
 /** A brief toast when a skill levels — mastery, felt (§I.9). */
@@ -444,7 +455,6 @@ export function showSettings(overlay: HTMLElement, testSpeedEnabled: boolean, on
     });
     let done = false;
     el.querySelector('.done')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
-    requestAnimationFrame(() => el.classList.add('visible'));
 }
 
 /**
@@ -459,10 +469,33 @@ export function addCarriedButton(overlay: HTMLElement, onOpen: () => void): void
     const button = document.createElement('button');
     button.className = 'carried-button';
     button.type = 'button';
-    button.textContent = 'Carried';
+    button.setAttribute('aria-label', 'Open what you are carrying');
+    //  A pack you can see, not a word you have to interpret (URGENT FIX, 2026-07-27). The
+    //  director looked for the bag itself and never found it, because the affordance was a
+    //  label reading "Carried" — the object it stands for was nowhere on screen. The strap
+    //  and body are drawn rather than lettered so it reads as a thing, and the load line
+    //  underneath is filled in by `paintBackpackLoad` as the pack fills.
+    button.innerHTML = `
+        <svg class="pack-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path class="pack-strap" d="M8.5 7.5V6a3.5 3.5 0 0 1 7 0v1.5" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+            <rect class="pack-body" x="4.5" y="7.5" width="15" height="13" rx="3.2"/>
+            <rect class="pack-flap" x="9.5" y="12" width="5" height="4.2" rx="1.1"/>
+        </svg>
+        <span class="pack-load"></span>`;
     button.addEventListener('pointerdown', (e) => e.stopPropagation());
     button.addEventListener('click', (e) => { e.stopPropagation(); onOpen(); });
     overlay.appendChild(button);
+}
+
+/**
+ * Keeps the pack's own readout honest: what it weighs, and whether that is now costing you.
+ * Called every frame from the game's HUD update.
+ */
+export function paintBackpackLoad(overlay: HTMLElement, kg: number, overloaded: boolean): void {
+    const label = overlay.querySelector<HTMLElement>('.carried-button .pack-load');
+    if (!label) return;
+    label.textContent = `${kg.toFixed(1)} kg`;
+    label.classList.toggle('heavy', overloaded);
 }
 
 export function addSettingsButton(overlay: HTMLElement, onOpen: () => void): void {
@@ -507,6 +540,13 @@ export interface LoadoutPanelView {
     /** Which tools can be taken in hand right now, for the equip row (item 2). */
     equippable: string[];
     activeHand: string | null;
+    /** True when the panel was opened by tapping the storage box itself, which is the only
+     *  place storing, taking and mending are offered — see the storage row below. */
+    atStorage: boolean;
+    /** What the bulk move will do, named up front, or null when there is nothing to move. */
+    storageAction: string | null;
+    /** Mend button label, or null when the box does not need (or cannot take) wood. */
+    repairLabel: string | null;
 }
 
 /**
@@ -522,7 +562,9 @@ export function showLoadout(
     view: LoadoutPanelView,
     onEquip: (tool: string) => void,
     onStow: () => void,
-    onClose: () => void
+    onClose: () => void,
+    onUseStorage: () => void = () => {},
+    onRepairStorage: () => void = () => {}
 ): void {
     const el = panel(overlay, 'loadout');
     const zoneRows = view.zones.map((z) => {
@@ -541,9 +583,22 @@ export function showLoadout(
           ).join('')}${view.activeHand ? '<button class="quiet stow-btn" type="button">Stow</button>' : ''}</div>`
         : '<p class="subtitle">Nothing to hold yet.</p>';
 
+    //  Opened at the box: the two things you came to do, named, with the contents in view.
+    //  Neither is a lottery any more — the tap used to pick one for you and never say which.
+    const storageRow = view.atStorage
+        ? `<div class="storage-row">${
+            view.storageAction ? `<button class="quiet use-storage-btn" type="button">${view.storageAction}</button>` : ''
+          }${
+            view.repairLabel ? `<button class="quiet repair-btn" type="button">${view.repairLabel}</button>` : ''
+          }${
+            view.storageAction || view.repairLabel ? '' : '<p class="subtitle">The box is empty, and so are your hands.</p>'
+          }</div>`
+        : '';
+
     el.innerHTML = `
-        <h2>Carried</h2>
+        <h2>${view.atStorage ? 'The store box' : 'Carried'}</h2>
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
+        ${storageRow}
         ${equipRow}
         <div class="zones">${zoneRows}</div>
         <button class="primary close-btn" type="button">Close</button>`;
@@ -552,5 +607,7 @@ export function showLoadout(
         b.addEventListener('click', () => { onEquip(b.dataset.tool ?? ''); fade(el, onClose); });
     });
     el.querySelector<HTMLButtonElement>('.stow-btn')?.addEventListener('click', () => { onStow(); fade(el, onClose); });
+    el.querySelector<HTMLButtonElement>('.use-storage-btn')?.addEventListener('click', () => { onUseStorage(); fade(el, onClose); });
+    el.querySelector<HTMLButtonElement>('.repair-btn')?.addEventListener('click', () => { onRepairStorage(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.close-btn')!.addEventListener('click', () => fade(el, onClose));
 }

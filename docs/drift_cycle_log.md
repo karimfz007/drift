@@ -119,6 +119,7 @@
 | `structureDurabilityDecayPerGameHour` | 1 | C05 | Durability lost per game hour — ~4 days from full to 0, long enough that neglect, not attentiveness, triggers it |
 | `repairDurabilityPerWood` | 15 | C05 | Durability restored per wood spent repairing |
 | `structureRepairThresholdFraction` | 0.9 | C05 | Repair only "counts" (and wins the sleep/storage-use disjoint choice) below this fraction of max — the fix for the repair-threshold starvation bug found during the C05 build |
+| `structureRepairUrgentFraction` | 0.4 | D-065 | And repair only PRE-EMPTS the structure's primary verb (sleep / opening the box) below this fraction. The 0.9 threshold above answers "may I mend?", which is not "should mending take this tap?" — using one for the other starved sleeping and opening from nine game hours after building onward |
 | `shellfishRegrowGameHours` | 18 | D-051 | Fastest-regrowing kind |
 | `reedRegrowGameHours` | 24 | D-051 | |
 | `driftwoodRegrowGameHours` | 12 | D-051 | Also unconditionally tide-restocked on any qualifying absence, independent of this timer |
@@ -1201,3 +1202,35 @@ Both audits above are **static-plus-unit only**. I attempted my own harness run 
 **What this leaves unverified, named specifically so no one reads a gap as a pass:** the D-063 loadout-panel checks (six zones rendered, mass+bulk shown, equip via a real DOM tap, the close-does-not-leak-a-world-tap law measured through `failedInteractionTaps`, the torch-empties-its-belt-slot law across a real absence), the D-063 Try-Combining checks via `__drift.tryCombine`, and **every D-064 check** — including the walk-and-collect that finding B2 concerns. Findings **A1–A5** and **B1–B5** above are all derived from the code, the tuning constants, the test sources, and arithmetic I re-ran myself, none of which depends on the harness; but the builder's own reported harness results for these two packages remain unconfirmed by this audit.
 
 ---
+
+## D-065 AS-BUILT — the freeze, the two hit-test reports, and the entry points (URGENT, 2026-07-27)
+
+**The freeze, mechanism confirmed rather than assumed.** The ruling asked specifically whether the entry point bypassed the `beginPanel`/`endPanel` pair, or whether the OPEN path threw before control transferred. It was neither. Measured on the real build with a puppeteer repro before any change was made:
+
+| probe | before fix | after fix |
+|---|---|---|
+| `.panel.loadout` in DOM | true | true |
+| computed `opacity` | **0** | **1** |
+| `visibility` / `display` | visible / flex | visible / flex |
+| `pointer-events` | auto | auto |
+| page errors captured | **none** | none |
+| close button rect | top 352, bottom 408, in viewport | same |
+
+Nothing threw. `.panel` is `opacity: 0` until the `visible` class lands, `showLoadout` was the only panel that never added it, and `.panel` is `inset: 0` with `pointer-events: auto` — so the panel was a full-screen invisible sheet. It ate every tap; `panelOpen` made Settings' own guard refuse; the render loop kept advancing the clock. That is the reported symptom exactly, and it is a third failure mode distinct from both the close-path leak D-063 fixed and the throw-before-transfer the ruling hypothesised.
+
+**A note on why this survived a green harness.** In the earlier run the `.inv` row tap reported `occluded`, so `openLoadout` never executed on device at all — the D-063 close-path assertions passed **vacuously**, on a panel that was never opened. Even had they run, "the panel is in the DOM and its buttons answer a scripted tap" is true of a transparent panel. The replacement checks assert computed opacity, and then that **Settings still opens** after the panel is used.
+
+**Changes.**
+- `hud.ts` — `panel()` now schedules its own reveal; the five duplicate per-call-site reveals deleted. Single owner for the invariant that failed.
+- `game.ts` — `guardPanelLock()` per frame: control held + no *visible* panel for a continuous second ⇒ remove stuck panels, release control, `console.error`, increment `runtime.panelRecoveries`. A recovery, not a fix; the harness fails if the count is not zero. `openLoadout`'s open path wrapped so a throw returns control.
+- `game.ts` — `openDeath` now goes through `beginPanel` (C3 finding **A1** on D-063; it had inlined `panelOpen = true` and omitted `cancelHold()`). Input-safety plumbing only — **no death-model change**.
+- `state.ts` / `tune.ts` — `repairIsUrgent` + `structureRepairUrgentFraction` (0.4). Mending stops pre-empting the primary verb.
+- `game.ts` — tapping storage opens the box; storing/taking/mending are named buttons inside it. Tapping the shelter sleeps unless it is genuinely failing.
+- `entities.ts` — every shelter child mesh is pickable and carries the shelter's metadata.
+- `hud.ts` / `index.html` — the "Carried" button became a drawn backpack with its live load beneath it, red past the overload threshold.
+
+**Root causes in one line each.**
+1. *Freeze* — a panel that never revealed itself is an invisible full-screen tap sink, not a missing panel.
+2. *Storage shows "+15 durability"* — **not** a D-051 hit-test recurrence; nearest-centre-wins is intact. Repair applies below 90% durability against 1/game-hour decay, so it won every tap from nine game hours after building onward.
+3. *Shelter needs one specific spot* — the poles were `isPickable = false`, so taps on the obvious part of the silhouette fell through to terrain behind it, outside the forgiveness radius.
+
