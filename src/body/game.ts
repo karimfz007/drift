@@ -628,16 +628,6 @@ export class Game {
         if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
         this.lastActivityAt = now();
 
-        //  The pack on the survivor's own back, tapped directly (director's request). Checked
-        //  before world targets because it is the nearest thing to the camera and the player
-        //  clearly meant it — and it is additive: the HUD bag icon still works exactly as it
-        //  did, this is a second way in, not a replacement.
-        if (this.pickedBackpack(screenX, screenY)) {
-            this.recordTap(screenX, screenY, 'backpack');
-            this.openLoadout();
-            return;
-        }
-
         //  A node under (or near) the finger wins.
         const node = this.pickNode(screenX, screenY);
         if (node) {
@@ -655,6 +645,25 @@ export class Game {
         //  (checked first) swallow taps square on the storage crate whenever the two sat
         //  within about 2.8 m of each other — a REGRESSION found via the device harness:
         //  a tap aimed at storage kept silently repairing the shelter instead.
+        //  The pack worn on the survivor's back (director's request), resolved LAST. The
+        //  survivor is drawn at the centre of a third-person view, so their body sits where a
+        //  great many world targets project — checking the pack first would let it quietly
+        //  intercept taps meant for the world, which is the same shape of bug as the felled
+        //  tree's ghost hit-box (D-045) and the shelter swallowing storage taps (D-051).
+        //  World targets win; the pack is what you get when the tap meant nothing else.
+        //  Additive as asked: the HUD bag icon is untouched and still opens the same panel.
+        //  The pack worn on the survivor's back (director's request). Resolved AFTER nodes,
+        //  so a resource under the finger always wins, but BEFORE world points — because
+        //  `pickedBackpack` is true only when the pack is the TOPMOST pickable mesh, which
+        //  means the ray reached the survivor's own body before anything else and the tap
+        //  genuinely landed on them. Nothing behind the player can be stolen this way.
+        //  Additive as asked: the HUD bag icon is untouched and opens the same panel.
+        if (this.pickedBackpack(screenX, screenY)) {
+            this.recordTap(screenX, screenY, 'backpack');
+            this.openLoadout();
+            return;
+        }
+
         const point = this.pickHitPoint(screenX, screenY);
         if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
 
