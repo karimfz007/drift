@@ -1199,13 +1199,21 @@ async function main() {
     }
     const quarryEmptied = await live();
     check('REGRESSION — the quarry depletes once its pool is fully spent', quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available === false);
+    //  GEOLOGY V2 (D-070): the seam is FINITE. This check used to assert the opposite — that
+    //  the quarry regrew to full capacity — and it is inverted rather than deleted, because a
+    //  deliberate behaviour change deserves an assertion that would catch a silent revert.
+    //  The clock is pushed far past any regrow interval; the seam must still be spent.
     await editSave(`
         const q = state.nodes.find((n) => n.kind === 'quarry');
-        q.depletedAtGameHours = state.gameHoursElapsed - 999999; // long enough ago to have regrown
+        q.depletedAtGameHours = state.gameHoursElapsed - 999999; // far past any regrow window
     `);
     await sleep(500); // the live frame loop ticks reconcile every frame; give it a beat
-    const quarryRegrown = await live();
-    check('REGRESSION — the quarry regrows to full capacity, not partially (D-051)', quarryRegrown.nodes.find((n) => n.id === quarry.id)?.available === true && quarryRegrown.nodes.find((n) => n.id === quarry.id)?.pool === TUNE.quarryStoneCapacity);
+    const quarryLater = await live();
+    const seam = quarryLater.nodes.find((n) => n.id === quarry.id);
+    check('D-070 GEOLOGY V2 — a spent seam stays spent, however long passes (finite tier)', seam?.available === false && seam?.pool === 0, `available=${seam?.available} pool=${seam?.pool}`);
+    //  ...and the survival floor is still there: D-051 protects the RESOURCE, not the deposit.
+    const surfaceStone = quarryLater.nodes.filter((n) => n.kind === 'rock');
+    check('D-070 — and D-051 still holds: renewable surface stone remains', surfaceStone.length > 0 && surfaceStone.some((n) => n.available), `${surfaceStone.filter((n) => n.available).length}/${surfaceStone.length} surface rocks available`);
 
     //  A felled tree, given enough elapsed time, regrows and is fellable again by a real
     //  tap — not just "the brain says available", the actual body picking/highlight path.
