@@ -14,7 +14,6 @@ import {
     isInDisrepair,
     isNearShelter,
     isNearStorage,
-    repairIsUrgent,
     repairStructure,
     respawn,
     shelterShortfall,
@@ -175,62 +174,49 @@ describe('construction — upkeep: disrepair, never deletion', () => {
         expect(canRepairStructure(s, 'shelter')).toBe(false);
     });
 
-    //  URGENT FIX (2026-07-27). `canRepairStructure` answers "may I mend this?", which is
-    //  not the same question as "should mending take this tap?". Using it as the latter
-    //  starved the structure's primary verb: repair applies below 90% durability, decay is
-    //  1 per game hour from 100, so nine game hours after building — and forever after —
-    //  every tap by a player carrying wood repaired, and the shelter could not be slept in
-    //  nor the box opened. The director's report was "storage shows +15 durability instead
-    //  of opening contents". Same shape as flask-fill starved by drink (FIX 2).
-    it('mending is AVAILABLE long before it is URGENT — a worn structure never steals the tap', () => {
-        const s = run();
-        s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
-        buildShelter(s, s.player.x, s.player.y);
-
-        //  Merely worn: repairable, but the tap belongs to sleeping.
-        s.shelter.durability = TUNE.structureDurabilityMax * 0.6;
-        expect(canRepairStructure(s, 'shelter')).toBe(true);
-        expect(repairIsUrgent(s, 'shelter')).toBe(false);
-
-        //  Failing: mending asserts itself.
-        s.shelter.durability = TUNE.structureDurabilityMax * 0.2;
-        expect(repairIsUrgent(s, 'shelter')).toBe(true);
-    });
-
-    it('urgency spans the whole window the old rule wrongly claimed for repair', () => {
+    //  THE DEAD-ZONE REGRESSION (Gate 0 closing pass, 2026-07-27). Two successive attempts
+    //  to rank mending against sleeping left a band where the shelter could not be mended by
+    //  ANY input: availability was gated below 90% durability, pre-emption was gated below
+    //  40%, and the secondary control did not exist yet — so between 40% and 90% nothing
+    //  could mend it, and since a repair is +15 a shelter that had decayed past 40 sat capped
+    //  near 55/100 permanently. Both gates are deleted; this walks the whole range to prove
+    //  there is no band left. It fails on the pre-fix tree at durability 90..99 (blocked by
+    //  the availability threshold) — verified by reverting before trusting it (D-066 b).
+    it('mending is reachable at EVERY durability below full — no dead zone anywhere', () => {
         const s = run();
         s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
         buildShelter(s, s.player.x, s.player.y);
         const max = TUNE.structureDurabilityMax;
-        //  Every durability from just-below-repairable down to just-above-urgent must be
-        //  repairABLE and yet never urgent — that band is exactly what the bug consumed.
-        for (let d = max * TUNE.structureRepairThresholdFraction - 1; d > max * TUNE.structureRepairUrgentFraction; d -= 1) {
+        const unreachable: number[] = [];
+        for (let d = 1; d < max; d += 1) {
             s.shelter.durability = d;
-            expect(canRepairStructure(s, 'shelter')).toBe(true);
-            expect(repairIsUrgent(s, 'shelter')).toBe(false);
+            if (!canRepairStructure(s, 'shelter')) unreachable.push(d);
         }
+        expect(unreachable).toEqual([]);
     });
 
-    it('urgent mending still requires the wood and the range it always did', () => {
+    it('a whole structure cannot be mended, and mending still needs wood and range', () => {
         const s = run();
         s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
         buildShelter(s, s.player.x, s.player.y);
-        s.shelter.durability = 5;
-        expect(repairIsUrgent(s, 'shelter')).toBe(true);
+        s.shelter.durability = TUNE.structureDurabilityMax;
+        expect(canRepairStructure(s, 'shelter')).toBe(false); // nothing to mend
+        s.shelter.durability = 50;
         s.inventory.wood = 0;
-        expect(repairIsUrgent(s, 'shelter')).toBe(false);
+        expect(canRepairStructure(s, 'shelter')).toBe(false); // no material
         s.inventory.wood = 5;
         s.player.x += TUNE.shelterRadius + 5;
-        expect(repairIsUrgent(s, 'shelter')).toBe(false);
+        expect(canRepairStructure(s, 'shelter')).toBe(false); // out of reach
     });
 
     it('repair never exceeds full durability', () => {
         const s = run();
         s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
         buildShelter(s, s.player.x, s.player.y);
-        //  Below the repair threshold (so canRepairStructure applies) but close enough to
-        //  max that +repairDurabilityPerWood would overshoot without the cap.
-        s.shelter.durability = TUNE.structureDurabilityMax * TUNE.structureRepairThresholdFraction - 2;
+        //  Close enough to max that +repairDurabilityPerWood would overshoot without the cap.
+        //  (This used to sit just under the old availability threshold; that threshold is
+        //  gone, so the case is now simply "nearly whole".)
+        s.shelter.durability = TUNE.structureDurabilityMax - 2;
         repairStructure(s, 'shelter');
         expect(s.shelter.durability).toBe(TUNE.structureDurabilityMax);
     });

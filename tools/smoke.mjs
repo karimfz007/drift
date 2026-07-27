@@ -1164,7 +1164,14 @@ async function main() {
         const after = await live();
         if (!after.nodes.find((n) => n.id === quarry.id)?.available) quarryStillAvailable = false;
     }
-    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone}`);
+    const quarryDiag = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const q = s.nodes.find((n) => n.kind === 'quarry');
+        return { panelOpen: window.__drift.panelOpen(), energy: +s.energy.toFixed(1), fatigue: +(s.fatigue ?? 0).toFixed(1),
+                 pending: window.__drift.pending(), available: q ? q.available : null, pool: q ? q.pool : null,
+                 dist: q ? +Math.hypot(s.player.x - q.x, s.player.y - q.y).toFixed(2) : null };
+    });
+    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)}`);
     check('REGRESSION — the quarry stays available across multiple taps (does not single-shot deplete like other nodes)', quarryStillAvailable);
 
     //  Depletes as a whole once its pool is spent, and — the renewability law's actual
@@ -1233,8 +1240,33 @@ async function main() {
     //  "Fast movement (testing)": a real Settings toggle that measurably speeds up walking.
     await editSave('state.player = { x: 0, y: 104 };');
     const beforeToggle = await live();
-    await walkToward(beforeToggle.player.x, beforeToggle.player.y - 40, 2.5);
+    //  DIAGNOSTIC (Gate 0 closing pass): the director and the harness both report a player
+    //  covering ~0.5 m where 7-8 m is normal — "blocked, not slowed". Endpoint-only
+    //  measurement cannot tell those apart, so the walk is sampled and the state that could
+    //  explain a block is captured with it.
+    const walkTrace = async (tx, tz, seconds) => {
+        const samples = [];
+        const t0 = Date.now();
+        const poll = setInterval(async () => {
+            try {
+                const st = await page.evaluate(() => {
+                    const s = window.__drift.state();
+                    return { x: s.player.x, y: s.player.y, panel: window.__drift.panelOpen() };
+                });
+                samples.push({ t: Date.now() - t0, ...st });
+            } catch { /* page busy */ }
+        }, 250);
+        await walkToward(tx, tz, seconds);
+        clearInterval(poll);
+        return samples;
+    };
+    const normalSamples = await walkTrace(beforeToggle.player.x, beforeToggle.player.y - 40, 2.5);
     const normalDistance = Math.hypot((await live()).player.x - beforeToggle.player.x, (await live()).player.y - beforeToggle.player.y);
+    const walkDiag = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { panelOpen: window.__drift.panelOpen(), energy: +s.energy.toFixed(1), fatigue: +(s.fatigue ?? 0).toFixed(1),
+                 inv: s.inventory, yaw: +window.__drift.camera().yaw.toFixed(2) };
+    });
 
     await editSave('state.player = { x: 0, y: 104 };');
     await clickDom('.settings-button');
@@ -1246,7 +1278,8 @@ async function main() {
     const beforeFast = await live();
     await walkToward(beforeFast.player.x, beforeFast.player.y - 40, 2.5);
     const fastDistance = Math.hypot((await live()).player.x - beforeFast.player.x, (await live()).player.y - beforeFast.player.y);
-    check('REGRESSION — "Fast movement (testing)" measurably speeds up walking, base walkSpeedMps untouched', fastDistance > normalDistance * 1.5, `normal ${normalDistance.toFixed(1)}m, fast ${fastDistance.toFixed(1)}m`);
+    const trail = normalSamples.map((p) => `${p.t}ms:(${p.x.toFixed(1)},${p.y.toFixed(1)})${p.panel ? '/PANEL' : ''}`).join(' ');
+    check('REGRESSION — "Fast movement (testing)" measurably speeds up walking, base walkSpeedMps untouched', fastDistance > normalDistance * 1.5, `normal ${normalDistance.toFixed(1)}m, fast ${fastDistance.toFixed(1)}m | ${JSON.stringify(walkDiag)} | trail ${trail}`);
     //  Leave it off for every check that follows — a test aid should not silently outlive
     //  the test that turned it on.
     await clickDom('.settings-button');

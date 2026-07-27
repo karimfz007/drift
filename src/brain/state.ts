@@ -525,6 +525,22 @@ const SALVAGE_LOOT_ODDS: ReadonlyArray<SalvageLoot> = ['driftwood', 'cordage', '
  * `isWalkablePoint` before it is committed — belt and suspenders, not just a tighter
  * constant, so a future change to either bound cannot silently reopen this gap.
  */
+/**
+ * Where a salvage find WOULD land for this seed, before placement validation.
+ *
+ * Exported so a test can witness the blocked-spawn branch instead of hoping a random seed
+ * happens to hit it (D-066 a). C3's audit of D-064 measured that branch firing **0 times
+ * across seeds 0–499** — the range the property test used — so the ring walk and the centre
+ * fallback had zero coverage and the test would have stayed green if the whole block were
+ * deleted. A test that cannot witness its target does not test it.
+ */
+export function salvageCandidatePoint(seed: number): { x: number; y: number } {
+    const angle = seedFraction(seed * 2 + 1) * Math.PI * 2;
+    const maxRadius = WALKABLE_RADIUS - TUNE.salvageShoreMarginM;
+    const radius = WORLD.beachRadius + seedFraction(seed * 2 + 2) * Math.max(0, maxRadius - WORLD.beachRadius);
+    return { x: Math.round(Math.cos(angle) * radius), y: Math.round(Math.sin(angle) * radius) };
+}
+
 export function spawnSalvageNode(seed: number): WoodNode {
     const angle = seedFraction(seed * 2 + 1) * Math.PI * 2;
     const maxRadius = WALKABLE_RADIUS - TUNE.salvageShoreMarginM;
@@ -886,34 +902,24 @@ export function isInDisrepair(structure: Structure): boolean {
 export type RepairTarget = 'shelter' | 'storage';
 
 /**
- * True once durability has dropped below `structureRepairThresholdFraction` of max — a real
- * threshold, not "less than 100.000". Passive decay is continuous, so `durability < max` is
- * true almost all the time; gating on that alone would make repair win the sleep/storage-use
- * disjoint choice on nearly every tap, the same one-condition-always-true bug class that
- * starved Build-fire in C03 (D-040/D-042). Cosmetic decay noise never triggers repair.
+ * Whether mending this structure is possible right now: it exists, it is not already whole,
+ * you are standing at it, and you are carrying wood.
+ *
+ * **No durability threshold** (D-066 pass, 2026-07-27). There used to be one — repair only
+ * "counted" below 90% of max — and it existed purely to stop mending from stealing the tap
+ * from sleeping and from opening the box. That was a priority hack wearing an availability
+ * test's clothes, and it produced a dead zone: with mending also gated on urgency (<40%), a
+ * shelter between 40% and 90% could not be mended by any input at all, and since a repair is
+ * +15 a shelter that had once decayed past 40 sat capped near 55/100 forever.
+ *
+ * Mending is now its own explicit action on its own control, so it competes with nothing and
+ * needs no threshold. The full range is reachable.
  */
 export function canRepairStructure(state: GameState, which: RepairTarget): boolean {
     const structure = state[which];
-    if (!structure.built || structure.durability >= TUNE.structureDurabilityMax * TUNE.structureRepairThresholdFraction) return false;
+    if (!structure.built || structure.durability >= TUNE.structureDurabilityMax) return false;
     if (state.inventory.wood <= 0) return false;
     return which === 'shelter' ? isNearShelter(state) : isNearStorage(state);
-}
-
-/**
- * Whether mending should assert itself OVER the structure's primary verb (URGENT FIX,
- * 2026-07-27). `canRepairStructure` is a availability test, not a priority test, and using
- * it as one starved the verb underneath it: repair applies below 90% durability, decay is
- * 1 per game hour from 100, so a structure is repairable ten game hours after being
- * built and stays that way forever after. Any player carrying wood therefore repaired on
- * EVERY tap and could never reach the thing the structure is for — the same starvation that
- * hid flask-filling behind drinking (FIX 2) and Build-fire behind Craft-axe (C03).
- *
- * So repair only pre-empts when the structure is genuinely at risk. Above that it stays
- * reachable, just not in the way.
- */
-export function repairIsUrgent(state: GameState, which: RepairTarget): boolean {
-    if (!canRepairStructure(state, which)) return false;
-    return state[which].durability < TUNE.structureDurabilityMax * TUNE.structureRepairUrgentFraction;
 }
 
 /** Spend one wood to restore `repairDurabilityPerWood` durability. Returns true if it did anything. */

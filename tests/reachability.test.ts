@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ROCKS, SURF_LINE_RADIUS, TREES, WALKABLE_RADIUS, isPlaceablePoint, isWalkablePoint } from '../src/data/world';
-import { spawnSalvageNode } from '../src/brain/state';
+import { salvageCandidatePoint, spawnSalvageNode } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 
 /** The minimum distance a player can be held at by an obstacle of this radius. */
@@ -53,12 +53,49 @@ describe('reachability — the class fix applies to every obstacle, not just the
 });
 
 describe('reachability — every salvage spawn is genuinely collectable (D-064)', () => {
-    it('PROPERTY: 500 seeds all place somewhere a player can stand and reach', () => {
-        for (let seed = 0; seed < 500; seed++) {
+    //  THE SEEDS THAT ACTUALLY EXERCISE THE FIX. C3's D-064 audit measured the
+    //  `!isPlaceablePoint` branch firing **zero times across seeds 0-499**, the exact range
+    //  this file used to sweep — so the ring walk and the centre fallback had no coverage at
+    //  all and every test here would have stayed green with the whole block deleted. These
+    //  six were found by scanning the shipped `salvageCandidatePoint` against the shipped
+    //  `isPlaceablePoint`; 6384 is the first, matching the audit's independent figure.
+    const BLOCKED_SEEDS = [6384, 8514, 11187, 17992, 20193, 26089];
+
+    it('WITNESS: the blocked-spawn branch actually fires on these seeds (D-066 a)', () => {
+        //  Without this the suite below is vacuous. Each of these seeds must genuinely
+        //  produce an unplaceable candidate, or the "rescue" tests prove nothing.
+        for (const seed of BLOCKED_SEEDS) {
+            const candidate = salvageCandidatePoint(seed);
+            expect(isPlaceablePoint(candidate.x, candidate.y)).toBe(false);
+        }
+    });
+
+    it('a blocked candidate is RESCUED onto a placeable point, not left and not centred', () => {
+        for (const seed of BLOCKED_SEEDS) {
+            const candidate = salvageCandidatePoint(seed);
+            const node = spawnSalvageNode(seed);
+            expect(isPlaceablePoint(candidate.x, candidate.y)).toBe(false); // the branch fired
+            expect(isPlaceablePoint(node.x, node.y)).toBe(true);            // and it rescued
+            expect(node.x === 0 && node.y === 0).toBe(false);               // not the centre
+            //  It stays on the shore ring it came from — a beach find belongs on the beach.
+            const movedRadially = Math.abs(Math.hypot(node.x, node.y) - Math.hypot(candidate.x, candidate.y));
+            expect(movedRadially).toBeLessThan(3);
+        }
+    });
+
+    it('PROPERTY: every seed places somewhere a player can stand and reach', () => {
+        //  The sweep now spans a range wide enough to contain real blocked candidates, and
+        //  counts them, so "all placeable" is a claim about a corpus that includes the hard
+        //  case rather than only the easy one.
+        let blockedCandidates = 0;
+        for (let seed = 0; seed < 30000; seed++) {
+            const candidate = salvageCandidatePoint(seed);
+            if (!isPlaceablePoint(candidate.x, candidate.y)) blockedCandidates += 1;
             const node = spawnSalvageNode(seed);
             expect(isPlaceablePoint(node.x, node.y)).toBe(true);
         }
-    });
+        expect(blockedCandidates).toBeGreaterThanOrEqual(BLOCKED_SEEDS.length);
+    }, 30_000);
 
     it('every spawn is inside the walkable disc too', () => {
         for (let seed = 0; seed < 500; seed++) {
@@ -67,16 +104,14 @@ describe('reachability — every salvage spawn is genuinely collectable (D-064)'
         }
     });
 
-    it('a blocked spawn walks the ring rather than teleporting to the island centre', () => {
-        //  The old fallback dumped a blocked beach find at (0,0). Across 500 seeds almost
-        //  none should end up there now — a beach find belongs on the beach.
+    it('the centre fallback is never reached in practice', () => {
         let atCentre = 0;
-        for (let seed = 0; seed < 500; seed++) {
+        for (let seed = 0; seed < 30000; seed++) {
             const node = spawnSalvageNode(seed);
             if (node.x === 0 && node.y === 0) atCentre += 1;
         }
         expect(atCentre).toBe(0);
-    });
+    }, 30_000);
 
     it('spawns stay deterministic — same seed, same point, every time', () => {
         for (const seed of [0, 7, 42, 199]) {

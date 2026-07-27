@@ -31,7 +31,6 @@ import {
     canFillFlask,
     canLightTorch,
     canRepairStructure,
-    repairIsUrgent,
     craftAxe,
     craftStoneHammer,
     craftTorch,
@@ -410,10 +409,22 @@ export class Game {
      * The secondary button is contextual: at a shelter that wants mending it mends, and it
      * is the Build card everywhere else. Dispatching here rather than at the HUD keeps the
      * label and the action reading from the same condition, so they cannot disagree.
+     *
+     * **THIS IS AN INTERIM FIX, AND THE DEBT IS REAL.** The disease is "one object, several
+     * verbs" — a shelter you can sleep in, mend, and later do more with. Every attempt to
+     * resolve that by ranking the verbs against each other has starved one of them: repair
+     * beat sleep whenever it was merely possible, then beat it below a threshold, then left a
+     * 40–90% band where mending was unreachable by any input. Ranking is the wrong tool.
+     *
+     * The real fix is the **radial circle (Ch.4, the director's own spec): tap = the default
+     * verb, and when an object offers more than one, a circle divides and the player picks.**
+     * That is not half-built here on purpose — a partial circle would be worse than none. The
+     * secondary button is a stopgap that makes every verb reachable *today*; it is not the
+     * design, and it should be deleted when the circle lands.
      */
     private onSecondaryAction(): void {
         const s = session().state;
-        if (s.shelter.built && canRepairStructure(s, 'shelter') && !repairIsUrgent(s, 'shelter')) {
+        if (canRepairStructure(s, 'shelter')) {
             this.tryRepair('shelter');
             return;
         }
@@ -741,12 +752,12 @@ export class Game {
         }
 
         if (this.pending.kind === 'shelter') {
-            //  Sleep is what a shelter is FOR, so sleep is what a tap on it does. Mending
-            //  only pre-empts when the shelter is actually failing — the old code ran repair
-            //  whenever it was merely *possible*, which is from ten game hours after it was
-            //  built onward, so anyone carrying wood repaired forever and never slept.
-            if (repairIsUrgent(s, 'shelter')) this.tryRepair('shelter');
-            else this.trySleep();
+            //  Sleep is what a shelter is FOR, so a tap on it sleeps. Full stop — no
+            //  durability test, no urgency test, nothing that can shadow it. Mending lives on
+            //  its own control (see `onSecondaryAction`). Two rulings' worth of priority
+            //  hacks were tried here and both produced a starved verb; the hack is deleted
+            //  rather than retuned. See the INTERIM note on `onSecondaryAction`.
+            this.trySleep();
             this.pending = null;
             return;
         }
@@ -1438,7 +1449,7 @@ export class Game {
         //  positional, transient condition (`canRepairStructure` already requires range), so
         //  it displaces Build only while you are at your own shelter — and never hides it in
         //  the band where the tap itself already mends.
-        if (state.shelter.built && canRepairStructure(state, 'shelter') && !repairIsUrgent(state, 'shelter')) {
+        if (canRepairStructure(state, 'shelter')) {
             secondary = { label: `Mend  ·  +${TUNE.repairDurabilityPerWood}`, visible: true };
         } else if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
             secondary = { label: 'Build', visible: true };
