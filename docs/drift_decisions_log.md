@@ -3,6 +3,29 @@
 
 ---
 
+**D-074 · 2026-07-27 — C3 returned FAIL on D-073; FIX 5 reverted, F2 and F4 fixed.**
+
+**The audit was right and the finding was blocking.** Making the worn pack pickable put an opaque, camera-facing collider between the player and everything they walk up to. Both node resolvers use `scene.pick`, which returns the **nearest** pickable mesh — and a pack worn on a body drawn at the centre of a third-person view is nearer than any target. At interaction range it won the ray: `pickNode`'s exact-hit branch got the pack, and its near-miss fallback then measured from the survivor's own body, ~1.7 m out, past `nodeTapSlack` (0.9). **The gather never fired.**
+
+| shipped harness, same machine and session | checks | failures |
+|---|---|---|
+| pre-fix | 32 | **0** |
+| with the pack pickable | 41 | **12** |
+
+Reeds, deadfall, rock, palm, driftwood, shellfish, berries, felling and the pond flask all broke — the game's central verb, on `main`.
+
+**Two lessons, both mine.** My "hardening" commit did not fix it: ordering the pack *after* `pickNode` cannot help when `pickNode` is precisely what the pack broke, and its "only when topmost" safeguard **is** the failure mode rather than a guard against it. And my single-point probe passed only because that one ray happened to miss the pack — a sweep across nine verbs is what caught it. **One green probe is not evidence; C3's A/B was.**
+
+Tapping the worn pack is still wanted. It needs a mechanism that puts **no collider in front of the camera** — a screen-space hit region over the character, or a pick predicate that excludes the body from world picks. **Parked, not abandoned.**
+
+**F2 — the experimentation outcomes were never checked by the compiler.** `onTryCombine` tested `outcome === 'failed'`, which is not one of the five real outcomes, so **`failed-attempt`, `already-known` and `refused` were all announced as successes with the unlock cue**, and a real invention never named its plan because the field is `blueprint`, not `blueprintName`. An `as { outcome: string }` cast hid every bit of it. The cast is gone and the switch is exhaustive.
+
+**F4 — mastery was rewarding no work.** The effect map reached `reed` and `coconutpalm`, which are tap-kind: a yield bonus for a gesture with no hold at all (measured, fibre 2 → 3 on one reed tap), while excluding `crashbox` for no stated reason. Now principled — **mastery rewards effortful work**, hold-kind only.
+
+**Still open from the audit, not fixed here:** F3 (FIX 2 and FIX 5 shipped with no regression test — D-073's "every fix proven fail-then-pass" was **false** for those two, and FIX 5 is the proof of why that matters), F5 (the assertion cited as protecting shelter-sleep passes on a 45% nerf; the property is safe via a different pre-existing test, but the named guard is weak), and **F6 — stone now has zero ONLINE replenishment**: moving `rock` to absence-only restock means a player who never closes the app never sees stone return (measured: 1433 game hours, 0 rocks). That is a direct consequence of D-070's "restock happens out of view" ruling and needs the director's call, not a unilateral fix.
+
+---
+
 **D-073 · 2026-07-27 — FIX package from the live playtest: mastery's reach, experimentation's missing door, stone's depletion category, sleeping rough, and the pack as a target.**
 
 **1. Mastery — TWO bugs, distinguished by measurement before either was fixed.** The ruling asked which of three causes it was; it was two of them. **(a) Wrong map.** Mastery read `domainForNodeKind`, which answers *"what does this verb TRAIN?"* — and Ch.2 deliberately named only felling, quarrying and salvage. Breaking surface rock therefore got **no mastery at all**, measured at `hold 1.50 → 1.50, speedMult 1.000`. A new `masteryDomainForNodeKind` covers every effortful harvesting verb while **training stays exactly as Ch.2 ruled it** — asserted explicitly, so the constitutional rule is not quietly widened by a fix to its neighbour. **(b) No feedback.** Felling's effect was real the whole time (4.00 → 2.50 s) but nothing on screen ever acknowledged it, while forging's knowledge path (experimentation's `successChanceFor`) reports its own outcome plainly. That asymmetry is precisely why a full session could end in *"mastery only affects forging"*. `gatherNode` now returns what it taught and the body says so on whole-point crossings.
