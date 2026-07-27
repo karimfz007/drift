@@ -1292,20 +1292,20 @@ export class Game {
         let x = state.player.x + this.velX * dt;
         let z = state.player.y + this.velZ * dt;
 
-        //  COLLIDE-AND-SLIDE (Gate 0 Part 2 root cause). `resolveCollision` is a purely
-        //  RADIAL push-out: it shoves the player back along the line to the obstacle's centre
-        //  and nothing else. Walking head-on into something therefore produced an exact
-        //  stalemate — advance by `v*dt`, get pushed back by `v*dt`, net zero — and the
-        //  player stopped dead at the contact point and could never get past, however long
-        //  they held the stick. That is the movement hard-block: three device runs stalled at
-        //  byte-identically the same coordinate, 0.5 m from where they started, with no panel
-        //  open, in range, unexhausted and unloaded. It reads as a freeze because it IS one,
-        //  for that direction.
+        //  COLLIDE-AND-SLIDE. A modest movement improvement — **NOT** the cause of the
+        //  movement hard-block, though it was committed as such before the A/B was run.
         //
-        //  The fix is the standard one: on contact, keep the part of the motion that runs
-        //  ALONG the surface and discard only the part running into it, then re-integrate
-        //  from the contact point. Pressing into a wall now slides you along it instead of
-        //  pinning you, which is also what every player expects a body to do.
+        //  The honest measurement, glancing approach past a shelter, 3 s of held stick:
+        //      radial push-out alone (pre-fix):  lateral 0.50 m, ended (-0.50, 94.77)
+        //      with collide-and-slide (post-fix): lateral 0.50 m, ended (-0.50, 93.35)
+        //  The radial push-out ALREADY slides, because a glancing contact has a lateral
+        //  component in the push itself. This only makes the slide a little more efficient
+        //  (~1.4 m further in the same time). Kept because it is more principled and costs
+        //  nothing; it does not close the hard-block, and must not be described as if it did.
+        //
+        //  A perfectly PERPENDICULAR approach still stops the player dead, and that is
+        //  correct physics — there is no tangential component to preserve. Measured: walking
+        //  due south into a shelter at (0, 98) pins at exactly (0, 99.70) = 98 + 1.3 + 0.4.
         const dynamic = this.dynamicObstacles();
         const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dynamic);
         const pushX = resolved.x - x;

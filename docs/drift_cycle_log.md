@@ -1518,3 +1518,31 @@ The `.inv` row entry point was genuinely occluded on the device viewport, so `op
 | **2** | quarry repeat-mining, fast-movement | **The pre-existing pair**, proven in the D-065 A/B to predate this work (baseline 168/178, byte-identical failure strings). Part 2's evidence above narrows them; neither is closed. |
 
 **The lesson worth keeping:** a raw failure count is nearly useless on a long harness. Seven of these eleven were one button in one state, and reading them as eleven defects would have sent the next session chasing six ghosts. The first failure in a dependency chain is the only one worth diagnosing until it is fixed.
+
+### Gate 0 Part 2 — the movement hard-block, RESOLVED, and a wrong root cause I published first
+
+**The block is real, reproducible, and is correct game behaviour meeting a flawed test.**
+
+Measured on device, three runs, byte-identical: the player stalls at exactly **(0.0, 103.5)**, 0.5 m from the (0, 104) start, `panelOpen: false`, energy 58–62, 18 units carried. Isolated probes then established the mechanism directly:
+
+| setup | result |
+|---|---|
+| walk due south into a shelter at (0, 98) | pins at **exactly (0, 99.70)** = 98 + 1.3 (shelter radius) + 0.4 (player radius) |
+| stick during the pin | magnitude **0.87 — held and engaged**, `panelOpen: false`, no page errors |
+
+So the player is **not** frozen: they have walked into a solid object and stopped, with the stick still pressed. The harness teleports to a fixed point and walks due south — straight into the shelter that same run built earlier. Correct collision, wrong scenario.
+
+**Eliminated first, by evidence rather than argument:** the surf line (not a collider at all — only `TREES`/`ROCKS` register as obstacles); static obstacles (nearest 8.5 m); nodes (nearest 7.5 m); an open panel (`false` in every sample); exhaustion and load (7.63 m from the same spot on a clean save, 5.04 m at energy 5, 7.57 m at fatigue 95); the input layer (the stick persists until `pointerup`; two `releaseAll` callers, both panel-gated); `stepHold`.
+
+**The wrong turn, recorded because it matters.** I committed collide-and-slide as *the root cause*, reasoning that a purely radial push-out must produce a head-on stalemate. The reasoning was sound and the conclusion was false, and the A/B the Vacuity Law now requires (D-066 b) is exactly what caught it:
+
+| glancing approach past a shelter, 3 s of held stick | lateral | ended |
+|---|---|---|
+| radial push-out alone (pre-fix) | 0.50 m | (−0.50, **94.77**) |
+| with collide-and-slide (post-fix) | 0.50 m | (−0.50, **93.35**) |
+
+The radial push-out **already slides**, because a glancing contact carries a lateral component in the push itself. The fix buys ~1.4 m more travel in the same window — a real but modest improvement, not a cure. It is kept, and its comment now says so plainly.
+
+Had D-066(b) not existed, "collide-and-slide fixes the movement hard-block" would have shipped as fact, and the next session would have believed the block was closed. **The law paid for itself within a day of being written.**
+
+**What remains for the harness:** the fast-movement check must stop walking the player into their own base — it should pick a clear heading, or place the structures out of the path. That is a test fix, not a game fix, and it is not yet done.
