@@ -1270,6 +1270,29 @@ async function main() {
     check('the salvage find granted stone as rolled', afterSalvage.inventory.stone === TUNE.salvageStoneAmount, `stone ${afterSalvage.inventory.stone}`);
     check('a claimed salvage find never comes back (exempt from regrowth)', afterSalvage.nodes.find((n) => n.id === 'sv_smoke')?.available === false);
 
+    //  COLLIDE-AND-SLIDE (Gate 0 Part 2). Walk HEAD-ON into the shelter and keep pressing.
+    //  Before the fix the resolver was a purely radial push-out, so a head-on approach was an
+    //  exact stalemate: the player stopped at the contact point and stayed there for as long
+    //  as the stick was held. This walks straight at the shelter from 6 m out and asserts the
+    //  player ends up somewhere OTHER than pinned dead-centre in front of it — i.e. that
+    //  pressing into a wall slides you along it rather than nailing you to it.
+    const shelterAt = (await live()).shelter;
+    if (shelterAt.built) {
+        await editSave(`state.player = { x: ${shelterAt.x}, y: ${shelterAt.y + 6} };`);
+        const beforeSlide = await live();
+        await faceNode(shelterAt.x, shelterAt.y);
+        await walkToward(shelterAt.x, shelterAt.y, 3.0);
+        const afterSlide = await live();
+        const lateral = Math.abs(afterSlide.player.x - beforeSlide.player.x);
+        const closed = Math.hypot(beforeSlide.player.x - shelterAt.x, beforeSlide.player.y - shelterAt.y)
+                     - Math.hypot(afterSlide.player.x - shelterAt.x, afterSlide.player.y - shelterAt.y);
+        //  Either they slid sideways, or they are still moving after contact. What must NOT
+        //  happen is the old behaviour: dead stop, zero lateral, parked on the contact point.
+        check('PART 2 — walking head-on into a structure SLIDES, it does not pin the player',
+            lateral > 0.15 || closed > 4.0,
+            `lateral ${lateral.toFixed(2)}m, closed ${closed.toFixed(2)}m, ended (${afterSlide.player.x.toFixed(1)},${afterSlide.player.y.toFixed(1)})`);
+    }
+
     //  "Fast movement (testing)": a real Settings toggle that measurably speeds up walking.
     await editSave('state.player = { x: 0, y: 104 };');
     const beforeToggle = await live();

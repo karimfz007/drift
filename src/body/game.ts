@@ -1292,9 +1292,42 @@ export class Game {
         let x = state.player.x + this.velX * dt;
         let z = state.player.y + this.velZ * dt;
 
-        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, this.dynamicObstacles());
+        //  COLLIDE-AND-SLIDE (Gate 0 Part 2 root cause). `resolveCollision` is a purely
+        //  RADIAL push-out: it shoves the player back along the line to the obstacle's centre
+        //  and nothing else. Walking head-on into something therefore produced an exact
+        //  stalemate — advance by `v*dt`, get pushed back by `v*dt`, net zero — and the
+        //  player stopped dead at the contact point and could never get past, however long
+        //  they held the stick. That is the movement hard-block: three device runs stalled at
+        //  byte-identically the same coordinate, 0.5 m from where they started, with no panel
+        //  open, in range, unexhausted and unloaded. It reads as a freeze because it IS one,
+        //  for that direction.
+        //
+        //  The fix is the standard one: on contact, keep the part of the motion that runs
+        //  ALONG the surface and discard only the part running into it, then re-integrate
+        //  from the contact point. Pressing into a wall now slides you along it instead of
+        //  pinning you, which is also what every player expects a body to do.
+        const dynamic = this.dynamicObstacles();
+        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dynamic);
+        const pushX = resolved.x - x;
+        const pushZ = resolved.z - z;
         x = resolved.x;
         z = resolved.z;
+        const pushLen = Math.hypot(pushX, pushZ);
+        if (pushLen > 1e-6) {
+            const nx = pushX / pushLen;
+            const nz = pushZ / pushLen;
+            //  Remove only the inward component; whatever runs along the surface survives.
+            const into = this.velX * nx + this.velZ * nz;
+            if (into < 0) {
+                this.velX -= nx * into;
+                this.velZ -= nz * into;
+                const slid = this.island.resolveCollision(
+                    x + this.velX * dt, z + this.velZ * dt, TUNE.playerCollisionRadius, dynamic
+                );
+                x = slid.x;
+                z = slid.z;
+            }
+        }
 
         const radius = Math.hypot(x, z);
         if (radius > WALKABLE_RADIUS) { const k = WALKABLE_RADIUS / radius; x *= k; z *= k; }
