@@ -259,10 +259,22 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
     switch (kind) {
         case 'tree':
         case 'quarry':
-        case 'salvage':
+        //  NOT `salvage`: it is tap-kind with no hold, and its loot was rolled once at
+        //  spawn and is merely revealed here — inflating it would contradict that outright.
+        //  It survived the first F4 sweep only because it sat in the original list and I did
+        //  not re-check it against the principle I had just written down. The harness caught
+        //  it (`salvage granted stone as rolled — stone 3`), and `masteryOnlyRewardsWork`
+        //  below now enforces the rule structurally so no kind can drift into it again.
         case 'rock':        // breaking surface stone — the gap the playtest found
         case 'deadfall':    // same hands, same axe-work
+        case 'coconutpalm': // hold-kind: bringing down a palm is real work
             return 'harvestingFabrication';
+        //  `crashbox` is hold-kind but deliberately exempt — a one-time story beat with
+        //  fixed contents, not a resource. Exactly the exemption regrowth already makes for
+        //  it. This is the ONE exception to "mastery follows effortful work", and it is
+        //  named here so the structural guard can encode it rather than be weakened.
+        case 'crashbox':
+            return null;
         default:
             //  C3 finding F4 on D-073: this briefly included `reed` and `coconutpalm`, which
             //  are TAP-kind — no hold to shorten — so mastery silently handed out a yield

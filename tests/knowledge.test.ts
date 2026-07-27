@@ -27,7 +27,7 @@ import {
     gatherNode,
     knapSharpblade,
     lightTorch,
-    repairStructure, nodeHoldSeconds } from '../src/brain/state';
+    repairStructure, nodeHoldSeconds, nodeSpec } from '../src/brain/state';
 import { recordCombinationAttempts } from '../src/brain/recipes';
 import { TUNE } from '../src/data/tune';
 import { POND } from '../src/data/world';
@@ -432,5 +432,28 @@ describe('mastery reaches every harvesting verb, not just the named training one
         //  An untrained verb reports nothing rather than lying about it.
         const rock = s.nodes.find((n) => n.kind === 'rock')!;
         expect(gatherNode(s, rock.id).learned).toBeNull();
+    });
+});
+
+describe('mastery only ever rewards effortful work (structural guard)', () => {
+    //  THE GUARD THAT SHOULD HAVE EXISTED. F4 was fixed by hand for `reed` and
+    //  `coconutpalm`, and `salvage` survived the same sweep purely because it sat in the
+    //  original list — a tap-kind node quietly taking a yield bonus, on loot that was
+    //  already rolled at spawn. A hand-maintained list drifts; this asserts the rule itself,
+    //  so any kind added to the mastery map in future must be hold-kind or fail here.
+    it('every kind in the mastery map is hold-kind, and no tap-kind sneaks in', () => {
+        const ALL: NodeKind[] = ['driftwood', 'deadfall', 'tree', 'rock', 'berrybush',
+            'coconutpalm', 'reed', 'shellfish', 'crashbox', 'quarry', 'salvage'];
+        //  One named exemption: `crashbox` is hold-kind but is a one-time story beat with
+        //  fixed contents, not a resource — the same exemption regrowth already makes. Named
+        //  here so the rule stays exact instead of being loosened to accommodate it.
+        const EXEMPT: NodeKind[] = ['crashbox'];
+        const wrong: string[] = [];
+        for (const kind of ALL) {
+            const hasMastery = masteryDomainForNodeKind(kind) !== null;
+            const shouldHave = nodeSpec(kind).interaction === 'hold' && !EXEMPT.includes(kind);
+            if (hasMastery !== shouldHave) wrong.push(`${kind}: mastery=${hasMastery} expected=${shouldHave}`);
+        }
+        expect(wrong).toEqual([]);
     });
 });

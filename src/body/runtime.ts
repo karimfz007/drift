@@ -57,7 +57,11 @@ export const runtime = {
     velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number },
     //  Gate 0 sweep: the camera's actual field of view, in degrees, read from the live
     //  camera rather than from the tune table — so the check tests what is rendered.
-    fovReadout: (() => 0) as () => number
+    fovReadout: (() => 0) as () => number,
+    //  Item 6 (quarry three-taps): the tap path is already exonerated — per-tap data shows
+    //  two of three taps setting a real pending node intention. What is not visible from
+    //  outside is whether the HOLD then starts, runs and completes. This reads that.
+    holdReadout: (() => null) as () => { nodeId: string | null; elapsedMs: number; needSeconds: number } | null
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -199,6 +203,7 @@ function installDebugHook(): void {
         stick: () => runtime.stickReadout(),
         velocity: () => runtime.velocityReadout(),
         fov: () => runtime.fovReadout(),
+        hold: () => runtime.holdReadout(),
         isPlaceable: (x: number, z: number) => isPlaceablePoint(x, z),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,

@@ -844,12 +844,18 @@ async function main() {
     //  The card gained Rest and (conditionally) Mend in D-073, so a bare `.build-item`
     //  count is no longer five. Assert the five CRAFTABLES by their own buttons instead,
     //  which is what this check was always really about and cannot drift as rows are added.
-    const buildItems = await page.evaluate(() => ({
-        craftables: ['.torch-btn', '.axe-btn', '.shelter-btn', '.storage-btn', '.stonehammer-btn']
-            .filter((sel) => document.querySelector(sel)).length,
-        rows: document.querySelectorAll('.build-item').length
-    }));
-    check('the Build panel shows all five craftables (torch/axe/shelter/storage/stone hammer)', buildItems.craftables === 5, `${buildItems.craftables}/5 craftables, ${buildItems.rows} rows total`);
+    //  Counting BUTTONS was wrong too: an already-owned item renders its "done" state with
+    //  no button at all, so a run that had crafted the hammer read 4/5. The five craftables
+    //  are always LISTED whether owned or not — that is what this check has always been
+    //  about — so it counts the named rows and ignores Rest/Mend, which are not craftables.
+    const buildItems = await page.evaluate(() => {
+        //  Craftable rows title with <h2> in BOTH states (done and buildable); Rest and
+        //  Mend use .build-head, so this naturally counts craftables only.
+        const names = Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim());
+        const wanted = ['Torch', 'Crude axe', 'Shelter', 'Storage', 'Stone hammer'];
+        return { found: wanted.filter((w) => names.includes(w)), all: names };
+    });
+    check('the Build panel lists all five craftables (torch/axe/shelter/storage/stone hammer)', buildItems.found.length === 5, `${buildItems.found.length}/5 — rows: ${buildItems.all.join(', ')}`);
     const shelterBuildTap = await realTapDom('.shelter-btn');
     check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
     await sleep(400);
@@ -1209,6 +1215,40 @@ async function main() {
     //  target whose centre projects off-screen (easy at ~2 m from a large outcrop) is tapped
     //  into nowhere and fails silently. Recording where each tap actually went settles it.
     const quarryTaps = [];
+    //  ITEM 6 ROOT CAUSE (D-072 corollary, the last amnestied defect). The hold trail
+    //  settled it: tap #2 set a real pending intention and the hold NEVER STARTED, six
+    //  samples idle; tap #3 started instantly and finished in 1.4 s. The screen points show
+    //  why — #1 and #2 projected at y≈45-54, the horizon, with the player still walking in
+    //  from `approach`, while #3 sat at y=258 once they had arrived. The check was tapping
+    //  before arrival and giving each iteration a poll window too short to cover walk time
+    //  AND hold time, so only the last tap could ever land.
+    //
+    //  Not a game defect. The check is about REPEAT-MINABILITY, so it now waits until the
+    //  player is genuinely in reach before it starts counting — and asserts that it got
+    //  there, rather than assuming it.
+    //  ...and getting there is itself the thing that fails. The first version of this gate
+    //  WAITED passively and found the player 20.07 m out after ten seconds — `approach()`
+    //  had timed out and simply stopped. A stalled walk is almost certainly the head-on
+    //  pinning found earlier this batch: a radial push-out cancels motion exactly when you
+    //  press straight into an obstacle, so a straight-line approach can park against
+    //  whatever lies between. A player would sidestep; so does this now.
+    let inReach = false;
+    let approachTrail = [];
+    for (let attempt = 0; attempt < 4 && !inReach; attempt++) {
+        const d = await approach(quarry.x, quarry.y, 25);
+        approachTrail.push(`try${attempt + 1}:${d.toFixed(1)}m`);
+        inReach = d <= TUNE.interactRadiusM;
+        if (!inReach) {
+            //  Break the stalemate the way a thumb would: step sideways, then resume.
+            const st = await live();
+            const ax = st.player.x - quarry.x, az = st.player.y - quarry.y;
+            const len = Math.hypot(ax, az) || 1;
+            await walkToward(st.player.x + (-az / len) * 8, st.player.y + (ax / len) * 8, 1.2);
+        }
+    }
+    const reachDist = await (async () => { const st = await live(); return Math.hypot(st.player.x - quarry.x, st.player.y - quarry.y); })();
+    check('setup — the player actually REACHED the quarry before the repeat-mining taps begin', inReach, `${reachDist.toFixed(2)} m (reach ${TUNE.interactRadiusM}) — ${approachTrail.join(' ')}`);
+
     for (let i = 0; i < 3; i++) {
         const before = await live();
         const pt = await screenOf(quarry.x, quarry.y);
@@ -1217,7 +1257,18 @@ async function main() {
                                      && pt.y >= canvasBox.top && pt.y <= canvasBox.top + canvasBox.height;
         await tapWorld(quarry.x, quarry.y, 55);
         const pendAfter = await page.evaluate(() => window.__drift.pending());
-        quarryTaps.push(`#${i + 1} pt=${pt ? `${pt.x.toFixed(0)},${pt.y.toFixed(0)}` : 'null'} onCanvas=${onCanvas} pending=${pendAfter ? pendAfter.kind : 'none'}`);
+        //  Item 6: the tap path is exonerated, so watch the HOLD. Sample it across the poll
+        //  window — did it start at all, did it run, did it reach `needSeconds`?
+        const holdTrail = [];
+        for (let h = 0; h < 6; h++) {
+            await sleep(300);
+            const st = await page.evaluate(() => ({ hold: window.__drift.hold ? window.__drift.hold() : null,
+                                                    stone: window.__drift.state().inventory.stone }));
+            holdTrail.push(st.hold && st.hold.nodeId
+                ? `${(st.hold.elapsedMs / 1000).toFixed(1)}/${st.hold.needSeconds.toFixed(1)}s`
+                : `idle(stone ${st.stone})`);
+        }
+        quarryTaps.push(`#${i + 1} pt=${pt ? `${pt.x.toFixed(0)},${pt.y.toFixed(0)}` : 'null'} onCanvas=${onCanvas} pending=${pendAfter ? pendAfter.kind : 'none'} hold[${holdTrail.join(' ')}]`);
         //  The quarry is a HOLD interaction (same swing-and-wait feel as a rock outcrop) —
         //  give the hold (TUNE.deadfallHoldSeconds worth of real time) a chance to complete
         //  before reading the result, the same poll pattern harvest() already uses.

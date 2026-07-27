@@ -259,6 +259,15 @@ export class Game {
         runtime.stickReadout = () => this.controls.read();
         runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
         runtime.fovReadout = () => (this.camera.fov * 180) / Math.PI;
+        runtime.holdReadout = () => {
+            if (!this.holdNodeId) return { nodeId: null, elapsedMs: 0, needSeconds: 0 };
+            const view = this.nodes.find(this.holdNodeId);
+            return {
+                nodeId: this.holdNodeId,
+                elapsedMs: now() - this.holdStartedAt,
+                needSeconds: view ? nodeHoldSeconds(session().state, view.node) : -1
+            };
+        };
         runtime.tryCombine = (a, b) => {
             const result = tryCombine(session().state, a as 'wood', b as 'wood');
             session().persist(now());
