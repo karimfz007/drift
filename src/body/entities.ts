@@ -128,12 +128,25 @@ export class PlayerView {
         this.pack.material = flat(scene, 'packMat', PALETTE.playerPack);
         this.pack.parent = this.root;
         this.pack.position = new Vector3(0, 0.16, -0.36);
-        //  THE PACK IS A REAL TARGET (director's request). Tapping the bag on the survivor's
-        //  back opens what you are carrying — the physical object, not only the 2D icon. The
-        //  player mesh itself stays unpickable so the body never eats world taps; only the
-        //  pack does, and it carries its own metadata so the tap resolves unambiguously.
-        this.pack.isPickable = true;
-        this.pack.metadata = { backpack: true };
+        //  REVERTED (C3 finding F1 on D-073). This was briefly made pickable so the bag on
+        //  the survivor's back could be tapped directly. It broke the game's central verb.
+        //
+        //  Both node resolvers use `scene.pick`, which returns the NEAREST pickable mesh —
+        //  and the pack, worn on a body drawn at the centre of a third-person view, is
+        //  nearer to the camera than anything the player walks up to. At interaction range
+        //  it won the ray: `pickNode`'s exact-hit branch got the pack instead of the node,
+        //  and its near-miss fallback then measured from a point on the survivor's own body,
+        //  ~1.7 m from the target, past `nodeTapSlack` (0.9). The gather never fired.
+        //
+        //  Measured, same screen point, shipped harness: pre-fix 32 checks / 0 failures;
+        //  with the pack pickable, 41 checks / 12 failures — reeds, deadfall, rock, palm,
+        //  driftwood, shellfish, berries, felling and the pond flask ALL broke.
+        //
+        //  Ordering it after `pickNode` does not rescue it, because `pickNode` is precisely
+        //  what the pack broke. Tapping the worn pack needs a mechanism that does not put a
+        //  collider in front of the camera — a screen-space hit region over the character,
+        //  or a dedicated pick predicate that excludes the body from world picks. Parked.
+        this.pack.isPickable = false;
 
         //  Visible tool carriage (D-046(d) ruling): once crafted, the axe is on the
         //  character, not just a HUD chip — a haft + head parented to the hip, angled

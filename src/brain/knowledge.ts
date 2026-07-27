@@ -262,11 +262,15 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
         case 'salvage':
         case 'rock':        // breaking surface stone — the gap the playtest found
         case 'deadfall':    // same hands, same axe-work
-        case 'coconutpalm':
-        case 'reed':
             return 'harvestingFabrication';
         default:
-            return null;    // tap-kind gathering has no hold to shorten
+            //  C3 finding F4 on D-073: this briefly included `reed` and `coconutpalm`, which
+            //  are TAP-kind — no hold to shorten — so mastery silently handed out a yield
+            //  bonus for no work at all (measured: fibre 2 → 3 on a single reed tap), while
+            //  excluding `crashbox` for no stated reason. The rule is now the principled one
+            //  it should always have been: **mastery rewards effortful work**, so it applies
+            //  to hold-kind harvesting and nothing else. Picking a reed is not a skill.
+            return null;
     }
 }
 

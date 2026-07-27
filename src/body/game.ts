@@ -500,17 +500,31 @@ export class Game {
      * is indistinguishable from a broken button — which is how this stayed invisible.
      */
     private onTryCombine(a: string, b: string): void {
+        //  C3 finding F2 on D-073: the first cut tested `outcome === 'failed'`, which is not
+        //  one of the five real outcomes — so `failed-attempt`, `already-known` AND `refused`
+        //  all fell through to the success branch and were announced with the unlock cue,
+        //  and a genuine invention never named its plan because the field is `blueprint`,
+        //  not `blueprintName`. The `as { outcome: string }` cast is what hid all of it, so
+        //  the cast is gone and the compiler now checks this exhaustively.
         const result = tryCombine(session().state, a as 'wood', b as 'wood');
         session().persist(now());
-        if (result && typeof result === 'object' && 'outcome' in result) {
-            const outcome = (result as { outcome: string; blueprintName?: string }).outcome;
-            if (outcome === 'no-relationship') this.explain('Nothing comes of it. You note that down.');
-            else if (outcome === 'failed') this.explain('It does not hold. Not this time.');
-            else {
-                const name = (result as { blueprintName?: string }).blueprintName;
-                this.floatText(name ? `${name} — you see how it works` : 'Something works');
+        switch (result.outcome) {
+            case 'invented':
+                this.floatText(result.blueprint ? `${result.blueprint.name} — you see how it works` : 'Something works');
                 this.cues.play(CUES.unlock);
-            }
+                break;
+            case 'failed-attempt':
+                this.explain('It does not hold. Not this time.');
+                break;
+            case 'no-relationship':
+                this.explain('Nothing comes of it. You note that down.');
+                break;
+            case 'already-known':
+                this.explain('You have tried this before. You know how it goes.');
+                break;
+            case 'refused':
+                this.explain(result.reason ?? 'You cannot try that right now.');
+                break;
         }
         this.lastActivityAt = now();
     }
@@ -553,13 +567,6 @@ export class Game {
      * (no explanation owed) apart from "hit something real that produced no verb" (D-042's
      * fail-loud law: silence is never a legal outcome for the latter).
      */
-    /** True when this screen point lands on the pack worn on the survivor's back. */
-    private pickedBackpack(screenX: number, screenY: number): boolean {
-        const rect = this.canvas.getBoundingClientRect();
-        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
-        return Boolean(hit?.hit && hit.pickedMesh?.metadata?.backpack);
-    }
-
     private pickHitPoint(screenX: number, screenY: number): { x: number; z: number; unexpectedMesh: string | null } | null {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
@@ -652,18 +659,6 @@ export class Game {
         //  tree's ghost hit-box (D-045) and the shelter swallowing storage taps (D-051).
         //  World targets win; the pack is what you get when the tap meant nothing else.
         //  Additive as asked: the HUD bag icon is untouched and still opens the same panel.
-        //  The pack worn on the survivor's back (director's request). Resolved AFTER nodes,
-        //  so a resource under the finger always wins, but BEFORE world points — because
-        //  `pickedBackpack` is true only when the pack is the TOPMOST pickable mesh, which
-        //  means the ray reached the survivor's own body before anything else and the tap
-        //  genuinely landed on them. Nothing behind the player can be stolen this way.
-        //  Additive as asked: the HUD bag icon is untouched and opens the same panel.
-        if (this.pickedBackpack(screenX, screenY)) {
-            this.recordTap(screenX, screenY, 'backpack');
-            this.openLoadout();
-            return;
-        }
-
         const point = this.pickHitPoint(screenX, screenY);
         if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
 
