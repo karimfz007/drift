@@ -777,7 +777,12 @@ async function main() {
     const felled = await harvest('tree', 34);
     check('REGRESSION #5 — a standing tree can be felled with the axe (the axe DOES something)', felled.ok, felled.reason ?? '');
     const afterFell = await live();
-    check('the felled tree yields timber (treeWoodYield)', afterFell.inventory.wood - woodBeforeFell === TUNE.treeWoodYield, `+${afterFell.inventory.wood - woodBeforeFell}`);
+    //  Mastery (D-073) means a practised survivor takes MORE from the same tree, so the
+    //  yield is no longer a fixed constant — this asserted `=== treeWoodYield` and failed at
+    //  +9 once the run had trained the domain. The floor is what matters: a fell must never
+    //  yield LESS than the base, and must never yield nothing.
+    const felledWood = afterFell.inventory.wood - woodBeforeFell;
+    check('the felled tree yields timber (at least treeWoodYield; mastery may add)', felledWood >= TUNE.treeWoodYield, `+${felledWood} (base ${TUNE.treeWoodYield})`);
     check('felling trains woodcutting', afterFell.skills.woodcutting.xp > 0 || afterFell.skills.woodcutting.level > 1);
     await shot('c04-06-felled');
 
@@ -841,7 +846,15 @@ async function main() {
     await editSave('state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };');
     await realTapDom('.secondary-action');
     await sleep(400);
-    check('the Build panel shows all five items (torch/axe/shelter/storage/stone hammer)', (await page.evaluate(() => document.querySelectorAll('.build-item').length)) === 5);
+    //  The card gained Rest and (conditionally) Mend in D-073, so a bare `.build-item`
+    //  count is no longer five. Assert the five CRAFTABLES by their own buttons instead,
+    //  which is what this check was always really about and cannot drift as rows are added.
+    const buildItems = await page.evaluate(() => ({
+        craftables: ['.torch-btn', '.axe-btn', '.shelter-btn', '.storage-btn', '.stonehammer-btn']
+            .filter((sel) => document.querySelector(sel)).length,
+        rows: document.querySelectorAll('.build-item').length
+    }));
+    check('the Build panel shows all five craftables (torch/axe/shelter/storage/stone hammer)', buildItems.craftables === 5, `${buildItems.craftables}/5 craftables, ${buildItems.rows} rows total`);
     const shelterBuildTap = await realTapDom('.shelter-btn');
     check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
     await sleep(400);
