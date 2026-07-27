@@ -410,3 +410,23 @@ Crew of Director + C1 Orchestrator + C2 Builder + C3 Auditor (plus later hats); 
 
 ## Parked
 - **Play-as-an-animal-in-a-world** — separate concept, filed untouched (Charter Appendix A).
+- **Design reference — Last Day on Earth (Kefir)** (director, 2026-07-23): the mobile-survival
+  playability bar — camera, one-thumb legibility, and especially its building UX, which the
+  director rates "simple and acceptable": grid tap-to-place floors/walls with in-place tier
+  upgrades. Our version must be *more fluid, with smoother character movement* than LDOE.
+  Feeds Cycle 04's construction design directly: Rust's tier/upkeep/decay economy inside
+  LDOE-simple placement ergonomics. Gameplay reference only — LDOE's monetization and energy
+  mechanics are excluded by the honest-systems rule (§I.8).
+- **Design (parked) — Localized injury & healing system** (director, 2026-07-23): later-game
+  medical depth. Injuries by location and severity — skin cuts (infection risk), arteries
+  (rapid bleed-out), muscle, bone, spine, skull, lung, heart, kidney, liver, etc. — each with
+  its own healing clock, treatment path, and legible impairment (limp, weakened grip, reduced
+  stamina). Healing takes real time and flows through reconcile → morning-report material
+  ("your arm mended; the leg wound looks infected — clean it"). Treatments enter the codex
+  through the four gates (bandages, splints, boiled-water antiseptic…) and feed a First Aid
+  skill on the Development Tree. Rails: D-011 holds (bleed-outs are active-play deaths only;
+  offline, wounds stabilize/worsen to floors, never kill); Experience rules 2–3 hold (every
+  injury telegraphed, preventable, explainable, treatable — no soft-locks in a solo run:
+  spine/skull resolve as death or long recovery, never paralysis-stuck). Reference bar:
+  RimWorld's per-part health model, Project Zomboid's wound care. Activates after threats
+  exist (C06+ / Phase 2) — injuries need believable sources first.
