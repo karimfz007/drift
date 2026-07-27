@@ -1504,3 +1504,16 @@ FAIL  D-063 — the panel closes via its own close button — not-found
 The `.inv` row entry point was genuinely occluded on the device viewport, so `openLoadout` never executed. Whatever the D-063 as-built recorded for its close-path law, the device layer did not confirm it — it could not have.
 
 **What is known about the two, for whoever picks them up.** The fast-movement failure is not a tuning effect: driven in isolation against this build the player walks **7.63 m** in the same 2.5 s window, and **5.04 m** at energy 5, and **7.57 m** at fatigue 95 — so neither exhaustion nor fatigue explains 0.5 m. 0.5 m is the shape of a player who was *blocked* for almost the whole window, not slowed, which makes it worth treating as a possible real "sometimes you cannot walk" defect rather than a harness artifact. The quarry failure polls 8 × 400 ms for a gather hold to complete, a budget written before D-059 made hold time scale with exhaustion; that is the first thing to check there. Both are flagged, neither is fixed here — this session's scope was the freeze and the two hit-test reports.
+
+### Gate 0 closing pass — the instrumented device run, decomposed honestly
+
+**182/193, completed, exit 0.** Eleven failures, and they are not eleven problems:
+
+| # | Failures | What they actually are |
+|---|---|---|
+| **7** | `storage builds via a real, reachable tap — not-found`, then every storage check downstream (`panel ABSENT`, deposits 0, withdraw 0, post-fell storage, empty-box) | **One cascade from one cause.** This build carried Part 1's first attempt, which put Mend on the **secondary button** — so standing at a mendable shelter the button read "Mend", the Build panel never opened, `.storage-btn` was never found, and storage was never built. Every later storage check then had no box to talk to. **Already fixed in `481e9eb`** by moving Mend into the Build card; not yet re-run. |
+| **1** | `a FAILING shelter repairs (not sleeps) when wood is held` | A check that **encodes the behaviour this pass deliberately deleted.** The shelter tap now always sleeps. The check must be rewritten to mend via the Build card's new row. Not yet done. |
+| **1** | `URGENT — a real tap on the shelter body sets the intention` | Unexplained. The band check beside it passed 17/17 in the previous run. Not investigated. |
+| **2** | quarry repeat-mining, fast-movement | **The pre-existing pair**, proven in the D-065 A/B to predate this work (baseline 168/178, byte-identical failure strings). Part 2's evidence above narrows them; neither is closed. |
+
+**The lesson worth keeping:** a raw failure count is nearly useless on a long harness. Seven of these eleven were one button in one state, and reading them as eleven defects would have sent the next session chasing six ghosts. The first failure in a dependency chain is the only one worth diagnosing until it is fixed.
