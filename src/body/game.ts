@@ -209,7 +209,7 @@ export class Game {
         this.hud = new Hud(
             this.overlay,
             () => this.onBuildFire(),
-            () => this.onSecondaryAction(),
+            () => this.openBuildCard(),
             (food) => this.onEatFood(food),
             () => this.onDrinkFlask()
         );
@@ -422,14 +422,7 @@ export class Game {
      * secondary button is a stopgap that makes every verb reachable *today*; it is not the
      * design, and it should be deleted when the circle lands.
      */
-    private onSecondaryAction(): void {
-        const s = session().state;
-        if (canRepairStructure(s, 'shelter')) {
-            this.tryRepair('shelter');
-            return;
-        }
-        this.openBuildCard();
-    }
+
 
     private openLoadout(atStorage = false): void {
         if (runtime.panelOpen) return;
@@ -1095,6 +1088,14 @@ export class Game {
                 axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe },
                 shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built },
                 storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built },
+                //  Mending, on the construction surface where it belongs (Gate 0 Part 1).
+                //  Reachable at ANY durability below full — no threshold, no urgency gate,
+                //  and it displaces nothing, which the secondary-button attempt did not
+                //  manage: standing at your own shelter it replaced Build outright and made
+                //  storage unbuildable. The device harness caught that within one run.
+                mendShelter: canRepairStructure(s, 'shelter')
+                    ? { durability: s.shelter.durability, max: TUNE.structureDurabilityMax, gain: TUNE.repairDurabilityPerWood }
+                    : null,
                 stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
@@ -1142,7 +1143,8 @@ export class Game {
                 }
                 this.lastActivityAt = now();
             },
-            () => this.endPanel()
+            () => this.endPanel(),
+            () => { this.endPanel(); this.tryRepair('shelter'); }
         );
     }
 
@@ -1441,17 +1443,7 @@ export class Game {
         //  panel EARLY, before all three older items are built — it never exercised the
         //  "everything but the torch" state a real long session reaches.
         let secondary = { label: '', visible: false };
-        //  C3 finding C1 on D-065, fixed here: gating `tryRepair('shelter')` on urgency alone
-        //  left the shelter with NO way to be mended between 40% and 90% durability — storage
-        //  got a Mend button in its panel, the shelter got nothing, and since a repair is +15
-        //  a shelter past 40 would sit permanently capped near 55/100. Mending is offered on
-        //  the secondary button while you are standing at a shelter that wants it. That is a
-        //  positional, transient condition (`canRepairStructure` already requires range), so
-        //  it displaces Build only while you are at your own shelter — and never hides it in
-        //  the band where the tap itself already mends.
-        if (canRepairStructure(state, 'shelter')) {
-            secondary = { label: `Mend  ·  +${TUNE.repairDurabilityPerWood}`, visible: true };
-        } else if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
+        if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
             secondary = { label: 'Build', visible: true };
         }
 

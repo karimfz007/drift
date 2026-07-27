@@ -97,20 +97,26 @@ describe('renewability law (D-051) — no resource is globally exhaustible', () 
         const quarry = findNode(state, 'qr1')!;
         expect(quarry.pool).toBe(TUNE.quarryStoneCapacity);
 
-        const taps = Math.ceil(TUNE.quarryStoneCapacity / TUNE.quarryYieldPerTap);
-        for (let i = 0; i < taps - 1; i++) {
-            const before = quarry.available;
+        //  Drain it by asking the node, not by assuming a fixed yield per tap. Mastery
+        //  (Gate 0 item 3) makes a practised survivor take more per swing, so
+        //  `ceil(capacity / yieldPerTap)` is no longer the tap count — but the LAW is
+        //  unchanged and is now asserted more strongly than before: **total stone out equals
+        //  the pool exactly.** That is the conservation property, and it locks a real bug
+        //  this pass introduced and fixed — the first cut of the mastery bonus added stone
+        //  to the inventory without drawing it from the pool, creating matter from nothing.
+        const stoneBefore = state.inventory.stone;
+        let taps = 0;
+        while (quarry.available) {
+            const before = quarry.pool!;
             const result = gatherNode(state, 'qr1');
             expect(result.ok).toBe(true);
-            expect(before).toBe(true);
-            expect(quarry.available).toBe(true); // still has pool left
+            expect(quarry.pool!).toBeLessThan(before); // every tap spends real pool
+            taps += 1;
+            expect(taps).toBeLessThan(1000); // never loops forever
         }
-        expect(quarry.pool).toBeGreaterThan(0);
-        expect(quarry.pool).toBeLessThanOrEqual(TUNE.quarryYieldPerTap);
-
-        const lastYield = quarry.pool;
-        const final = gatherNode(state, 'qr1');
-        expect(final.gained.stone).toBe(lastYield);
+        expect(taps).toBeGreaterThan(1); // genuinely repeat-minable, not single-shot
+        expect(quarry.pool).toBe(0);
+        expect(state.inventory.stone - stoneBefore).toBe(TUNE.quarryStoneCapacity);
         expect(quarry.available).toBe(false); // pool hit exactly 0
         expect(quarry.depletedAtGameHours).not.toBeNull();
 

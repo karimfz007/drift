@@ -468,7 +468,17 @@ export const TUNE = {
     // ---- Ch.2, "The Knowledge Model" (MAJOR artifact) — domain scores ------
     /** [TUNE] Ch.2 — every domain score's ceiling (Technique/Understanding/Adaptation). */
     knowledgeScoreMax: 100,
-    /** [TUNE] Ch.2 — every domain starts here, not zero — most domains sit untouched for a
+        /** [TUNE] Ch.2 mastery, made real (Gate 0 item 3). At FULL technique (100) an effortful
+     *  hold takes `1/(1+this)` of its base time — 0.6 means a master works in ~62% of a
+     *  novice's time. Stacks multiplicatively with the per-skill level bonus and the tool's
+     *  own grade: mastery is the person, grade is the tool, level is the practised verb. */
+    masteryTechniqueSpeedBonusAtFull: 0.6,
+    /** [TUNE] Ch.2 mastery, made real. At FULL understanding (100) a gather yields
+     *  `1+this` times its base — 0.5 means a master takes half again as much from the same
+     *  tree. Fractional remainders resolve deterministically from the seeded hash, never
+     *  `Math.random`, so the same gather always gives the same answer. */
+    masteryUnderstandingYieldBonusAtFull: 0.5,
+/** [TUNE] Ch.2 — every domain starts here, not zero — most domains sit untouched for a
      *  long time (no producer exists yet for Foraging & medicine, Mechanical systems,
      *  Electrical & radio, or Navigation & seamanship this pass), and that is correct, not
      *  a gap to fill artificially. */

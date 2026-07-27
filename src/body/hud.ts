@@ -292,6 +292,12 @@ export interface BuildCardView {
     storage: BuildItemView;
     /** The stone hammer (Ch.1 v3, D-055) — a fifth, one-time Build-panel entry. */
     stoneHammer: BuildItemView;
+    /** Mending the shelter, or null when it is whole / out of reach / no wood held.
+     *  Lives HERE, on the construction surface, rather than on the secondary button —
+     *  the first attempt put it there and it displaced Build itself while the player stood
+     *  at their own shelter, which is the same one-control-two-verbs disease it was meant
+     *  to cure. The Build card already IS the construction surface; nothing is displaced. */
+    mendShelter: { durability: number; max: number; gain: number } | null;
 }
 
 /** Knapping (Ch.1 v3, D-055): repeatable, not a one-time build — no "done" state, just a
@@ -373,7 +379,8 @@ export function showBuildCard(
     onBuildStorage: () => void,
     onCraftStoneHammer: () => void,
     onKnapSharpblade: () => void,
-    onClose: () => void
+    onClose: () => void,
+    onMendShelter: () => void = () => {}
 ): void {
     const el = panel(overlay, 'build');
     el.innerHTML = `
@@ -388,6 +395,12 @@ export function showBuildCard(
                 { wood: TUNE.storageWoodCost, stone: TUNE.storageStoneCost }, 'Set.', 'Set the crate', 'storage-btn')}
             ${buildItemMarkup('Stone hammer', 'Tier 0. Its one job: knapping stone into a blade, below.', view.stoneHammer,
                 { wood: TUNE.stoneHammerWoodCost, stone: TUNE.stoneHammerStoneCost }, 'Owned.', 'Make the hammer', 'stonehammer-btn')}
+            ${view.mendShelter ? `
+            <div class="build-item mend-item">
+                <div class="build-head"><strong>Mend the shelter</strong></div>
+                <p class="subtitle">Worn to ${Math.round(view.mendShelter.durability)}/${view.mendShelter.max}. One wood restores ${view.mendShelter.gain}.</p>
+                <button class="primary mend-shelter-btn" type="button">Mend  ·  +${view.mendShelter.gain}</button>
+            </div>` : ''}
             ${knapMarkup(knap)}
         </div>
         <button class="quiet close-btn" type="button">Close</button>`;
@@ -396,6 +409,7 @@ export function showBuildCard(
         const btn = el.querySelector(selector);
         btn?.addEventListener('click', () => { if (done) return; done = true; fade(el, action); });
     };
+    bind('.mend-shelter-btn', onMendShelter);
     bind('.torch-btn', onCraftTorch);
     bind('.axe-btn', onCraftAxe);
     bind('.shelter-btn', onBuildShelter);

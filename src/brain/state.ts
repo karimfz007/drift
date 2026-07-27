@@ -7,7 +7,7 @@ import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
 import { deathResourceLoss, loadEnergyMultiplierOf, respawnMessageFor } from './body';
-import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying } from './knowledge';
+import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, masteryForNodeKind } from './knowledge';
 import { cloneLoadout, freshLoadout } from './loadout';
 import { recipeDomain } from './recipes';
 import { grantXp, newSkill } from './skills';
@@ -215,6 +215,10 @@ export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
     //  once here, at the single place hold duration is computed, so no gather verb can be
     //  added later that silently escapes it.
     const exhaustion = exhaustionHoldMultiplierFor(state.energy);
+    //  Ch.2 mastery, made real (Gate 0 item 3): technique shortens the work. Applied here,
+    //  at the one place hold duration exists, for the same reason exhaustion is — so no
+    //  gather verb added later can silently escape it.
+    const mastery = masteryForNodeKind(state, node.kind).speedMultiplier;
     if (spec.skill === 'woodcutting') {
         //  Woodcutting mastery shortens the chop — the action gets faster, not the number
         //  over the tree (§I.9). The axe's OWN grade (Ch.1 v3, D-055) is a second, distinct
@@ -222,9 +226,9 @@ export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
         //  tool's own quality; they stack multiplicatively rather than one masking the other.
         const level = state.skills.woodcutting.level;
         const base = spec.holdBaseSeconds / (1 + (level - 1) * TUNE.skillSpeedBonusPerLevel);
-        return base * axeChopMultiplierFor(state.tools.axeGrade) * exhaustion;
+        return base * axeChopMultiplierFor(state.tools.axeGrade) * exhaustion * mastery;
     }
-    return spec.holdBaseSeconds * exhaustion;
+    return spec.holdBaseSeconds * exhaustion * mastery;
 }
 
 /** Why a gather can't happen right now, or null if it can. */
@@ -359,6 +363,39 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
         }
     }
 
+    //  Ch.2 mastery, made real (Gate 0 item 3) — the YIELD half, applied ONCE here rather
+    //  than inside eight separate yield cases, so a kind added later cannot escape it and
+    //  no case can drift out of step with the others.
+    //
+    //  Understanding gets more out of the same tree. The fractional remainder resolves from
+    //  the seeded hash (never `Math.random` — the brain has no randomness), keyed on the
+    //  node and the world clock, so the same gather always produces the same answer and a
+    //  reload cannot be used to re-roll a better one.
+    const yieldMultiplier = masteryForNodeKind(state, node.kind).yieldMultiplier;
+    if (yieldMultiplier > 1) {
+        const roll = seedFraction(hashText(node.id) + Math.floor(state.gameHoursElapsed * 60));
+        for (const key of Object.keys(gained) as Array<keyof Inventory>) {
+            const base = gained[key] ?? 0;
+            if (base <= 0) continue;
+            const exact = base * yieldMultiplier;
+            const whole = Math.floor(exact);
+            let bonus = (whole - base) + (roll < exact - whole ? 1 : 0);
+            //  CONSERVATION. A pool-backed node (the quarry) must not yield more than its
+            //  pool holds — mastery gets more out of the rock, it does not conjure rock.
+            //  The first cut of this added the bonus straight to the inventory and left the
+            //  pool untouched, which quietly created stone from nothing and broke D-051's
+            //  whole accounting; a renewability test caught it on the next run.
+            if (node.pool !== undefined) {
+                bonus = Math.min(bonus, node.pool);
+                node.pool -= bonus;
+            }
+            if (bonus > 0) {
+                state.inventory[key] += bonus;
+                gained[key] = base + bonus;
+            }
+        }
+    }
+
     //  The quarry stays available until its pool is actually spent — every other kind is
     //  single-shot, exactly as before. Either way, depletion is stamped with the game clock
     //  so the renewability law (reconcile.ts) knows when to start counting toward regrowth.
@@ -437,6 +474,13 @@ function hash32(seed: number): number {
 }
 
 /** A pseudo-random fraction in [0, 1) for this seed, stable across calls (pure). */
+/** A stable numeric hash of a node id, so seeded rolls can be keyed on it. */
+function hashText(text: string): number {
+    let h = 0;
+    for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+    return Math.abs(h);
+}
+
 function seedFraction(seed: number): number {
     return hash32(seed) / 0x100000000;
 }

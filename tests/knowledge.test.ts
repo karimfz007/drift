@@ -8,8 +8,7 @@ import {
     freshDomainScores,
     nullOutcomeFactors,
     recordTrying,
-    tryFactorsFor
-} from '../src/brain/knowledge';
+    tryFactorsFor, masteryFor } from '../src/brain/knowledge';
 import { recipeDomain } from '../src/brain/recipes';
 import {
     buildFire,
@@ -28,8 +27,7 @@ import {
     gatherNode,
     knapSharpblade,
     lightTorch,
-    repairStructure
-} from '../src/brain/state';
+    repairStructure, nodeHoldSeconds } from '../src/brain/state';
 import { recordCombinationAttempts } from '../src/brain/recipes';
 import { TUNE } from '../src/data/tune';
 import { POND } from '../src/data/world';
@@ -299,5 +297,76 @@ describe('knowledge — item 3: the null-outcome journal is wired for real', () 
         const afterFirst = JSON.parse(JSON.stringify(s.knowledge));
         recordCombinationAttempts(s);
         expect(s.knowledge).toEqual(afterFirst);
+    });
+});
+
+// ---- Gate 0 item 3: mastery made real ------------------------------------
+
+describe('mastery is embodied, not merely recorded (Gate 0 item 3)', () => {
+    const treeState = () => {
+        const s = createInitialState(0);
+        s.tools.axe = true;
+        s.energy = TUNE.energyMax;
+        return s;
+    };
+
+    //  THE REGRESSION IS THE REPORT. Ch.2 shipped the domain scores and every channel that
+    //  trains them, and then nothing read them — a survivor could reach 100 understanding
+    //  and fell a tree in exactly a first-day castaway's time for exactly the same wood.
+    //  This raises the domain and measures what actually changed, and prints it, so the
+    //  claim "mastery is real" is a number in the test output rather than an assertion of
+    //  faith. Proven to FAIL on the pre-mastery tree (both deltas 0.0%) per D-066(b).
+    it('REPORT — raising a domain measurably speeds the work and raises the yield', () => {
+        const novice = treeState();
+        const master = treeState();
+        for (const d of KNOWLEDGE_DOMAINS) {
+            master.knowledge.domains[d] = { technique: 100, understanding: 100, adaptation: 100 };
+        }
+
+        const tree = novice.nodes.find((n) => n.kind === 'tree')!;
+        const masterTree = master.nodes.find((n) => n.id === tree.id)!;
+
+        const noviceHold = nodeHoldSeconds(novice, tree);
+        const masterHold = nodeHoldSeconds(master, masterTree);
+        const speedGain = (1 - masterHold / noviceHold) * 100;
+
+        //  Yield is sampled across many nodes because the fractional remainder resolves from
+        //  a seeded roll per node — one tree would measure the roll, not the mastery.
+        const totalFor = (s: typeof novice) => {
+            let wood = 0;
+            for (const n of s.nodes.filter((x) => x.kind === 'tree')) {
+                const before = s.inventory.wood;
+                gatherNode(s, n.id);
+                wood += s.inventory.wood - before;
+            }
+            return wood;
+        };
+        const noviceWood = totalFor(novice);
+        const masterWood = totalFor(master);
+        const yieldGain = (masterWood / noviceWood - 1) * 100;
+
+        console.log(
+            `\n  MASTERY REPORT — felling, novice vs master:\n` +
+            `    hold time   ${noviceHold.toFixed(2)}s -> ${masterHold.toFixed(2)}s  (${speedGain.toFixed(1)}% faster)\n` +
+            `    wood yield  ${noviceWood} -> ${masterWood}          (${yieldGain.toFixed(1)}% more)\n`
+        );
+
+        expect(masterHold).toBeLessThan(noviceHold);
+        expect(speedGain).toBeGreaterThan(20);
+        expect(masterWood).toBeGreaterThan(noviceWood);
+        expect(yieldGain).toBeGreaterThan(20);
+    });
+
+    it('a novice is genuinely unaffected — mastery adds, it never taxes the beginner', () => {
+        const s = treeState();
+        const tree = s.nodes.find((n) => n.kind === 'tree')!;
+        const m = masteryFor(s, 'harvestingFabrication');
+        //  EXACTLY neutral at the innate floor. Mastery is measured from what this person
+        //  learned, not from zero, so a first-day castaway gets the plain base numbers — no
+        //  unearned bonus, and equally no penalty for being new. (Measuring from zero handed
+        //  a novice 5 stone from a 4-stone quarry tap; a renewability test caught it.)
+        expect(m.speedMultiplier).toBe(1);
+        expect(m.yieldMultiplier).toBe(1);
+        expect(nodeHoldSeconds(s, tree)).toBeGreaterThan(0);
     });
 });

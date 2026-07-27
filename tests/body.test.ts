@@ -284,6 +284,10 @@ describe('body — THE LAW: absence never makes the body worse (Ch.6, mirroring 
         };
     }
 
+    //  An explicit budget, as the two vitals property tests already carry: this walks 2000
+    //  random states across long absences and genuinely takes seconds, so under full-suite
+    //  parallel load it fails as a TIMEOUT and reads at a glance as the offline law
+    //  breaking, which it is not. The iteration count is the strength of the property.
     it('for 2000 random states × random long absences, fatigue NEVER rises', () => {
         const rand = rng(20260725);
         const offlineSpans = [
@@ -326,7 +330,7 @@ describe('body — THE LAW: absence never makes the body worse (Ch.6, mirroring 
             expect(result.diedDuringSpan).toBe(false);
             expect(state.health).toBeGreaterThan(0);
         }
-    });
+    }, 30_000);
 
     it('an absent SHELTERED, warm, dry unit actively recovers — improves, not merely holds', () => {
         const s = shelteredAt(run());

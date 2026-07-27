@@ -205,3 +205,46 @@ export function domainForNodeKind(kind: NodeKind): KnowledgeDomain | null {
             return null;
     }
 }
+
+// ---- Mastery made real (Gate 0 item 3) ----------------------------------
+
+/**
+ * What a domain's scores are actually WORTH, expressed as multipliers on the work itself.
+ *
+ * Ch.2 shipped the domain scores and every channel that trains them, and then nothing read
+ * them: a survivor could grind `harvestingFabrication` to 100 and fell a tree in exactly the
+ * time a first-day castaway takes. That is the gap the director felt most — knowledge that
+ * is recorded but not *embodied* is a number, not mastery.
+ *
+ * Two distinct scores do two distinct jobs, deliberately:
+ * - **technique** is the hands. It makes the work FASTER. Practice makes the swing efficient.
+ * - **understanding** is the head. It makes the work YIELD MORE. Knowing where the grain runs
+ *   and which part of the plant is worth taking gets more out of the same tree.
+ *
+ * `adaptation` is intentionally NOT a multiplier here — it governs transfer to unfamiliar
+ * materials and conditions, which belongs to the branch that models those, not to a flat
+ * bonus on a familiar verb.
+ */
+export function masteryFor(state: GameState, domain: KnowledgeDomain): { speedMultiplier: number; yieldMultiplier: number } {
+    const score = state.knowledge?.domains?.[domain];
+    if (!score) return { speedMultiplier: 1, yieldMultiplier: 1 };
+    //  Normalised ABOVE THE INNATE FLOOR, not from zero. Every domain starts at the floor
+    //  (a human is not born unable to break a stick), so measuring from zero would hand a
+    //  first-day castaway a permanent bonus they never earned — and it did: a fresh survivor
+    //  started pulling 5 stone from a 4-stone quarry tap, which a renewability test caught
+    //  immediately. Mastery is what this person LEARNED. At the floor these are exactly 1.
+    const span = Math.max(1, 100 - TUNE.knowledgeInnateFloor);
+    const earned = (v: number) => Math.max(0, Math.min(100, v) - TUNE.knowledgeInnateFloor) / span;
+    const technique = earned(score.technique);
+    const understanding = earned(score.understanding);
+    return {
+        speedMultiplier: 1 / (1 + technique * TUNE.masteryTechniqueSpeedBonusAtFull),
+        yieldMultiplier: 1 + understanding * TUNE.masteryUnderstandingYieldBonusAtFull
+    };
+}
+
+/** The mastery multipliers for whatever domain this node kind trains, or a no-op pair. */
+export function masteryForNodeKind(state: GameState, kind: NodeKind): { speedMultiplier: number; yieldMultiplier: number } {
+    const domain = domainForNodeKind(kind);
+    return domain ? masteryFor(state, domain) : { speedMultiplier: 1, yieldMultiplier: 1 };
+}
