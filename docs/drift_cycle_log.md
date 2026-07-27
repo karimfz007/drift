@@ -1546,3 +1546,77 @@ The radial push-out **already slides**, because a glancing contact carries a lat
 Had D-066(b) not existed, "collide-and-slide fixes the movement hard-block" would have shipped as fact, and the next session would have believed the block was closed. **The law paid for itself within a day of being written.**
 
 **What remains for the harness:** the fast-movement check must stop walking the player into their own base — it should pick a clear heading, or place the structures out of the path. That is a test fix, not a game fix, and it is not yet done.
+
+## D-063 / D-064 DEVICE-LEG AUDIT (make-up) — C3, 2026-07-27
+
+**Why this section exists.** Both packages shipped their audits **static-plus-unit only**. Two prior harness attempts crashed on `editSave`/`waitForScene` timeouts and never reached either target section, and the D-063 entry in this log records the reason the earlier device checks were worthless even when they did run: the `.inv` row reported `occluded`, so `openLoadout` never executed on device at all. D-066(c) requires that gap be closed or restated explicitly. It is now **closed** — this is the missing leg, run to completion.
+
+**Isolation tradeoff, stated plainly.** Run in the **main checkout, no git worktree**, on the standing instruction that worktrees have been destroyed mid-audit five times on this project. There is therefore **no filesystem isolation**: the tree could have moved under this run, and it did. That is handled below by pinning the commit and diffing forward, not by assuming.
+
+**Bench hygiene.** C2's harness (PID 24820, port 4173) was **already running** when this audit opened. It was left alone and polled to completion — 4173 was never touched, and nothing was run concurrently, which is precisely what broke the previous two attempts. This run used **port 4192**, and the served page was **identity-gated before being trusted**: it returned `pack-icon` and the title "The First Night". Note for whoever runs next: `smoke.mjs`'s own `preflight()` calls `taskkill /F /IM chrome.exe`, so **two harnesses on different ports still kill each other's browser.** Separate ports are not sufficient isolation; separate *times* are.
+
+### Legs that genuinely ran
+
+| Package | Static | Unit | **Device** |
+|---|---|---|---|
+| **D-063** | prior (`fe34f01`) | prior | **YES — this run, 19/19 PASS** |
+| **D-064** | prior (`fe34f01`) | prior | **YES — this run, 6/6 PASS** |
+
+Full harness: **192/199, run COMPLETED, exit 1.** Built from source at **`9f15084`**. HEAD has since moved to `67faf72`, but the only source commit in between (`e52eb5c`, the collide-and-slide correction) changed **comment lines exclusively** — verified by filtering the diff to non-comment changes, which returns empty. **Behaviour at HEAD is byte-identical to the tree tested here**, so this result describes current `main` and not a stale snapshot.
+
+### D-064 — 6/6 PASS
+
+```
+PASS  D-064 — a forced BLOCKED spawn is rescued onto genuinely placeable ground — sv6384 x=-72 y=68 placeable=true nearestRock=8.25m
+PASS  D-064 — and that spawn is genuinely near the problematic rock class, not 80 m away — 8.25 m
+PASS  D-064 — WITNESS: the forced seed genuinely lands on a boulder before rescue (D-066 a) — candidate (-52,84) placeable=false
+PASS  D-064 — the castaway can genuinely WALK to the find — stood 1.03 m from it (reach 2.5 m)
+PASS  D-064 — and genuinely COLLECT it — claimed=true, gained 2 units
+PASS  FIX-3 / D-064 — every one of 200 seeded spawns is genuinely placeable (stand + reach)
+```
+
+**The witness is the load-bearing one, and it fires.** `candidate (-52,84) placeable=false` proves on device that seed 6384's raw candidate is genuinely blocked *before* rescue — so the ring-walk branch that C3's earlier finding **B1** showed had **zero coverage across seeds 0-499** is now demonstrably executed on real geometry, not merely present in the source. The rescued find lands 8.25 m from the problematic rock class, closing finding **B2** (the old check spawned 80.06 m away and asserted only `Boolean(node)`). The walk terminates at **1.03 m**, comfortably inside the 2.5 m reach and well under the 3.34 m worst-case stranding standoff that made the old 4.00 m tolerance meaningless.
+
+### D-063 — 19/19 PASS
+
+```
+PASS  D-063 — the loadout panel opens from the backpack
+PASS  URGENT — the opened panel is actually VISIBLE — opacity 1, visible, flex, covers true
+PASS  URGENT — the close button is one a PLAYER could see and reach, not just a selector
+PASS  URGENT — the game REMAINS RESPONSIVE after the panel is used (Settings still opens)
+PASS  URGENT — the freeze backstop never had to fire — panelRecoveries 0
+PASS  URGENT — and the backpack still opens after all of that
+PASS  D-063 — it shows all SIX access zones — Active hand | Support hand | Belt | Pockets | Backpack | Storage
+PASS  D-063 — mass AND bulk are both visible — 20.6 kg, bulk 47.2
+PASS  D-063 — there is one obvious close action (section 9 input safety)
+PASS  D-063 — a tool can be taken in hand from the panel (item 2: equip/switch)
+PASS  D-063 — the axe is genuinely in the active hand — activeHand "axe"
+PASS  D-063 — the panel closes via its own close button
+PASS  D-063 INPUT SAFETY — closing does NOT leak a world tap behind the panel — failedTaps 0 -> 0
+PASS  D-063 — and control is genuinely returned (panel gone, world tappable again)
+PASS  D-063 LAW — a torch that burns out EMPTIES its belt position — belt[1] torch -> null, belt all null
+PASS  D-063 item 4 — a no-relationship attempt is journalled — "no-relationship"
+PASS  D-063 item 4 — the attempt cost the body, win or lose — energy 99.4->93.3, hunger 99.9->97.4
+PASS  D-063 item 4 — a real relationship eventually mints a NAMED Blueprint — "Bound torch"
+PASS  D-063 item 4 — the plan records inputs, version, workmanship and authorship — version 1, workmanship "crude", author "you"
+```
+
+**The two things this had to settle, settled.** First, **the vacuity is gone**: the drawn backpack (`.carried-button`) genuinely opens the panel on the device viewport, where the old `.inv` row returned `occluded` and silently skipped every downstream assertion. Second, **the panel is genuinely visible, not merely present** — `opacity 1, visibility visible, display flex, covers true`. That distinction is the whole of D-065: the shipped freeze was a panel that existed, was full-screen, was `pointer-events: auto`, and was **transparent**, and every check of the era passed straight through it. A DOM-presence assertion would still pass on that bug; this one would not. `panelRecoveries 0` independently confirms the backstop never had to seize control back, and Settings opening afterwards confirms the game is genuinely still the player's.
+
+The section-9 position law also holds across a **real absence**, not a simulated one: a torch with 2 game hours of fuel, taken through 12 game hours offline, leaves `belt[1] torch -> null` with no silent refill from storage.
+
+### The seven failures — none in scope, and not seven problems
+
+| # | Failure | Reading |
+|---|---|---|
+| **4** | `tapping the storage box OPENS it... panel ABSENT, durability 83.6 -> 75.6, wood 6`, then the naming, deposit and withdraw checks | **One cascade, one cause.** The tap silently **repaired** instead of opening, so no panel existed for the three downstream checks to talk to. This is the storage/mend interaction C2 is actively working — a *different* manifestation from the earlier "storage never built" cascade, which is genuinely fixed (the box now builds; durability 83.6 proves it exists). **C2's, not this audit's, and unrelated to D-063/D-064.** |
+| **2** | quarry repeat-mining; "Fast movement (testing)" | **Known pre-existing pair**, proven in the D-065 A/B to predate this work. C2 has since narrowed the second: the harness walks the player perpendicular into their own shelter, where stopping dead is *correct physics*. A test fix, not a game fix. Noted and passed over. |
+| **1** | `no console errors during the whole run — net::ERR_NO_BUFFER_SPACE` | **A bench artifact, not a game defect** — resource exhaustion under the memory pressure described below. Should not be chased as a rendering or asset bug. |
+
+### The real reason three attempts were needed — and it is not CPU
+
+Prior write-ups attribute these crashes to **CPU contention**. Measured on this bench mid-run, that is wrong: **CPU load was 8%** while **free RAM was 1.1 GB of 7.9 GB**. Every crash was a `page.goto`/`waitForScene` stall, which is the signature of a browser starved of memory, not of cycles — and the run's own `ERR_NO_BUFFER_SPACE` is the same fingerprint from inside the page. Attempt 1 died at `startFresh` (`:412`, from `:679`) after `startFresh` had already **succeeded twice** in that same run, which rules out a deterministic scene-init fault. Attempt 2 died on a 90 s navigation timeout at `:391` from `:1906`. Attempt 3, unchanged, completed all 199.
+
+**Practical consequence for whoever runs this next:** the harness is not flaky in its logic — it is flaky in its *resident set*. Close the other memory-heavy applications before a full run rather than re-running and hoping, and treat a mid-run `page.goto` timeout as a memory signal rather than a game regression. Three attempts, one variable, no source changed between them.
+
+**What this leg does NOT cover.** It is the shipped harness's D-063 and D-064 assertions and nothing more. The five static findings against D-063 (**A1** the death panel never joined `beginPanel`/`endPanel`; **A2** nothing in `src/` can populate `supportHand`, leaving the two-handed rule unreachable; **A3** the belt/pocket assignment verbs have no UI call sites; **A4** `hash32(0) === 0` making the first experiment of every new game certain; **A5** three locks passing for reasons other than the ones they name) are **untouched by any device run** — they are reachability and provenance defects that a green harness cannot speak to, and they remain open exactly as filed. Likewise D-064's **B3-B5** precision notes. **The device leg confirms the shipped behaviour works; it does not retire the static findings.**
