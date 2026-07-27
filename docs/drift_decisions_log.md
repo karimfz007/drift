@@ -3,6 +3,28 @@
 
 ---
 
+**D-073 · 2026-07-27 — FIX package from the live playtest: mastery's reach, experimentation's missing door, stone's depletion category, sleeping rough, and the pack as a target.**
+
+**1. Mastery — TWO bugs, distinguished by measurement before either was fixed.** The ruling asked which of three causes it was; it was two of them. **(a) Wrong map.** Mastery read `domainForNodeKind`, which answers *"what does this verb TRAIN?"* — and Ch.2 deliberately named only felling, quarrying and salvage. Breaking surface rock therefore got **no mastery at all**, measured at `hold 1.50 → 1.50, speedMult 1.000`. A new `masteryDomainForNodeKind` covers every effortful harvesting verb while **training stays exactly as Ch.2 ruled it** — asserted explicitly, so the constitutional rule is not quietly widened by a fix to its neighbour. **(b) No feedback.** Felling's effect was real the whole time (4.00 → 2.50 s) but nothing on screen ever acknowledged it, while forging's knowledge path (experimentation's `successChanceFor`) reports its own outcome plainly. That asymmetry is precisely why a full session could end in *"mastery only affects forging"*. `gatherNode` now returns what it taught and the body says so on whole-point crossings.
+
+| verb | novice → master | |
+|---|---|---|
+| fell | 4.00s → 2.50s | 37.5% faster, yield ×1.50 |
+| mine surface rock | 1.50s → 0.94s | 37.5% faster, yield ×1.50 |
+| quarry | 1.50s → 0.94s | 37.5% faster, yield ×1.50 |
+
+**2. Try-Combining had no player entry point, and no cache could have explained it.** Established by reading, not by guessing at build versions: the **only** caller in the entire body layer was `runtime.tryCombine` — the *debug hook* — which is also what every D-063 device check drove. That is a **vacuous device pass** of exactly the kind D-066 exists to catch, and the **third** instance of this failure class after the Build button (D-053) and the loadout panel (D-065). The entry point now lives in the Carried panel, verified through D-065's visibility pattern rather than "the tap succeeded": chip 86×48px, button 186×56px, both `topmostIsSelf`, disabled until exactly two are picked, and a real Blueprint minted through the player path.
+
+**3. Depletion CATEGORY, answered per node kind as the ruling asked.** Reading the render branch showed `rock`, `quarry` and `shellfish` all sharing the living-node shrink/regrow visual. **Surface rock was in the wrong category** — D-070 rules that the sea restocks stone *out of view*, narrated by the morning report, but it sat on a per-node live timer and so popped back to full size in front of the player. It now joins driftwood's absence-only tide branch and **cannot repopulate under the player's eyes**. **Shellfish is correctly on the living-node pattern** (same as bushes) — if it still feels wrong it is a regrow-*speed* TUNE question at 18 game hours, not a bug. **The quarry cannot regrow at all since D-070**, so a visibly regrowing quarry could only have been a pre-D-070 build.
+
+**4. Sleeping rough — anywhere, always worse.** `canSleep` no longer requires a shelter; `isShelteredSleep` carries the distinction that used to be a gate. Recovery is scaled by `groundSleepRecoveryMultiplier` and the weather half needed **no new machinery at all**, because a survivor who is not under a roof already interacts with wet/warmth normally. Measured: **84.0 energy sheltered vs 46.2 rough** over one full sleep. Shelter-sleep's own rates are untouched, asserted explicitly. It needed a door too — Rest sits on the Build card, and a device probe caught it rendering *below the 412 px fold* once the card had grown, so it was moved to the top.
+
+**5. The pack on the survivor's back is a real pick target**, with its own metadata, opening the same panel the HUD icon opens. Additive as asked — the icon still works — and the player capsule itself stays unpickable so the body never eats world taps.
+
+*(Every fix proven fail-then-pass per D-066(b). Two pre-existing tests that encoded the old "sleep requires a shelter" law were rewritten to the new one rather than deleted, so a silent revert would still be caught.)*
+
+---
+
 **D-072 · 2026-07-27 — Standing hazard #3: bench isolation — "separate ports are not isolation; separate times are."**
 
 The **CPU-contention diagnosis carried since [[D-051]] is formally RETIRED**, refuted by direct measurement: **8% CPU** with **memory/buffer starvation on page navigation** (`ERR_NO_BUFFER_SPACE` raised from inside the page), not contention. Every crash previously blamed on a loaded machine was a `page.goto`/`waitForScene` stall with that signature.
