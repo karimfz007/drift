@@ -244,6 +244,8 @@ export class Game {
         //  an assumption. Pickable count matters twice over — every pickable mesh is work
         //  for each interaction raycast, not just for the renderer.
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
+        runtime.stickReadout = () => this.controls.read();
+        runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
         runtime.tryCombine = (a, b) => {
             const result = tryCombine(session().state, a as 'wood', b as 'wood');
             session().persist(now());

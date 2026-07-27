@@ -438,7 +438,13 @@ export function regrowGameHoursFor(kind: NodeKind): number {
         case 'coconutpalm': return TUNE.coconutpalmRegrowGameHours;
         case 'reed': return TUNE.reedRegrowGameHours;
         case 'shellfish': return TUNE.shellfishRegrowGameHours;
-        case 'quarry': return TUNE.quarryRegrowGameHours;
+        //  GEOLOGY V2 (Gate 0 item 7): the quarry is the FINITE tier. A rich deposit is a
+        //  real, spent thing — it visibly empties as you work it and it does not come back.
+        //  This does NOT breach D-051's renewability law, because stone itself stays
+        //  renewable: surface `rock` still returns on the tide/erosion cycle below, so the
+        //  survival floor holds while the *rich* seam is genuinely exhaustible. Scarcity of
+        //  convenience, not of survival.
+        case 'quarry': return Infinity;
         case 'salvage': return Infinity; // claimed and gone; the beach spawns a new one instead
         case 'crashbox': return Infinity; // exempt: a one-time beat, not a resource
     }

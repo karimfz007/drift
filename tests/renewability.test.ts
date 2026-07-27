@@ -19,12 +19,37 @@ function run() {
 }
 
 describe('renewability law (D-051) — no resource is globally exhaustible', () => {
-    it('every kind except crashbox has a finite regrow duration', () => {
-        expect(Number.isFinite(regrowGameHoursFor('crashbox'))).toBe(false);
-        for (const kind of ['driftwood', 'deadfall', 'tree', 'rock', 'berrybush', 'coconutpalm', 'reed', 'shellfish', 'quarry'] as const) {
+    //  GEOLOGY V2 (Gate 0 item 7) adds a genuinely FINITE tier. The renewability law is
+    //  unchanged and is now stated more precisely: what may never be globally exhausted is a
+    //  survival-critical RESOURCE, not every individual deposit. Stone stays renewable
+    //  through surface `rock`; the rich quarry seam is spent for good.
+    it('renewable kinds regrow; the exempt and the FINITE do not', () => {
+        for (const kind of ['driftwood', 'deadfall', 'tree', 'rock', 'berrybush', 'coconutpalm', 'reed', 'shellfish'] as const) {
             expect(Number.isFinite(regrowGameHoursFor(kind))).toBe(true);
             expect(regrowGameHoursFor(kind)).toBeGreaterThan(0);
         }
+        expect(Number.isFinite(regrowGameHoursFor('crashbox'))).toBe(false); // a story beat
+        expect(Number.isFinite(regrowGameHoursFor('quarry'))).toBe(false);   // a spent seam
+    });
+
+    it('D-051 STILL HOLDS: stone survives the quarry being exhausted forever', () => {
+        //  The point of the law is that no survival-critical resource can be extinguished.
+        //  Mine the seam to nothing, confirm it never returns however long passes, and then
+        //  confirm stone is STILL obtainable from the renewable surface tier. If this ever
+        //  fails, the finite tier has breached the law and must be reverted.
+        const state = run();
+        while (findNode(state, 'qr1')!.available) gatherNode(state, 'qr1');
+        expect(findNode(state, 'qr1')!.available).toBe(false);
+        expect(findNode(state, 'qr1')!.pool).toBe(0);
+
+        //  A lifetime away, in the same elapsed-SECONDS form the rest of this file uses.
+        const aLifetime = (TUNE.quarryRegrowGameHours + 5000) * TUNE.dayLengthRealMinutes * 60 / TUNE.gameHoursPerDay;
+        const { state: after } = reconcile(state, aLifetime);
+        expect(after.nodes.find((n) => n.id === 'qr1')!.available).toBe(false); // never returns
+
+        const rocks = after.nodes.filter((n) => n.kind === 'rock');
+        expect(rocks.length).toBeGreaterThan(0);
+        expect(rocks.some((n) => n.available)).toBe(true); // stone is still there to be had
     });
 
     it('regrowProgress: 1 while available, climbs 0→1 over the regrow duration, 0 forever for an exempt kind', () => {
@@ -92,7 +117,7 @@ describe('renewability law (D-051) — no resource is globally exhaustible', () 
         expect(after.nodes.find((n) => n.id === 'dw1')?.available).toBe(false);
     });
 
-    it('the quarry (D-051): repeat-minable, stays available while its pool holds, depletes and regrows as a whole', () => {
+    it('the quarry: repeat-minable, spends real pool, and is FINITE once spent (geology v2)', () => {
         const state = run();
         const quarry = findNode(state, 'qr1')!;
         expect(quarry.pool).toBe(TUNE.quarryStoneCapacity);
@@ -120,12 +145,13 @@ describe('renewability law (D-051) — no resource is globally exhaustible', () 
         expect(quarry.available).toBe(false); // pool hit exactly 0
         expect(quarry.depletedAtGameHours).not.toBeNull();
 
-        //  Regrows as a whole, back to full capacity — not partially.
-        const justEnoughSeconds = (TUNE.quarryRegrowGameHours + 0.5) * TUNE.dayLengthRealMinutes * 60 / TUNE.gameHoursPerDay;
-        const { state: after } = reconcile(state, justEnoughSeconds);
-        const regrown = after.nodes.find((n) => n.id === 'qr1')!;
-        expect(regrown.available).toBe(true);
-        expect(regrown.pool).toBe(TUNE.quarryStoneCapacity);
+        //  GEOLOGY V2: and it does NOT come back. The seam is spent for good; the survival
+        //  floor is carried by renewable surface stone instead (see the D-051 test above).
+        const longEnough = (TUNE.quarryRegrowGameHours + 500) * TUNE.dayLengthRealMinutes * 60 / TUNE.gameHoursPerDay;
+        const { state: after } = reconcile(state, longEnough);
+        const seam = after.nodes.find((n) => n.id === 'qr1')!;
+        expect(seam.available).toBe(false);
+        expect(seam.pool).toBe(0);
     });
 
     it('gathering the quarry when it cannot yield (blocked) is refused cleanly', () => {

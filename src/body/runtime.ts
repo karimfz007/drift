@@ -7,7 +7,7 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, createSaveRepository, spawnSalvageNode, type MorningReport } from '../brain';
+import { SAVE_KEY, Session, createSaveRepository, salvageCandidatePoint, spawnSalvageNode, type MorningReport } from '../brain';
 import { isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
@@ -51,7 +51,10 @@ export const runtime = {
     tryCombine: (() => null) as (a: string, b: string) => unknown,
     //  D-065: what a tap at this screen point WOULD target, with no side effect. The
     //  shelter's tappable band cannot be measured any other way — see `tapTargetAt`.
-    tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null
+    tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null,
+    //  Installed by the game — see the `stick`/`velocity` debug hooks above.
+    stickReadout: (() => ({ x: 0, y: 0, magnitude: 0 })) as () => { x: number; y: number; magnitude: number },
+    velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number }
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -182,6 +185,16 @@ function installDebugHook(): void {
         //  D-064: the harness drives the REAL spawn and the REAL placement validator, so its
         //  reachability check exercises the shipped rule rather than re-deriving it.
         spawnSalvage: (seed: number) => spawnSalvageNode(seed),
+        //  D-066(a): the harness must be able to WITNESS the blocked-spawn branch on device,
+        //  not merely observe that a rescued node exists. This is the raw candidate, before
+        //  placement validation — if it is placeable, the rescue path never ran.
+        salvageCandidate: (seed: number) => salvageCandidatePoint(seed),
+        //  Part 2 diagnostic: the live stick vector and player velocity. The movement
+        //  hard-block shows a player moving 0.5 m and then stopping dead with no panel open
+        //  and no obstacle in reach; distinguishing "stick went to zero" from "stick held but
+        //  movement was refused" cannot be done from outside the input layer.
+        stick: () => runtime.stickReadout(),
+        velocity: () => runtime.velocityReadout(),
         isPlaceable: (x: number, z: number) => isPlaceablePoint(x, z),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,

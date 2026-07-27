@@ -522,6 +522,9 @@ export interface ReconcileResult {
     /** True if this span restocked at least one depleted driftwood node — the tide, on
      *  any qualifying absence, regardless of that node's own regrow timer. */
     driftwoodRestocked: boolean;
+    /** GEOLOGY V2: surface stone returned on the tide/erosion cycle during this absence.
+     *  Drives its own morning-report line so the beach never silently repopulates. */
+    stoneWashedUp: boolean;
     /** How many OTHER (non-driftwood) nodes regrew this span, via the general timer. */
     nodesRegrewCount: number;
     /** How many new beach salvage finds appeared this span. */

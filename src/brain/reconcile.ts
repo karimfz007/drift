@@ -288,6 +288,9 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  a node crosses its regrow threshold. `crashbox` is exempt (Infinity): a one-time story
     //  beat, not a resource.
     let driftwoodRestocked = false;
+    //  GEOLOGY V2: surface stone returning is a TIDE/EROSION event with its own line in the
+    //  morning report, never a silent pop-in-view. The island tells you it changed.
+    let stoneWashedUp = false;
     let nodesRegrewCount = 0;
     for (const n of next.nodes) {
         if (n.available) continue;
@@ -297,8 +300,10 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         if (elapsedSinceDepletion >= regrowHours) {
             n.available = true;
             n.depletedAtGameHours = null;
-            if (n.kind === 'quarry') n.pool = TUNE.quarryStoneCapacity;
+            //  No quarry refill here any more (GEOLOGY V2): the seam is finite and its
+            //  regrow interval is Infinity, so it never reaches this branch at all.
             if (n.kind === 'driftwood') driftwoodRestocked = true;
+            else if (n.kind === 'rock') stoneWashedUp = true;
             else nodesRegrewCount += 1;
         }
     }
@@ -373,6 +378,7 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             nightFell,
             qualifiesForReport,
             driftwoodRestocked,
+            stoneWashedUp,
             nodesRegrewCount,
             salvageSpawnedCount
         }
@@ -445,6 +451,7 @@ function emptyResult(
         nightFell: false,
         qualifiesForReport: false,
         driftwoodRestocked: false,
+        stoneWashedUp: false,
         nodesRegrewCount: 0,
         salvageSpawnedCount: 0
     };

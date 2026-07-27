@@ -83,6 +83,11 @@ export function composeMorningReport(
 
     // 3c. The renewability law (D-051): what grew back, and what the tide brought in.
     if (result.driftwoodRestocked) lines.push('The tide left new driftwood along the beach.');
+    //  GEOLOGY V2 (Gate 0 item 7): stone returning to the shore is narrated as what it
+    //  physically is — the sea working the shingle over — and it is narrated BEFORE the
+    //  player next walks the beach. The rule this enforces: the island never silently
+    //  repopulates itself in view. If a resource came back, the report says so.
+    if (result.stoneWashedUp) lines.push('The sea has turned the shingle over. There is loose stone on the shore again.');
     if (result.nodesRegrewCount > 0) {
         lines.push(
             result.nodesRegrewCount === 1

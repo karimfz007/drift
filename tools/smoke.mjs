@@ -850,15 +850,26 @@ async function main() {
     //  full. Asserting "it went up" is the honest check now; the exact curve is unit-tested.
     check('sleep RECOVERS energy on waking, along a rate rather than jumping to full (Ch.6)', afterSleep.energy > beforeSleep.energy, `energy ${beforeSleep.energy.toFixed(1)} -> ${afterSleep.energy.toFixed(1)}`);
 
-    //  Upkeep: repair only wins the disjoint choice once durability has meaningfully lapsed
-    //  (REGRESSION — cosmetic decay must not starve sleep/storage-use every tap).
-    await editSave('state.shelter.durability = 22; state.inventory.wood = 10;');
+    //  UPKEEP, REWRITTEN (Gate 0 Part 1). This used to assert that a tap on a damaged
+    //  shelter REPAIRED it instead of sleeping — the priority hack that has now been deleted
+    //  twice over. A tap on the shelter always sleeps; mending is an explicit action on the
+    //  construction surface, reachable at ANY durability below full. The check therefore
+    //  moves to that control, and gains the thing the old one could never test: that the
+    //  dead zone is gone. 60% durability sat squarely inside the old unreachable band.
+    await editSave('state.shelter.durability = 60; state.inventory.wood = 10;');
     await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
     await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
-    await tapWorld(afterShelter.shelter.x, afterShelter.shelter.y, 55);
-    await sleep(400);
+    const beforeMend = await live();
+    const buildForMend = await realTapDom('.secondary-action');
+    await sleep(500);
+    const mendTap = await realTapDom('.panel.build .mend-shelter-btn');
+    await sleep(700);
     const afterRepair = await live();
-    check('a FAILING shelter repairs (not sleeps) when wood is held', afterRepair.shelter.durability > 22 && afterRepair.inventory.wood === 9, `durability ${afterRepair.shelter.durability.toFixed(1)}, wood ${afterRepair.inventory.wood}`);
+    check('a WORN shelter (60%, inside the old dead zone) can be mended at all', buildForMend.ok && mendTap.ok, `build ${buildForMend.reason ?? 'ok'}, mend ${mendTap.reason ?? 'ok'}`);
+    check('mending spends one wood and restores durability', afterRepair.shelter.durability > beforeMend.shelter.durability && afterRepair.inventory.wood === 9, `durability ${beforeMend.shelter.durability.toFixed(1)} -> ${afterRepair.shelter.durability.toFixed(1)}, wood ${afterRepair.inventory.wood}`);
+    //  And the Build card is still the Build card — the first attempt at this put Mend on the
+    //  secondary button, where it displaced Build outright and made storage unbuildable.
+    check('REGRESSION — offering Mend did not displace Build', buildForMend.ok);
 
     //  URGENT FIX (2026-07-27) REGRESSION — the other half of that rule, which was never
     //  checked and was wrong: a shelter that is merely worn (repairable, not failing) must
@@ -1251,7 +1262,11 @@ async function main() {
             try {
                 const st = await page.evaluate(() => {
                     const s = window.__drift.state();
-                    return { x: s.player.x, y: s.player.y, panel: window.__drift.panelOpen() };
+                    const k = window.__drift.stick ? window.__drift.stick() : null;
+                    const v = window.__drift.velocity ? window.__drift.velocity() : null;
+                    return { x: s.player.x, y: s.player.y, panel: window.__drift.panelOpen(),
+                             m: k ? +k.magnitude.toFixed(2) : null,
+                             v: v ? +Math.hypot(v.x, v.z).toFixed(2) : null };
                 });
                 samples.push({ t: Date.now() - t0, ...st });
             } catch { /* page busy */ }
@@ -1278,7 +1293,7 @@ async function main() {
     const beforeFast = await live();
     await walkToward(beforeFast.player.x, beforeFast.player.y - 40, 2.5);
     const fastDistance = Math.hypot((await live()).player.x - beforeFast.player.x, (await live()).player.y - beforeFast.player.y);
-    const trail = normalSamples.map((p) => `${p.t}ms:(${p.x.toFixed(1)},${p.y.toFixed(1)})${p.panel ? '/PANEL' : ''}`).join(' ');
+    const trail = normalSamples.map((p) => `${p.t}ms:(${p.x.toFixed(1)},${p.y.toFixed(1)})stick=${p.m}vel=${p.v}${p.panel ? '/PANEL' : ''}`).join(' ');
     check('REGRESSION — "Fast movement (testing)" measurably speeds up walking, base walkSpeedMps untouched', fastDistance > normalDistance * 1.5, `normal ${normalDistance.toFixed(1)}m, fast ${fastDistance.toFixed(1)}m | ${JSON.stringify(walkDiag)} | trail ${trail}`);
     //  Leave it off for every check that follows — a test aid should not silently outlive
     //  the test that turned it on.
@@ -1436,13 +1451,40 @@ async function main() {
     //  Force a find hard against the LARGEST decorative rock — the exact shape the old check
     //  waved through. If placement validation is working, the spawn will have been nudged to
     //  somewhere genuinely standable rather than left stranded.
-    const spawnedForReach = await page.evaluate(() => {
+    //  C3 finding B2 on D-064, fixed here. This used to force `spawnSalvage(3)`, which lands
+    //  at (99, 22) — **80.06 m from the only rock in the spawn annulus** — and then asserted
+    //  nothing more than `Boolean(node)`. It could not have failed for the cause it was
+    //  written for: it never went near a boulder, and a truthy object is not a placement.
+    //
+    //  Seed 6384 is the FIRST seed whose raw candidate is genuinely blocked, found by
+    //  scanning the shipped `salvageCandidatePoint` against the shipped `isPlaceablePoint`
+    //  (and matching C3's independent figure). Its candidate lands hard against rock
+    //  [-52, 84, 1.8] — the problematic class, 2.52 m collision radius against a 2.5 m
+    //  reach — so this now exercises the rescue path on the real geometry.
+    const BLOCKED_SPAWN_SEED = 6384;
+    const spawnedForReach = await page.evaluate((seed) => {
         const s = window.__drift.state();
-        const node = window.__drift.spawnSalvage(3);
+        const node = window.__drift.spawnSalvage(seed);
         s.nodes.push(node);
         return node;
-    });
-    check('D-064 — a forced salvage spawn landed somewhere placeable, not against a boulder', Boolean(spawnedForReach), JSON.stringify(spawnedForReach));
+    }, BLOCKED_SPAWN_SEED);
+    //  The assertion now calls the real rule instead of checking for a truthy object, and
+    //  reports how close the find sits to the nearest boulder that could have stranded it.
+    const reachProbe = await page.evaluate((node) => ({
+        placeable: window.__drift.isPlaceable(node.x, node.y),
+        nearestRockM: [[-52, 84, 1.8], [46, 82, 2.1], [-70, 60, 1.5], [66, 56, 1.7], [0, 112, 1.5]]
+            .map(([rx, rz]) => Math.hypot(node.x - rx, node.y - rz))
+            .sort((a, b) => a - b)[0]
+    }), spawnedForReach);
+    check('D-064 — a forced BLOCKED spawn is rescued onto genuinely placeable ground', Boolean(spawnedForReach) && reachProbe.placeable === true, `${JSON.stringify(spawnedForReach)} placeable=${reachProbe.placeable} nearestRock=${reachProbe.nearestRockM.toFixed(2)}m`);
+    check('D-064 — and that spawn is genuinely near the problematic rock class, not 80 m away', reachProbe.nearestRockM < 12, `${reachProbe.nearestRockM.toFixed(2)} m from the nearest large rock`);
+    //  D-066(a) WITNESS: prove the rescue path actually ran on device. Without this the two
+    //  checks above could both pass on a seed that was never blocked in the first place.
+    const blockedWitness = await page.evaluate((seed) => {
+        const c = window.__drift.salvageCandidate(seed);
+        return { candidate: c, candidatePlaceable: window.__drift.isPlaceable(c.x, c.y) };
+    }, BLOCKED_SPAWN_SEED);
+    check('D-064 — WITNESS: the forced seed genuinely lands on a boulder before rescue (D-066 a)', blockedWitness.candidatePlaceable === false, `candidate (${blockedWitness.candidate.x},${blockedWitness.candidate.y}) placeable=${blockedWitness.candidatePlaceable}`);
 
     if (spawnedForReach) {
         await editSave(`state.player = { x: ${spawnedForReach.x}, y: ${spawnedForReach.y + 6} };`);
