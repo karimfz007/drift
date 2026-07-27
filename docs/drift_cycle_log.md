@@ -1479,3 +1479,28 @@ Recommended as FIXes in the next slice: **C1** (a shelter Mend button mirroring 
 
 **Not adopted: D4, D5, D8, D9.** `panelRecoveries` really is reset by every `editSave` reload (D4) — the checks that read it do so without an intervening reload, and a counter that survived reloads would have to live in the save, which is the wrong home for a body-layer diagnostic. D5 is right that the invisible sheet physically covers the Settings button as well as tripping its guard; both are true and the ledger now says the sheet swallowed the tap. D8 (the recovery skips the closing panel's own callback) is deliberate — a panel that never showed itself has no meaningful continuation to run. D9 (one of the three new tests passes identically on revert) is accurate and is the honest limit of a brain-layer test on a body-layer wiring change; the harness band check is what covers that wiring.
 
+
+### D-065 — the two failures that are NOT this package's, established by A/B rather than asserted
+
+Two harness checks failed in the D-065 runs and neither is caused by D-065. Rather than reason about it, the pre-D-065 tree was checked out whole — `git checkout ed06f3e -- src index.html tools/smoke.mjs`, rebuilt, served on the same verified port, and run with **its own** contemporary harness so the comparison is clean on both sides:
+
+| | pre-D-065 baseline (`ed06f3e`) | D-065 |
+|---|---|---|
+| quarry repeat-minable | **FAIL** — `stone now 4` | FAIL — `stone now 4` |
+| fast movement speeds up walking | **FAIL** — `normal 0.5m, fast 0.5m` | FAIL — `normal 0.5m, fast 0.5m` |
+| total | 168/178 | **191/193** (final run) |
+
+Byte-identical detail strings on both, and they are the **only** two failures in the final D-065 run. **Both predate this package.** The 168/178 also reproduces the figure the D-063 session reported, so the baseline is stable rather than a one-off.
+
+The same baseline settles something that had only been inferred: **D-063's loadout checks never ran on device at all.**
+
+```
+FAIL  D-063 — the loadout panel opens from the carried row — occluded
+FAIL  D-063 — it shows all SIX access zones (v0_7 §9) — panel not found
+FAIL  D-063 — a tool can be taken in hand from the panel — not-found
+FAIL  D-063 — the panel closes via its own close button — not-found
+```
+
+The `.inv` row entry point was genuinely occluded on the device viewport, so `openLoadout` never executed. Whatever the D-063 as-built recorded for its close-path law, the device layer did not confirm it — it could not have.
+
+**What is known about the two, for whoever picks them up.** The fast-movement failure is not a tuning effect: driven in isolation against this build the player walks **7.63 m** in the same 2.5 s window, and **5.04 m** at energy 5, and **7.57 m** at fatigue 95 — so neither exhaustion nor fatigue explains 0.5 m. 0.5 m is the shape of a player who was *blocked* for almost the whole window, not slowed, which makes it worth treating as a possible real "sometimes you cannot walk" defect rather than a harness artifact. The quarry failure polls 8 × 400 ms for a gather hold to complete, a budget written before D-059 made hold time scale with exhaustion; that is the first thing to check there. Both are flagged, neither is fixed here — this session's scope was the freeze and the two hit-test reports.

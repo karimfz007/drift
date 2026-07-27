@@ -912,13 +912,27 @@ async function main() {
     await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
     const farScreen = await screenOf(afterShelter.shelter.x, afterShelter.shelter.y);
     let realBodyTap = 'no-screen-point';
+    let bodyOffset = null;
     if (farScreen) {
-        await tapAt(farScreen.x, farScreen.y - 30, 55);
-        await sleep(150);
-        const pend = await page.evaluate(() => window.__drift.pending());
-        realBodyTap = pend ? pend.kind : 'none';
+        //  Nine metres back the shelter subtends far fewer pixels than it did at arm's
+        //  length, so a fixed 30px overshot it into the sky and resolved to nothing. Ask the
+        //  same pick path where the body actually IS at this distance, then tap there — the
+        //  tap is still a real screen touch, it is just aimed at the shelter rather than at
+        //  a guess about where the shelter renders.
+        bodyOffset = await page.evaluate(({ x, y }) => {
+            for (let up = 80; up >= 10; up -= 5) if (window.__drift.tapTargetAt(x, y - up) === 'shelter') return up;
+            return null;
+        }, farScreen);
+        if (bodyOffset !== null) {
+            await tapAt(farScreen.x, farScreen.y - bodyOffset, 55);
+            await sleep(150);
+            const pend = await page.evaluate(() => window.__drift.pending());
+            realBodyTap = pend ? pend.kind : 'none';
+        } else {
+            realBodyTap = 'no-body-pixel-found';
+        }
     }
-    check('URGENT — and a real tap on the shelter body sets the intention to walk there', realBodyTap === 'shelter', `resolved to: ${realBodyTap}`);
+    check('URGENT — and a real tap on the shelter body sets the intention to walk there', realBodyTap === 'shelter', `${bodyOffset}px above base -> ${realBodyTap}`);
 
     //  Storage: the disjoint deposit-vs-withdraw rule, exercised for real.
     await editSave(`state.inventory = { wood: 6, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0 };`);
@@ -2064,11 +2078,16 @@ async function main() {
 
     //  THE POSITION LAW — a consumed torch empties its slot, never silently refilled.
     await editSave(`
-        state.torch = { owned: true, lit: true, fuelGameHoursRemaining: 0.2, grade: 'serviceable' };
+        state.torch = { owned: true, lit: true, fuelGameHoursRemaining: 2, grade: 'serviceable' };
         state.loadout.belt[1] = 'torch';
     `);
+    //  2 game hours of fuel, not 0.2. At 2.5 real minutes per game hour, 0.2 is a THIRTY
+    //  REAL SECOND window — and `editSave` reloads the page, so a slow scene rebuild burned
+    //  the torch out before `beltBefore` could even be read, which is exactly how this check
+    //  failed with `belt[1] null -> null`. 2 game hours survives any plausible reload and is
+    //  still comfortably inside the 30-minute absence below, so the LAW is unchanged.
     const beltBefore = (await live()).loadout.belt[1];
-    await goAway(30); // long enough offline for the torch to burn out
+    await goAway(30); // 12 game hours offline — long enough for 2 game hours of fuel to go
     const beltAfter = (await live()).loadout.belt;
     check('D-063 §9 LAW — a torch that burns out EMPTIES its belt position, never refilled', beltBefore === 'torch' && beltAfter[1] === null && !beltAfter.includes('torch'), `belt[1] ${beltBefore} -> ${beltAfter[1]}, belt ${JSON.stringify(beltAfter)}`);
 
