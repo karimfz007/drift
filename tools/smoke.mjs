@@ -1159,9 +1159,23 @@ async function main() {
     await approach(quarry.x, quarry.y, 20);
     await faceNode(quarry.x, quarry.y);
     let quarryOk = true, quarryStillAvailable = true;
+    //  PER-TAP DIAGNOSTIC (Gate 0 Part 2). This check fails byte-identically across runs —
+    //  always exactly one of three taps lands (`pool 220 -> 216`) — with the player in range,
+    //  no panel, not exhausted and the node available. That is deterministic, so it is a
+    //  mechanism, not flake. The remaining suspect is the TAP ITSELF: `tapWorld` dispatches
+    //  at whatever `screenOf` returns WITHOUT checking the point is on the canvas, so a
+    //  target whose centre projects off-screen (easy at ~2 m from a large outcrop) is tapped
+    //  into nowhere and fails silently. Recording where each tap actually went settles it.
+    const quarryTaps = [];
     for (let i = 0; i < 3; i++) {
         const before = await live();
+        const pt = await screenOf(quarry.x, quarry.y);
+        const canvasBox = await canvasRect();
+        const onCanvas = Boolean(pt) && pt.x >= canvasBox.left && pt.x <= canvasBox.left + canvasBox.width
+                                     && pt.y >= canvasBox.top && pt.y <= canvasBox.top + canvasBox.height;
         await tapWorld(quarry.x, quarry.y, 55);
+        const pendAfter = await page.evaluate(() => window.__drift.pending());
+        quarryTaps.push(`#${i + 1} pt=${pt ? `${pt.x.toFixed(0)},${pt.y.toFixed(0)}` : 'null'} onCanvas=${onCanvas} pending=${pendAfter ? pendAfter.kind : 'none'}`);
         //  The quarry is a HOLD interaction (same swing-and-wait feel as a rock outcrop) —
         //  give the hold (TUNE.deadfallHoldSeconds worth of real time) a chance to complete
         //  before reading the result, the same poll pattern harvest() already uses.
@@ -1182,7 +1196,7 @@ async function main() {
                  pending: window.__drift.pending(), available: q ? q.available : null, pool: q ? q.pool : null,
                  dist: q ? +Math.hypot(s.player.x - q.x, s.player.y - q.y).toFixed(2) : null };
     });
-    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)}`);
+    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)} | ${quarryTaps.join(' ; ')}`);
     check('REGRESSION — the quarry stays available across multiple taps (does not single-shot deplete like other nodes)', quarryStillAvailable);
 
     //  Depletes as a whole once its pool is spent, and — the renewability law's actual
