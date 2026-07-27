@@ -119,7 +119,7 @@
 | `structureDurabilityDecayPerGameHour` | 1 | C05 | Durability lost per game hour — ~4 days from full to 0, long enough that neglect, not attentiveness, triggers it |
 | `repairDurabilityPerWood` | 15 | C05 | Durability restored per wood spent repairing |
 | `structureRepairThresholdFraction` | 0.9 | C05 | Repair only "counts" (and wins the sleep/storage-use disjoint choice) below this fraction of max — the fix for the repair-threshold starvation bug found during the C05 build |
-| `structureRepairUrgentFraction` | 0.4 | D-065 | And repair only PRE-EMPTS the structure's primary verb (sleep / opening the box) below this fraction. The 0.9 threshold above answers "may I mend?", which is not "should mending take this tap?" — using one for the other starved sleeping and opening from nine game hours after building onward |
+| `structureRepairUrgentFraction` | 0.4 | D-065 | And repair only PRE-EMPTS the structure's primary verb (sleep / opening the box) below this fraction. The 0.9 threshold above answers "may I mend?", which is not "should mending take this tap?" — using one for the other starved sleeping and opening from ten game hours after building onward |
 | `shellfishRegrowGameHours` | 18 | D-051 | Fastest-regrowing kind |
 | `reedRegrowGameHours` | 24 | D-051 | |
 | `driftwoodRegrowGameHours` | 12 | D-051 | Also unconditionally tide-restocked on any qualifying absence, independent of this timer |
@@ -1231,7 +1231,7 @@ Nothing threw. `.panel` is `opacity: 0` until the `visible` class lands, `showLo
 
 **Root causes in one line each.**
 1. *Freeze* — a panel that never revealed itself is an invisible full-screen tap sink, not a missing panel.
-2. *Storage shows "+15 durability"* — **not** a D-051 hit-test recurrence; nearest-centre-wins is intact. Repair applies below 90% durability against 1/game-hour decay, so it won every tap from nine game hours after building onward.
+2. *Storage shows "+15 durability"* — **not** a D-051 hit-test recurrence; nearest-centre-wins is intact. Repair applies below 90% durability against 1/game-hour decay, so it won every tap from ten game hours after building onward.
 3. *Shelter needs one specific spot* — the poles were `isPickable = false`, so taps on the obvious part of the silhouette fell through to terrain behind it, outside the forgiveness radius.
 
 
@@ -1454,3 +1454,28 @@ One consequence worth banking, not a defect: because a shelter-mesh hit resolves
 **Four things temper it.** **C1** is the one a player would feel: the shelter cannot be mended anywhere in the 40–90 band, because it never got the alternative affordance storage got, and the entry claims the opposite. **C3** leaves the backstop blind to the mirror state its own try/catch can produce. **C4** is a new harness check that will fail on device for a reason unrelated to the fix, and **D2** is the check that names the director's exact symptom — *"nothing responds, including Settings"* — being unable to fail for that cause, because `realTapDom` can always find a close button that a player cannot see. That last one is the same lesson as D-063's vacuous close-path checks and D-064's finding B2, arriving for the third package running: **the harness keeps asserting the thing it can reach rather than the thing the player experiences.** Exactly one of the four new freeze checks — the computed-opacity probe — would have caught the shipped bug, and it is the right one, so the package does close the hole; but the surrounding checks read stronger than they are.
 
 Recommended as FIXes in the next slice: **C1** (a shelter Mend button mirroring storage's, or urgency raised toward the availability threshold), **C3** (remove `.panel` in the catch, or a symmetric probe in the guard), **C4** (assert an effect that survives resolution rather than `pending`), and **D3** (tap ~130 px up, where the bug actually lived). **D1** and **D4–D10** are documentation and hygiene TUNEs.
+
+## D-065 REMEDIATION (C2, in-session, after C3's PASS-WITH-NOTES)
+
+**C1 — the real regression, and mine.** Gating `tryRepair('shelter')` on urgency alone left the shelter with no way to be mended between 40% and 90% durability: storage got a Mend button inside its new panel, the shelter got nothing, and since a repair is +15 while urgency needs `< 40`, a shelter that had once decayed past 40 would sit permanently capped near 55/100. Fixed by making the **secondary button contextual**: standing at a shelter that wants mending it reads `Mend · +15`, and it is the Build card everywhere else. `canRepairStructure` already requires range, so the condition is positional and transient, and label and action are dispatched from the *same* expression (`onSecondaryAction`) so they cannot disagree. Build is displaced only while you are at your own shelter — which is strictly better than a band where mending was impossible by any input.
+
+**C2 — accepted, not a defect.** Below 40% with wood in hand, up to two consecutive taps still mend before sleeping. That is the intended reading: a shelter that is genuinely failing should be mended before it is slept in.
+
+**C3 — the catch cleared no wreckage.** `openLoadout`'s `catch` released control but left behind any half-built panel `showLoadout` had already appended, and `guardPanelLock` returns on its first line once `panelOpen` is false — so the backstop was structurally blind to the one state its own try/catch produces. The catch now removes `.panel.loadout` before releasing.
+
+**D7 — the recovery skipped the deferred restore.** `guardPanelLock` cleared `runtime.panelOpen` directly. Deferring that restore is the entire reason the close path does not leak a world tap, and a recovery has no business being the one path that skips it; it now releases through `endPanel()`.
+
+**D6 — a per-frame `querySelector`.** `paintBackpackLoad` now caches its element and writes only on change, matching the rest of `hud.ts`. The p95 frame-time budget is law.
+
+**C4 + the 40 px note — the shelter check could not have discriminated.** Reading `pending()` after a real tap is structurally incapable of measuring this: `stepInteraction` nulls the intention on the next frame whenever the player is already in range, so the probe reads `none` whether the tap landed or not — and it duly failed that way in the run, `pending none -> none`. Worse, 40 px above the base is ~0.4 m up a 2.1 m pole, and the pre-fix ray would still have struck terrain inside the 2.8 m forgiveness radius, so even a working probe would have passed before the fix. Replaced with a **band measurement** driven through a new side-effect-free `__drift.tapTargetAt(x, y)` — the same `pickHitPoint` and the same nearest-centre-wins sort `onTap` runs, returning the answer instead of acting on it. The check now asserts the shelter is hittable across ≥8 of 17 sampled offsets up to ≥80 px above the base, which is what "the interactive area is the visible object" actually means, plus one real out-of-range tap that must set the walking intention.
+
+**D2 — a liveness check that would have passed on the bug.** `realTapDom` hit-tests by selector and `opacity: 0` does not remove an element from hit testing, so the harness could always find a close button no player could see. The close leg is now gated on the button being genuinely visible first; the opacity probe remains the load-bearing regression and is named as such.
+
+**D10 —** `coversScreen` was gathered and never asserted; it is asserted now.
+
+**D1 —** "nine game hours" corrected to **ten** in all five places (built at 100, decay 1/game-hour, `durability < 90` strict).
+
+**The fail-loud substitute was wrong too, and the run proved it.** The pond cannot hold "thirst is full" across the walk there — thirst drains continuously, so the tap drank instead and traced nothing (`0 → 0`). Retargeted to a tree with the axe taken away, which `actOnArrival` explains and traces deterministically on the spot; the axe is restored immediately afterwards.
+
+**Not adopted: D4, D5, D8, D9.** `panelRecoveries` really is reset by every `editSave` reload (D4) — the checks that read it do so without an intervening reload, and a counter that survived reloads would have to live in the save, which is the wrong home for a body-layer diagnostic. D5 is right that the invisible sheet physically covers the Settings button as well as tripping its guard; both are true and the ledger now says the sheet swallowed the tap. D8 (the recovery skips the closing panel's own callback) is deliberate — a panel that never showed itself has no meaningful continuation to run. D9 (one of the three new tests passes identically on revert) is accurate and is the honest limit of a brain-layer test on a body-layer wiring change; the harness band check is what covers that wiring.
+

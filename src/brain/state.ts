@@ -903,7 +903,7 @@ export function canRepairStructure(state: GameState, which: RepairTarget): boole
  * Whether mending should assert itself OVER the structure's primary verb (URGENT FIX,
  * 2026-07-27). `canRepairStructure` is a availability test, not a priority test, and using
  * it as one starved the verb underneath it: repair applies below 90% durability, decay is
- * 1 per game hour from 100, so a structure is repairable within nine game hours of being
+ * 1 per game hour from 100, so a structure is repairable ten game hours after being
  * built and stays that way forever after. Any player carrying wood therefore repaired on
  * EVERY tap and could never reach the thing the structure is for — the same starvation that
  * hid flask-filling behind drinking (FIX 2) and Build-fire behind Craft-axe (C03).

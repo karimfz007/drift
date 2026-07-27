@@ -48,7 +48,10 @@ export const runtime = {
     //  free, and the harness reports the actual number rather than the as-built guessing.
     renderCost: (() => null) as () => { totalMeshes: number; pickableMeshes: number; activeMeshes: number } | null,
     //  D-063: installed by the game; runs the real `tryCombine` and persists the result.
-    tryCombine: (() => null) as (a: string, b: string) => unknown
+    tryCombine: (() => null) as (a: string, b: string) => unknown,
+    //  D-065: what a tap at this screen point WOULD target, with no side effect. The
+    //  shelter's tappable band cannot be measured any other way — see `tapTargetAt`.
+    tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -175,6 +178,7 @@ function installDebugHook(): void {
         //  D-063: drive a real Try-Combining attempt through the actual brain path, so the
         //  harness exercises the shipped verb rather than a re-implementation of it.
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
+        tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         //  D-064: the harness drives the REAL spawn and the REAL placement validator, so its
         //  reachability check exercises the shipped rule rather than re-deriving it.
         spawnSalvage: (seed: number) => spawnSalvageNode(seed),

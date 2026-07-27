@@ -883,16 +883,42 @@ async function main() {
     //  centre. Tapping ABOVE the base point is exactly the tap that used to fall through.
     await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
     await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
-    const pendBefore = await page.evaluate(() => window.__drift.pending());
+    //  Measure the tappable BAND up the shelter's silhouette, not one point. "Widen the
+    //  interactive area" is a claim about height, so height is what gets asserted. Reading
+    //  `pending()` after a real tap cannot do this (it is nulled the same frame when the
+    //  player is already in range), so this drives `__drift.tapTargetAt` — the same
+    //  `pickHitPoint` and the same nearest-centre-wins sort `onTap` uses, without acting.
     const shelterScreen = await screenOf(afterShelter.shelter.x, afterShelter.shelter.y);
-    let bodyTapKind = 'no-screen-point';
+    let band = { hits: 0, highest: 0, samples: [] };
     if (shelterScreen) {
-        await tapAt(shelterScreen.x, shelterScreen.y - 40, 55);
-        await sleep(250);
-        const pend = await page.evaluate(() => window.__drift.pending());
-        bodyTapKind = pend ? pend.kind : 'none';
+        band = await page.evaluate(({ x, y }) => {
+            const out = { hits: 0, highest: 0, samples: [] };
+            for (let up = 0; up <= 160; up += 10) {
+                const kind = window.__drift.tapTargetAt(x, y - up);
+                out.samples.push(`${up}:${kind}`);
+                if (kind === 'shelter') { out.hits += 1; out.highest = up; }
+            }
+            return out;
+        }, shelterScreen);
     }
-    check('URGENT — tapping the shelter BODY (not just the ground at its base) targets it', bodyTapKind === 'shelter', `pending ${pendBefore ? pendBefore.kind : 'none'} -> ${bodyTapKind}`);
+    //  Pre-fix, only the roof slab was pickable and a tap that missed it fell through to the
+    //  terrain behind; the band collapses to the few pixels around the base plus whatever
+    //  slice of roof happened to face the camera. Requiring a tall CONTIGUOUS-ish band with
+    //  a high top is what the poles being pickable actually buys.
+    check('URGENT — the shelter is tappable up its whole silhouette, not from one spot', band.hits >= 8 && band.highest >= 80, `${band.hits}/17 offsets hit, highest ${band.highest}px above the base`);
+    //  And a real tap on the body still sets the intention, from out of range so the walk
+    //  makes the intention observable rather than being consumed on the same frame.
+    await editSave(`state.player = { x: ${afterShelter.shelter.x + 9}, y: ${afterShelter.shelter.y} };`);
+    await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
+    const farScreen = await screenOf(afterShelter.shelter.x, afterShelter.shelter.y);
+    let realBodyTap = 'no-screen-point';
+    if (farScreen) {
+        await tapAt(farScreen.x, farScreen.y - 30, 55);
+        await sleep(150);
+        const pend = await page.evaluate(() => window.__drift.pending());
+        realBodyTap = pend ? pend.kind : 'none';
+    }
+    check('URGENT — and a real tap on the shelter body sets the intention to walk there', realBodyTap === 'shelter', `resolved to: ${realBodyTap}`);
 
     //  Storage: the disjoint deposit-vs-withdraw rule, exercised for real.
     await editSave(`state.inventory = { wood: 6, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0 };`);
@@ -1023,15 +1049,22 @@ async function main() {
     //  which is the one branch there that has nothing left to offer. (Not the fire — a wood-
     //  less fire tap goes through `deniedFire`, which hints but deliberately does NOT mark a
     //  failed tap, so it would not exercise this law at all.)
-    const FAIL_POND = { x: -22, y: 8 };
-    await editSave('state.thirst = 100; state.tools.flask = true; state.tools.flaskSips = 1;');
-    await approach(FAIL_POND.x, FAIL_POND.y, 40);
-    await faceNode(FAIL_POND.x, FAIL_POND.y);
+    //  (Not the pond: thirst drains continuously, so "thirst is full" cannot be held true
+    //  across the walk there — the first attempt at this drank instead and traced nothing.
+    //  Not the fire either: `deniedFire` hints but deliberately does NOT mark a failed tap.)
+    //  A tree with the axe taken away is deterministic — `actOnArrival` explains and traces
+    //  it on the spot, and restoring one node costs no scarce world resource.
+    const failLoudTree = (await live()).nodes.filter((n) => n.kind === 'tree')[0];
+    check('setup — a tree is available for the fail-loud check', !!failLoudTree, failLoudTree ? failLoudTree.id : 'none');
+    await editSave(`state.tools.axe = false; for (const n of state.nodes) if (n.id === '${failLoudTree ? failLoudTree.id : ''}') { n.available = true; }`);
+    await approach(failLoudTree.x, failLoudTree.y, 30);
+    await faceNode(failLoudTree.x, failLoudTree.y);
     const failedTapsBefore = (await live()).trace.failedInteractionTaps;
-    await tapWorld(FAIL_POND.x, FAIL_POND.y, 55);
-    await sleep(500);
+    await tapWorld(failLoudTree.x, failLoudTree.y, 55);
+    await sleep(600);
     const failedTapsAfter = (await live()).trace.failedInteractionTaps;
     check('fail-loud — a tap that reaches something real but has nothing to do explains why and traces it, never silently', failedTapsAfter > failedTapsBefore, `${failedTapsBefore} → ${failedTapsAfter}`);
+    await editSave('state.tools.axe = true;'); // the axe is a precondition for later sections
 
     // ================================================================
     // D-050 — the 5th live report: an emptied world, not a defect, plus the debug-export tool
@@ -1955,11 +1988,23 @@ async function main() {
             coversScreen: rect.width > window.innerWidth * 0.5 && rect.height > window.innerHeight * 0.5
         };
     });
-    check('URGENT — the opened panel is actually VISIBLE, not a transparent sheet over the game', Boolean(freezeProbe) && freezeProbe.opacity > 0.5 && freezeProbe.visibility === 'visible' && freezeProbe.display !== 'none', freezeProbe ? `opacity ${freezeProbe.opacity}, ${freezeProbe.visibility}, ${freezeProbe.display}, covers ${freezeProbe.coversScreen}` : 'panel not found');
+    check('URGENT — the opened panel is actually VISIBLE, not a transparent sheet over the game', Boolean(freezeProbe) && freezeProbe.opacity > 0.5 && freezeProbe.visibility === 'visible' && freezeProbe.display !== 'none' && freezeProbe.coversScreen, freezeProbe ? `opacity ${freezeProbe.opacity}, ${freezeProbe.visibility}, ${freezeProbe.display}, covers ${freezeProbe.coversScreen}` : 'panel not found');
 
     //  Close it, then prove the game is genuinely responsive again — not merely that the
     //  panel element left the DOM. Settings opening is the exact thing the director found
     //  dead ("no input responds, including Settings"), so it is the honest liveness probe.
+    //  C3 finding D2 on D-065: this leg alone would have PASSED on the shipped bug, because
+    //  `realTapDom` finds the close button by selector and `opacity: 0` does not remove an
+    //  element from hit testing — a player could not have found it, but the harness always
+    //  can. So the close is gated on the button being genuinely visible first. The opacity
+    //  probe above remains the load-bearing regression; this is the liveness half.
+    const closeVisible = await page.evaluate(() => {
+        const btn = document.querySelector('.panel.loadout .close-btn');
+        if (!btn) return false;
+        const r = btn.getBoundingClientRect();
+        return parseFloat(getComputedStyle(btn.closest('.panel')).opacity) > 0.5 && r.width > 0 && r.height > 0;
+    });
+    check('URGENT — the close button is one a PLAYER could see and reach, not just a selector', closeVisible);
     await realTapDom('.panel.loadout .close-btn');
     await sleep(700);
     const settingsAfterFreeze = await realTapDom('.settings-button');

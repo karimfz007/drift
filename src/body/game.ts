@@ -210,7 +210,7 @@ export class Game {
         this.hud = new Hud(
             this.overlay,
             () => this.onBuildFire(),
-            () => this.openBuildCard(),
+            () => this.onSecondaryAction(),
             (food) => this.onEatFood(food),
             () => this.onDrinkFlask()
         );
@@ -244,6 +244,7 @@ export class Game {
         //  D-059: live render cost, so tree parity's price is a reported number rather than
         //  an assumption. Pickable count matters twice over — every pickable mesh is work
         //  for each interaction raycast, not just for the renderer.
+        runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
         runtime.tryCombine = (a, b) => {
             const result = tryCombine(session().state, a as 'wood', b as 'wood');
             session().persist(now());
@@ -368,11 +369,13 @@ export class Game {
             `[drift] input lock recovered: control was held with no visible panel (${panel ? 'panel present but transparent' : 'no panel in the overlay'}).`
         );
         for (const stuck of this.overlay.querySelectorAll('.panel')) stuck.remove();
-        runtime.panelOpen = false;
         this.controls.releaseAll();
         this.clearPending();
         this.cancelHold();
-        this.lastActivityAt = stamp;
+        //  C3 finding D7: release through `endPanel`, not by clearing the flag here. The
+        //  deferred restore is the whole reason the close path does not leak a world tap,
+        //  and a recovery has no business being the one code path that skips it.
+        this.endPanel();
     }
 
     private openColdOpen(): void {
@@ -403,6 +406,20 @@ export class Game {
      * bulk, storage inspectable in place. Opens and closes through `beginPanel`/`endPanel`,
      * so §9's input-safety law applies to it exactly as it does to every other panel.
      */
+    /**
+     * The secondary button is contextual: at a shelter that wants mending it mends, and it
+     * is the Build card everywhere else. Dispatching here rather than at the HUD keeps the
+     * label and the action reading from the same condition, so they cannot disagree.
+     */
+    private onSecondaryAction(): void {
+        const s = session().state;
+        if (s.shelter.built && canRepairStructure(s, 'shelter') && !repairIsUrgent(s, 'shelter')) {
+            this.tryRepair('shelter');
+            return;
+        }
+        this.openBuildCard();
+    }
+
     private openLoadout(atStorage = false): void {
         if (runtime.panelOpen) return;
         this.beginPanel();
@@ -442,6 +459,11 @@ export class Game {
             () => this.tryRepair('storage')
         );
         } catch (error) {
+            //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
+            //  have appended a half-built panel before it threw, and `guardPanelLock` returns
+            //  on its first line once `panelOpen` is false, so the backstop is blind to
+            //  exactly the state this catch produces. Clear the wreckage here.
+            for (const stuck of this.overlay.querySelectorAll('.panel.loadout')) stuck.remove();
             this.endPanel();
             console.error('[drift] loadout panel failed to open; control returned.', error);
         }
@@ -504,6 +526,43 @@ export class Game {
         if (!hit?.hit || !hit.pickedPoint) return null;
         const meshName = hit.pickedMesh?.name ?? null;
         return { x: hit.pickedPoint.x, z: hit.pickedPoint.z, unexpectedMesh: meshName === 'terrain' ? null : meshName };
+    }
+
+    /**
+     * What a tap at this screen point WOULD target, with no side effect.
+     *
+     * Harness-fidelity mandate (D-050): the reachability of the shelter's silhouette can
+     * only be measured by asking the shipped pick path itself. Reading `pending()` after a
+     * real tap cannot do it — `stepInteraction` nulls the intention the moment the player
+     * is already in range, so the probe reads `none` whether the tap landed or not (C3
+     * finding C4 on D-065). This runs exactly the same `pickHitPoint` and the same
+     * nearest-centre-wins sort `onTap` runs, and returns the answer instead of acting on it.
+     */
+    private tapTargetAt(screenX: number, screenY: number): string | null {
+        const node = this.pickNode(screenX, screenY);
+        if (node) return `node:${node.node.id}`;
+        const point = this.pickHitPoint(screenX, screenY);
+        if (!point) return null;
+        const s = session().state;
+        const candidates: Array<{ kind: string; d: number }> = [];
+        if (s.fire.built) {
+            const d = distance(point.x, point.z, s.fire.x, s.fire.y);
+            if (d <= TUNE.fireTapRadius + 1.5) candidates.push({ kind: 'fire', d });
+        }
+        {
+            const d = distance(point.x, point.z, POND.x, POND.y);
+            if (d <= POND.radius + TUNE.pondTapSlack + 1.5) candidates.push({ kind: 'pond', d });
+        }
+        if (s.shelter.built) {
+            const d = distance(point.x, point.z, s.shelter.x, s.shelter.y);
+            if (d <= TUNE.shelterCollisionRadius + 1.5) candidates.push({ kind: 'shelter', d });
+        }
+        if (s.storage.built) {
+            const d = distance(point.x, point.z, s.storage.x, s.storage.y);
+            if (d <= TUNE.storageCollisionRadius + 1.5) candidates.push({ kind: 'storage', d });
+        }
+        candidates.sort((a, b) => a.d - b.d);
+        return candidates[0]?.kind ?? null;
     }
 
     // ---- The tap — the one input path ------------------------------------
@@ -684,7 +743,7 @@ export class Game {
         if (this.pending.kind === 'shelter') {
             //  Sleep is what a shelter is FOR, so sleep is what a tap on it does. Mending
             //  only pre-empts when the shelter is actually failing — the old code ran repair
-            //  whenever it was merely *possible*, which is from nine game hours after it was
+            //  whenever it was merely *possible*, which is from ten game hours after it was
             //  built onward, so anyone carrying wood repaired forever and never slept.
             if (repairIsUrgent(s, 'shelter')) this.tryRepair('shelter');
             else this.trySleep();
@@ -1371,7 +1430,17 @@ export class Game {
         //  panel EARLY, before all three older items are built — it never exercised the
         //  "everything but the torch" state a real long session reaches.
         let secondary = { label: '', visible: false };
-        if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
+        //  C3 finding C1 on D-065, fixed here: gating `tryRepair('shelter')` on urgency alone
+        //  left the shelter with NO way to be mended between 40% and 90% durability — storage
+        //  got a Mend button in its panel, the shelter got nothing, and since a repair is +15
+        //  a shelter past 40 would sit permanently capped near 55/100. Mending is offered on
+        //  the secondary button while you are standing at a shelter that wants it. That is a
+        //  positional, transient condition (`canRepairStructure` already requires range), so
+        //  it displaces Build only while you are at your own shelter — and never hides it in
+        //  the band where the tap itself already mends.
+        if (state.shelter.built && canRepairStructure(state, 'shelter') && !repairIsUrgent(state, 'shelter')) {
+            secondary = { label: `Mend  ·  +${TUNE.repairDurabilityPerWood}`, visible: true };
+        } else if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
             secondary = { label: 'Build', visible: true };
         }
 

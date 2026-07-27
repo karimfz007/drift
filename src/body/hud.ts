@@ -491,11 +491,23 @@ export function addCarriedButton(overlay: HTMLElement, onOpen: () => void): void
  * Keeps the pack's own readout honest: what it weighs, and whether that is now costing you.
  * Called every frame from the game's HUD update.
  */
+let packLoadLabel: HTMLElement | null = null;
+let packLoadShown = '';
+let packLoadHeavy: boolean | null = null;
+
 export function paintBackpackLoad(overlay: HTMLElement, kg: number, overloaded: boolean): void {
-    const label = overlay.querySelector<HTMLElement>('.carried-button .pack-load');
-    if (!label) return;
-    label.textContent = `${kg.toFixed(1)} kg`;
-    label.classList.toggle('heavy', overloaded);
+    //  C3 finding D6 on D-065: this runs every frame, so it caches like the rest of the HUD
+    //  rather than querying the DOM and writing unconditionally 60 times a second. The p95
+    //  frame-time budget is law, and "it is only a querySelector" is how that gets spent.
+    if (!packLoadLabel || !packLoadLabel.isConnected) {
+        packLoadLabel = overlay.querySelector<HTMLElement>('.carried-button .pack-load');
+        packLoadShown = '';
+        packLoadHeavy = null;
+    }
+    if (!packLoadLabel) return;
+    const text = `${kg.toFixed(1)} kg`;
+    if (text !== packLoadShown) { packLoadLabel.textContent = text; packLoadShown = text; }
+    if (overloaded !== packLoadHeavy) { packLoadLabel.classList.toggle('heavy', overloaded); packLoadHeavy = overloaded; }
 }
 
 export function addSettingsButton(overlay: HTMLElement, onOpen: () => void): void {
