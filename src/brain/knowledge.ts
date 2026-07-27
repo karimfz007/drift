@@ -243,8 +243,35 @@ export function masteryFor(state: GameState, domain: KnowledgeDomain): { speedMu
     };
 }
 
-/** The mastery multipliers for whatever domain this node kind trains, or a no-op pair. */
+/**
+ * Which domain's mastery a node kind's WORK draws on — deliberately wider than
+ * `domainForNodeKind`, which says what a verb *trains*.
+ *
+ * Those are two different questions and conflating them was a real defect (director's
+ * playtest): Ch.2's ruling named only felling, quarrying and salvage as *training* verbs, so
+ * `domainForNodeKind` returns null for everything else — and because mastery read that same
+ * map, **breaking surface rock got no mastery benefit at all**, however practised the
+ * survivor was. A castaway who has felled a hundred trees does not become clumsy the moment
+ * they turn to a boulder. Training stays exactly as Ch.2 ruled it; the *effect* now covers
+ * every effortful harvesting verb.
+ */
+export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null {
+    switch (kind) {
+        case 'tree':
+        case 'quarry':
+        case 'salvage':
+        case 'rock':        // breaking surface stone — the gap the playtest found
+        case 'deadfall':    // same hands, same axe-work
+        case 'coconutpalm':
+        case 'reed':
+            return 'harvestingFabrication';
+        default:
+            return null;    // tap-kind gathering has no hold to shorten
+    }
+}
+
+/** The mastery multipliers for the work this node kind demands, or a no-op pair. */
 export function masteryForNodeKind(state: GameState, kind: NodeKind): { speedMultiplier: number; yieldMultiplier: number } {
-    const domain = domainForNodeKind(kind);
+    const domain = masteryDomainForNodeKind(kind);
     return domain ? masteryFor(state, domain) : { speedMultiplier: 1, yieldMultiplier: 1 };
 }

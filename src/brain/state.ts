@@ -22,8 +22,7 @@ import {
     type Skills,
     type StorageInventory,
     type Structure,
-    type WoodNode
-} from './types';
+    type WoodNode, type KnowledgeDomain } from './types';
 
 export function createInitialState(nowMs: number): GameState {
     return {
@@ -251,6 +250,11 @@ export interface GatherResult {
     skill: keyof Skills | null;
     xpGained: number;
     levelsGained: number;
+    /** What this action taught, if anything — so the body can SAY so. Ch.2 trained domains
+     *  from day one and the body never once mentioned it, which is why a director could play
+     *  a full session and conclude mastery "only affects forging": the felling effect was
+     *  real but nothing on screen ever acknowledged it (D-070 playtest). */
+    learned: { domain: KnowledgeDomain; techniqueBefore: number; techniqueAfter: number } | null;
 }
 
 /**
@@ -261,7 +265,7 @@ export interface GatherResult {
 export function gatherNode(state: GameState, nodeId: string): GatherResult {
     const blocked = gatherBlockedReason(state, nodeId);
     if (blocked) {
-        return { ok: false, reason: blocked, kind: null, gained: {}, foundFlask: false, skill: null, xpGained: 0, levelsGained: 0 };
+        return { ok: false, reason: blocked, kind: null, gained: {}, foundFlask: false, skill: null, xpGained: 0, levelsGained: 0, learned: null };
     }
 
     const node = findNode(state, nodeId)!;
@@ -409,7 +413,12 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
     //  domain — `domainForNodeKind` returns null for every other kind, left at the innate
     //  floor this pass, on purpose.
     const learningDomain = domainForNodeKind(node.kind);
-    if (learningDomain) recordTrying(state, learningDomain);
+    let learned: GatherResult['learned'] = null;
+    if (learningDomain) {
+        const before = state.knowledge.domains[learningDomain].technique;
+        recordTrying(state, learningDomain);
+        learned = { domain: learningDomain, techniqueBefore: before, techniqueAfter: state.knowledge.domains[learningDomain].technique };
+    }
 
     let xpGained = 0;
     let levelsGained = 0;
@@ -418,7 +427,7 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
         levelsGained = grantXp(state.skills[spec.skill], xpGained);
     }
 
-    return { ok: true, reason: null, kind: node.kind, gained, foundFlask, skill: spec.skill, xpGained, levelsGained };
+    return { ok: true, reason: null, kind: node.kind, gained, foundFlask, skill: spec.skill, xpGained, levelsGained, learned };
 }
 
 // ---- Renewability law (D-051) -------------------------------------------

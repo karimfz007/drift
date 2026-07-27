@@ -125,6 +125,17 @@ const KIND_LABEL: Partial<Record<NodeKind, string>> = {
     salvage: 'Beach find'
 };
 
+/** Plain names for the knowledge domains, for anything the player actually reads. */
+const DOMAIN_LABEL: Record<string, string> = {
+    survivalcraft: 'Survivalcraft',
+    foragingMedicine: 'Foraging',
+    harvestingFabrication: 'Harvesting',
+    construction: 'Construction',
+    mechanicalSystems: 'Mechanics',
+    electricalRadio: 'Electrics',
+    navigationSeamanship: 'Seamanship'
+};
+
 export class Game {
     private engine: Engine;
     private scene: Scene;
@@ -901,6 +912,16 @@ export class Game {
         }
         this.nodes.sync(session().state);
         this.playGatherCue(result);
+        //  SAY THAT IT TAUGHT YOU (director's playtest, D-070 follow-up). Ch.2 trained these
+        //  domains from the day it shipped and the body never once mentioned it — so a full
+        //  session could be played and mastery concluded to "only affect forging", because
+        //  forging's knowledge path (experimentation) reports its own outcome while felling's
+        //  reported nothing. Announced on whole-point crossings only: every gather would be
+        //  noise, and a number that ticks constantly stops being read.
+        if (result.learned) {
+            const crossed = Math.floor(result.learned.techniqueAfter) > Math.floor(result.learned.techniqueBefore);
+            if (crossed) this.floatText(`${DOMAIN_LABEL[result.learned.domain] ?? 'skill'} sharpens`);
+        }
         this.floatText(this.gainLabel(result));
         this.firstPickupToast(view.node.kind);
 

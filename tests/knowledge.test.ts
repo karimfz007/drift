@@ -8,7 +8,7 @@ import {
     freshDomainScores,
     nullOutcomeFactors,
     recordTrying,
-    tryFactorsFor, masteryFor } from '../src/brain/knowledge';
+    tryFactorsFor, masteryFor, masteryDomainForNodeKind, masteryForNodeKind } from '../src/brain/knowledge';
 import { recipeDomain } from '../src/brain/recipes';
 import {
     buildFire,
@@ -368,5 +368,69 @@ describe('mastery is embodied, not merely recorded (Gate 0 item 3)', () => {
         expect(m.speedMultiplier).toBe(1);
         expect(m.yieldMultiplier).toBe(1);
         expect(nodeHoldSeconds(s, tree)).toBeGreaterThan(0);
+    });
+});
+
+// ---- Director's playtest: mastery must be visible on EVERY verb ----------
+
+describe('mastery reaches every harvesting verb, not just the named training ones', () => {
+    const mk = (master: boolean) => {
+        const s = createInitialState(0);
+        s.tools.axe = true;
+        s.energy = TUNE.energyMax;
+        if (master) for (const d of KNOWLEDGE_DOMAINS) s.knowledge.domains[d] = { technique: 100, understanding: 100, adaptation: 100 };
+        return s;
+    };
+
+    //  THE PLAYTEST BUG. `domainForNodeKind` answers "what does this verb TRAIN?" and Ch.2
+    //  deliberately named only felling, quarrying and salvage. Mastery read that same map,
+    //  so breaking surface rock got no benefit at all however practised the survivor was —
+    //  which is why the director could report mastery "only visibly affects forging".
+    //  Training is unchanged; the EFFECT now covers every effortful harvesting verb.
+    //  Fails on the pre-fix tree at `rock` (1.50 -> 1.50, 0.0% faster) per D-066(b).
+    it('REPORT — fell, mine surface rock, and quarry each show a real delta', () => {
+        const rows: string[] = [];
+        for (const kind of ['tree', 'rock', 'quarry'] as const) {
+            const novice = mk(false);
+            const master = mk(true);
+            const nNode = novice.nodes.find((n) => n.kind === kind)!;
+            const mNode = master.nodes.find((n) => n.kind === kind)!;
+
+            const nHold = nodeHoldSeconds(novice, nNode);
+            const mHold = nodeHoldSeconds(master, mNode);
+            const faster = (1 - mHold / nHold) * 100;
+            const yieldMult = masteryForNodeKind(master, kind).yieldMultiplier;
+
+            rows.push(`    ${kind.padEnd(7)} hold ${nHold.toFixed(2)}s -> ${mHold.toFixed(2)}s  (${faster.toFixed(1)}% faster), yield x${yieldMult.toFixed(2)}`);
+            expect(mHold).toBeLessThan(nHold);
+            expect(faster).toBeGreaterThan(20);
+            expect(yieldMult).toBeGreaterThan(1.2);
+        }
+        console.log(`\n  MASTERY REPORT — every harvesting verb:\n${rows.join('\n')}\n`);
+    });
+
+    it('training stays exactly as Ch.2 ruled it — the effect widened, the ruling did not', () => {
+        //  Only the named verbs train. Widening the EFFECT must not quietly widen the
+        //  constitutional training rule underneath it.
+        expect(domainForNodeKind('tree')).toBe('harvestingFabrication');
+        expect(domainForNodeKind('quarry')).toBe('harvestingFabrication');
+        expect(domainForNodeKind('salvage')).toBe('harvestingFabrication');
+        expect(domainForNodeKind('rock')).toBeNull();
+        expect(domainForNodeKind('deadfall')).toBeNull();
+        //  ...while the effect reaches them.
+        expect(masteryDomainForNodeKind('rock')).toBe('harvestingFabrication');
+        expect(masteryDomainForNodeKind('deadfall')).toBe('harvestingFabrication');
+    });
+
+    it('a gather REPORTS what it taught, so the body can say so', () => {
+        const s = mk(false);
+        const tree = s.nodes.find((n) => n.kind === 'tree')!;
+        const result = gatherNode(s, tree.id);
+        expect(result.learned).not.toBeNull();
+        expect(result.learned!.domain).toBe('harvestingFabrication');
+        expect(result.learned!.techniqueAfter).toBeGreaterThan(result.learned!.techniqueBefore);
+        //  An untrained verb reports nothing rather than lying about it.
+        const rock = s.nodes.find((n) => n.kind === 'rock')!;
+        expect(gatherNode(s, rock.id).learned).toBeNull();
     });
 });
