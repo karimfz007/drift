@@ -1234,3 +1234,223 @@ Nothing threw. `.panel` is `opacity: 0` until the `visible` class lands, `showLo
 2. *Storage shows "+15 durability"* — **not** a D-051 hit-test recurrence; nearest-centre-wins is intact. Repair applies below 90% durability against 1/game-hour decay, so it won every tap from nine game hours after building onward.
 3. *Shelter needs one specific spot* — the poles were `isPickable = false`, so taps on the obvious part of the silhouette fell through to terrain behind it, outside the forgiveness radius.
 
+
+---
+
+## D-065 AUDIT — C3, 2026-07-27
+
+*Run in the **main checkout** at `c04f140`, not an isolated worktree. **The isolation tradeoff, stated plainly:** every claim below is read against a working tree that C2 is concurrently editing, so nothing here is protected from a mid-audit change to `tools/smoke.mjs`. I re-checked `git status` and `git rev-parse HEAD` at the start and at the end of the audit: **clean and unmoved at `c04f140` throughout**, so every line number below is pinned to that commit and was true at the moment I read it. The mitigation is the pin, not the filesystem. Isolated worktrees have been destroyed mid-audit four times on this project; the main checkout is the sanctioned workaround.*
+
+***Device-level confirmation is C2's this pass.*** I did not run the harness and made no attempt to — C2 is running it on port 4173 in this same checkout, and a second concurrent run would contend for CPU and corrupt both. Every harness finding below (**C4**, **D2**, **D3**, **D4**, **D10**) is derived by **reading** `tools/smoke.mjs` against the shipped source and the tuning constants. Where a finding predicts an outcome on device, it says so and gives the arithmetic; **none of them should be read as an observed harness result.**
+
+---
+
+### 1. The freeze mechanism — re-derived from scratch, and it holds
+
+**(a) `showLoadout` genuinely lacked the reveal.** `git show c04f140^:src/body/hud.ts` has exactly six `panel()` call sites — `showColdOpen` (:238), `showMorningReport` (:245), `showDeath` (:255), `showBuildCard` (:366), `showSettings` (:418), `showLoadout` (:527) — and `requestAnimationFrame(() => el.classList.add('visible'))` appears at `:241`, `:250`, `:263`, `:394`, `:447` and nowhere between `:527` and the end of `showLoadout` at `:556`. **Five of six had it; `showLoadout` was the sixth.** Confirmed exactly as claimed, including the arithmetic — five duplicate call sites removed, not four or six.
+
+**(b) The panel is genuinely full-screen and pointer-capturing.** `index.html:316-341`: `position: absolute`, `inset: 0`, `pointer-events: auto`, `opacity: 0`, `transition: opacity 300ms ease`. `.panel.visible { opacity: 1 }` at `:358`. `opacity: 0` does **not** remove an element from hit testing — unlike `visibility: hidden` or `display: none` — so a `.panel` without `visible` is a full-viewport transparent hit target. `panel()` also attaches `pointerdown → stopPropagation` (`hud.ts:242`), and the canvas is a **sibling** of `#ui`, not an ancestor, so the world listener never sees the event at all: it is not merely stopped, it is never dispatched down that path. The render loop (`game.ts:1112`) runs unconditionally and only gates `stepMovement`/`stepInteraction`/`stepHold` on `panelOpen` (`:1125`), so the clock keeps advancing. **Total input freeze with time still running — the reported symptom, exactly.** Confirmed.
+
+**(c) `panelOpen` does block Settings — but it is not the operative cause. → FINDING D5.** `openSettings` really does guard with `if (runtime.panelOpen) return` (`game.ts:451`). However, the panel, `.settings-button` and `.carried-button` are **all three children of `#ui`** (`main.ts:12`; `game.ts:217-218`), all positioned, and **none carries a `z-index`** — `index.html` sets `z-index` only at `:60` (`#ui` itself), `:253`, `:514`, `:573`. Within `#ui`'s stacking context they therefore paint in **DOM order**, and a panel appended at open time is after both buttons. A tap aimed at Settings hits **the invisible panel**, not the button; `openSettings` is never called and its guard is never consulted. The as-built's "it swallowed every tap, `panelOpen` made Settings' own guard refuse" names **two sufficient causes** where only the first can fire. The outcome claimed is right; the mechanism is stated one step wider than the code supports. Precision only.
+
+**(d) The "third failure mode" claim is correct.** Nothing on this path bypasses `beginPanel`/`endPanel` (`openLoadout` calls `beginPanel()` at `game.ts:408` and `endPanel()` at `:440`), and nothing throws. It is neither D-063's close-path leak nor the ruling's throw-before-transfer hypothesis. **Confirmed as a genuinely distinct third mode.**
+
+---
+
+### 2. `panel()` owns the reveal — verified complete, and the toasts are intact
+
+``element.className = `panel ${className}` `` occurs at **exactly one place in `src/`** — `hud.ts:240`. There is no other construction of a `.panel` element anywhere in the tree, so `panel()` is the sole producer and its `requestAnimationFrame(...)` at `hud.ts:243` is unskippable. All six `show*` functions still route through it (`:253`, `:259`, `:268`, `:378`, `:429`, `:569`).
+
+The two surviving `classList.add('visible')` calls are `hud.ts:414` (`levelToast`, a `div.level-toast`) and `hud.ts:424` (`pickupToast`, a `div.pickup-toast`). Neither is a `panel()` product; both build their element by hand and both need their own reveal because `.level-toast`/`.pickup-toast` carry their own opacity transitions. **Correctly kept.** Nothing was over-removed.
+
+One robustness note on the mechanism itself: `requestAnimationFrame` does not fire in a backgrounded tab. That is not a new hazard — the old per-call-site reveals used the same primitive — and Babylon's render loop is also rAF-driven, so `guardPanelLock` is asleep for exactly the same interval and cannot fire spuriously on resume.
+
+---
+
+### 3. `guardPanelLock` — scrutinised hard
+
+**It cannot fire during a legitimate transition.** `fade` (`hud.ts:247-250`) adds `.leaving` at t=0, removes the element at t=320 ms, then calls `then()` → `endPanel()` → `window.setTimeout(restore, 0)`, so `panelOpen` clears at t≈321 ms. Throughout that window `querySelector('.panel:not(.leaving)')` (`game.ts:358`) returns `null`, so the guard sees "no visible panel" — but it needs **two probes ≥ 1000 ms apart** (`:362-363`) to act, and the window is ~321 ms. On open, the reveal transition takes computed opacity past the `0.01` floor (`:359`) within a few milliseconds of the transition starting. **The 1-second debounce is genuinely safe**, and the `:not(.leaving)` selector correctly picks the incoming panel when a fading one overlaps it. I could not construct a legitimate sequence that trips it.
+
+**Per-frame cost: negligible — this is not where the frame budget goes.** `guardPanelLock` returns on its **first line** when `panelOpen` is false (`game.ts:353`) — one property read and one field write, which is every frame of normal play. When a panel *is* open the `getComputedStyle` probe is throttled to 10 Hz (`:355`), and in that state `stepMovement`/`stepInteraction`/`stepHold` are all being skipped (`:1125`), so there is more headroom than usual. Against `frameTimeP95BudgetMs: 33` (`tune.ts:59`) this is unmeasurable. **The backstop is not a p95 risk. → But see FINDING D6, which is.**
+
+**`runtime.panelRecoveries` is genuinely surfaced and asserted.** `runtime.ts:22` declares it, `:163` exposes `__drift.panelRecoveries()`, `smoke.mjs:1979-1980` reads it and fails on non-zero. Wired end to end. **→ Scope caveat at FINDING D4.**
+
+---
+
+### FINDING C1 — behavioural: the shelter cannot be mended at all between 40% and 90% durability
+
+`tryRepair('shelter')` has **exactly one call site in the entire tree**: `game.ts:689`, gated on `repairIsUrgent`. Storage received a real alternative — a Mend button in the opened box (`game.ts:427-429` builds the label, `:442` wires it) — so storage repair remains reachable across its whole availability band. **The shelter received nothing.**
+
+The consequence, with my own arithmetic. `structureDurabilityMax: 100`, `structureDurabilityDecayPerGameHour: 1`, `structureRepairThresholdFraction: 0.9`, `structureRepairUrgentFraction: 0.4`, `repairDurabilityPerWood: 15` (`tune.ts:374`, `:377`, `:386`, `:390`, `:380`). `canRepairStructure` is true for `40 ≤ durability < 90` and `repairIsUrgent` is false there (`state.ts:897`, `:916`). **In that entire 50-point band the shelter is repairable by the model and unreachable by any input.** `state.ts:911-912` — *"So repair only pre-empts when the structure is genuinely at risk. Above that it stays reachable, just not in the way"* — is **false for the shelter**. It is true only for storage, which got the button.
+
+And the ceiling that follows: a repair adds +15, urgency requires `< 40`, so the **highest durability a mend can ever produce is just under 55**. Once a shelter first decays past 40 it can never be restored to full — it oscillates in the 40–55 band forever, one wood at a time, with roughly 15 game hours between opportunities. It never reaches disrepair (0) so long as it is visited, so this is a narrowing rather than a hazard; but the entry claims the opposite of what shipped, and a verb the player previously had is now unreachable across half the durability range. **The cheapest close is a Mend button on the shelter, mirroring the one storage got.**
+
+### FINDING C2 — behavioural: the starvation shape is narrowed, not eliminated
+
+Below 40 with wood in hand, a tap on the shelter still repairs instead of sleeping (`game.ts:689`). From durability 20 that is **two consecutive taps** (20→35→50) before sleep becomes available again. Bounded and self-clearing, unlike the old permanent starvation — but `game.ts:685`'s *"Sleep is what a shelter is FOR, so sleep is what a tap on it does"* is not unconditional, and a player who arrives exhausted at a failing shelter carrying firewood still cannot sleep on the first tap. Same class as the bug being fixed, at ~1/8th the exposure.
+
+### FINDING C3 — behavioural: `openLoadout`'s catch creates a state the backstop is structurally blind to
+
+`game.ts:444-447`:
+
+```ts
+} catch (error) {
+    this.endPanel();
+    console.error('[drift] loadout panel failed to open; control returned.', error);
+}
+```
+
+`endPanel` hands control back but **does not remove the panel element**. `panel()` appends to the overlay at `hud.ts:241`, *before* anything in `showLoadout` that can throw — and `showLoadout` does contain a non-null assertion that will throw if the markup ever changes shape (`hud.ts:612`, `el.querySelector('.close-btn')!`). If it throws after `:569`, the result is: `panelOpen === false`, plus a full-screen `.panel` that `requestAnimationFrame` will then make **fully opaque**, with no close button, still `pointer-events: auto`, still `stopPropagation`-ing every tap.
+
+`guardPanelLock` cannot help, because its **first line** is `if (!runtime.panelOpen) { ...; return; }` (`game.ts:353`). The backstop only looks for *control held without a panel*; this is the mirror state — *a panel without control held* — and nothing watches for it. **The try/catch and the backstop between them cover three of the four quadrants.** Two one-line closes: remove `.panel` elements in the `catch` before calling `endPanel()`, or give the guard the symmetric probe. Likelihood is low; the class is exactly the one this package exists to eliminate.
+
+### FINDING C4 — harness: the new shelter-BODY check will fail for a reason unrelated to the fix
+
+`smoke.mjs:884-897` taps 40 px above the shelter's base point and asserts `__drift.pending().kind === 'shelter'` after `sleep(250)`.
+
+- `approach()` (`smoke.mjs:326-336`) exits when `d <= TUNE.interactRadiusM * 0.7` = **1.75 m**.
+- `pendingInReach()` (`game.ts:648-655`) is true at `d <= interactRadiusM` = **2.5 m**.
+- `stepInteraction` (`game.ts:1242`) calls `actOnArrival()` the moment the pending is in reach, and the shelter branch sets `this.pending = null` at `game.ts:691`.
+- `pendingReadout` (`game.ts:238`) reads the live field.
+
+The player is **already in reach when the tap lands**, so the pending resolves and is nulled on the very next frame. The check reads it ~390 ms later (`tapAt`'s own trailing `sleep(140)` plus the explicit `sleep(250)`) — roughly 23 frames too late. **It will read `null`, report `bodyTapKind = 'none'`, and FAIL.** The dichotomy is worth stating: either it fails as derived, or the pending did *not* resolve within 390 ms while in reach, which would itself be a defect. Either way the check is not sound as written.
+
+A second consequence: at that point durability is 60 (set by the preceding WORN block), so the resolution runs `trySleep()` and leaves an **undismissed morning-report panel** standing. It is cleared only incidentally, because the next block opens with an `editSave` that navigates the page.
+
+The fix is to observe something that survives resolution — the tap breadcrumb (`game.ts:616` already records `shelter` outcomes and `__drift.debugInfo()` exposes them), or the *effect* (a report panel appearing) — rather than a field the game is designed to clear immediately.
+
+---
+
+### FINDING D1 — precision: "nine game hours" is ten
+
+Structures are built at `durability = TUNE.structureDurabilityMax` = 100 (`state.ts:851` shelter, `:876` storage). Decay is `Math.max(0, durability - 1 * totalGameHours)` (`reconcile.ts:221-222`) — linear, no other subtraction anywhere in `src/`. `canRepairStructure` requires `durability < 90` **strictly** (`state.ts:897`). 100 → 90 takes exactly **10** game hours, and at exactly 10 the comparison is still false, so repair becomes available **just past ten game hours, not nine.**
+
+The figure is asserted five times as a derived fact: the decisions-log D-065 entry, the `D-065 AS-BUILT` section, `state.ts:906`, `game.ts:687`, and `smoke.mjs:862`. Nothing depends on it — the defect, the diagnosis and the fix are all unaffected — but it is arithmetic stated with confidence and it is off by one.
+
+### FINDING D2 — precision: the check that names the director's symptom cannot fail for that cause
+
+`smoke.mjs:1971` — *"URGENT — the game REMAINS RESPONSIVE after the panel is used (Settings still opens)"* — first closes the panel with `realTapDom('.panel.loadout .close-btn')` (`:1963`).
+
+`realTapDom` (`smoke.mjs:224-245`) finds the element **by selector**, scrolls it into view, and confirms via `elementFromPoint` that it is the topmost hit. **`opacity: 0` does not remove an element from hit testing**, so on the shipped build the invisible panel's close button was found, was topmost, and was tappable — which is exactly why the D-063 checks passed through the bug in the first place, as the as-built itself observes. Replaying the shipped build through this block: panel opens invisible → close-btn tap **succeeds** → `fade` → `endPanel` → Settings opens → **PASS**. The same holds for `reopen` at `:1982-1984`.
+
+**Of the four URGENT freeze checks, exactly one would have failed on the shipped build**: the computed-opacity probe at `:1958`. The other three are useful tripwires for a *stuck* `panelOpen` or a leftover sheet, and `reopen` in particular would catch a residual full-screen panel via `realTapDom`'s occlusion test — they are not worthless. But the as-built frames them as asserting *"what the player actually needs… that the game is still theirs afterwards"*, and they do not assert that: the freeze's essence is that **the player cannot find the close button**, and the harness can always find it by selector. The one check that genuinely reproduces the player's position is the opacity probe. This is the same shape as D-064's finding B2 and D-063's vacuous close-path checks, one layer up.
+
+### FINDING D3 — precision: 40 px is too low on the silhouette to reproduce the pole bug
+
+Even with C4 repaired, `smoke.mjs:891`'s `tapAt(shelterScreen.x, shelterScreen.y - 40, 55)` would not isolate the fix. Working it through: viewport 915×412 (`smoke.mjs:186`), `cameraFovHorizontalRad: 1.05` with `FOVMODE_HORIZONTAL_FIXED` (`tune.ts:134`, `game.ts:196-197`) gives a focal length of ≈ 457.5 / tan(0.525) ≈ **786 px**. Camera 6 m back at 2.1 m plus pitch (`tune.ts:128`, `:136`; `game.ts:1263-1264`), player ≤1.75 m from the shelter centre → camera-to-shelter ≈ 7–8 m. 40 px ≈ 0.051 rad ≈ **0.4 m up** a 2.1 m pole.
+
+Pre-fix, that ray passes through the (unpickable) pole and strikes terrain roughly **0.9 m beyond** the shelter centre — comfortably inside `TUNE.shelterCollisionRadius + 1.5` = **2.8 m** (`game.ts:552`) — so `onTap`'s candidate sort would still have produced `kind: 'shelter'`. To land *outside* the forgiveness radius the tap must be ≈1.4 m up the silhouette, i.e. **~130 px** above the base, which is where the reported "one specific spot" bug actually lives. The check aims at the one part of the pole where the old fallback still rescued it.
+
+*(Camera pitch is set by `faceNode` and I did not pin it exactly; the conclusion is insensitive to plausible values — the required tap height scales with the ray's descent rate, and at every pitch in the tuned range 40 px stays well inside the forgiveness radius.)*
+
+### FINDING D4 — precision: `panelRecoveries` covers ~10 seconds, not the run
+
+`editSave` performs **two `page.goto` navigations** (`smoke.mjs:372`, `:391`), and `runtime.panelRecoveries` is a module-level counter (`runtime.ts:22`) that resets to 0 on every page load. The single assertion at `smoke.mjs:1979-1980` runs after the `editSave` at `:1925`, so it can only observe recoveries from that point forward — roughly the ten seconds of the freeze block. Any recovery in the preceding ~1900 lines of harness is wiped before it can be read. *"The harness fails if it is not zero"* is true, but for a much narrower window than it reads. A read immediately before each `editSave`, or one at the end of `main()`, would make it a run-wide guarantee cheaply.
+
+### FINDING D5 — precision: which of two sufficient causes actually fires
+
+See §1(c). The invisible panel physically covers the Settings button; `openSettings`'s `panelOpen` guard (`game.ts:451`) is a second line of defence that is never reached. Outcome as claimed, mechanism stated one cause too wide.
+
+### FINDING D6 — precision: `paintBackpackLoad` is the one unconditional per-frame addition, and it breaks the file's own discipline
+
+`paintBackpackLoad` (`hud.ts:494-499`) runs `overlay.querySelector('.carried-button .pack-load')` and writes `textContent` and `classList.toggle` **on every frame**, called from `paintHud` at `game.ts:1384`. Every other HUD element in this file is resolved once in the `Hud` constructor and cached — `this.bars`, `this.invRow`, `this.clockLabel`, `this.goalLabel`, `this.actionButton`, `this.secondaryButton` (`hud.ts:92-104`) — precisely so the hot path never matches a selector. This is the **only** change in the package that touches the render path unconditionally, and it is the one that deserved the frame-budget sentence that `guardPanelLock` got instead. The cost is small (a two-level descendant match over a shallow subtree, ~60 Hz); the inconsistency with the module's own convention is the point. Cache the node beside the button in `addCarriedButton`, and skip the write when the string is unchanged.
+
+### FINDING D7 — precision: the recovery restores control synchronously, against the pair's own law
+
+`guardPanelLock` writes `runtime.panelOpen = false` directly (`game.ts:371`) rather than deferring through `endPanel`, so it does not honour the rule documented at `game.ts:306-311` — *"control is NOT restored on the closing input itself"* — which exists because a close gesture still in flight otherwise falls through to the world. Defensible: the guard fires only from an already-broken state and does perform the full `releaseAll` / `clearPending` / `cancelHold` cleanup (`:372-374`). But if it fires while a pointer is down, the release can still leak a world tap — the exact defect D-063 closed, in the recovery path.
+
+The sweep this finding came from is otherwise clean: **`runtime.panelOpen` is written at exactly three places in `src/`** — `game.ts:314` (`beginPanel`), `:324` (`endPanel`), `:371` (`guardPanelLock`). No stragglers. All six `beginPanel()` sites are followed by a `show*` that goes through `panel()`. **A1 is genuinely closed and nothing of its class remains.**
+
+### FINDING D8 — precision: the recovery does not run the dismissed panel's own callback
+
+If `guardPanelLock` ever fires on the death card it removes the element and releases control without running `onWake` (`game.ts:1479-1487`), leaving `deathShown === true` (so a *later* death would show no card at all), `lastDeathCause` unacknowledged, and the player mesh not re-placed by `placePlayerFromState()`. `respawn` itself has already run inside `Session.handleDeath` (`session.ts:149-154`), so this is a degradation rather than a soft-lock, and `panel()` makes it unreachable in practice. Worth recording because the death panel is the one place where "remove it and hand control back" is not a safe generic recovery. Related, pre-existing and unchanged by this commit: `openDeath` is the only panel opener without an `if (runtime.panelOpen) return` guard, so a death landing while another panel is up stacks two panels.
+
+### FINDING D9 — precision: one of the three new tests does not lock the new behaviour, and nothing locks the wiring
+
+- *"mending is AVAILABLE long before it is URGENT"* — asserts `canRepairStructure === true` and `repairIsUrgent === false` at durability 60. **Would fail on revert.** Genuine lock.
+- *"urgency spans the whole window the old rule wrongly claimed for repair"* — asserts the same pair for every integer from 89 down to 41. **Would fail on revert.** Genuine lock, and it is the one that states the bug as arithmetic.
+- *"urgent mending still requires the wood and the range it always did"* — every case runs at durability 5, which is urgent under **both** the new rule and the reverted one. **It passes identically if `repairIsUrgent` is replaced by `canRepairStructure`.** It is honestly named and it does verify that urgency inherits availability's preconditions, so it is not a bad test; it is simply not a lock on the fix. Two of three, not three of three.
+
+Neither of the two boundary values (`durability === 40` exactly) is tested, and — more importantly — **nothing in the unit suite covers the wiring**: that `actOnArrival` uses `repairIsUrgent` and not `canRepairStructure` for the shelter (`game.ts:689`), and that a storage tap now opens the panel (`game.ts:700`). Both are body code that only the device harness can reach, so the two most player-visible halves of this package are regression-locked solely by the checks at **C4** and **D3**.
+
+### FINDING D10 — precision: two harness probes gather evidence they never assert
+
+`smoke.mjs:1976-1985`'s storage probe captures `opacity` and the check uses only `Boolean(storageOpened)` — an *invisible* loadout panel would satisfy it. `smoke.mjs:1955`'s `coversScreen` is computed and printed but never asserted. Both are covered elsewhere (the freeze probe at `:1958` asserts opacity; the empty-box check at `:1019` asserts `opacity > 0.5` correctly), so this is a gap in individual checks rather than in the package.
+
+---
+
+### The repair-starvation arithmetic, re-derived independently
+
+| quantity | source | value |
+|---|---|---|
+| `structureDurabilityMax` | `tune.ts:374` | 100 |
+| `structureDurabilityDecayPerGameHour` | `tune.ts:377` | 1 |
+| `structureRepairThresholdFraction` | `tune.ts:386` | 0.9 → **90** |
+| `structureRepairUrgentFraction` | `tune.ts:390` | 0.4 → **40** |
+| `repairDurabilityPerWood` | `tune.ts:380` | 15 |
+| durability at build | `state.ts:851`, `:876` | 100 |
+| decay law | `reconcile.ts:221-222` | linear, floored at 0 |
+
+**The claim, tested.** *"Repair applies below 90% durability and decay is 1 per game hour from 100, so it won every tap from nine game hours after building onward for any player carrying wood."* Everything in that sentence checks out **except the number**: the crossing is at **10** game hours, strictly (FINDING D1). The "and forever after" half is right — decay is monotonic and, pre-fix, nothing but a repair could raise durability, so once below 90 the condition never became false again for a player carrying wood. **The starvation was real, permanent, and correctly diagnosed.** The comparison to FIX 2 (flask-fill behind drink) and C03 (Build-fire behind Craft-axe) is apt: a one-condition-always-true test used as a priority.
+
+**`repairIsUrgent` is derived correctly** (`state.ts:914-917`): it delegates availability to `canRepairStructure` — so it inherits the built / wood / proximity preconditions rather than restating them — and adds `durability < max * urgentFraction`. Both call sites are right for what they do: `game.ts:689` uses `repairIsUrgent` for the shelter's *priority*, `game.ts:427` uses `canRepairStructure` for the storage Mend button's *availability*. That is the exact distinction the fix is about, applied correctly in both places. **`tune.ts:390`'s "0.4 is ~2.5 days of decay from full" checks out**: 60 game hours at 1/h, 24 h/day.
+
+**Is repair still reachable?** For **storage**, yes and better than before — a named button across the whole availability band. For the **shelter**, no: see FINDING C1. That is the one place where the fix went further than the entry describes.
+
+---
+
+### The shelter pickability fix — confirmed sound
+
+- **The poles were unpickable.** `c04f140^:src/body/entities.ts` sets `pole.isPickable = false` inside the two-pole loop; `this.root.isPickable = true` (the roof slab) was the only pickable part. Confirmed.
+- **`getChildMeshes()` covers them.** Babylon's default is recursive (`directDescendantsOnly` defaults to false), so it returns both poles (direct children of `root`) **and** the grade mark, which is parented to a pole and is therefore a grandchild. Confirmed.
+- **Tagging every child cannot mis-resolve.** `pickHitPoint` (`game.ts:496-499`) does not use the hit *point* for a shelter-tagged mesh — it returns `session().state.shelter`'s own coordinates. Any hit on any shelter child therefore collapses to the shelter centre at distance 0 and wins the nearest-centre sort at `game.ts:558`. There is no way for a child to resolve to anything but the shelter.
+- **The grade mark being pickable is harmless.** `addGradeMark` (`entities.ts:48-58`) sets `isPickable = false` and assigns **no** metadata, so the loop's `part.metadata = { shelter: true }` clobbers nothing. It is a 0.06 m sphere that now resolves to the shelter — which is the correct answer for a tap on it.
+- **An unbuilt shelter is still inert**: `setBuilt` disables `root` (`entities.ts:882`) and Babylon skips disabled meshes in `scene.pick`.
+
+One consequence worth banking, not a defect: because a shelter-mesh hit resolves to the shelter centre at d = 0, a newly-pickable pole standing between the camera and the storage crate will now win a tap aimed at the crate. That is geometrically honest (you tapped the pole) and the roof already behaved this way, but it is the mirror of the D-051 regression and is worth remembering if the two structures are ever placed closer together.
+
+---
+
+### The storage re-route — verified, and no verb was lost
+
+- **The panel really shows storage contents.** `openLoadout(true)` (`game.ts:700` → `:406`) passes `atStorage: atStorage && s.storage.built` (`:425`), and `showLoadout` renders `storageOpen` through the existing `loadoutView` zone model plus a new `storage-row` (`hud.ts:586-595`). The heading becomes "The store box" while the class stays `.panel.loadout`, so every existing harness selector still resolves.
+- **Store / take / mend are correctly gated.** `storageActionLabelFor` (`game.ts:790-795`) mirrors `useStorage`'s own disjoint rule exactly — carrying any of wood/stone/fiber ⇒ "Store what you carry"; else anything in the box ⇒ "Take from the box"; else `null`. The Mend button appears only when `canRepairStructure(s, 'storage')` (`:427`), i.e. below 90%, with wood, in range. **The label now names the verb before you commit to it**, which is the actual improvement over the old silent bulk move.
+- **An empty-handed player with an empty box still gets feedback.** With both `storageAction` and `repairLabel` null, `hud.ts:592` renders *"The box is empty, and so are your hands."* — plus the zones and load line. **The fail-loud duty is discharged earlier and more plainly than the old `explain()` did.** Confirmed by reading the branch, and asserted on device by `smoke.mjs:1019` (which also checks `opacity > 0.5` — a stronger assertion than the check it replaced ever made).
+- **Storage can still be repaired.** Yes, across its whole availability band, which is more than was true before. Nothing became unreachable on the storage side.
+- Minor UX ordering note, not a defect: when carrying wood at a worn box both buttons show, and taking "Store what you carry" first deposits the wood and thereby removes the ability to mend on that visit.
+
+---
+
+### The harness rewrites, judged individually
+
+**1. Shelter repair, durability 40 → 22: preserved, and the move was *required*.** Under the new rule 40 is exactly the urgency boundary (`durability < 40` is false at 40), so the old value would have failed for the right reason. 22 sits squarely inside the urgent band and the repair (+15 → 37) stays there, so the assertion `durability > 22 && wood === 9` is clean. **Intent preserved.**
+
+**2. The new WORN-shelter check is the strongest thing in this package.** `smoke.mjs:869-877` sets durability 60 with wood 10, taps, dismisses the report, and asserts `Δhours > 1` **and** `wood === 10`. On the pre-fix build the tap would have repaired: wood would read 9, and `realTapDom('.report button')` would have found nothing to tap. **It fails pre-fix on two independent assertions.** It covers the half of the rule the original check never tested, and the pair together is materially stronger than what it replaced.
+
+**3. Storage deposit/withdraw through the opened box: preserved.** `smoke.mjs:895-905` asserts a `.panel.loadout` exists, `storage.durability` did not rise, and `inventory.wood === 6`. On the pre-fix build the tap would have repaired (wood 5, durability +15) or, if durability were still above 90, silently deposited (wood 0). **It fails pre-fix on either branch.** The follow-on deposit and withdraw checks now go through `realTapDom('.use-storage-btn')` and correctly require `.ok`, so they cannot pass if the button is missing or occluded. Non-vacuous.
+
+**4. Fail-loud moved from the storage box to the pond: preserved, and the substitute is sound — verified end to end.** `FAIL_POND = { x: -22, y: 8 }` matches `POND` exactly (`world.ts:51`). `state.thirst = 100` against `thirstMax: 100` (`tune.ts:164`) makes `canDrinkAtPond` false (`state.ts:622-624`, strict `<`). `flaskSips = 1` against `flaskCapacitySips: 1` (`tune.ts:245`) makes `canFillFlask` false (`state.ts:634-636`, strict `<`). So `actOnArrival`'s pond branch falls to `explain('The flask is full and so are you.')` (`game.ts:680`) → `markFailedTap()` (`game.ts:1083` → `session.ts:208`) → `failedInteractionTaps` increments. **The check genuinely exercises the law it names.** The comment's reason for rejecting the fire is also correct — `deniedFire` hints without marking a failed tap. And the duty the old check discharged at the box did not vanish: it moved into the empty-box check at `:1019`, which asserts more than the original did. **Not weakened.**
+
+---
+
+### Standing constraint: no death-model changes — verified
+
+`git show c04f140 --stat -- src/brain/` is **one file, +17 lines**, and all seventeen are `repairIsUrgent` and its docstring. Filtering the `state.ts` diff for `respawn|death|deaths` returns **nothing**. In `game.ts`, the `openDeath` edit replaces three inlined lines (`panelOpen = true`, `releaseAll()`, `clearPending()`) with `this.beginPanel()`, which does those three **plus** `cancelHold()` — the omission finding A1 named. The `onWake` callback body (`game.ts:1479-1487`) is byte-identical: `endPanel`, `deathShown = false`, `acknowledgeDeath`, zero velocities, `placePlayerFromState`, timestamps. `Session.acknowledgeDeath` (`session.ts:157-161`) and `handleDeath`/`respawn` (`:149-154`) are untouched. **Input-safety plumbing only. Constraint honoured.**
+
+---
+
+### Verification, all run fresh by this audit at `c04f140`
+
+`npm run typecheck` ✓ clean. `node tools/check-purity.mjs` ✓ **16 brain files, 18 modules**, zero rendering-engine imports, zero body imports. `node tools/check-docs-integrity.mjs` ✓ **65 decisions**, every D-reference across 6 living docs resolves. `npx vitest run` ✓ **343/343 across 19 files**, matching the entry's claim exactly; `tests/construction.test.ts` at 39, `tests/vitals.test.ts` at 15 in 9.79 s with the two long properties at 5.85 s and 3.46 s — the ~3.4 s figure the entry gives is right, and the 30 s budgets are not masking a slow test, they are absorbing parallel-load variance on a genuinely ~4 s property. **The `vitals.test.ts` diff is exactly two `}, 30_000)` arguments and two comments: iteration counts 3000 and 2000 unchanged, every assertion unchanged, span shapes unchanged. Not weakened in any respect.**
+
+**What I could NOT confirm.** Everything device-level: that the freeze reproduces and clears on hardware, that the pre-fix measurement table in the AS-BUILT section (opacity 0/1, close button at top 352, no page errors) is accurate, and the pass/fail status of every check in `tools/smoke.mjs` — including the five new URGENT ones and the four rewrites judged above. **That is C2's this pass**, by instruction, and findings C4/D2/D3/D4/D10 are predictions from reading, not observations. I also did not pin the camera pitch `faceNode` produces, which D3's arithmetic depends on within a wide tolerance.
+
+---
+
+### Verdict: PASS-WITH-NOTES
+
+**The hard part is right.** All three player reports are correctly diagnosed at the mechanism level, and I re-derived each independently: the invisible full-screen sheet, the priority-vs-availability confusion, and the unpickable poles. The freeze fix is at the correct altitude — "every panel must remember to reveal itself" was the invariant that failed, so moving it into `panel()` removes the class rather than the instance, and `hud.ts:240` is provably the only place a `.panel` is ever born. `runtime.panelOpen` is written in exactly three places and A1 is genuinely closed. `guardPanelLock` survives the transition analysis, is free on the fast path, and is honestly framed as a recovery with a counter that fails the harness. The death-model constraint holds down to the byte. The two long property tests were not weakened in any way. 343/343.
+
+**Four things temper it.** **C1** is the one a player would feel: the shelter cannot be mended anywhere in the 40–90 band, because it never got the alternative affordance storage got, and the entry claims the opposite. **C3** leaves the backstop blind to the mirror state its own try/catch can produce. **C4** is a new harness check that will fail on device for a reason unrelated to the fix, and **D2** is the check that names the director's exact symptom — *"nothing responds, including Settings"* — being unable to fail for that cause, because `realTapDom` can always find a close button that a player cannot see. That last one is the same lesson as D-063's vacuous close-path checks and D-064's finding B2, arriving for the third package running: **the harness keeps asserting the thing it can reach rather than the thing the player experiences.** Exactly one of the four new freeze checks — the computed-opacity probe — would have caught the shipped bug, and it is the right one, so the package does close the hole; but the surrounding checks read stronger than they are.
+
+Recommended as FIXes in the next slice: **C1** (a shelter Mend button mirroring storage's, or urgency raised toward the availability threshold), **C3** (remove `.panel` in the catch, or a symmetric probe in the guard), **C4** (assert an effect that survives resolution rather than `pending`), and **D3** (tap ~130 px up, where the bug actually lived). **D1** and **D4–D10** are documentation and hygiene TUNEs.
