@@ -68,7 +68,8 @@ import {
     type GatherResult,
     type MorningReport,
     type NodeKind,
-    type RepairTarget
+    type RepairTarget,
+    isShelteredSleep
 } from '../brain';
 import { TUNE } from '../data/tune';
 import { COLD_OPEN, POND, WALKABLE_RADIUS } from '../data/world';
@@ -552,6 +553,13 @@ export class Game {
      * (no explanation owed) apart from "hit something real that produced no verb" (D-042's
      * fail-loud law: silence is never a legal outcome for the latter).
      */
+    /** True when this screen point lands on the pack worn on the survivor's back. */
+    private pickedBackpack(screenX: number, screenY: number): boolean {
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
+        return Boolean(hit?.hit && hit.pickedMesh?.metadata?.backpack);
+    }
+
     private pickHitPoint(screenX: number, screenY: number): { x: number; z: number; unexpectedMesh: string | null } | null {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
@@ -619,6 +627,16 @@ export class Game {
     private onTap(screenX: number, screenY: number): void {
         if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
         this.lastActivityAt = now();
+
+        //  The pack on the survivor's own back, tapped directly (director's request). Checked
+        //  before world targets because it is the nearest thing to the camera and the player
+        //  clearly meant it — and it is additive: the HUD bag icon still works exactly as it
+        //  did, this is a second way in, not a replacement.
+        if (this.pickedBackpack(screenX, screenY)) {
+            this.recordTap(screenX, screenY, 'backpack');
+            this.openLoadout();
+            return;
+        }
 
         //  A node under (or near) the finger wins.
         const node = this.pickNode(screenX, screenY);
@@ -1144,6 +1162,11 @@ export class Game {
                 //  and it displaces nothing, which the secondary-button attempt did not
                 //  manage: standing at your own shelter it replaced Build outright and made
                 //  storage unbuildable. The device harness caught that within one run.
+                //  Resting is offered from the construction surface because that is where
+                //  "what can I do here" already lives, and it must be reachable WITHOUT a
+                //  shelter — otherwise sleeping rough ships with no entry point, which is
+                //  the exact defect Try-Combining just had to be rescued from.
+                rest: { sheltered: isShelteredSleep(s) },
                 mendShelter: canRepairStructure(s, 'shelter')
                     ? { durability: s.shelter.durability, max: TUNE.structureDurabilityMax, gain: TUNE.repairDurabilityPerWood }
                     : null,
@@ -1195,7 +1218,8 @@ export class Game {
                 this.lastActivityAt = now();
             },
             () => this.endPanel(),
-            () => { this.endPanel(); this.tryRepair('shelter'); }
+            () => { this.endPanel(); this.tryRepair('shelter'); },
+            () => { this.endPanel(); this.trySleep(); }
         );
     }
 

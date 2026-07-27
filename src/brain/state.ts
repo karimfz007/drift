@@ -1046,7 +1046,22 @@ export function isExhausted(state: GameState): boolean {
     return state.energy <= TUNE.energyLowThreshold;
 }
 
+/**
+ * Sleeping is always possible — a tired human can lie down anywhere (director's request).
+ * WHERE they lie down is what differs: see `isShelteredSleep`.
+ */
 export function canSleep(state: GameState): boolean {
+    void state;
+    return true;
+}
+
+/**
+ * True when this sleep happens under the shelter's roof. A rough sleep on the open ground
+ * recovers more slowly (`groundSleepRecoveryMultiplier`) and gets no roof between the
+ * survivor and the weather — the existing wet/warmth interaction then applies normally,
+ * which is the whole penalty. Nothing new is invented for it.
+ */
+export function isShelteredSleep(state: GameState): boolean {
     return isNearShelter(state);
 }
 

@@ -18,8 +18,8 @@ import {
     respawn,
     shelterShortfall,
     storageShortfall,
-    useStorage
-} from '../src/brain/state';
+    useStorage,
+    isShelteredSleep} from '../src/brain/state';
 import { Session } from '../src/brain/session';
 import { MemorySaveRepository } from '../src/brain/save';
 import { realSecondsFromGameHours } from '../src/brain/clock';
@@ -62,14 +62,19 @@ describe('construction — shelter', () => {
         expect(buildShelter(s, 1, 1)).toBe(false);
     });
 
-    it('canSleep mirrors isNearShelter — a built, nearby shelter only', () => {
+    //  REWRITTEN, not deleted: sleeping used to REQUIRE a built, nearby shelter, and the
+    //  director asked for the ground to be a valid (worse) bed. `canSleep` is now always
+    //  true and `isShelteredSleep` carries the distinction that used to be a gate.
+    it('sleeping is always allowed; isShelteredSleep is what tracks the roof', () => {
         const s = run();
-        expect(canSleep(s)).toBe(false);
+        expect(canSleep(s)).toBe(true);              // no shelter at all — still allowed
+        expect(isShelteredSleep(s)).toBe(false);
         s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
         buildShelter(s, s.player.x, s.player.y);
-        expect(canSleep(s)).toBe(true);
+        expect(isShelteredSleep(s)).toBe(true);      // under the roof
         s.player.x += TUNE.shelterRadius + 5;
-        expect(canSleep(s)).toBe(false);
+        expect(canSleep(s)).toBe(true);              // still allowed, just rough
+        expect(isShelteredSleep(s)).toBe(false);
     });
 
     it('isNearShelter is true only inside shelterRadius of a BUILT shelter', () => {
@@ -455,10 +460,15 @@ describe('sleep — reuses the reconcile spine, never lethal', () => {
         return session;
     }
 
-    it('refuses when not near a built shelter', () => {
+    it('sleeps rough with no shelter at all, and still produces a report', () => {
+        //  Was: "refuses when not near a built shelter". The refusal is gone by design —
+        //  what remains is that the rough sleep is a real, reported rest.
         const s = run();
+        s.energy = 10;
         const session = sessionAt(s);
-        expect(session.sleep(0)).toBe(null);
+        const report = session.sleep(0);
+        expect(report).not.toBe(null);
+        expect(session.state.energy).toBeGreaterThan(10);
     });
 
     it('advances the clock by sleepDurationGameHours and RECOVERS energy along a rate (Ch.6 replaced the instant refill)', () => {
@@ -517,5 +527,50 @@ describe('respawn — the shelter becomes home once built', () => {
         respawn(s, 'thirst');
         expect(s.energy).toBe(TUNE.energyMax * TUNE.respawnVitalFraction);
         expect(s.wet).toBe(0);
+    });
+});
+
+describe('sleeping rough — anywhere, always worse (director request)', () => {
+    //  A tired human can lie down anywhere. The shelter's value is that lying down under it
+    //  is BETTER, not that lying down is otherwise forbidden. Rates are scaled by
+    //  `groundSleepRecoveryMultiplier`; the weather half needs no new machinery, because a
+    //  survivor who is not under a roof already interacts with wet/warmth normally.
+    const sleepFrom = (nearShelter: boolean) => {
+        const s = run();
+        s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
+        buildShelter(s, s.player.x, s.player.y);
+        if (!nearShelter) { s.player.x += TUNE.shelterRadius + 30; }
+        s.energy = 10;
+        s.fatigue = 80;
+        s.resting = true;
+        const elapsed = TUNE.sleepDurationGameHours * TUNE.dayLengthRealMinutes * 60 / TUNE.gameHoursPerDay;
+        return reconcile(s, elapsed).state;
+    };
+
+    it('you can sleep with no shelter at all — it is never refused', () => {
+        const s = run();
+        expect(s.shelter.built).toBe(false);
+        expect(canSleep(s)).toBe(true);
+        expect(isShelteredSleep(s)).toBe(false);
+    });
+
+    it('REPORT — a rough sleep genuinely recovers, and genuinely recovers LESS', () => {
+        const sheltered = sleepFrom(true);
+        const rough = sleepFrom(false);
+        const shelteredGain = sheltered.energy - 10;
+        const roughGain = rough.energy - 10;
+        console.log(`\n  GROUND SLEEP — energy gained over one full sleep:\n    sheltered ${shelteredGain.toFixed(1)}\n    rough     ${roughGain.toFixed(1)}  (${((roughGain / shelteredGain) * 100).toFixed(0)}% of a sheltered night)\n`);
+        expect(roughGain).toBeGreaterThan(0);              // it is a real rest
+        expect(roughGain).toBeLessThan(shelteredGain);     // and a worse one
+        //  Fatigue sheds too, but less.
+        expect(rough.fatigue).toBeLessThan(80);
+        expect(rough.fatigue).toBeGreaterThan(sheltered.fatigue);
+    });
+
+    it('shelter-sleep itself is UNCHANGED — this adds a worse option, it does not nerf the good one', () => {
+        //  If this ever fails, the fallback has quietly cost the player their shelter's value.
+        const sheltered = sleepFrom(true);
+        expect(sheltered.energy).toBeGreaterThan(10);
+        expect(sheltered.fatigue).toBeLessThan(80);
     });
 });

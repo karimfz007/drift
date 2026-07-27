@@ -128,7 +128,12 @@ export class PlayerView {
         this.pack.material = flat(scene, 'packMat', PALETTE.playerPack);
         this.pack.parent = this.root;
         this.pack.position = new Vector3(0, 0.16, -0.36);
-        this.pack.isPickable = false;
+        //  THE PACK IS A REAL TARGET (director's request). Tapping the bag on the survivor's
+        //  back opens what you are carrying — the physical object, not only the 2D icon. The
+        //  player mesh itself stays unpickable so the body never eats world taps; only the
+        //  pack does, and it carries its own metadata so the tap resolves unambiguously.
+        this.pack.isPickable = true;
+        this.pack.metadata = { backpack: true };
 
         //  Visible tool carriage (D-046(d) ruling): once crafted, the axe is on the
         //  character, not just a HUD chip — a haft + head parented to the hip, angled

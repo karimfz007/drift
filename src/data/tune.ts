@@ -320,6 +320,11 @@ export const TUNE = {
     /** [TUNE] C05 — game hours a sleep at the shelter advances the clock by (§4). Reuses the
      *  exact reconcile path an absence already uses — a voluntary, floor-protected span. */
     sleepDurationGameHours: 8,
+    /** [TUNE] Sleeping ROUGH — on the ground, no shelter. Recovery rates are scaled by this
+     *  relative to a sheltered sleep, so resting anywhere is always possible and always
+     *  worse. 0.55 makes a night on the ground worth about half a night under a roof: a real
+     *  fallback, never a substitute. Shelter-sleep's own rates are untouched. */
+    groundSleepRecoveryMultiplier: 0.55,
 
     // ---- Wet condition (C05) — not a vital, not a death vector -------------
     /** [TUNE] C05 — full wetness. */

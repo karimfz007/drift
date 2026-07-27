@@ -298,6 +298,9 @@ export interface BuildCardView {
      *  at their own shelter, which is the same one-control-two-verbs disease it was meant
      *  to cure. The Build card already IS the construction surface; nothing is displaced. */
     mendShelter: { durability: number; max: number; gain: number } | null;
+    /** Resting. Always offered — a tired human can lie down anywhere — but it says plainly
+     *  whether this will be a night under the roof or a night on the ground. */
+    rest: { sheltered: boolean };
 }
 
 /** Knapping (Ch.1 v3, D-055): repeatable, not a one-time build — no "done" state, just a
@@ -380,11 +383,25 @@ export function showBuildCard(
     onCraftStoneHammer: () => void,
     onKnapSharpblade: () => void,
     onClose: () => void,
-    onMendShelter: () => void = () => {}
+    onMendShelter: () => void = () => {},
+    onSleep: () => void = () => {}
 ): void {
     const el = panel(overlay, 'build');
     el.innerHTML = `
         <div class="build-list">
+            <!--  Rest sits FIRST. The card grew past the 412px fold as items were added,
+                  and a device probe caught the sleep button rendering below it
+                  (inViewport:false) — reachable only by scrolling. The panel is
+                  scrollable by D-052's design so nothing was unreachable, but a
+                  primary action a tired player is hunting for should not need a
+                  scroll to be seen.  -->
+            <div class="build-item rest-item">
+                <div class="build-head"><strong>${view.rest.sheltered ? 'Sleep in the shelter' : 'Sleep on the ground'}</strong></div>
+                <p class="subtitle">${view.rest.sheltered
+                    ? 'A roof over you. You will wake properly rested.'
+                    : 'No roof, no bedding. You will rest, but not well — and the weather gets at you.'}</p>
+                <button class="primary sleep-btn" type="button">${view.rest.sheltered ? 'Sleep' : 'Sleep rough'}</button>
+            </div>
             ${buildItemMarkup('Torch', 'Wood and fibre — light it at any active fire.', view.torch,
                 { wood: TUNE.torchWoodCost, fiber: TUNE.torchFiberCost }, 'Owned.', 'Make the torch', 'torch-btn')}
             ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
@@ -410,6 +427,7 @@ export function showBuildCard(
         btn?.addEventListener('click', () => { if (done) return; done = true; fade(el, action); });
     };
     bind('.mend-shelter-btn', onMendShelter);
+    bind('.sleep-btn', onSleep);
     bind('.torch-btn', onCraftTorch);
     bind('.axe-btn', onCraftAxe);
     bind('.shelter-btn', onBuildShelter);

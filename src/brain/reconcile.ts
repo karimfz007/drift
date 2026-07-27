@@ -63,6 +63,10 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  the player does not move, pick anything up, or wake mid-reconcile.
     //  `restingNow` is true only inside a `Session.sleep()` span (types.ts).
     const restingNow = state.resting;
+    //  Sleeping ROUGH: resting away from the shelter recovers at a reduced rate. The roof's
+    //  other job — keeping the weather off — needs no special case, because the existing
+    //  shelter/wet/warmth interaction already applies to a survivor who is not under one.
+    const restScale = restingNow && !nearShelter ? TUNE.groundSleepRecoveryMultiplier : 1;
     //  Carry weight scales the AMBIENT energy drain, reusing D-052's existing rate rather
     //  than adding a second one beside it. `light` multiplies by exactly 1.
     const loadEnergyMultiplier = loadEnergyMultiplierOf(state);
@@ -134,7 +138,7 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         //  gets the fire's much better rate. `Math.max` is what makes sleep strictly
         //  non-harmful rather than merely usually-better.
         const warmthRate = restingNow
-            ? Math.max(awakeWarmthRate, TUNE.warmthRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier)
+            ? Math.max(awakeWarmthRate, TUNE.warmthRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier * restScale)
             : awakeWarmthRate;
         const thirstRate = -TUNE.thirstDrainPerGameHour;
         const hungerRate = -TUNE.hungerDrainPerGameHour;
@@ -146,7 +150,7 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         //  cannot produce more than a full energy bar — the bound is structural, not a
         //  special case, and is regression-tested directly.
         const energyRate = restingNow
-            ? TUNE.energyRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier
+            ? TUNE.energyRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier * restScale
             : -TUNE.energyDrainPerGameHour * loadEnergyMultiplier;
 
         // The next boundary: the soonest event that changes any rate, in game hours from here.
@@ -269,7 +273,7 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  to shed fatigue, independent of how the spot scores for ambient rest.
     let fatigue = state.fatigue;
     if (restingNow || restfulSpot) {
-        fatigue = Math.max(0, fatigue - TUNE.fatigueRecoveryPerGameHourResting * totalGameHours);
+        fatigue = Math.max(0, fatigue - TUNE.fatigueRecoveryPerGameHourResting * restScale * totalGameHours);
     } else if (!qualifiesForReport && energy <= TUNE.energyLowThreshold) {
         fatigue = Math.min(TUNE.fatigueMax, fatigue + TUNE.fatigueGainPerGameHourInDebt * totalGameHours);
     }
