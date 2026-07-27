@@ -1657,3 +1657,167 @@ The shelter sat at **y = 101.8** — exactly the figure predicted from the push-
 
 1. The collide-and-slide check **passed on its weak disjunct.** It reads `lateral > 0.15 || closed > 4.0`, and the result was `lateral 0.00m, closed 4.30m, ended (0.0, 103.5)` — i.e. it passed by closing distance while being pinned head-on, which is the very case it was written to catch. The disjunct needs removing; the check currently cannot fail for its own cause.
 2. Four storage failures remain (`panel ABSENT, durability 83.2 → 75.2`). An isolated probe on this same build opens the box correctly (`panel true, heading "The store box", opacity 1`, durability and wood unchanged), so the mechanism is sound and the failure is state-dependent late in the run. Note also that **durability DECREASED** there — that is decay, not a repair, so the earlier description of this as "the tap silently repaired instead of opening" is not supported by the data.
+## D-073 AUDIT — C3, 2026-07-27
+
+**VERDICT: FAIL.** Not because the diagnoses are wrong — **all five are correct, and I re-derived every one of them independently rather than reading them back; every headline figure in the entry reproduces to the digit.** It fails because **FIX 5 breaks the game's central verb.** Making the survivor's pack a pickable mesh put an opaque, camera-facing collider between the player and everything they walk up to, and `scene.pick` returns the *nearest* pickable mesh — so a tap aimed at a close-range node now resolves to the pack instead of the node. **Reeds, deadfall, rock, coconut palm, driftwood, shellfish, berries, felling a tree and filling a flask at the pond all stop working.** Seven of those checks **pass on the pre-fix build and fail on current `main`**, same harness, same machine, same session. The follow-up commit `c60c1a7` does not fix it. This is a one-tap, deterministic reproduction, not a flake.
+
+The other four fixes are sound and I recommend keeping them. **FIX 5 should be reverted or re-cut** before anything else in this package ships onward.
+
+### Pins, and the isolation tradeoff stated plainly
+
+Run in the **main checkout, no git worktree**, on the standing instruction that worktrees have been destroyed mid-audit five times here. There is therefore **no filesystem isolation, and this time the tree genuinely moved under me — twice.**
+
+- **Audit target: `1535531`** (`D-073: FIX package ledger entry`), with its three fix commits `8320dd5`, `0bd7533`, `0e8a2d0`. Line numbers are pinned to `1535531` unless a finding says otherwise.
+- At **20:23** I found `src/body/game.ts` **modified in the working tree by another agent mid-audit**. It reverted, then landed as a commit: **HEAD moved `1535531` → `c60c1a7` while this audit was open.** `1535531` remains an ancestor, so nothing below is invalidated, but `c60c1a7` changes FIX 5's tap precedence *after* the D-073 entry was written and is not described by that entry. I audited it too, and **tested it directly** — see F1.
+- At **20:23:58** another agent started `vite build` into shared `dist/` **while `game.ts` was dirty**, and it landed (`index-1mEBIz7J.js` → `index-Cnkx25Tb.js`). **This is why no device result below is served from `dist/`.** I snapshotted my own clean builds into the scratchpad and served those, so the artifact under test could not be rewritten mid-run. The mitigation is the snapshot, not the filesystem.
+
+**Bench hygiene (D-072 law 10).** C2's harness (PID 22824, port 4173) was live when this audit opened. I **waited it out** — never worked around the lock, never deleted it — and took the bench only after it cleared. My runs used **4194–4197**, never 4173, and never two at once. Every served page was **identity-gated before being trusted**: `pack-icon`, `<title>The First Night</title>`, and — because a stale build is the failure mode that matters here — the build-specific markers (`combine-chip` ×2 in the CSS, `backpack` and `Sleep rough` in the bundle) to prove which side of the fix I was looking at.
+
+**One methodological correction I owe this record.** My first two post-fix runs crashed, and `c60c1a7`'s commit message reasonably wondered whether my concurrent building caused it. **It did not, and I checked rather than asserted:** I cleared the bench completely and repeated the *identical* artifact with nothing else running. Same 19 passes, same three failures, same crash. Three runs, two servers, two bench conditions, one signature.
+
+### Legs that genuinely ran, per item (D-066(c)) — nothing below is implied
+
+| item | static | unit | device |
+|---|---|---|---|
+| 1 · mastery's reach | **YES** | **YES** — own `vitest` run + own fail-then-pass revert | **NO** — no harness check exists for mastery; not attempted, not implied |
+| 2 · try-combining's door | **YES** | **YES** — brain only; no test exists for the new UI | **YES** — my own probe, D-065 pattern, plus a debug-hook call counter |
+| 3 · depletion category | **YES** | **YES** — own run + own fail-then-pass revert + own re-derivations | **NO** — the harness's geology checks sit past the point every post-fix run died; **not reached, not implied** |
+| 4 · sleeping rough | **YES** | **YES** — own run + own vacuity experiment | **YES** — my own probe |
+| 5 · the pack as a target | **YES** | **NONE EXISTS** | **YES** — shipped harness A/B (pre-fix vs `1535531` vs `c60c1a7`) + my own one-tap mechanism probe |
+
+The device leg for items 2 and 4 is **mine, not the shipped harness's**: `tools/smoke.mjs` is byte-identical across the whole package (`git diff ce586be..1535531 -- tools/smoke.mjs` is empty) and contains **no check for any of the three new surfaces**. I wrote a separate probe mirroring D-065's pattern exactly — computed style, real bounding rect, in-viewport, `elementFromPoint` topmost — tapping only at points already proven topmost.
+
+---
+
+### 1. Mastery's reach — both bugs confirmed, figures reproduce, training genuinely untouched
+
+**(a) The wrong-map diagnosis is correct.** `masteryForNodeKind` read `domainForNodeKind`, which returns `null` for `rock` (`src/brain/knowledge.ts:198-207`), so surface stone got a flat `{1, 1}`. Confirmed by **reverting the fix in the live tree and running the named test**: with mastery reading the training map again, `tests/knowledge.test.ts:405` fails `expected 1.5 to be less than 1.5` — rock, exactly as claimed. 24 passed / 1 failed; restored, 25/25.
+
+**(b) The training rule is NOT widened — the specific thing I was asked to confirm.** `domainForNodeKind` is untouched by the entire package and still returns `harvestingFabrication` for `tree`/`quarry`/`salvage` and `null` for everything else; `gatherNode` still calls *that* map for `recordTrying` (`src/brain/state.ts:415`). **Ch.2's ruling stands, unwidened.**
+
+**Figures re-derived by hand, then reproduced by my own run.** `masteryFor` normalises above the innate floor: span `100−5 = 95`, earned `1.0` at full, so speed `= 1/(1+1×0.6) = 0.625`, yield `= 1+1×0.5 = 1.50`; `4.00×0.625 = 2.50`, `1.50×0.625 = 0.9375`. My run printed `tree 4.00→2.50 (37.5%)`, `rock 1.50→0.94 (37.5%)`, `quarry 1.50→0.94 (37.5%)`, `yield ×1.50` — **the entry's table exactly.**
+
+**(c) The feedback half is real but narrower than it reads.** `learned` is non-null only when `domainForNodeKind` is, so "Harvesting sharpens" fires for felling, quarrying and salvage — **not for the surface rock the fix just sped up**. Defensible (it reports what was *taught*), but the verb the director complained about still says nothing. Crossings are reachable: at the floor one gather yields `1.5 × 0.95 × 0.9 = 1.28` technique.
+
+### 2. Try-Combining's entry point — the vacuity diagnosis is exactly right, and the new door is provably not vacuous
+
+**The pre-fix claim is true, and I checked the pre-fix tree rather than the prose.** `git grep tryCombine 8320dd5 -- src` returns exactly one body-layer caller of the brain verb: `src/body/game.ts:261-262`, inside `runtime.tryCombine = ...` — the debug hook. `tools/smoke.mjs:2291` and `:2299` drive `window.__drift.tryCombine(...)`. All four D-063 item-4 device checks therefore proved nothing about player reachability. **Third instance of the class, correctly identified.**
+
+**The new door is genuinely reachable.** My probe at 915×412:
+
+```
+  PASS  the HUD pack icon is genuinely visible      56x56px  opacity 0.9  inViewport true  topmostIsSelf true
+  PASS  a material chip is genuinely visible        86x48px  opacity 1    inViewport true  topmostIsSelf true
+  PASS  the "Try combining" button is visible      186x56px  opacity 0.5  inViewport true  topmostIsSelf true
+  PASS  starts DISABLED / ONE picked still disabled / TWO picked wakes up
+  PASS  a REAL touch runs the verb                 bp 0 -> 1
+  PASS  and it did NOT go through the debug hook   runtime.tryCombine calls = 0
+```
+
+Chip and button geometry match the entry's `86×48` and `186×56` exactly. **The last line is mine and the entry does not claim it:** I wrapped `window.__drift.tryCombine` in a counter before tapping, so the blueprint is *proven* minted through the player path — the strongest available refutation of the vacuity this fix was closing. **But the outcome reporter is wrong → F2.**
+
+### 3. Depletion category — correct per kind, survival floor holds, one shape worth naming
+
+**Fail-then-pass confirmed by my own revert.** Removing `if (n.kind === 'rock') continue;` (`src/brain/reconcile.ts:308`) fails two renewability tests, including `stoneWashedUp` expected `true`, got `false` (`tests/renewability.test.ts:322`). Restored, 18/18.
+
+Re-derived per kind in a pristine sandbox copy rather than by reading:
+
+| claim | my result |
+|---|---|
+| surface `rock` no longer regrows on a live tick | **holds** — 1433 game hours in 30 s live ticks, 0 of 3 rocks return |
+| `rock` restocks across a real absence, `stoneWashedUp` set | **holds** — one absence of the same span returns all 3, flag set |
+| the quarry still never regrows (D-070) | **holds** — after an eternity away, `available=false, pool=0` |
+| shellfish stays on the living-node pattern | **holds** — regrew on live ticks at its 18 h interval |
+
+**Stone is not stranded, but it now has zero online replenishment → F6.** The render branch is safe — it uses a fixed `setScale(0.32)`, not `regrowProgress`, so a spent rock does not visibly grow back; the fix closes the reported symptom at the availability flip, which was the real cause. Only the comment is now wrong → **F7**.
+
+### 4. Sleeping rough — all four claims hold, including the one that mattered
+
+`canSleep` is unconditional (`src/brain/state.ts:1053-1056`); `isShelteredSleep` carries the distinction (`:1064`); `session.sleep()` has exactly one `return null`, gated on `canSleep`, so sleep is never refused. `restScale = restingNow && !nearShelter ? 0.55 : 1` (`src/brain/reconcile.ts:69`) is **structurally 1 under a roof** — shelter-sleep's arithmetic is untouched *by construction*, not merely by assertion. My run printed `sheltered 84.0, rough 46.2`; `46.2 / 84.0 = 0.55` is `groundSleepRecoveryMultiplier` exactly.
+
+**The Rest door is genuinely above the fold — I re-measured rather than trusting the relocation:** `326×46 px, opacity 1, inViewport true, topmostIsSelf true` at 412 px, and a real tap on it slept rough for real — **energy 10 → 56.2 with `shelter.built = false`**. That `+46.2` is the unit report's rough-sleep figure arriving independently through the UI; the two legs agree to the decimal. **The assertion the entry cites as protecting shelter-sleep does not protect it → F5** (the property itself is safe, via a different test).
+
+### 5. The pack as a target — the panel opens, and that is the problem
+
+The narrow claims are all true. `this.root.isPickable = false` (`src/body/entities.ts:125`) — the capsule stays unpickable; `this.pack.isPickable = true` with `metadata = { backpack: true }` (`:135-136`); the HUD icon still opens the same panel, so it is additive as claimed. On device I found the pack's hit band at **dx −32, dy −16…−34** from the body's ground projection, and every point in it opened Carried. *(A first, cruder sweep straight up the centre line missed it entirely — the band is offset, not absent. Recording that so nobody reads a centre-line miss as a regression.)*
+
+**And that is exactly the defect. → F1.** The audit asked whether the capsule stays unpickable and the icon still works. Both do. Nobody asked the question that mattered: *what else is now behind that mesh?*
+
+---
+
+### Vacuity Law compliance (D-066) — scrutinised, and it does not hold
+
+**Two fail-then-pass claims spot-checked by actually reverting the fix and running the named test — both genuine** (items 1 and 3). Neither regression would pass on the pre-fix tree. FIX 4's report test would also fail pre-fix, since without `restScale` rough and sheltered are identical.
+
+**But the blanket claim is false for two of the five fixes → F3.** The package touches exactly three test files — `construction.test.ts`, `knowledge.test.ts`, `renewability.test.ts`. **Nothing in `tests/` names the combine UI, the sleep button, or the pack pick target.** FIX 2 and FIX 5 have no regression test at all, so there was nothing to prove fail-then-pass. **FIX 5 is the case in point: it shipped a game-breaking regression with no unit test, no harness check, and a device verification that only ever asked whether the new thing worked — never whether the old things still did.** That is the precise shape D-066 exists to catch, and it caught nothing here because no leg was pointed at it.
+
+---
+
+### Findings
+
+**F1 — CRITICAL, FIX 5. The pack mesh occludes close-range world taps, breaking gathering across the whole game. Shipping on `main` now.**
+
+`this.pack.isPickable = true` (`src/body/entities.ts:135`) puts a 0.52 × 0.5 × 0.28 m box on the survivor's back, parented to the player, permanently between the third-person camera and whatever the player is standing in front of. Both node resolvers call `this.scene.pick(x, y, (m) => m.isPickable)` (`src/body/game.ts:531`, `:559`), which returns the **nearest** pickable mesh — so at interaction range the pack wins the ray. `pickNode`'s exact-hit branch gets the pack (no `nodeId` metadata); its near-miss fallback then measures from `hit.pickedPoint`, which is now a point **on the player's own body**, and the target sits ~1.7 m away — beyond `TUNE.nodeTapSlack` (0.9). So `pickNode` returns `null` and the gather never fires.
+
+**One-tap reproduction, both directions, identical scenario and identical screen point:**
+
+```
+  reed at world (-14.0, 12.0) -> screen (457, 275);  survivor ground point -> screen (458, 350)
+
+  PRE-FIX  ce586be   tapTargetAt(457,275) = "node:rd1"   tap -> fiber 0 -> 2   panel null    breadcrumb: (457,275) -> node:rd1
+  HEAD     c60c1a7   tapTargetAt(457,275) = "pond"       tap -> fiber 0 -> 0   panel loadout breadcrumb: (457,275) -> backpack
+```
+
+**Shipped-harness A/B on the same machine, same session** — every one of these passes pre-fix and fails on `main`:
+
+| check | `ce586be` | `c60c1a7` |
+|---|---|---|
+| REGRESSION #2 — reeds are a plain-tap fibre source | PASS | **FAIL** (`not-consumed`) |
+| deadfall gives wood by tap-and-walk | PASS | **FAIL** |
+| a rock outcrop gives stone | PASS (`stone 2`) | **FAIL** (`stone 0`) |
+| a coconut palm gives coconut and husk fibre | PASS (`coconut 1, fibre 2`) | **FAIL** (`coconut 0, fibre 0`) |
+| driftwood gives wood by a plain tap | PASS | **FAIL** |
+| a shellfish clump gives a shellfish by a plain tap | PASS | **FAIL** |
+| a berry bush gives berries by a plain tap | PASS | **FAIL** |
+| REGRESSION #5 — a standing tree can be felled with the axe | — | **FAIL** (`not-consumed`) |
+| FIX 2 — tapping the pond fills a non-full flask | — | **FAIL** (`sips 0 → 0`) |
+
+`ce586be` ran to 32 checks with **0 failures** before I stopped it; `c60c1a7` reached 41 checks with **12 failures** before I stopped it. On `1535531` (pack checked *first*) it is worse still: the panel opens on the very first close-range tap, `panelOpen` then swallows every subsequent input, and the run dies — reeds `not-consumed`, look-drag `Δyaw 0.000`, then `__drift` undefined. Reproduced three times, two servers, including once on a completely idle bench.
+
+**`c60c1a7` does not fix this.** Resolving the pack *after* nodes cannot help, because `pickNode` is what the pack broke: there is no node left for "nodes win" to win with. Its own device verification (`fiber 0 -> 2, no panel opened`) must have been taken at a range or angle where the pack did not occlude — it does not generalise, and the harness disagrees with it. Its stated safeguard, "only when the pack is the TOPMOST pickable mesh", is not the safeguard it reads as: **being topmost at the target's screen point is exactly the failure, not a guard against it.** This is the same class as D-045's felled-tree ghost hit-box and D-051's shelter swallowing storage taps — named in that commit's own comment, and then reproduced.
+
+**Recommended:** revert FIX 5. If the pack is wanted as a target, it needs a mechanism that cannot shadow world geometry — resolve it only when `pickNode` *and* `pickHitPoint` both come back empty, or exclude the pack from the picking predicate used by the node/point resolvers and pick it on a separate, dedicated ray. Either way it needs a harness check that a world tap still gathers *with the pack present*, which is the check that did not exist.
+
+**F2 — SUBSTANTIVE, FIX 2. Three of the verb's five outcomes are announced to the player as a success, with the unlock cue.** `src/body/game.ts:502-516`. The literal tested at `:508` is `'failed'`, which **is not a member of `ExperimentOutcome`** (`src/brain/experiment.ts:34-39`: `invented | failed-attempt | no-relationship | already-known | refused`). The `as { outcome: string }` cast at `:506` is precisely what hides it from the compiler. **Mechanical proof:** in a sandbox copy I removed *only* that cast and ran `tsc --noEmit` — `game.ts(508,22): error TS2367: This comparison appears to be unintentional because the types '"invented" | "failed-attempt" | "already-known" | "refused"' and '"failed"' have no overlap.` So `failed-attempt`, `refused` and `already-known` all fall through to the `else`, which floats `'Something works'` and plays `CUES.unlock`: a fumbled experiment, a refused one and a repeat are each reported as a discovery. Compounding it, `blueprintName` (`:506`, `:510`) is not a field of `ExperimentResult` — the name lives at `result.blueprint.name` — so even a genuine invention shows the generic fallback and never names the plan, while `result.reason`, a ready-made plain-words string present on **every** outcome, is discarded entirely. This is the exact defect the fix's own rationale names.
+
+**F3 — SUBSTANTIVE, D-066(b). "Every fix proven fail-then-pass" does not hold for FIX 2 or FIX 5.** See above. Either add the missing regressions or amend the entry's closing parenthetical to name the two exceptions. Given F1, this is not a bookkeeping note.
+
+**F4 — SUBSTANTIVE, FIX 1. The widened EFFECT map does not match its own stated principle, and it silently changes foraging yields.** `masteryDomainForNodeKind` (`src/brain/knowledge.ts:258-269`) includes **`reed`** — a `tap` kind with `holdBaseSeconds 0` and `effortEnergyCostFor('reed') === 0` — while excluding **`crashbox`**, a `hold` kind that is axe-gated and costs 2 energy. The map's own default-branch comment gives "tap-kind gathering has no hold to shorten" as the reason for excluding taps, yet `reed` sits above it. Because the yield multiplier is applied in `gatherNode` **regardless of interaction kind** (`src/brain/state.ts:378`), this is not cosmetic — measured at full mastery in my sandbox:
+
+```
+  reed         novice={"fiber":2}              master={"fiber":3}
+  coconutpalm  novice={"coconut":1,"fiber":2}  master={"coconut":2,"fiber":3}
+  berrybush    novice={"berries":1}            master={"berries":1}
+  shellfish    novice={"shellfish":1}          master={"shellfish":1}
+```
+
+A zero-effort tap now yields **+50% fibre**, and two foraging verbs gained a harvesting-domain bonus, in a pass whose own Ch.2 note (`knowledge.ts:190-196`) says foraging "stays untouched entirely". Training is correctly untouched; the *effect* is widened further than [[D-073]] describes, in a direction the entry never mentions.
+
+**F5 — NOTE, FIX 4. The assertion the entry cites as protecting shelter-sleep is vacuous.** `tests/construction.test.ts:570-575` asserts only `sheltered.energy > 10` and `sheltered.fatigue < 80`. **Proven vacuous by experiment:** in a sandbox copy I applied `restScale` to sheltered sleep as well — an outright 45% nerf, `84.0 → 46.2` — and *that test still passed*. The property is nonetheless genuinely safe, protected by a **pre-existing, unrewritten** test pinning the exact gain to `energyRecoveryPerGameHourResting × sleepRecoveryMultiplier × sleepDurationGameHours` at 4-decimal precision (`tests/construction.test.ts:487-488`), which did fail. The guarantee holds; the named guard is not what holds it, and "asserted explicitly" overstates what `:570` does.
+
+**F6 — NOTE, FIX 3 / D-051. Stone now has no online replenishment path at all.** With the quarry mined out and all three surface rocks spent, **1433 game hours of unbroken online play in 30-second ticks returns 0 available rock and 0 available quarry**; a single qualifying absence of the same span restores all three. This is D-070 working as designed and I am **not** asking for a revert — but it makes stone the only material with zero online regrowth (wood keeps `tree` and `deadfall` on live timers), and the test carrying the survival floor (`tests/renewability.test.ts:35-53`) never spends the rocks, so it cannot observe the case either way. Worth a deliberate ruling rather than an emergent one.
+
+**F7 — NOTE, FIX 3. Stale comment.** `src/body/entities.ts:644-650` still lists `rock` among kinds that "genuinely regrow FROM ITSELF, so a shrink is honest here". No longer true of `rock`.
+
+**F8 — NOTE, FIX 4. Dead code carrying a now-false message.** `src/body/game.ts:891` still explains `'Too far from the shelter to sleep.'` on a null report, but `canSleep` is unconditional and `session.ts:116` is the only null path, so the branch is unreachable and its text contradicts the new law. `src/brain/session.ts:113`'s "Returns null if not near a built shelter" is stale for the same reason.
+
+**F9 — NOTE, FIX 5. The harness's own tap introspection is now wrong, which is why this was invisible.** `tapTargetAt` (`src/body/game.ts:594-598`) has no backpack branch while `onTap` does — and worse, it now *lies*: at the reed's own screen point it reports `"pond"` (see F1). Any diagnosis driven through `__drift.tapTargetAt` will be misled.
+
+**F10 — NOTE, `c60c1a7`, outside [[D-073]]'s scope. A duplicated, self-contradicting comment shipped.** `src/body/game.ts:648-660` carries **two overlapping paragraphs** describing the same branch: the first says the pack is "resolved LAST", the second "AFTER nodes … but BEFORE world points". The code does the latter — the first appears to be an un-deleted earlier draft. The insertion also orphaned the pre-existing shelter/storage comment at `:645-647`, which now sits above the backpack branch instead of the `pickHitPoint` call it describes.
+
+---
+
+### Standing items, unchanged by this audit
+
+**The quarry three-taps miss remains OPEN and un-amnestied.** D-072 withdrew its "known machine-specific" status and it has not been re-granted; nothing in this package touches it, and I did not re-diagnose it. Fast-movement was reported fixed at `ce586be` and is likewise not re-opened here. **Neither is affected by F1** — but note that F1's failures are *new* and must not be folded into either of those standing excuses.
+
