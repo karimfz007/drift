@@ -1620,3 +1620,39 @@ Prior write-ups attribute these crashes to **CPU contention**. Measured on this 
 **Practical consequence for whoever runs this next:** the harness is not flaky in its logic — it is flaky in its *resident set*. Close the other memory-heavy applications before a full run rather than re-running and hoping, and treat a mid-run `page.goto` timeout as a memory signal rather than a game regression. Three attempts, one variable, no source changed between them.
 
 **What this leg does NOT cover.** It is the shipped harness's D-063 and D-064 assertions and nothing more. The five static findings against D-063 (**A1** the death panel never joined `beginPanel`/`endPanel`; **A2** nothing in `src/` can populate `supportHand`, leaving the two-handed rule unreachable; **A3** the belt/pocket assignment verbs have no UI call sites; **A4** `hash32(0) === 0` making the first experiment of every new game certain; **A5** three locks passing for reasons other than the ones they name) are **untouched by any device run** — they are reachability and provenance defects that a green harness cannot speak to, and they remain open exactly as filed. Likewise D-064's **B3-B5** precision notes. **The device leg confirms the shipped behaviour works; it does not retire the static findings.**
+
+### Gate 0 parallel-closure session — device run 197/204, and the two amnestied misses re-evaluated
+
+**Item 2 — fast-movement: FIXED, and it confirms Part 2's diagnosis with hard data.** The check now passes: **normal 6.9 m, fast 19.5 m**. Its own diagnostic prints the structure positions this run built:
+
+```
+shelter: { x: 2.69e-16, y: 101.8 }   storage: { x: -2.16, y: 101.4 }
+```
+
+The shelter sat at **y = 101.8** — exactly the figure predicted from the push-out arithmetic before it could be measured (101.8 + 1.3 shelter radius + 0.4 player radius = **103.5**, the coordinate three runs stalled at). The old test teleported to (0, 104) and walked due south **into the shelter**. Correct collision, wrong scenario, now walking a lane chosen at runtime to clear every built structure.
+
+**Item 3 — quarry three-taps: STILL FAILS, amnesty stays withdrawn (D-072 corollary).** Under a clean bench with no concurrent process, byte-identical to before: `pool 220 → 216`, one gather of three attempts. Per-tap instrumentation disproves the leading theory:
+
+```
+#1 pt=633,43  onCanvas=true  pending=none
+#2 pt=383,56  onCanvas=true  pending=node
+#3 pt=431,161 onCanvas=true  pending=node
+```
+
+**The taps reach the game.** Two of three set a real pending node intention, so "the tap was dispatched off-canvas and never arrived" is dead. What fails is the *hold completing* — and the wildly drifting projection points (633,43 → 383,56 → 431,161) show the camera and player moving between taps, because a tap sets an intention that auto-walks. **Not root-caused. Explicitly NOT re-amnestied** — the old "known machine-specific" excuse was refuted by D-072, and this now stands as an open defect with concrete evidence rather than a waved-through miss.
+
+**Item 4 — geology v2 device leg: PASSES.** `a spent seam stays spent (available=false pool=0)` and `D-051 still holds: 2/3 surface rocks available`. D-070's law is confirmed on device, not only in the unit suite.
+
+**Item 5 — Gate 0 sweep (automated half only; the Android half is the director's own playtest, not attempted here):**
+
+| check | result |
+|---|---|
+| camera never latches | **PASS** — 0.00000 rad drift over 0.7 s after release |
+| field of view | **PASS** — 60.2° |
+| text readability | **FAILED, then FIXED** — `.vital-name` at 10px; fixing it surfaced `.pack-load` also at 10px; both raised, re-verified clean |
+| save/reload | **PASS** — wood 13→13, stone 7→7, technique 42→42 |
+
+**Two honest weaknesses in this run, disclosed rather than left to be discovered:**
+
+1. The collide-and-slide check **passed on its weak disjunct.** It reads `lateral > 0.15 || closed > 4.0`, and the result was `lateral 0.00m, closed 4.30m, ended (0.0, 103.5)` — i.e. it passed by closing distance while being pinned head-on, which is the very case it was written to catch. The disjunct needs removing; the check currently cannot fail for its own cause.
+2. Four storage failures remain (`panel ABSENT, durability 83.2 → 75.2`). An isolated probe on this same build opens the box correctly (`panel true, heading "The store box", opacity 1`, durability and wood unchanged), so the mechanism is sound and the failure is state-dependent late in the run. Note also that **durability DECREASED** there — that is decay, not a repair, so the earlier description of this as "the tap silently repaired instead of opening" is not supported by the data.
