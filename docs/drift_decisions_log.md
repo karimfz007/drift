@@ -3,6 +3,20 @@
 
 ---
 
+**D-071 · 2026-07-27 — Reception, split verdict: Bible v2.2 "The Missing Bridges" (external).**
+
+**REJECTED-FACTUAL:** §3.2 and §4 (the "inspected reality" and "corrected current-state" claims) — they describe a non-existent or foreign workspace (Godot, first-person, "RUSTED"); refuted line-by-line against our own audited ledger ([[D-052]], [[D-055]], [[D-056]], [[D-058]], [[D-063]], [[D-070]], and C03). **No status in our canon changes on this document's authority.**
+
+**ADOPTED-EPISTEMIC** (against Bible v2.0, C1's own pen corrected): the §3.1 **precedence formula** — Charter > ratified Bible laws & explicit amendments > ratified specialist constitutions > Register > Tuning Ledger > implementation evidence; **omission is not repeal.** The **five-axis evidence status model**, replacing SHIPPED/SLICED/BANKED as the sole system, harmonized with the Vacuity Law's clause (c) ([[D-066]]). Amendments **A01, A02, A03, A10, A11, A12**. **A04 adopted as PRINCIPLE only** — the actual build record must be evidence-sourced from OUR ledger, not this document's.
+
+**RECEIVED-PENDING-AUDIT**, banked, individually audited by C1 before any adoption — *a document with a false factual base forfeits blanket trust, but may still hold good material section by section*: §7 new laws, §8 "Borrowed Signal," §9 maritime constitution, §10 voice knowledge-boundary, §12 Triangle Truth Ledger, §14 closure briefs, §14A "Homeward Engine." **Strip "RUSTED" and any Godot-specific assumptions wherever any section is later adopted.**
+
+**CONTESTED-DEFERRED:** **A05** (auto-walk removal — the director's own call, at the Gate 0 playtest); **A08** (surface-water terrain — pending §9's audit); **A09** (authored living district vs. traces-first — decided at the Community slice's own design).
+
+**Bible v2.3 is SCHEDULED, not written** — after the Gate 0 KEY REPORT, the director's playtest, register completion, and C1's own section audits. **No more snapshot bibles taken on faith.** *File pending — v2.2 not yet received as a file by SON; register rows to follow once it arrives.*
+
+---
+
 **D-070 · 2026-07-27 — GEOLOGY V2: a finite seam, and stone that returns on the tide (Gate 0 item 7).** Verified never previously done — no ledger entry existed, so it was treated as not done, per the ruling's own instruction.
 
 **Two tiers, and the difference between them is the point.** The **quarry is now genuinely finite**: its regrow interval is `Infinity`, reconcile no longer refills its pool, and a seam worked to nothing stays nothing. It visibly empties as you mine it — the pool was already there, it simply never comes back now. **Surface stone stays renewable**, and is reframed as what it physically is: the sea working the shingle over. That gets **its own morning-report line** — *"The sea has turned the shingle over. There is loose stone on the shore again."* — because the island must never silently repopulate itself in view. If a resource came back, the report says so.
