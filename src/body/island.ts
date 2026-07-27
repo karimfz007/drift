@@ -17,6 +17,7 @@ import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
+import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
@@ -24,7 +25,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
 import { TUNE } from '../data/tune';
-import { POND, POND_SURFACE_Y, ROCKS, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
+import { POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
@@ -40,6 +41,7 @@ export class Island {
     readonly sun: DirectionalLight;
     private ambient: HemisphericLight;
     private seaMaterial: StandardMaterial;
+    private surfMaterial: StandardMaterial;
     private terrainMaterial: StandardMaterial;
     /** The permanent obstacles — the decorative forest and rock field. Live nodes and the
      *  fire are added by the game, which knows which are still standing. */
@@ -59,11 +61,16 @@ export class Island {
         this.terrainMaterial.backFaceCulling = false;
 
         this.buildTerrain();
+        this.surfMaterial = this.flatMaterial('surf');
+        this.surfMaterial.diffuseColor = new Color3(0.86, 0.91, 0.94);
+        this.surfMaterial.emissiveColor = new Color3(0.30, 0.36, 0.40);
+        this.surfMaterial.alpha = RENDER.surfLineAlpha;
         this.seaMaterial = this.flatMaterial('sea');
         this.seaMaterial.alpha = SEA.alpha;
         this.seaMaterial.specularColor = new Color3(0.25, 0.28, 0.3);
         this.seaMaterial.specularPower = 48;
         this.buildSea();
+        this.buildSurfLine();
 
         this.buildTrees();
         this.buildRocks();
@@ -257,6 +264,29 @@ export class Island {
         sea.material = this.seaMaterial;
         sea.isPickable = false;
         sea.freezeWorldMatrix();
+    }
+
+    /**
+     * THE DIEGETIC BOUNDARY (D-064). The walkable edge used to be an invisible wall the
+     * player discovered by walking into it. It is now something they can SEE: a band of
+     * pale surf drawn exactly at `SURF_LINE_RADIUS`, which IS `WALKABLE_RADIUS` — the thing
+     * you see is literally the thing that stops you, so the rule and its picture cannot
+     * drift apart.
+     *
+     * Deliberately a torus rather than a wall: it reads as water breaking on a shelf, not
+     * as a fence. It is `isPickable: false`, so it never intercepts a tap meant for the
+     * beach behind it (D-049's lesson about invisible geometry eating taps).
+     */
+    private buildSurfLine(): void {
+        const surf = CreateTorus('surfline', {
+            diameter: SURF_LINE_RADIUS * 2,
+            thickness: RENDER.surfLineThickness,
+            tessellation: 96
+        }, this.scene);
+        surf.position.y = WORLD.seaLevel + RENDER.surfLineRiseM;
+        surf.material = this.surfMaterial;
+        surf.isPickable = false;
+        surf.freezeWorldMatrix();
     }
 
     /**

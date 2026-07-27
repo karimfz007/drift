@@ -182,6 +182,31 @@
         }
         .secondary-action:active { transform: scale(0.96); }
 
+        /* D-063: the loadout panel's entry point. Sits directly under the Look button so
+           the two persistent panel openers share one corner and one visual language. */
+        .carried-button {
+            position: absolute;
+            top: calc(66px + var(--safe-top));
+            right: 14px;
+            min-width: 62px;
+            min-height: 44px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--dim);
+            background: rgba(12, 20, 32, 0.7);
+            border: 1px solid var(--edge);
+            border-radius: 8px;
+            opacity: 0.75;
+        }
+        /* D-063: the loadout panel's zone rows. */
+        .panel.loadout .zone-row { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; }
+        .panel.loadout .zone-name { min-width: 104px; font-size: 12px; font-weight: 700; color: var(--dim); }
+        .panel.loadout .zone-items { display: flex; flex-wrap: wrap; gap: 5px; }
+        .panel.loadout .equip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+        .panel.loadout .equip-btn.held { border-color: var(--accent); color: var(--text); }
+        .chip.warn { border-color: #c9a227; color: #f0d98a; }
+
         .settings-button {
             position: absolute;
             top: calc(14px + var(--safe-top));

@@ -76,6 +76,7 @@ import { CUES, Cues, type CueKey } from './audio';
 import { Controls } from './controls';
 import { FireView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
 import {
+    addCarriedButton,
     addSettingsButton,
     Hud,
     levelToast,
@@ -205,10 +206,10 @@ export class Game {
             () => this.onBuildFire(),
             () => this.openBuildCard(),
             (food) => this.onEatFood(food),
-            () => this.onDrinkFlask(),
-            () => this.openLoadout()
+            () => this.onDrinkFlask()
         );
         addSettingsButton(this.overlay, () => this.openSettings());
+        addCarriedButton(this.overlay, () => this.openLoadout());
 
         this.controls = new Controls(this.canvas, this.overlay, {
             onPressWorld: () => false, //  No press-claim: everything is a tap or the stick now.

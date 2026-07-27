@@ -142,6 +142,12 @@ export const FOG = {
 
 /** Scene tuning for a phone GPU. Perf discipline from the first mesh (Stage 1). */
 export const RENDER = {
+    /** [D-064] The diegetic walkable boundary: a band of surf drawn at WALKABLE_RADIUS, so
+     *  the edge is something the player sees rather than an invisible wall they discover by
+     *  walking into it. Thin and translucent — a shoreline, not a fence. */
+    surfLineThickness: 2.2,
+    surfLineRiseM: 0.35,
+    surfLineAlpha: 0.5,
     /** Terrain grid resolution across the island's full diameter. */
     terrainSegments: 84,
     /** Hardware scaling ceiling: never render more than this many device pixels per CSS px. */

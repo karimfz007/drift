@@ -42,6 +42,8 @@ export function isWalkablePoint(x: number, z: number): boolean {
     return Math.hypot(x, z) <= WALKABLE_RADIUS;
 }
 
+
+
 /** Washed ashore on the south beach, facing inland (toward −Z / the treeline). */
 export const SPAWN = { x: 0, y: 104 } as const;
 
@@ -255,3 +257,52 @@ export const COLD_OPEN = {
     title: 'THE FIRST NIGHT',
     body: 'You wash ashore at dusk.\nCold is coming.'
 } as const;
+
+/**
+ * REACHABILITY, THIRD STRIKE (D-064) — the CLASS fix, not another coordinate patch.
+ *
+ * `isWalkablePoint` above models the island as a bare disc. It is correct about the
+ * waterline and knows **nothing** about the ~101 decorative trees and 14 decorative rocks
+ * that are real collision obstacles (`island.ts` pushes every one of them into
+ * `staticObstacles`). A spawn validated only against the disc can therefore land hard
+ * against a decorative rock, and the player's own collision push-out then holds them
+ * further away than they can reach.
+ *
+ * **That is D-051's quarry arithmetic, never applied to spawns.** D-051 banked the
+ * constraint as standing — `objectCollisionRadius + playerCollisionRadius < interactRadiusM`
+ * — and it was only ever enforced for the one object that had already broken. Run against
+ * the real decorative rock sizes, **4 of the 8 distinct sizes exceed it**: a size-2.1 rock
+ * has a 2.94 m collision radius, so the nearest legal standing point is 3.34 m from its
+ * centre against a 2.5 m reach. Anything spawned beside one is physically uncollectable
+ * while being, by the old check, perfectly "reachable".
+ *
+ * This is the generic form: a point is placeable only if a player can both STAND near it
+ * and REACH it — so it must clear every obstacle by enough room to interact. Any future
+ * procedural placement gets the same guarantee for free by calling this instead.
+ */
+export function isPlaceablePoint(x: number, z: number): boolean {
+    if (!isWalkablePoint(x, z)) return false;
+    for (const [ox, oz, size] of ROCKS) {
+        //  Mirrors island.ts's own obstacle radius for a decorative rock, exactly.
+        const obstacle = size * TUNE.decorRockCollisionScale;
+        //  The player is pushed out to `obstacle + playerCollisionRadius`; from there the
+        //  node must still be within reach. Clearance needed is therefore the push-out
+        //  distance MINUS what the arm can cover.
+        const needed = obstacle + TUNE.playerCollisionRadius - TUNE.interactRadiusM;
+        if (needed > 0 && Math.hypot(x - ox, z - oz) < needed) return false;
+    }
+    for (const [tx, tz] of TREES) {
+        const needed = TUNE.decorTreeCollisionRadius + TUNE.playerCollisionRadius - TUNE.interactRadiusM;
+        if (needed > 0 && Math.hypot(x - tx, z - tz) < needed) return false;
+    }
+    return true;
+}
+
+/**
+ * The diegetic boundary (D-064). The walkable edge is now something the player can SEE —
+ * a surf line drawn at `WALKABLE_RADIUS`, where the water starts breaking — rather than an
+ * invisible wall they discover by walking into it. This is the radius the body draws that
+ * band at, kept here so the rule and its picture cannot drift apart: the thing you see is
+ * literally the thing that stops you.
+ */
+export const SURF_LINE_RADIUS = WALKABLE_RADIUS;

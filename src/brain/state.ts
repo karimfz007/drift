@@ -5,7 +5,7 @@
 
 import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
-import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isWalkablePoint } from '../data/world';
+import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
 import { deathResourceLoss, loadEnergyMultiplierOf, respawnMessageFor } from './body';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying } from './knowledge';
 import { cloneLoadout, freshLoadout } from './loadout';
@@ -507,6 +507,11 @@ export function salvageIntervalGameHours(seed: number): number {
     return gameHoursFromRealSeconds(minutes * 60);
 }
 
+/** How many arc steps a blocked salvage spawn may walk before giving up (D-064). 24 steps
+ *  of 15° sweeps the full ring exactly once. */
+const SALVAGE_PLACEMENT_ATTEMPTS = 24;
+const SALVAGE_PLACEMENT_ARC = (Math.PI * 2) / 24;
+
 const SALVAGE_LOOT_ODDS: ReadonlyArray<SalvageLoot> = ['driftwood', 'cordage', 'stone'];
 
 /**
@@ -526,12 +531,29 @@ export function spawnSalvageNode(seed: number): WoodNode {
     const radius = WORLD.beachRadius + seedFraction(seed * 2 + 2) * Math.max(0, maxRadius - WORLD.beachRadius);
     let x = Math.round(Math.cos(angle) * radius);
     let y = Math.round(Math.sin(angle) * radius);
-    //  Defensive validation: if this ever computes an unwalkable point (a future constant
-    //  change, a rounding edge case), pull it straight back to the island's centre rather
-    //  than ship an unreachable node — never trust the formula alone.
-    if (!isWalkablePoint(x, y)) {
-        x = 0;
-        y = 0;
+    //  REACHABILITY, THIRD STRIKE (D-064). This used to validate against `isWalkablePoint`,
+    //  which models the island as a bare disc and is blind to the decorative rocks and trees
+    //  that are real collision obstacles — so a find could land hard against a boulder, be
+    //  perfectly "walkable" by the arithmetic, and be physically uncollectable because the
+    //  player's own push-out held them further away than they could reach. It now validates
+    //  against `isPlaceablePoint`, which enforces D-051's banked constraint
+    //  (`objectCollisionRadius + playerCollisionRadius < interactRadiusM`) against every
+    //  obstacle rather than only the one that had already broken.
+    //
+    //  Rather than collapsing a blocked spawn to the island's centre (the old fallback — a
+    //  find teleporting inland is its own kind of wrong), walk the ring outward in fixed
+    //  steps and take the first genuinely placeable point. Deterministic, seeded, and it
+    //  keeps the find on the shore where a beach find belongs.
+    if (!isPlaceablePoint(x, y)) {
+        let placed = false;
+        for (let step = 1; step <= SALVAGE_PLACEMENT_ATTEMPTS && !placed; step++) {
+            const nudged = angle + step * SALVAGE_PLACEMENT_ARC;
+            const cx = Math.round(Math.cos(nudged) * radius);
+            const cy = Math.round(Math.sin(nudged) * radius);
+            if (isPlaceablePoint(cx, cy)) { x = cx; y = cy; placed = true; }
+        }
+        //  Last resort only if the whole ring is somehow blocked: the centre, as before.
+        if (!placed) { x = 0; y = 0; }
     }
     const loot: SalvageLoot = seedFraction(seed * 2 + 3) < TUNE.salvageBundleOdds
         ? 'bundle'

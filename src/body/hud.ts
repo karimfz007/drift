@@ -63,8 +63,7 @@ export class Hud {
         onAction: () => void,
         onSecondary: () => void = () => {},
         onEat: (food: 'berries' | 'coconut' | 'shellfish') => void = () => {},
-        onDrinkFlask: () => void = () => {},
-        onOpenLoadout: () => void = () => {}
+        onDrinkFlask: () => void = () => {}
     ) {
         this.root = document.createElement('div');
         this.root.className = 'hud';
@@ -115,15 +114,7 @@ export class Hud {
             if (food) { e.stopPropagation(); onEat(food.dataset.food as 'berries' | 'coconut' | 'shellfish'); return; }
             //  A filled flask is a drink you carry: tap it to sip inland (restores the C03
             //  verb the direct-world model would otherwise have stranded — see D-042 audit).
-            //  RETURN, not fall through: without it, drinking from the flask ALSO opened the
-            //  loadout panel below, and an open panel suppresses the idle hint — which is
-            //  how the harness caught it (an empty contextual hint, several checks later).
             if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); return; }
-            //  D-063: tapping the carried row anywhere ELSE opens the loadout panel — what
-            //  you are carrying is the natural way in to how you are carrying it. Stops
-            //  propagation either way, so this never leaks a world tap (§9 input safety).
-            e.stopPropagation();
-            onOpenLoadout();
         });
 
         this.hintBox = document.createElement('div');
@@ -454,6 +445,24 @@ export function showSettings(overlay: HTMLElement, testSpeedEnabled: boolean, on
     let done = false;
     el.querySelector('.done')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
     requestAnimationFrame(() => el.classList.add('visible'));
+}
+
+/**
+ * The loadout panel's entry point (D-063). **An explicit, labelled button, not a hidden
+ * affordance on the inventory row** — the first attempt made the row itself tappable, and
+ * the device harness caught two problems with that at once: it reported `occluded` (the
+ * row is a bare flex container, so its centre can land on a gap that another overlay owns),
+ * and it was undiscoverable anyway, since nothing told the player the row could be tapped.
+ * A named button is both reliably hittable and self-explaining.
+ */
+export function addCarriedButton(overlay: HTMLElement, onOpen: () => void): void {
+    const button = document.createElement('button');
+    button.className = 'carried-button';
+    button.type = 'button';
+    button.textContent = 'Carried';
+    button.addEventListener('pointerdown', (e) => e.stopPropagation());
+    button.addEventListener('click', (e) => { e.stopPropagation(); onOpen(); });
+    overlay.appendChild(button);
 }
 
 export function addSettingsButton(overlay: HTMLElement, onOpen: () => void): void {

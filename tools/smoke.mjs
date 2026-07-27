@@ -1250,17 +1250,68 @@ async function main() {
     const driftDelta = beforeDriftwoodEnergy - afterDriftwoodEnergy;
     check('FIX-1 — an instant tap gather (driftwood) costs no EFFORT energy (only incidental ambient drain, well under any effort cost)', driftResult.ok && driftDelta < 0.1, `energy ${beforeDriftwoodEnergy} -> ${afterDriftwoodEnergy} (delta ${driftDelta.toFixed(3)})`);
 
-    //  FIX-3: every currently-spawned salvage node is path-reachable from a fixed test
-    //  origin — the harness-level companion to the brain's own 500-seed property test.
-    //  Real online spawns during this run, PLUS one forced far-radius spawn (the shape of
-    //  the original bug: a seed that used to land past WALKABLE_RADIUS), all checked.
+    //  FIX-3 / D-064 — REACHABILITY, THIRD STRIKE. The check this replaces computed
+    //  `hypot(node) <= walkableRadiusM` from a fixed origin and called that "path-reachable".
+    //  It was pure arithmetic against a disc model: it never walked, never collected, and was
+    //  structurally incapable of noticing that a find sitting against a decorative boulder is
+    //  physically uncollectable (the player's own push-out holds them past their reach). It
+    //  passed every time while a real player could not reach the item — exactly the failure
+    //  the third strike is about.
+    //
+    //  This one WALKS TO THE FIND AND COLLECTS IT. Nothing short of the loot actually landing
+    //  in the inventory counts as reachable.
     await editSave(`
-        state.nodes.push({ id: 'sv_smoke_far', kind: 'salvage', x: 0, y: 105, available: true, depletedAtGameHours: null, salvageLoot: 'stone' });
+        state.nodes = state.nodes.filter((n) => n.kind !== 'salvage');
+        state.inventory.stone = 0;
+        state.energy = 100;
+        state.player = { x: 0, y: 60 };
     `);
-    const salvageNodesNow = (await live()).nodes.filter((n) => n.kind === 'salvage' && n.available);
-    const ORIGIN = { x: 0, y: 0 }; // the fixed test origin
-    const unreachable = salvageNodesNow.filter((n) => Math.hypot(n.x - ORIGIN.x, n.y - ORIGIN.y) > TUNE.walkableRadiusM);
-    check(`FIX-3 — every currently-spawned salvage node (${salvageNodesNow.length}) is path-reachable from the fixed origin (within ${TUNE.walkableRadiusM} m)`, unreachable.length === 0, unreachable.map((n) => `${n.id}@${n.x},${n.y}`).join(' | '));
+    //  Force a find hard against the LARGEST decorative rock — the exact shape the old check
+    //  waved through. If placement validation is working, the spawn will have been nudged to
+    //  somewhere genuinely standable rather than left stranded.
+    const spawnedForReach = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const node = window.__drift.spawnSalvage(3);
+        s.nodes.push(node);
+        return node;
+    });
+    check('D-064 — a forced salvage spawn landed somewhere placeable, not against a boulder', Boolean(spawnedForReach), JSON.stringify(spawnedForReach));
+
+    if (spawnedForReach) {
+        await editSave(`state.player = { x: ${spawnedForReach.x}, y: ${spawnedForReach.y + 6} };`);
+        const beforeReach = await live();
+        await approach(spawnedForReach.x, spawnedForReach.y, 30);
+        await faceNode(spawnedForReach.x, spawnedForReach.y);
+        await tapWorld(spawnedForReach.x, spawnedForReach.y, 55);
+        let collected = false;
+        for (let i = 0; i < 15; i++) {
+            const st = await live();
+            const still = st.nodes.find((n) => n.id === spawnedForReach.id);
+            if (!still || !still.available) { collected = true; break; }
+            await sleep(400);
+        }
+        await sleep(300);
+        const afterReach = await live();
+        const gained = (afterReach.inventory.stone + afterReach.inventory.wood + afterReach.inventory.fiber)
+            - (beforeReach.inventory.stone + beforeReach.inventory.wood + beforeReach.inventory.fiber);
+        const stoodAt = Math.hypot(afterReach.player.x - spawnedForReach.x, afterReach.player.y - spawnedForReach.y);
+        check('D-064 — the castaway can genuinely WALK to the find (not just "a path exists")', stoodAt <= TUNE.interactRadiusM + 1.5, `stood ${stoodAt.toFixed(2)} m from it (reach ${TUNE.interactRadiusM} m)`);
+        check('D-064 — and genuinely COLLECT it — the loot actually lands in the inventory', collected && gained > 0, `claimed=${collected}, gained ${gained} units`);
+    } else {
+        check('D-064 — the castaway can genuinely WALK to the find (not just "a path exists")', false, 'setup failed: no spawn');
+        check('D-064 — and genuinely COLLECT it — the loot actually lands in the inventory', false, 'setup failed: no spawn');
+    }
+
+    //  The class guarantee, checked across many seeds rather than the one that broke.
+    const placementSweep = await page.evaluate(() => {
+        const bad = [];
+        for (let seed = 0; seed < 200; seed++) {
+            const n = window.__drift.spawnSalvage(seed);
+            if (!window.__drift.isPlaceable(n.x, n.y)) bad.push(`${n.id}@${n.x},${n.y}`);
+        }
+        return bad;
+    });
+    check(`FIX-3 / D-064 — every one of 200 seeded spawns is genuinely placeable (stand + reach), not merely inside the disc`, placementSweep.length === 0, placementSweep.slice(0, 4).join(' | '))
 
     //  FIX-5: the torch — craft via a real tap on the Build panel, then light it via a
     //  real tap on the fire (reusing the fire this run already built).
@@ -1685,6 +1736,12 @@ async function main() {
     //  same disease D-051 cured once for the original five. Proven on the live island by
     //  counting real nodes and then actually felling one of the newly-promoted trees.
     await editSave('state.tools.axe = true; state.energy = 100; state.inventory.stone = 0;');
+    await editSave(`
+        //  Force every tree standing: by this point in a long run the D-050 section has
+        //  felled the lot, so hoping one survived is exactly the incidental-leftover-state
+        //  mistake this file's own lessons keep re-teaching.
+        for (const n of state.nodes) { if (n.kind === 'tree') { n.available = true; n.depletedAtGameHours = null; } }
+    `);
     const parityState = await live();
     const realTrees = parityState.nodes.filter((n) => n.kind === 'tree');
     check('D-059 — the island now carries 19 real trees, not 5 (parity with how rocks work)', realTrees.length === 19, `${realTrees.length} real tree nodes`);
@@ -1784,8 +1841,8 @@ async function main() {
         state.loadout = { activeHand: null, supportHand: null, belt: [null,null,null,null], pockets: [null,null] };
         state.energy = 100;
     `);
-    const invRowTap = await realTapDom('.inv');
-    check('D-063 — the loadout panel opens from the carried row', invRowTap.ok, invRowTap.reason ?? '');
+    const carriedTap = await realTapDom('.carried-button');
+    check('D-063 — the loadout panel opens from its own labelled button', carriedTap.ok, carriedTap.reason ?? '');
     await sleep(500);
     const panelProbe = await page.evaluate(() => {
         const el = document.querySelector('.panel.loadout');
@@ -1808,7 +1865,7 @@ async function main() {
     //  §9 INPUT SAFETY, the hard law: closing the panel must NOT leak a world tap. The
     //  close button sits over the world; before the fix its own release fell through.
     await editSave('state.trace.failedInteractionTaps = 0;');
-    await realTapDom('.inv');
+    await realTapDom('.carried-button');
     await sleep(400);
     const tapsBeforeClose = (await live()).trace.failedInteractionTaps;
     const closeTap = await realTapDom('.panel.loadout .close-btn');

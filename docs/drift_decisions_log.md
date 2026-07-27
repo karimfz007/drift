@@ -3,6 +3,25 @@
 
 ---
 
+**D-064 · 2026-07-27 — Reachability, third strike: the CLASS fix, and a diegetic boundary.**
+The ruling was explicit that this must not be another coordinate patch — root-cause why D-052's own harness check passes cases a real player cannot reach.
+
+**ROOT CAUSE, two compounding halves, neither a coordinate bug.**
+
+**(a) The spawn validator models the island as a bare disc.** `isWalkablePoint` is only `hypot(x,z) <= WALKABLE_RADIUS`. It is correct about the waterline and knows **nothing** about the ~101 decorative trees and 14 decorative rocks that `island.ts` pushes into `staticObstacles` as real collision bodies. A find could therefore spawn hard against a boulder, be perfectly "walkable" by the arithmetic, and be physically uncollectable — the player's own collision push-out holds them further from it than they can reach.
+
+**This is D-051's quarry arithmetic, never applied to spawns.** D-051 banked `objectCollisionRadius + playerCollisionRadius < interactRadiusM` as a standing constraint and it was only ever enforced for the one object that had already broken. Computed against the real decorative-rock sizes: **4 of the 8 distinct sizes violate it** — a size-2.1 rock has a 2.94 m collision radius, so the nearest legal standing point is 3.34 m from its centre against a 2.5 m reach. Sizes 1.6, 1.7, 1.8 and 2.1 all strand; 1.2–1.5 do not.
+
+**(b) The harness check was a distance assertion, not a reachability test.** It computed `hypot(node) > walkableRadiusM` from a fixed origin and called the result "path-reachable". It never walked, never collected, and was **structurally incapable** of failing for cause (a) no matter how badly a find was stranded. It verified that a path exists on paper — which is exactly the phrase the ruling used.
+
+**THE FIX, at the class rather than the instance.** New `isPlaceablePoint` (`src/data/world.ts`) enforces the D-051 constraint against **every** obstacle, not just the one that broke: a point is placeable only if a player can both stand near it and still reach it. `spawnSalvageNode` now validates against it. A blocked spawn **walks the ring in fixed arc steps** and takes the first genuinely placeable point, rather than the old fallback of collapsing to the island centre — a beach find teleporting inland is its own kind of wrong. Deterministic and seeded throughout. Any future procedural placement gets the same guarantee by calling `isPlaceablePoint` instead of `isWalkablePoint`.
+
+**THE BOUNDARY IS NOW DIEGETIC.** The walkable edge was an invisible wall discovered by walking into it. It is now a band of pale surf drawn at `SURF_LINE_RADIUS` — which **is** `WALKABLE_RADIUS`, exported from the same module so the rule and its picture cannot drift apart. The thing you see is literally the thing that stops you. Drawn as a torus so it reads as water breaking on a shelf rather than a fence, and `isPickable: false` so it can never intercept a tap meant for the beach behind it (D-049's lesson about invisible geometry eating taps).
+
+**THE HARNESS CHECK REWRITTEN TO ACTUALLY DO THE THING.** It now forces a spawn against the largest decorative rock — the exact shape the old check waved through — then **walks to it and collects it**, asserting the castaway ended within reach and that the loot genuinely landed in the inventory. Nothing short of that counts as reachable. A 200-seed placement sweep runs beside it through the real shipped validator (`__drift.spawnSalvage` / `__drift.isPlaceable`), so the harness exercises the shipped rule rather than re-deriving it.
+
+**Regression-locked:** `tests/reachability.test.ts` (12 new) — including the one that demonstrates the bug directly: **a point the OLD check accepts and the NEW one correctly rejects**, sited on the largest decorative rock. Plus the D-051 constraint restated as arithmetic, stranding rocks proven to exist, a 500-seed property test that every spawn is placeable, the ring-walk fallback proven never to dump a find at the island centre, determinism, and `SURF_LINE_RADIUS === WALKABLE_RADIUS`.
+
 **D-063 · 2026-07-26 — Gate 0 items 1, 2 and 4: embodied inventory, equip/switch, and Try-Combining with Blueprints (v0_7 §9/§10.5/§10.6).**
 Built against the verbatim v0_7 sections relayed this pass, which closed the D-046(b) gap that had blocked these two items. **Process note worth recording: this was the fourth occurrence of content being referenced but not travelling** — the batch's own reception instruction, Ch.6's chapter text, v0_11's laws, and these sections. D-060's numbering-hygiene law generalises to exactly this: an artifact that only exists in conversation does not exist. All four were eventually resolved by relaying the text, which is the process working, just late.
 

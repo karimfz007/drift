@@ -7,7 +7,8 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, createSaveRepository, type MorningReport } from '../brain';
+import { SAVE_KEY, Session, createSaveRepository, spawnSalvageNode, type MorningReport } from '../brain';
+import { isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
 export const runtime = {
@@ -168,6 +169,10 @@ function installDebugHook(): void {
         //  D-063: drive a real Try-Combining attempt through the actual brain path, so the
         //  harness exercises the shipped verb rather than a re-implementation of it.
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
+        //  D-064: the harness drives the REAL spawn and the REAL placement validator, so its
+        //  reachability check exercises the shipped rule rather than re-deriving it.
+        spawnSalvage: (seed: number) => spawnSalvageNode(seed),
+        isPlaceable: (x: number, z: number) => isPlaceablePoint(x, z),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,
         //  the analytic ground height, and the player mesh's feet (D-022).
