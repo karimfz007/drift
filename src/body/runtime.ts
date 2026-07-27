@@ -54,7 +54,10 @@ export const runtime = {
     tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null,
     //  Installed by the game — see the `stick`/`velocity` debug hooks above.
     stickReadout: (() => ({ x: 0, y: 0, magnitude: 0 })) as () => { x: number; y: number; magnitude: number },
-    velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number }
+    velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number },
+    //  Gate 0 sweep: the camera's actual field of view, in degrees, read from the live
+    //  camera rather than from the tune table — so the check tests what is rendered.
+    fovReadout: (() => 0) as () => number
 };
 
 // ---- Frame-rate probe ---------------------------------------------------
@@ -195,6 +198,7 @@ function installDebugHook(): void {
         //  movement was refused" cannot be done from outside the input layer.
         stick: () => runtime.stickReadout(),
         velocity: () => runtime.velocityReadout(),
+        fov: () => runtime.fovReadout(),
         isPlaceable: (x: number, z: number) => isPlaceablePoint(x, z),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,

@@ -22,10 +22,9 @@
  *   node tools/smoke.mjs [url] [--headful] [--software]
  */
 
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
-import { execSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const URL_UNDER_TEST = process.argv[2]?.startsWith('http') ? process.argv[2] : 'http://127.0.0.1:4173/';
@@ -153,13 +152,42 @@ async function preflight(url) {
     }
     console.log('  No git worktree operation in progress.');
 
-    try {
-        if (process.platform === 'win32') execSync('taskkill /F /IM chrome.exe', { stdio: 'ignore' });
-        else execSync('pkill -f "Chrome" || true', { stdio: 'ignore', shell: '/bin/sh' });
-        console.log('  Killed stray Chrome processes from a prior run.');
-    } catch {
-        console.log('  No stray Chrome processes found.');
+    //  BENCH ISOLATION (D-072, standing hazard #3). This used to run a blanket
+    //  `taskkill /F /IM chrome.exe`, which meant **separate ports were never isolation** —
+    //  a second harness starting up silently killed the first one's browser mid-run, and
+    //  the resulting `page.goto`/`waitForScene` stalls were then misdiagnosed for four
+    //  sessions as "CPU contention". Direct measurement refuted that: 8% CPU, with memory
+    //  and buffer starvation on navigation (`ERR_NO_BUFFER_SPACE` from inside the page).
+    //
+    //  Two changes: refuse to start at all if another harness is live, and never kill a
+    //  browser this run does not own. Chrome launched by this process is tracked and torn
+    //  down at exit; anything else is left strictly alone.
+    const lockPath = join(fileURLToPath(new URL('../.smoke/', import.meta.url)), 'harness.lock');
+    mkdirSync(dirname(lockPath), { recursive: true });
+    if (existsSync(lockPath)) {
+        let holder = 'unknown';
+        try { holder = readFileSync(lockPath, 'utf8').trim(); } catch { /* unreadable */ }
+        const [pidText] = holder.split(' ');
+        const otherPid = Number(pidText);
+        let alive = false;
+        if (Number.isFinite(otherPid) && otherPid > 0) {
+            try { process.kill(otherPid, 0); alive = true; } catch { alive = false; }
+        }
+        if (alive) {
+            console.error(`  REFUSED: another harness run is already live (${holder}).`);
+            console.error('  Concurrent runs are forbidden (D-072): they kill each other’s browser and');
+            console.error('  the failures then look like flaky checks. Wait for it, or stop it first.');
+            process.exit(1);
+        }
+        console.log(`  Clearing a stale harness lock (${holder} is no longer running).`);
+        try { unlinkSync(lockPath); } catch { /* raced; fine */ }
     }
+    writeFileSync(lockPath, `${process.pid} started ${new Date().toISOString()}`);
+    const releaseLock = () => { try { unlinkSync(lockPath); } catch { /* already gone */ } };
+    process.on('exit', releaseLock);
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { releaseLock(); process.exit(1); });
+    console.log('  Bench lock taken — this run owns the harness.');
+    console.log('  Not killing any Chrome: this run tears down only the browser it launches (D-072).');
 
     try {
         const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
@@ -180,6 +208,12 @@ async function main() {
             ? ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
             : ['--no-sandbox', '--enable-gpu', '--use-angle=default', '--ignore-gpu-blocklist']
     });
+
+    //  D-072: this run owns exactly this browser and tears down exactly this browser,
+    //  however it exits. Nothing else's Chrome is ever touched.
+    const ownedTeardown = () => { try { browser.process()?.kill('SIGKILL'); } catch { /* already gone */ } };
+    process.on('exit', ownedTeardown);
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { ownedTeardown(); process.exit(1); });
 
     const page = await browser.newPage();
     //  Landscape mobile: the game's own presentation (D-041). A phone held sideways.
@@ -1294,7 +1328,35 @@ async function main() {
     }
 
     //  "Fast movement (testing)": a real Settings toggle that measurably speeds up walking.
-    await editSave('state.player = { x: 0, y: 104 };');
+    //  D-072 item 2 — THE TEST BUG. This used to teleport to a fixed (0, 104) and walk due
+    //  south for 2.5 s, which on a run that had already built a shelter nearby walked the
+    //  player straight into it. They stopped at the contact point and the check read
+    //  "0.5 m travelled" as a movement failure. It was not: it was correct collision, and
+    //  the measured stall (0, 103.5) is exactly a 1.3 m shelter radius + 0.4 m player radius
+    //  out from a shelter at (0, 101.8). A speed test has to be run on open ground.
+    //
+    //  So the heading is now CHOSEN rather than assumed: sample bearings around the circle
+    //  and take the first whose whole 40 m path stays clear of every built structure and
+    //  inside the walkable disc.
+    await editSave('state.player = { x: 0, y: 60 };');
+    const clearWalk = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const solids = [s.fire, s.shelter, s.storage].filter((o) => o && o.built).map((o) => ({ x: o.x, y: o.y }));
+        const px = s.player.x, py = s.player.y;
+        for (let deg = 0; deg < 360; deg += 15) {
+            const a = (deg * Math.PI) / 180;
+            const tx = px + Math.cos(a) * 40, ty = py + Math.sin(a) * 40;
+            if (Math.hypot(tx, ty) > 100) continue; // stay well inside the walkable disc
+            let clear = true;
+            for (let t = 0.05; t <= 1 && clear; t += 0.05) {
+                const sx = px + (tx - px) * t, sy = py + (ty - py) * t;
+                for (const o of solids) if (Math.hypot(sx - o.x, sy - o.y) < 5) { clear = false; break; }
+            }
+            if (clear) return { x: tx, y: ty, deg, solids: solids.length };
+        }
+        return null;
+    });
+    check('setup — an open 40 m walking lane exists for the speed test (not through the base)', Boolean(clearWalk), clearWalk ? `bearing ${clearWalk.deg}deg, clearing ${clearWalk.solids} structures` : 'no clear lane found');
     const beforeToggle = await live();
     //  DIAGNOSTIC (Gate 0 closing pass): the director and the harness both report a player
     //  covering ~0.5 m where 7-8 m is normal — "blocked, not slowed". Endpoint-only
@@ -1320,7 +1382,7 @@ async function main() {
         clearInterval(poll);
         return samples;
     };
-    const normalSamples = await walkTrace(beforeToggle.player.x, beforeToggle.player.y - 40, 2.5);
+    const normalSamples = await walkTrace(clearWalk ? clearWalk.x : beforeToggle.player.x, clearWalk ? clearWalk.y : beforeToggle.player.y - 40, 2.5);
     const normalDistance = Math.hypot((await live()).player.x - beforeToggle.player.x, (await live()).player.y - beforeToggle.player.y);
     const walkDiag = await page.evaluate(() => {
         const s = window.__drift.state();
@@ -1335,7 +1397,7 @@ async function main() {
                  fire: at(s.fire), shelter: at(s.shelter), storage: at(s.storage) };
     });
 
-    await editSave('state.player = { x: 0, y: 104 };');
+    await editSave('state.player = { x: 0, y: 60 };');
     await clickDom('.settings-button');
     await sleep(400);
     const toggleTap = await realTapDom('.test-speed');
@@ -1343,7 +1405,7 @@ async function main() {
     await clickDom('.panel .done');
     await sleep(300);
     const beforeFast = await live();
-    await walkToward(beforeFast.player.x, beforeFast.player.y - 40, 2.5);
+    await walkToward(clearWalk ? clearWalk.x : beforeFast.player.x, clearWalk ? clearWalk.y : beforeFast.player.y - 40, 2.5);
     const fastDistance = Math.hypot((await live()).player.x - beforeFast.player.x, (await live()).player.y - beforeFast.player.y);
     const trail = normalSamples.map((p) => `${p.t}ms:(${p.x.toFixed(1)},${p.y.toFixed(1)})stick=${p.m}vel=${p.v}${p.panel ? '/PANEL' : ''}`).join(' ');
     check('REGRESSION — "Fast movement (testing)" measurably speeds up walking, base walkSpeedMps untouched', fastDistance > normalDistance * 1.5, `normal ${normalDistance.toFixed(1)}m, fast ${fastDistance.toFixed(1)}m | ${JSON.stringify(walkDiag)} | trail ${trail}`);
@@ -2242,6 +2304,65 @@ async function main() {
     const afterMint = await live();
     check('D-063 item 4 — a real relationship eventually mints a NAMED Blueprint (§10.6)', Boolean(minted && minted.blueprint && minted.blueprint.name), minted ? JSON.stringify(minted.blueprint && minted.blueprint.name) : 'never succeeded in 30 attempts');
     check('D-063 item 4 — the plan records inputs, version, workmanship and authorship (§10.5)', afterMint.blueprints.length === 1 && afterMint.blueprints[0].version >= 1 && Boolean(afterMint.blueprints[0].workmanship) && Boolean(afterMint.blueprints[0].author), JSON.stringify(afterMint.blueprints[0] ?? null));
+
+    // ================================================================
+    // GATE 0 SWEEP (automated half). The Android half is the director's own concurrent
+    // playtest per C1's ruling — not attempted here, and not implied anywhere below.
+    // ================================================================
+    console.log("\nGATE 0 SWEEP -- camera, FOV, readability, save/reload");
+
+    //  1. THE CAMERA MUST NEVER LATCH. A look-drag that leaves the camera spinning, or
+    //  stuck mid-rotation, is the single most disorienting failure on a touch device.
+    await editSave('state.player = { x: 0, y: 40 };');
+    const canvasForLook = await canvasRect();
+    const lookX = canvasForLook.left + canvasForLook.width * 0.75;
+    const lookY = canvasForLook.top + canvasForLook.height * 0.4;
+    await page.touchscreen.touchStart(lookX, lookY);
+    for (let i = 1; i <= 6; i++) { await page.touchscreen.touchMove(lookX - i * 18, lookY); await sleep(30); }
+    await page.touchscreen.touchEnd();
+    await sleep(1200); // well past the camera's own smoothing
+    const yawA = (await page.evaluate(() => window.__drift.camera())).yaw;
+    await sleep(700);
+    const yawB = (await page.evaluate(() => window.__drift.camera())).yaw;
+    const yawDrift = Math.abs(((yawB - yawA + Math.PI) % (Math.PI * 2)) - Math.PI);
+    check('GATE 0 — the camera settles after a look-drag and never latches or spins', yawDrift < 0.01, `yaw drift after release: ${yawDrift.toFixed(5)} rad over 0.7 s`);
+
+    //  2. FOV read from the LIVE camera, not the tune table.
+    const fovDeg = await page.evaluate(() => window.__drift.fov());
+    check('GATE 0 — field of view is in a comfortable range for a handheld screen', fovDeg >= 45 && fovDeg <= 90, `${fovDeg.toFixed(1)} degrees`);
+
+    //  3. READABILITY floor: 11px is the smallest this project will ship.
+    const tinyText = await page.evaluate(() => {
+        const bad = [];
+        const nodes = document.querySelectorAll('.hud *, .carried-button *, .settings-button, .goal, .clock, .vital-label, .chip');
+        for (const el of nodes) {
+            if (!el.textContent || !el.textContent.trim()) continue;
+            const cs = getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+            const px = parseFloat(cs.fontSize);
+            if (px < 11) bad.push(`${el.className || el.tagName}=${px}px`);
+        }
+        return bad;
+    });
+    check('GATE 0 — all visible HUD text clears the 11px legibility floor', tinyText.length === 0, tinyText.slice(0, 5).join(' | ') || 'all legible');
+
+    //  4. SAVE/RELOAD IS CLEAN — the actual state comes back, field by field.
+    await editSave(`
+        state.inventory.wood = 13; state.inventory.stone = 7; state.inventory.fiber = 5;
+        state.knowledge.domains.harvestingFabrication.technique = 42;
+    `);
+    const beforeReload = await live();
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+    await waitForScene();
+    await sleep(600);
+    const afterReload = await live();
+    const reloadClean =
+        afterReload.inventory.wood === beforeReload.inventory.wood &&
+        afterReload.inventory.stone === beforeReload.inventory.stone &&
+        afterReload.inventory.fiber === beforeReload.inventory.fiber &&
+        Math.abs(afterReload.knowledge.domains.harvestingFabrication.technique - beforeReload.knowledge.domains.harvestingFabrication.technique) < 0.001;
+    check('GATE 0 — save/reload returns the same state, field by field', reloadClean,
+        `wood ${beforeReload.inventory.wood}->${afterReload.inventory.wood}, stone ${beforeReload.inventory.stone}->${afterReload.inventory.stone}, technique ${beforeReload.knowledge.domains.harvestingFabrication.technique}->${afterReload.knowledge.domains.harvestingFabrication.technique}`);
 
     // ---- Hygiene ----
     console.log('\nHygiene');

@@ -3,6 +3,18 @@
 
 ---
 
+**D-072 · 2026-07-27 — Standing hazard #3: bench isolation — "separate ports are not isolation; separate times are."**
+
+The **CPU-contention diagnosis carried since [[D-051]] is formally RETIRED**, refuted by direct measurement: **8% CPU** with **memory/buffer starvation on page navigation** (`ERR_NO_BUFFER_SPACE` raised from inside the page), not contention. Every crash previously blamed on a loaded machine was a `page.goto`/`waitForScene` stall with that signature.
+
+The mechanism was ours all along: `preflight()` ran a blanket `taskkill /F /IM chrome.exe`, so a second harness starting up **silently killed the first one's browser mid-run**. Separate ports never isolated anything.
+
+**`preflight()` is rewritten, not merely documented:** it kills only processes this run owns (the browser it launched, torn down on any exit path), never a blanket kill; and **concurrent harness runs are forbidden** — a live bench lock makes the second run **refuse to start** rather than silently killing the first. Both paths verified by hand: a live PID refuses, a stale lock is cleared and the run proceeds.
+
+**COROLLARY — the amnesty is withdrawn.** The two harness misses previously waved through as "known machine-specific" (**quarry three-taps**, **fast-movement**) **lose that status pending one re-evaluation under the corrected cause.** Do not re-apply the old amnesty without re-confirming it under *this* diagnosis specifically. A wrong cause that excuses a failure is worse than no cause: it retires the question.
+
+---
+
 **D-071 · 2026-07-27 — Reception, split verdict: Bible v2.2 "The Missing Bridges" (external).**
 
 **REJECTED-FACTUAL:** §3.2 and §4 (the "inspected reality" and "corrected current-state" claims) — they describe a non-existent or foreign workspace (Godot, first-person, "RUSTED"); refuted line-by-line against our own audited ledger ([[D-052]], [[D-055]], [[D-056]], [[D-058]], [[D-063]], [[D-070]], and C03). **No status in our canon changes on this document's authority.**

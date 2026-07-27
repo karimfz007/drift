@@ -246,6 +246,7 @@ export class Game {
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
         runtime.stickReadout = () => this.controls.read();
         runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
+        runtime.fovReadout = () => (this.camera.fov * 180) / Math.PI;
         runtime.tryCombine = (a, b) => {
             const result = tryCombine(session().state, a as 'wood', b as 'wood');
             session().persist(now());
