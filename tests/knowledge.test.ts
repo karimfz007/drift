@@ -132,9 +132,9 @@ describe('knowledge — applyLearningEvent / recordTrying: mutates in place, cla
 });
 
 describe('knowledge — item 4: mapping existing verbs to domains (only what the ruling names)', () => {
-    const ALL_NODE_KINDS: NodeKind[] = [
-        ...ALL_NODE_KINDS //  C3 NOTE: this was a hand-typed copy SHADOWING the derived import
-    ];                     //  300 lines above the fix that introduced it — the A8 pattern, surviving.
+    //  C3 NOTE: a hand-typed copy used to SHADOW the derived import here — the A8 pattern
+    //  surviving 300 lines above the fix that introduced it, so a new node kind was skipped
+    //  in this block in silence. The import is used directly now; there is no second list.
 
     it('felling (tree), quarrying, and salvage map to Harvesting & fabrication; everything else stays unmapped (floor)', () => {
         const expected: Record<string, string | null> = {
