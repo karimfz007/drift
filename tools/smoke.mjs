@@ -1489,7 +1489,8 @@ async function main() {
         await sleep(300);
         await faceNode(shelterAt.x, shelterAt.y);
         const samples = [];
-        let prev = (await live()).player;
+        const pressFrom = (await live()).player;
+        let prev = pressFrom;
         let facingSpread = 0;
         let camJump = 0;
         let prevCam = (await camera()).yaw;
@@ -1505,7 +1506,11 @@ async function main() {
                 contactFrames: rd.contactFrames,
             });
             camJump = Math.max(camJump, Math.abs(cam - prevCam));
-            facingSpread = Math.max(facingSpread, Math.abs(st.player.x - shelterAt.x));
+            //  Distance from where the press STARTED, not spread along the x-axis. The
+            //  x-axis version assumed the slide runs east-west; it does not, and it reported
+            //  0.55 m in the same press where `PART 2` independently measured 5.17 m of
+            //  travel. The game was right and the yardstick was pointing the wrong way.
+            facingSpread = Math.max(facingSpread, Math.hypot(st.player.x - pressFrom.x, st.player.y - pressFrom.y));
             prev = st.player;
             prevCam = cam;
         }
@@ -1536,7 +1541,7 @@ async function main() {
         //      the eye reads as sliding rather than vibrating in place.
         check('FEEL COURT — the castaway visibly travels ALONG the obstacle',
             facingSpread > 0.8,
-            `${facingSpread.toFixed(2)} m of lateral travel across the press`);
+            `${facingSpread.toFixed(2)} m from where the press began`);
 
         //  (5) The camera stays civil. A slide that yanks the view reads as a collision bug
         //      even when the position math is perfect.
