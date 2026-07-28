@@ -1182,7 +1182,22 @@ async function main() {
     check('the debug-export text includes the trace', debugInfo.includes('trace:') && debugInfo.includes('failedInteractionTaps'), '');
 
     //  The settings panel's real button, reachable by a real tap — not just the text existing.
-    check('the Look button opens settings', await clickDom('.settings-button'));
+    //
+    //  D-066/D-075: this used to assert only `clickDom(...)`, i.e. that the button was FOUND
+    //  AND CLICKED — which is true even when `openSettings` then refuses because some other
+    //  panel is still open (`if (runtime.panelOpen) return`). The check passed, Settings
+    //  never appeared, and the next line's `.copy-debug` was legitimately not-found. A check
+    //  that cannot fail for its own cause is exactly what the Vacuity Law forbids, so it now
+    //  asserts the OUTCOME: the settings panel is present and genuinely visible.
+    const lookClicked = await clickDom('.settings-button');
+    await sleep(500);
+    const settingsPanelUp = await page.evaluate(() => {
+        const el = document.querySelector('.panel.settings');
+        const others = Array.from(document.querySelectorAll('.panel')).map((e) => e.className);
+        return { open: Boolean(el), opacity: el ? parseFloat(getComputedStyle(el).opacity) : 0, panels: others };
+    });
+    check('the Look button opens settings', lookClicked && settingsPanelUp.open && settingsPanelUp.opacity > 0.5,
+        `clicked=${lookClicked}, settings=${settingsPanelUp.open}, opacity=${settingsPanelUp.opacity}, panels=[${settingsPanelUp.panels.join(' | ')}]`);
     await sleep(400);
     const copyDebugTap = await realTapDom('.copy-debug');
     check('the "Copy debug info" button is reachable by a real tap', copyDebugTap.ok, copyDebugTap.reason ?? '');
