@@ -1960,3 +1960,114 @@ Restored after each: 358/358, clean tree. The rule — mastery iff hold-kind, wi
 **The collision model.** Three defects this batch — the movement hard-block, the shelter pin, and the stalled `approach()` behind item 6 — trace to the radial push-out cancelling motion on perpendicular contact. D-078 makes the unified fix Slice 1's opening item; A5 says the check that is supposed to guard it must be fixed first, or the fail-then-pass D-078 requires cannot be honest.
 
 **Carried forward from D-073, never claimed fixed, still true:** F6 (stone has no online replenishment path), F7 (`src/body/entities.ts:657` still lists `rock` among kinds that regrow from themselves), F8 (`src/body/game.ts:936` and `src/brain/session.ts:113` still carry the unreachable "Too far from the shelter to sleep.").
+
+---
+
+## GATE 0 CLOSE — the machine half (D-074 → D-078 + the C3 remediation) — AS-BUILT
+
+*C3 finding A11: this log ended at the D-073 AUDIT. D-074 through D-078, the bench-mutex
+session, item 6 and the FIX-5 redo all changed source with no as-built. This is that record.*
+
+### FIX 5 — the backpack tap, third attempt, and the first one with a witness
+
+Two attempts failed for opposite reasons, and the third had to avoid both.
+
+**Attempt 1** made the pack a pickable mesh. It won `scene.pick` against the world and broke
+nine gather verbs (C3: 41 checks / 12 failures against a 32 / 0 control). Reverted in D-074.
+**Attempt 2** replaced it with a screen-space region. It could not tell the survivor's
+silhouette from the ground behind them, so it ate `empty-ground` — the player's documented
+"never mind" gesture — across a 40–100 px band, and it shipped with no test of any kind, two
+commits after D-075/D-076 were ratified to stop exactly that (C3 A1, A2; both BLOCKING).
+
+**Attempt 3** returns the pack to being a real mesh and routes every WORLD resolver through one
+new `worldPick()` that filters out anything tagged `isBody`. I rejected this shape the first
+time because it needed remembering at every pick site — a shared helper is what removes that,
+the same way `panel()` came to own the reveal that kept being forgotten. The pack is struck
+only by a ray aimed squarely at it.
+
+Column probe, replaying C3's own A2 method, then on device through the real player path:
+
+    0:ground 10:ground 20:ground 30:ground 40:ground 50:ground
+    60:PACK 70:PACK 80:PACK 90:PACK
+    100:ground 120:ground 150:ground
+
+And the witness it lacked twice, asserting BOTH directions because both have now failed in
+production — the pack is tappable, and it does not swallow the column. Green on device in two
+independent runs: `0:ground 20:pack 40:pack 70:pack 120:ground`.
+
+### The bench mutex deadlocked against the harness it exists to guard
+
+C3's A3 said "covers builds too" was prose, not mechanism. Understated. `bench-lock run
+"<label>" -- node tools/smoke.mjs` — the documented usage — **hangs**, because the wrapper takes
+the lock and the harness then takes it too (by design; it must refuse a shared bench even
+unwrapped) and waits on a lock its own parent will not release until the child exits. Not a
+refusal, which would have been loud: a silent thirty-minute hang emitting three lines. I lost
+that half hour to it before looking at the process tree. Separately, `npm` is a `.cmd` shim on
+Windows and a bare spawn is ENOENT, so the wrapper could never have wrapped a build.
+
+Fixed by handing the lock down through the environment; an unrelated contender is still
+refused, which is the property that matters. **The mutex had zero tests** — the tool that
+arbitrates every other piece of evidence this project produces, after four sessions of
+misdiagnosis. It now has six, against a private lock file.
+
+### The Effectivity Law became the first law to violate itself
+
+D-076 names its own witness as "the docs-integrity check plus C3's audit reading", and says in
+its own text that this is stated explicitly *"so it does not become the first law to violate
+itself."* `check-docs-integrity.mjs` contained **no effectivity logic whatsoever**. The check
+exists now, and with it live, D-077 and D-078 both failed it — neither declared its own class
+(C3 A6). Both are DESIGN-BINDING; the declarations are marked as C2's reading for C1.
+
+Note for C1: **OPERATIVE now names two different things** — a law's class under D-076 and a
+Ch.10 section's class under D-077, where it pairs with PROVISIONAL, which is not a law class at
+all. The checker keys on an explicit `**Class:**` line because a checker matching the bare word
+would read a section classification as a self-declaration.
+
+### The four storage failures were never a game defect — and are a third collision symptom
+
+Carried for several sessions as "state-dependent, mechanism works in isolation". The control run
+gave it up in a check three sections later: `the Look button opens settings — panels=[panel
+loadout visible]`. The loadout **was** open. Just not inside the 600 ms the check waited, after
+which it sat there blocking Settings and the debug-info button. Seven failures, one cause.
+
+An arrival gate and a real poll then measured it exactly: **`approach()` gives up 3.79 m short**
+of the 2.5 m interact radius, and the box takes **6476 ms** to open. 3.79 m is far too wide to be
+the box's own 0.9 m collider — that is the **shelter** (1.3 m, built ~2.2 m from the box) pinning
+the player on perpendicular contact. Same radial push-out as the movement hard-block and the
+quarry stall. **Third symptom, same root cause, owned by D-078(B).**
+
+### A5 — the check that was green on the defect it guards
+
+The collide-and-slide check passed on `lateral > 0.15 || closed > 4.0`, and `closed` is satisfied
+by merely walking up to the shelter from 6 m out — which a fully pinned player does on the way to
+being pinned. It now closes the distance first, takes the contact position, then presses and
+measures only what happens after. Made honest, it reports **`moved 0.00m in 2s of pressing`** — a
+perfect pin, on the exact behaviour D-078 elevates to Slice 1's opening item.
+
+This introduced `knownOpen()`: measured honestly, printed OPEN, counted apart from failures, and
+required to name what closes it. Every open item is reprinted in the run summary, and if one ever
+passes the run says so loudly — a defect that has quietly closed must be promoted back to a real
+check, not left in an amnesty list protecting nothing.
+
+### Numbers
+
+| | |
+|---|---|
+| Unit tests | **367/367** (was 358 — +6 bench mutex, +3 announcement) |
+| Purity | 16 brain files, 18 modules, zero rendering-engine imports |
+| Docs-integrity | 78 decisions, every D-ref resolves, **2 governed decisions declare a class** |
+| Device harness, control (FIX 5 in place) | **201/208**, 7 failures — all one cause |
+| Device harness, final tree | **199/209**, 10 failures, **1 known-open** |
+
+The final run's 10 failures: 6 in the storage cluster, 3 collateral from the panel it leaves
+open, 1 unrelated (`the absence advanced the clock at the tuned rate — 1.84 game hours`). The
+known-open is the collision pin, named to D-078(B).
+
+**Fail-then-pass proofs run this batch (D-066 b):** the bench deadlock regression (FAIL, inner
+acquire timed out 4194 ms → PASS 194 ms); the npm-spawn regression (FAIL `spawn npm ENOENT` →
+PASS); the announcement regressions against the body's real pre-fix logic (FAIL, all five
+outcomes triumphant → PASS; FAIL `'Something works'` → PASS). Stated rather than counted: the
+fail-loud announcement test passes on **both** sides — pre-fix said the wrong thing, not nothing —
+and the four non-defect bench tests likewise. FIX 5's own proof is the device A/B: the broken
+configuration failed reed gathering and the look drag inside 22 checks and then killed the page;
+the fixed configuration ran 208 checks with neither failing.
