@@ -4,6 +4,13 @@
  * One exclusive lock over the whole bench — harness runs, builds, and C3 audits alike.
  * Not one lock per activity: the failure this closes was a second *build* corrupting a
  * running harness's `dist/`, and before that a second harness killing the first's browser.
+ *
+ * SCOPE, STATED HONESTLY (C3 MAJOR-2). The harness takes this lock itself, so it is covered
+ * whether or not anyone wraps it. A BUILD is only covered when it goes through the bench —
+ * which `npm run build` now does, via `tools/bench-build.mjs`. C3 measured the gap that made
+ * this sentence prose rather than mechanism: with the bench held, an unwrapped `npm run
+ * typecheck` ran to completion. Typecheck and unit tests are deliberately NOT covered — they
+ * touch neither `dist/` nor a browser, which are the only two things the bench protects.
  * Sharing the bench in any combination has cost this project four sessions of misdiagnosis,
  * so the rule is simply that nobody shares it. Contenders queue or refuse; never proceed.
  *
@@ -15,7 +22,7 @@
  * so a multi-line inline script — `-- node -e "<many lines>"` — will not survive the trip.
  * Put such a script in a file and wrap `node <file>` instead.
  */
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -24,7 +31,10 @@ import { spawn } from 'node:child_process';
 //  lock instead of the live one — without that, testing the bench would mean fighting any
 //  real run for it, and the alternative (skip when busy) is a vacuous test (D-066). Nothing
 //  in the app or the harness sets this; if you find it set anywhere else, that is a bug.
-const LOCK = process.env.DRIFT_BENCH_LOCK_FILE
+//  Gated on VITEST (C3 NOTE): the override is opt-in, never set accidentally, and the
+//  alternative — skip-the-test-when-busy — would be vacuous under D-066. Gating it means
+//  it is not merely unused in production but unreachable there.
+const LOCK = (process.env.VITEST && process.env.DRIFT_BENCH_LOCK_FILE)
     || join(fileURLToPath(new URL('../.smoke/', import.meta.url)), 'bench.lock');
 
 /** Is the process that holds the lock still alive? A dead holder's lock is stale, not binding. */
@@ -33,12 +43,27 @@ function holderAlive(pid) {
     try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+/**
+ * C3 MAJOR-1. This used to `catch { return null }`, which told the caller "the bench is
+ * FREE" when the truth was "I cannot tell." `acquire` then deleted the file and took the
+ * bench. Measured by C3: a live holder plus a truncated lock file let a stranger walk in.
+ * The file was written non-atomically, so a torn write or a hard kill mid-write produced
+ * exactly that state.
+ *
+ * Two changes. Unparseable now reads as HELD by an unknown holder — the safe direction,
+ * since over-refusing costs a wait and under-refusing costs the corrupted bench D-072
+ * exists to prevent. And `acquire` writes via tmp+rename, so the torn state stops being
+ * reachable in the first place.
+ */
 export function readHolder() {
     if (!existsSync(LOCK)) return null;
+    let raw;
     try {
-        const raw = JSON.parse(readFileSync(LOCK, 'utf8'));
-        return holderAlive(raw.pid) ? raw : null;
-    } catch { return null; }
+        raw = JSON.parse(readFileSync(LOCK, 'utf8'));
+    } catch {
+        return { pid: -1, label: 'UNREADABLE lock file — treated as held, not free', since: 'unknown', unreadable: true };
+    }
+    return holderAlive(raw.pid) ? raw : null;
 }
 
 /**
@@ -61,12 +86,24 @@ export function readHolder() {
  * genuinely contended bench exactly as before.
  */
 const HANDOFF = 'DRIFT_BENCH_LOCK';
+let heldNonce = null;
 
 function heldByAncestor() {
-    const inherited = Number(process.env[HANDOFF]);
-    if (!Number.isFinite(inherited) || inherited <= 0) return false;
+    //  C3 NOTE: keying on pid alone let a descendant that outlives its wrapper keep a
+    //  handoff forever, and Windows recycles pids — a later unrelated holder drawing that
+    //  pid would have admitted the stale descendant. The handoff now carries a nonce that
+    //  must match the live lock file's, so it is valid only for the exact hold that issued it.
+    const inherited = String(process.env[HANDOFF] ?? '');
+    if (!inherited.includes(':')) return false;
+    const [pidPart, noncePart] = inherited.split(':');
     const holder = readHolder();
-    return Boolean(holder) && holder.pid === inherited;
+    return Boolean(holder) && !holder.unreadable
+        && holder.pid === Number(pidPart) && holder.nonce === noncePart;
+}
+
+/** The handoff a child inherits: this pid plus the nonce of the hold that issued it. */
+export function handoffToken() {
+    return `${process.pid}:${heldNonce ?? ''}`;
 }
 
 /**
@@ -89,7 +126,14 @@ export async function acquire(label, waitMs = 0) {
         await new Promise((r) => setTimeout(r, 2000));
     }
     if (existsSync(LOCK)) { try { unlinkSync(LOCK); } catch { /* stale; raced */ } }
-    writeFileSync(LOCK, JSON.stringify({ pid: process.pid, label, since: new Date().toISOString() }));
+    //  A nonce unique to THIS hold — see `heldByAncestor`. Not security, just identity:
+    //  it distinguishes this hold from a later one that happens to draw the same pid.
+    const nonce = `${process.pid.toString(36)}${Math.floor(performance.now() * 1000).toString(36)}`;
+    heldNonce = nonce;
+    //  tmp+rename: rename is atomic, so a reader never sees a half-written lock (C3 MAJOR-1).
+    const tmp = `${LOCK}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ pid: process.pid, label, since: new Date().toISOString(), nonce }));
+    renameSync(tmp, LOCK);
     let released = false;
     const release = () => {
         if (released) return;
@@ -123,7 +167,7 @@ if (process.argv[1] && process.argv[1].endsWith('bench-lock.mjs')) {
         }
         console.log(`Bench acquired by "${label}" (pid ${process.pid}).`);
         //  `shell: true` on Windows, because `npm`/`npx` are .cmd shims there and a bare
-        //  spawn of them fails with EINVAL — which is why C3 found the wrapper could not
+        //  spawn of them fails with ENOENT — which is why C3 found the wrapper could not
         //  wrap a build. Args carrying spaces are quoted, since the shell re-splits them.
         const useShell = process.platform === 'win32';
         const quote = (a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
@@ -133,7 +177,7 @@ if (process.argv[1] && process.argv[1].endsWith('bench-lock.mjs')) {
         const child = spawn(spawnArgs[0], spawnArgs[1], {
             stdio: 'inherit',
             shell: useShell,
-            env: { ...process.env, [HANDOFF]: String(process.pid) }, // nesting is safe
+            env: { ...process.env, [HANDOFF]: handoffToken() }, // nesting is safe
         });
         child.on('error', (e) => { console.error(`REFUSED: could not run ${cmd[0]}: ${e.message}`); release(); process.exit(1); });
         child.on('exit', (code) => { release(); process.exit(code ?? 0); });

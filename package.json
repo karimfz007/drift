@@ -2,12 +2,12 @@
   "name": "drift",
   "private": true,
   "version": "0.1.0",
-  "description": "The First Night (codename DRIFT) — low-poly 3D mobile-web survival. Babylon.js + TypeScript.",
+  "description": "The First Night (codename DRIFT) \u2014 low-poly 3D mobile-web survival. Babylon.js + TypeScript.",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite/config.dev.mjs",
-    "build": "vite build --config vite/config.prod.mjs",
+    "build": "node tools/bench-build.mjs",
     "preview": "vite preview --config vite/config.prod.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,7 +16,8 @@
     "docs-integrity": "node tools/check-docs-integrity.mjs",
     "gen:audio": "node tools/gen-audio.mjs",
     "done-checks": "npm run purity && npm run docs-integrity && npm run typecheck && npm run test",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "build:raw": "vite build --config vite/config.prod.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "24.15.0",

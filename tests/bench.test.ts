@@ -33,6 +33,7 @@ function runWrapper(args: string[], extraEnv: Record<string, string> = {}) {
     const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
         DRIFT_BENCH_LOCK_FILE: lockFile,
+        VITEST: '1',            // the override is gated on it (C3 NOTE)
         ...extraEnv,
     };
     delete env.DRIFT_BENCH_LOCK; // never inherit a real handoff into a test
@@ -68,9 +69,16 @@ describe('the bench mutex', () => {
         expect(r.status).toBe(0);
     });
 
-    it('REGRESSION — the wrapper can spawn npm, so "the bench covers builds too" is a mechanism (C3 A3)', () => {
-        //  `npm` is a .cmd shim on Windows; a bare spawn of it fails EINVAL. `--version` is
+    it('REGRESSION — the wrapper can SPAWN npm at all (half of C3 A3; the other half is bench-build.mjs)', () => {
+        //  `npm` is a .cmd shim on Windows; a bare spawn of it fails ENOENT. `--version` is
         //  chosen because it is real npm and costs nothing.
+        //
+        //  C3 MAJOR-2 renamed this. It used to be titled "...so 'the bench covers builds too'
+        //  is a mechanism", which is more than it proves: being ABLE to wrap a build is not the
+        //  same as builds BEING wrapped, and C3 measured the gap — with the bench held, an
+        //  unwrapped build ran straight through. A test name that certifies an unproven claim
+        //  is the unmarked middle D-076 forbids, wearing a test's clothes. The other half is
+        //  closed by `tools/bench-build.mjs`, which `npm run build` now goes through.
         const r = runWrapper(['run', 'npm under the bench', '--', 'npm', '--version']);
         expect(r.stderr).not.toContain('could not run');
         expect(r.stdout).toMatch(/\d+\.\d+\.\d+/);
@@ -86,6 +94,7 @@ describe('the bench mutex', () => {
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
             DRIFT_BENCH_LOCK_FILE: lockFile,
+            VITEST: '1',
             BENCH_WAIT_MS: '0',
         };
         delete env.DRIFT_BENCH_LOCK;
@@ -113,6 +122,61 @@ describe('the bench mutex', () => {
         }
     });
 
+    it('REGRESSION — an UNREADABLE lock file reads as HELD, never as free (C3 MAJOR-1)', () => {
+        //  `readHolder` used to `catch { return null }`, which reports "free" when the truth is
+        //  "I cannot tell". `acquire` then deleted the file and took the bench. C3 measured it:
+        //  a live holder plus a truncated lock let a stranger walk straight in. The file was
+        //  written non-atomically, so a torn write or a hard kill mid-write reached that state.
+        //  Over-refusing costs a wait; under-refusing costs the corrupted bench D-072 exists
+        //  to prevent, so "I cannot tell" must mean HELD.
+        const dir = mkdtempSync(join(tmpdir(), 'drift-bench-'));
+        const lockFile = join(dir, 'bench.lock');
+        writeFileSync(lockFile, '{"pid": 1234, "label": "HOL');   // truncated mid-write
+        const env: Record<string, string> = {
+            ...(process.env as Record<string, string>),
+            DRIFT_BENCH_LOCK_FILE: lockFile,
+            VITEST: '1',
+            BENCH_WAIT_MS: '0',
+        };
+        delete env.DRIFT_BENCH_LOCK;
+        try {
+            const r = spawnSync(process.execPath, [WRAPPER, 'run', 'stranger', '--', 'node', '-e', 'console.log("WALKED-IN")'], {
+                env, encoding: 'utf8', timeout: 60_000,
+            });
+            expect(r.stdout ?? '').not.toContain('WALKED-IN');
+            expect(r.stderr ?? '').toContain('bench busy');
+            expect(r.status).toBe(1);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('REGRESSION — a handoff from a DIFFERENT hold is refused, so pid reuse cannot admit a stale child', () => {
+        //  C3 NOTE: keying the handoff on pid alone meant a descendant outliving its wrapper
+        //  kept a valid token forever, and Windows recycles pids — a later unrelated holder
+        //  drawing that pid would have admitted it. The token carries a nonce now. Here the
+        //  pid matches the live holder exactly and only the nonce is wrong.
+        const dir = mkdtempSync(join(tmpdir(), 'drift-bench-'));
+        const lockFile = join(dir, 'bench.lock');
+        writeFileSync(lockFile, JSON.stringify({
+            pid: process.pid,           // a genuinely live pid — this test runner
+            label: 'someone else', since: new Date(0).toISOString(), nonce: 'THE-REAL-NONCE',
+        }));
+        const env: Record<string, string> = {
+            ...(process.env as Record<string, string>),
+            DRIFT_BENCH_LOCK_FILE: lockFile,
+            VITEST: '1',
+            BENCH_WAIT_MS: '0',
+            DRIFT_BENCH_LOCK: `${process.pid}:STALE-NONCE-FROM-AN-OLDER-HOLD`,
+        };
+        const r = spawnSync(process.execPath, [WRAPPER, 'run', 'stale child', '--', 'node', '-e', 'console.log("WALKED-IN")'], {
+            env, encoding: 'utf8', timeout: 60_000,
+        });
+        rmSync(dir, { recursive: true, force: true });
+        expect(r.stdout ?? '').not.toContain('WALKED-IN');
+        expect(r.stderr ?? '').toContain('bench busy');
+    });
+
     it('releases the lock on the way out, including when the command fails', () => {
         //  A lock leaked by a crashed run would wedge the bench until someone deleted the
         //  file by hand. Holder-liveness makes a leak recoverable, but not leaking is better.
@@ -121,6 +185,7 @@ describe('the bench mutex', () => {
         const env: Record<string, string> = {
             ...(process.env as Record<string, string>),
             DRIFT_BENCH_LOCK_FILE: lockFile,
+            VITEST: '1',
         };
         delete env.DRIFT_BENCH_LOCK;
         try {

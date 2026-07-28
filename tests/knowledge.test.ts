@@ -133,8 +133,8 @@ describe('knowledge — applyLearningEvent / recordTrying: mutates in place, cla
 
 describe('knowledge — item 4: mapping existing verbs to domains (only what the ruling names)', () => {
     const ALL_NODE_KINDS: NodeKind[] = [
-        'driftwood', 'deadfall', 'tree', 'rock', 'berrybush', 'coconutpalm', 'reed', 'shellfish', 'crashbox', 'quarry', 'salvage'
-    ];
+        ...ALL_NODE_KINDS //  C3 NOTE: this was a hand-typed copy SHADOWING the derived import
+    ];                     //  300 lines above the fix that introduced it — the A8 pattern, surviving.
 
     it('felling (tree), quarrying, and salvage map to Harvesting & fabrication; everything else stays unmapped (floor)', () => {
         const expected: Record<string, string | null> = {
