@@ -3,6 +3,26 @@
 
 ---
 
+**D-078 · 2026-07-28 — Ch.10 v1 RATIFIED, with amendments (C1).** Slices 1–5 and their ordering are **OPERATIVE and binding**; Slice 6+ remain named and **PROVISIONAL**, per the draft's own classes. Five amendments bind the text:
+
+**(A) The Fun Gate (Bible Book X) is supplied as the plan's governing law.** **F1** (embodied feel / verb quality on a real phone), **F2** (one complete expedition loop as *pleasure*, not operations) and **F3** (one truthful first night at the v0_14 balance target) are **Slice 1's certification targets**. **F4** — the Thin Complete Road: one continuous authored path from first minute through survival, contact, departure, boundary, external reception, human consequence — **is its own slice.** Catalogues (routes, crafts, endings, deaths, junctions) open **family-by-family only behind F4 plus each family's representative proof** (Laws 65–69), bound explicitly in the plan text rather than left implicit.
+
+**(B) The collision model.** Gate 0 closes with its **unified root cause DOCUMENTED** — investigation debt paid, no longer amnestied-unknown. The unified **fix** becomes **Slice 1's opening item**, fail-then-pass proven across all three historical symptoms (movement hard-block, shelter pin, quarry stall) plus a **feel-court check: sliding along an obstacle must read as sliding, never as stuck.**
+
+**(C) Illness/sickness ⚑ resolved** — its own **Medicine Slice**, with the remedy tier, sequenced **after** the Threats & Fauna slice so the medicine shelf serves wounds and sickness together; schedulable earlier as a light slice between heavy ones at Ch.10's discretion. **The Threats & Fauna slice stays lean** — it already carries the plan's largest performance risk.
+
+**(D) A parallel Design-Track lane, non-blocking:** register completion, Ch.3 (junk/flavour), Ch.7's TUNE translation (feeds Threats & Fauna and Medicine), Ch.9's detail work, and C1's own v2.2 section audits. It **converts PROVISIONAL sections as each lands and never gates a slice.**
+
+**(E) File logistics:** Bible v2.0, v2.2 and the comparison sheet file at `/docs/reference` (director attaching); Bible v2.0 additionally to the Project library for SON. **The comparison sheet becomes a living document, regenerated at every gate close.**
+
+**Sequence otherwise unchanged:** Gate 0's machine half finishes → the director's playtest verdict → Slice 1.
+
+---
+
+**D-077 · 2026-07-28 — Ch.10 gate amendment (C1).** Register completion gates Ch.10's **FINAL ratification of provisional sections**, not its **v1 drafting**. Ratified reception rulings are **Effectivity-Law witnesses** ([[D-076]]) — first read: C1 at reception; second: SON's register. Ch.10 v1 sections class as **OPERATIVE** (resting on a ratified ruling, D-ref cited) or **PROVISIONAL** (resting on an unread remainder or an unaudited v2.2 section, converting when its witness lands).
+
+---
+
 **D-076 · 2026-07-27 — Build law 12, the Effectivity Law** (ratified, applies from ratification, no retroactive audit required). Every ledger law and amendment must declare its **effectivity class**, explicitly, going forward:
 
 **OPERATIVE** — in force against the live game; its satisfying mechanism is **NAMED** (a property test, a code path, an enforced check) and either already exists or lands in the same batch. **A live-game guarantee with no shipped witness is illegal under this law.** *This law's own witness is the docs-integrity check plus C3's audit reading — stated explicitly here so it does not become the first law to violate itself.*

@@ -23,6 +23,10 @@
 - **Repo: https://github.com/karimfz007/drift** (public). **Play URL: https://karimfz007.github.io/drift/**. Archives: `/builds/c01/` (2D lab) through `/builds/c05/` (this one).
 - **Current experience bet (C05):** does *investment* — something placed, something that can fall into disrepair, something worth returning to — deepen the pull the moment-to-moment loop already proved, or does it just add chores?
 
+## The standing plan
+
+- **Ch.10 v1 is RATIFIED and is the standing plan (D-078).** Slices 1–5 and their ordering are **OPERATIVE and binding**; Slice 6+ are named and **PROVISIONAL**. The **Fun Gate (Bible Book X)** governs it: F1/F2/F3 are Slice 1's certification targets, **F4 (the Thin Complete Road) is its own slice**, and catalogues open family-by-family only behind F4 plus each family's representative proof. **The collision model's unified fix is Slice 1's opening item.** Illness has its own **Medicine Slice** after Threats & Fauna. A parallel **Design-Track lane** converts PROVISIONAL sections as witnesses land and never gates a slice. Sequence: Gate 0's machine half → the director's playtest verdict → Slice 1. Classification rules are D-077.
+
 ## Dossier tracker
 ***This table is the SINGLE SOURCE OF TRUTH for chapter numbering (D-060, ops v1.10 §2).*** Where it and any conversation disagree, this table is right by definition, and a renumber is only real once it lands here. *First captured in this doc as of D-054/D-055 (2026-07-24/25) — this repo had no written record of the Living Island dossier's chapter numbering before this pass. Only the chapters actually named in a ruling to C2 are populated below; the rest are known to C1/SON/the director but have not yet been relayed into these docs. Don't infer content for an unlisted chapter — ask C1/SON for the relay before building against it.*
 
