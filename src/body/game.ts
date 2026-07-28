@@ -549,9 +549,45 @@ export class Game {
 
     // ---- Picking ---------------------------------------------------------
 
-    private pickNode(screenX: number, screenY: number): NodeView | null {
+    /**
+     * The one and only ray the world is resolved with — and the one place the survivor's own
+     * body is excluded from it.
+     *
+     * FIX 5, third attempt. Attempt one made the pack `isPickable` and it won `scene.pick`
+     * against nine gather verbs, because a body drawn centre-screen is nearer to the camera
+     * than anything you walk up to (D-074). Attempt two used a screen-space region, which
+     * could not corrupt picking but had no way to tell the survivor's silhouette from the
+     * ground behind them — so it ate `empty-ground`, the player's own "never mind" gesture,
+     * across a 40–100 px band (C3's closing audit, finding A2).
+     *
+     * So: the pack is a real mesh again and is hit only when the ray genuinely strikes it —
+     * no approximation — while every WORLD resolver goes through this helper, which filters
+     * the body out. The exclusion lives HERE, once. My objection to this approach the first
+     * time was that it needed remembering at every pick site; a shared helper is what
+     * removes that, the same way `panel()` came to own the reveal it kept being forgotten at.
+     */
+    private worldPick(screenX: number, screenY: number) {
         const rect = this.canvas.getBoundingClientRect();
-        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
+        return this.scene.pick(
+            screenX - rect.left,
+            screenY - rect.top,
+            (m: AbstractMesh) => m.isPickable && !m.metadata?.isBody
+        );
+    }
+
+    /** The survivor's own body, hit only by a ray aimed squarely at it. */
+    private pickedBackpack(screenX: number, screenY: number): boolean {
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.scene.pick(
+            screenX - rect.left,
+            screenY - rect.top,
+            (m: AbstractMesh) => Boolean(m.metadata?.backpack)
+        );
+        return Boolean(hit?.hit);
+    }
+
+    private pickNode(screenX: number, screenY: number): NodeView | null {
+        const hit = this.worldPick(screenX, screenY);
         if (hit?.hit && hit.pickedMesh?.metadata?.nodeId) {
             const view = this.nodes.find(hit.pickedMesh.metadata.nodeId as string);
             if (view?.node.available) return view;
@@ -576,28 +612,8 @@ export class Game {
      * (no explanation owed) apart from "hit something real that produced no verb" (D-042's
      * fail-loud law: silence is never a legal outcome for the latter).
      */
-    /**
-     * Is this screen point on the pack the survivor is wearing?
-     *
-     * Purely screen-space: the pack mesh is deliberately NOT pickable (see `entities.ts`),
-     * so this never touches `scene.pick`. The survivor is drawn at their own world position,
-     * so the region is that position projected, raised to shoulder height, with a radius
-     * scaled to how large they currently appear.
-     */
-    private tappedPackRegion(screenX: number, screenY: number): boolean {
-        const s = session().state;
-        const centre = runtime.projectToScreen(s.player.x, s.player.y);
-        if (!centre) return false;
-        //  Raise from the feet toward the pack, and scale the target with apparent size: the
-        //  camera keeps a near-constant distance, so a fixed radius reads the same on screen.
-        const dx = screenX - centre.x;
-        const dy = screenY - (centre.y - TUNE.packTapScreenRaisePx);
-        return Math.hypot(dx, dy) <= TUNE.packTapScreenRadiusPx;
-    }
-
     private pickHitPoint(screenX: number, screenY: number): { x: number; z: number; unexpectedMesh: string | null } | null {
-        const rect = this.canvas.getBoundingClientRect();
-        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
+        const hit = this.worldPick(screenX, screenY);
         if (hit?.hit && hit.pickedMesh?.metadata?.pond) return { x: POND.x, z: POND.y, unexpectedMesh: null };
         if (hit?.hit && hit.pickedMesh?.metadata?.fire) {
             const f = session().state.fire;
@@ -681,17 +697,7 @@ export class Game {
         //  within about 2.8 m of each other — a REGRESSION found via the device harness:
         //  a tap aimed at storage kept silently repairing the shelter instead.
         const point = this.pickHitPoint(screenX, screenY);
-        if (!point) {
-            //  The ray left the world entirely (sky, or over the shoulder). The pack can
-            //  still be there — a survivor on a ridge line has open sky behind them.
-            if (this.tappedPackRegion(screenX, screenY)) {
-                this.recordTap(screenX, screenY, 'backpack');
-                this.openLoadout();
-                return;
-            }
-            this.recordTap(screenX, screenY, 'no-hit');
-            return;
-        }
+        if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
 
         const s = session().state;
         type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
@@ -714,21 +720,11 @@ export class Game {
         }
         candidates.sort((a, b) => a.d - b.d);
         const winner = candidates[0];
-        if (!winner && this.tappedPackRegion(screenX, screenY)) {
-            //  THE PACK ON THE SURVIVOR'S BACK (director's request), redone properly.
-            //
-            //  The first attempt made the pack mesh `isPickable` and it broke nine gather
-            //  verbs at once: `scene.pick` returns the NEAREST mesh, and a pack worn on a
-            //  body drawn centre-screen is nearer than anything the player walks up to, so
-            //  `pickNode` got the pack and its near-miss fallback then measured from a point
-            //  on the survivor's own body, past `nodeTapSlack`. Reverted in D-074.
-            //
-            //  This is a SCREEN-SPACE region instead. The mesh stays unpickable, so it never
-            //  enters `scene.pick` at all and **cannot** corrupt node or world resolution —
-            //  the failure is impossible by construction rather than guarded against by an
-            //  ordering rule that a future pick site could forget. And it is tested only
-            //  once every world target has already declined the tap, so nothing the player
-            //  was actually aiming at can ever lose to it.
+        //  The pack, resolved only after every world target has declined AND only when the
+        //  ray genuinely struck the survivor's body. `empty-ground` — the player's "never
+        //  mind" gesture — therefore stays theirs: a tap on bare ground beside the survivor
+        //  misses the mesh and falls through to it, which is the regression C3's A2 caught.
+        if (!winner && this.pickedBackpack(screenX, screenY)) {
             this.recordTap(screenX, screenY, 'backpack');
             this.openLoadout();
             return;

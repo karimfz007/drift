@@ -1401,6 +1401,38 @@ async function main() {
             `lateral ${lateral.toFixed(2)}m, closed ${closed.toFixed(2)}m, ended (${afterSlide.player.x.toFixed(1)},${afterSlide.player.y.toFixed(1)})`);
     }
 
+    //  FIX 5 — THE PACK ON THE SURVIVOR'S BACK, and the witness it shipped twice without.
+    //  C3's closing audit found the redo had NO test of any kind (finding A1), on the commit
+    //  that redid it, two commits after the laws forbidding exactly that were ratified. The
+    //  body layer has no unit coverage by construction (it imports Babylon; the purity law
+    //  keeps that out of the brain), so the device harness is the ONLY possible witness.
+    //
+    //  Both directions are asserted, because both have now failed in production:
+    //    attempt 1 — a pickable pack won `scene.pick` and broke nine gather verbs (D-074)
+    //    attempt 2 — a screen-space region ate `empty-ground`, the "never mind" tap (C3 A2)
+    await editSave('state.player = { x: 0, y: 40 };');
+    await sleep(600);
+    const meAt = await screenOf(0, 40);
+    if (meAt) {
+        const column = [];
+        for (const dy of [0, 20, 40, 70, 120]) {
+            await tapAt(meAt.x, meAt.y - dy, 55);
+            await sleep(450);
+            const opened = await page.evaluate(() => {
+                const el = document.querySelector('.panel.loadout');
+                if (el) el.querySelector('.close-btn')?.click();
+                return Boolean(el);
+            });
+            column.push(`${dy}:${opened ? 'pack' : 'ground'}`);
+            if (opened) await sleep(700);
+        }
+        const packHits = column.filter((c) => c.endsWith('pack')).length;
+        check('FIX 5 — the pack on the survivor is tappable at all', packHits > 0, column.join(' '));
+        //  ...and it must NOT swallow the column. A tap on bare ground beside the survivor is
+        //  the player's "never mind", and it stays theirs.
+        check('FIX 5 — tapping bare ground beside the survivor is still empty-ground, not the pack', packHits < column.length, column.join(' '));
+    }
+
     //  "Fast movement (testing)": a real Settings toggle that measurably speeds up walking.
     //  D-072 item 2 — THE TEST BUG. This used to teleport to a fixed (0, 104) and walk due
     //  south for 2.5 s, which on a run that had already built a shelter nearby walked the

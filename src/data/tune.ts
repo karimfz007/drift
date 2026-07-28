@@ -76,18 +76,6 @@ export const TUNE = {
     /** [TUNE] C03+ — the castaway's collision radius, in metres. Governs how close you can
      *  get to a trunk or a rock — a reachability number, so it belongs here (D-026's rule). */
     playerCollisionRadius: 0.4,
-    /** [TUNE] The pack's tap target, in SCREEN pixels above the survivor's projected feet.
-     *  Screen-space on purpose: the pack mesh must never be pickable, because a collider on
-     *  a body drawn centre-screen wins `scene.pick` against everything the player walks up
-     *  to and breaks gathering outright (D-074). */
-    //  Measured, not guessed: sweeping the vertical band on device put the pack ~70 px
-    //  above the survivor's projected feet at this camera distance (46 was an estimate and
-    //  sat below it, on the legs).
-    packTapScreenRaisePx: 70,
-    /** [TUNE] Radius of that same screen-space target. Generous enough to hit with a thumb,
-     *  and harmless at any size because it is only consulted once every world target has
-     *  already declined the tap. */
-    packTapScreenRadiusPx: 34,
     /** [TUNE] C03+ — collision footprints, in metres, for the things you cannot walk through. */
     treeCollisionRadius: 0.8,
     rockCollisionRadius: 1.1,
