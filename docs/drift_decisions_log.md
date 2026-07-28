@@ -16,6 +16,18 @@
 
 Its own landing is witnessed the same way, in the report that ships it — a second push and a second origin re-fetch, quoted, not asserted.
 
+**Amendment, found by applying this clause to itself within the hour it was written.** The raw URL is **CDN-cached and lags origin by minutes**. Immediately after D-082 was pushed as `f7b5b6e`, the three paths disagreed:
+
+| path | saw |
+|---|---|
+| `git ls-remote origin main` | `f7b5b6e…` — the new commit |
+| GitHub **API** (`/contents`, `?ref=main`) | 168981 bytes, **D-082 present** |
+| **raw URL** | 166771 bytes — byte-identical to the *previous* fetch, **D-082 absent**, head still D-081 |
+
+So a raw-URL read that disagrees with a push means **"not yet propagated"**, not "not pushed" — and a raw URL alone is therefore **not a sufficient liveness witness**. It must be paired with `ls-remote` or the API, and the three must be reported together when they differ. This cuts the other way too, and that is the half that matters: **C1's finding that origin was at D-078 stands regardless**, because a stale CDN can only ever show something *older* than origin, never something newer. A cached raw URL cannot invent eight commits.
+
+**Practical note for whoever debugs this next:** `curl` on the build machine cannot reach the raw URL at all — `schannel: CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`, exit 35, on every HTTPS host. `git` and PowerShell's stack both work fine. That is a local certificate-revocation setting, **not** a network outage, and not evidence about origin either way.
+
 **Class: OPERATIVE** — mechanism named: **the origin re-fetch itself**, required in every session report and checkable by C3 against the public URL, plus the pushed SHA which C1 or SON can verify independently on any machine. A report that names no SHA and quotes no re-fetch is, under this clause, **making no claim at all**. Ratified as ops **§5 law 9 clause (d)**, ops → **v1.11**. *(Class is C2's reading; C1 to confirm or correct.)*
 
 ---
