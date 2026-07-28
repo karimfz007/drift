@@ -3,6 +3,23 @@
 
 ---
 
+**D-082 · 2026-07-28 — Vacuity clause (d): "local is not live."** Any claim that a commit, document, or ledger entry is **live**, **landed**, or **applied** must be witnessed against **ORIGIN** — the public raw URL or the API — **never local HEAD**. Every docs or build session report must cite the **pushed SHA** and an **origin re-fetch confirmation**, not a local verification.
+
+**Why this is a law and not a note.** Gate 0's close was reported as landed across two sessions. Every local check agreed: `git status` clean, `docs-integrity` green at 81 decisions, the ledger reading D-081 at its head. All of it true, and all of it about the wrong machine. Origin was eight commits behind at `57beb2d`, and SON — who reads the public raw URL — could see none of it. C1 caught it independently via two cache-independent paths. **A clean local tree is not evidence of anything reaching anyone.** This is the Vacuity Law's own failure mode moved up a layer: a verification that witnesses something other than its target.
+
+**This entry is witnessed by its own rule.** The recovery push it describes, confirmed against origin before this entry was written:
+
+- **Pushed SHA:** `8da48fcbf46609aaca3d8b8bd47573c3d2c8e4f8` (`57beb2d..8da48fc  main -> main`)
+- **`git ls-remote origin main`:** `8da48fcbf46609aaca3d8b8bd47573c3d2c8e4f8	refs/heads/main`
+- **Public raw URL** (`raw.githubusercontent.com/karimfz007/drift/main/docs/drift_decisions_log.md`): **HTTP 200**, 166771 bytes, head entry line read back verbatim:
+  > `**D-081 · 2026-07-28 — Terminology ruling: three vocabularies, none overloading (C1).**`
+
+Its own landing is witnessed the same way, in the report that ships it — a second push and a second origin re-fetch, quoted, not asserted.
+
+**Class: OPERATIVE** — mechanism named: **the origin re-fetch itself**, required in every session report and checkable by C3 against the public URL, plus the pushed SHA which C1 or SON can verify independently on any machine. A report that names no SHA and quotes no re-fetch is, under this clause, **making no claim at all**. Ratified as ops **§5 law 9 clause (d)**, ops → **v1.11**. *(Class is C2's reading; C1 to confirm or correct.)*
+
+---
+
 **D-081 · 2026-07-28 — Terminology ruling: three vocabularies, none overloading (C1).** Mechanical amendment, **no substance change**. C2's Gate 0 remediation surfaced a real collision — **OPERATIVE** was carrying two unrelated meanings at once, a law's effectivity class under [[D-076]] and a Ch.10 plan section's standing under [[D-077]]. Resolved by separating the vocabularies:
 
 - **LAWS** — **OPERATIVE** / **DESIGN-BINDING** ([[D-076]]), unchanged.
