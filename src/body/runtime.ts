@@ -52,6 +52,11 @@ export const runtime = {
     //  D-065: what a tap at this screen point WOULD target, with no side effect. The
     //  shelter's tappable band cannot be measured any other way — see `tapTargetAt`.
     tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null,
+    //  What the LAST REAL tap actually resolved to. The probe above answers "what would a
+    //  tap here hit"; this answers "what did the tap the player just made actually do".
+    //  Comparing them is the only way to catch the two paths drifting apart, which they
+    //  have now done three times (C3 finding A9).
+    lastTapOutcome: (() => null) as () => string | null,
     //  Installed by the game — see the `stick`/`velocity` debug hooks above.
     stickReadout: (() => ({ x: 0, y: 0, magnitude: 0 })) as () => { x: number; y: number; magnitude: number },
     velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number },
@@ -189,6 +194,7 @@ function installDebugHook(): void {
         //  harness exercises the shipped verb rather than a re-implementation of it.
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
+        lastTapOutcome: () => runtime.lastTapOutcome(),
         //  D-064: the harness drives the REAL spawn and the REAL placement validator, so its
         //  reachability check exercises the shipped rule rather than re-deriving it.
         spawnSalvage: (seed: number) => spawnSalvageNode(seed),

@@ -257,6 +257,7 @@ export class Game {
         //  an assumption. Pickable count matters twice over — every pickable mesh is work
         //  for each interaction raycast, not just for the renderer.
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
+        runtime.lastTapOutcome = () => this.tapBreadcrumbs[this.tapBreadcrumbs.length - 1]?.outcome ?? null;
         runtime.stickReadout = () => this.controls.read();
         runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
         runtime.fovReadout = () => (this.camera.fov * 180) / Math.PI;
@@ -639,8 +640,32 @@ export class Game {
         if (node) return `node:${node.node.id}`;
         const point = this.pickHitPoint(screenX, screenY);
         if (!point) return null;
+        //  C3 finding A9: this used to re-implement the tap's candidate collection — same
+        //  radii, same sort, typed out twice — so the probe could report a different answer
+        //  than the player's own tap produced. That is precisely what a harness-fidelity
+        //  probe must never do, and it had already drifted once before. Worse, when FIX 5
+        //  added the pack branch to the real tap, this copy did not get it, so the probe
+        //  could not have reported `backpack` at all. One resolver now, called by both.
+        const winner = this.worldCandidateAt(point);
+        if (winner) return winner;
+        return this.pickedBackpack(screenX, screenY) ? 'backpack' : null;
+    }
+
+    /**
+     * The nearest world target to a struck point, or null. THE one copy of this rule.
+     *
+     * Every candidate within its own forgiveness radius is collected and the NEAREST centre
+     * wins — not the first one checked. Shelter and storage are built close together in
+     * practice (both placed `~2.2 m` ahead of the builder), so their forgiveness radii can
+     * overlap; an earlier first-match if-chain let the shelter (checked first) swallow taps
+     * square on the storage crate whenever the two sat within about 2.8 m of each other — a
+     * REGRESSION found via the device harness: a tap aimed at storage kept silently
+     * repairing the shelter instead.
+     */
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | null {
         const s = session().state;
-        const candidates: Array<{ kind: string; d: number }> = [];
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
+        const candidates: Candidate[] = [];
         if (s.fire.built) {
             const d = distance(point.x, point.z, s.fire.x, s.fire.y);
             if (d <= TUNE.fireTapRadius + 1.5) candidates.push({ kind: 'fire', d });
@@ -680,38 +705,13 @@ export class Game {
             return;
         }
 
-        //  Otherwise, the fire, the pond, the shelter, or storage, by the point the ray struck.
-        //  Every candidate within its own forgiveness radius is collected and the NEAREST
-        //  centre wins — not the first one checked. Shelter and storage are built close
-        //  together in practice (both placed `~2.2 m` ahead of the builder), so their
-        //  forgiveness radii can overlap; an earlier first-match if-chain let the shelter
-        //  (checked first) swallow taps square on the storage crate whenever the two sat
-        //  within about 2.8 m of each other — a REGRESSION found via the device harness:
-        //  a tap aimed at storage kept silently repairing the shelter instead.
+        //  Otherwise, the fire, the pond, the shelter, or storage, by the point the ray
+        //  struck — resolved by `worldCandidateAt`, the single copy of that rule, which the
+        //  harness-fidelity probe calls too (C3 finding A9).
         const point = this.pickHitPoint(screenX, screenY);
         if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
 
-        const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
-        const candidates: Candidate[] = [];
-        if (s.fire.built) {
-            const d = distance(point.x, point.z, s.fire.x, s.fire.y);
-            if (d <= TUNE.fireTapRadius + 1.5) candidates.push({ kind: 'fire', d });
-        }
-        {
-            const d = distance(point.x, point.z, POND.x, POND.y);
-            if (d <= POND.radius + TUNE.pondTapSlack + 1.5) candidates.push({ kind: 'pond', d });
-        }
-        if (s.shelter.built) {
-            const d = distance(point.x, point.z, s.shelter.x, s.shelter.y);
-            if (d <= TUNE.shelterCollisionRadius + 1.5) candidates.push({ kind: 'shelter', d });
-        }
-        if (s.storage.built) {
-            const d = distance(point.x, point.z, s.storage.x, s.storage.y);
-            if (d <= TUNE.storageCollisionRadius + 1.5) candidates.push({ kind: 'storage', d });
-        }
-        candidates.sort((a, b) => a.d - b.d);
-        const winner = candidates[0];
+        const winner = this.worldCandidateAt(point);
         //  The pack, resolved only after every world target has declined AND only when the
         //  ray genuinely struck the survivor's body. `empty-ground` — the player's "never
         //  mind" gesture — therefore stays theirs: a tap on bare ground beside the survivor
@@ -722,9 +722,9 @@ export class Game {
             return;
         }
         if (winner) {
-            this.pending = { kind: winner.kind };
+            this.pending = { kind: winner };
             this.cues.play(CUES.target);
-            this.recordTap(screenX, screenY, winner.kind);
+            this.recordTap(screenX, screenY, winner);
             return;
         }
         //  Fail-loud law (D-046(d) ruling, D-045 lineage): the ray hit something real that

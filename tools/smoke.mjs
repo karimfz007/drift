@@ -120,6 +120,37 @@ function check(name, passed, detail = '') {
     if (!passed) failures++;
     console.log(`  ${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
+
+/**
+ * A DEFECT THAT IS KNOWN, MEASURED, AND OWNED BY A NAMED FUTURE SLICE.
+ *
+ * C3 finding A5: the collide-and-slide check was green while the thing it described was
+ * broken, because its pass condition was a disjunction whose second half ("did they close
+ * distance") is satisfied by simply walking up to the obstacle. It reported PASS on a
+ * measured pin of `lateral 0.00m`. Making it honest turns it red — and it SHOULD be red,
+ * because the collision model is still radial push-out and D-078(B) makes the unified fix
+ * Slice 1's opening item. It is not fixed. It is scheduled.
+ *
+ * The wrong answers here are both available and both bad: leave the check vacuous so the
+ * run stays green, or let a scheduled defect count as a regression and drown the signal.
+ * So a known-open defect is measured honestly, printed as OPEN, counted separately from
+ * failures, and MUST name what closes it. Two guards against this becoming a dumping
+ * ground: every OPEN item is reprinted in the summary, and if one ever PASSES the run says
+ * so loudly — a defect that has quietly closed must be promoted back to a real check, not
+ * left sitting in the amnesty list where it protects nothing.
+ */
+const openDefects = [];
+function knownOpen(name, passed, detail, closedBy) {
+    results.push({ name, passed, detail, knownOpen: true, closedBy });
+    if (!passed) openDefects.push({ name, detail, closedBy });
+    if (passed) {
+        console.log(`  OPEN->PASS  ${name}${detail ? ` — ${detail}` : ''}`);
+        console.log(`              this known-open defect now PASSES. Promote it to check() — ${closedBy}`);
+    } else {
+        console.log(`  OPEN  ${name}${detail ? ` — ${detail}` : ''}`);
+        console.log(`        known open, not a regression — closed by: ${closedBy}`);
+    }
+}
 function findChrome() {
     for (const c of CHROME_CANDIDATES) if (existsSync(c)) return c;
     throw new Error('No Chrome found.');
@@ -1002,18 +1033,48 @@ async function main() {
     //  durability instead of opening contents", which is repair winning a priority it should
     //  never have had. Storage durability has decayed by now and the player is holding wood,
     //  so this is precisely the state that used to repair.
+    //  ARRIVAL GATE, and a POLL instead of a fixed wait. These four storage checks have been
+    //  failing as `panel ABSENT` for several sessions and were carried as a state-dependent
+    //  mystery. They are not a mystery and, on this evidence, not a game defect: the run that
+    //  exposed it also failed `the Look button opens settings` with the detail
+    //  `panels=[panel loadout visible]` — the loadout WAS open, just not within 600 ms, and
+    //  then it sat there blocking Settings and the debug-info button. Seven failures, one
+    //  cause. Storage durability had dropped 83.0 -> 75.0 across the check, which is a lot of
+    //  game time: the castaway was still WALKING.
+    //
+    //  This is the quarry three-taps defect again (`approach()` gives up short against the
+    //  radial push-out, the harness taps before arrival, the game is then blamed). The quarry
+    //  got a positive arrival assertion when that was found; storage never did. It has one now.
+    //  The wait is a poll with a real budget, so the check measures whether the box opens AT
+    //  ALL rather than whether it opens inside an arbitrary 600 ms — and the time it took is
+    //  reported, so "it opens, slowly" can never again read as "it does not open".
     const storageDurBefore = (await live()).storage.durability;
+    const preTapDist = await (async () => {
+        const st = await live();
+        return Math.hypot(st.player.x - afterStorage.storage.x, st.player.y - afterStorage.storage.y);
+    })();
+    check('setup — the player actually REACHED the storage box before tapping it',
+        preTapDist <= TUNE.interactRadiusM,
+        `${preTapDist.toFixed(2)} m from the box (interact radius ${TUNE.interactRadiusM} m)`);
     await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
-    await sleep(600);
-    const storageOpened = await page.evaluate(() => {
-        const el = document.querySelector('.panel.loadout');
-        if (!el) return null;
-        return {
-            heading: el.querySelector('h2') ? el.querySelector('h2').textContent.trim() : '',
-            hasUse: Boolean(el.querySelector('.use-storage-btn')),
-            opacity: getComputedStyle(el).opacity
-        };
-    });
+    const openT0 = Date.now();
+    let storageOpened = null;
+    for (let waited = 0; waited < 6000; waited += 250) {
+        await sleep(250);
+        storageOpened = await page.evaluate(() => {
+            const el = document.querySelector('.panel.loadout');
+            if (!el) return null;
+            return {
+                heading: el.querySelector('h2') ? el.querySelector('h2').textContent.trim() : '',
+                hasUse: Boolean(el.querySelector('.use-storage-btn')),
+                opacity: getComputedStyle(el).opacity
+            };
+        });
+        if (storageOpened) break;
+    }
+    const openTookMs = Date.now() - openT0;
+    check('the box opens promptly, not eventually — a tap you have to wait on reads as a dead tap',
+        Boolean(storageOpened) && openTookMs <= 1500, `took ${openTookMs} ms`);
     const afterOpenTap = await live();
     check('URGENT — tapping the storage box OPENS it, and never silently repairs it', Boolean(storageOpened) && afterOpenTap.storage.durability <= storageDurBefore + 0.01 && afterOpenTap.inventory.wood === 6, `panel ${storageOpened ? storageOpened.heading : 'ABSENT'}, durability ${storageDurBefore.toFixed(1)} -> ${afterOpenTap.storage.durability.toFixed(1)}, wood ${afterOpenTap.inventory.wood}`);
     check('URGENT — the opened box names what the move will do, rather than guessing for you', Boolean(storageOpened) && storageOpened.hasUse);
@@ -1386,19 +1447,25 @@ async function main() {
     //  pressing into a wall slides you along it rather than nailing you to it.
     const shelterAt = (await live()).shelter;
     if (shelterAt.built) {
+        //  C3 finding A5. The old form passed if `lateral > 0.15 || closed > 4.0` — and
+        //  `closed` is satisfied by merely WALKING UP to the shelter from 6 m out, which a
+        //  fully pinned player does on the way to being pinned. So it printed PASS on a
+        //  measured `lateral 0.00m`: green, on the exact defect it was written to detect.
+        //
+        //  The honest question is not "did they move" but "does pressing STILL move them
+        //  once they are already touching the wall". So: close the distance first, take the
+        //  contact position, then keep pressing and measure only what happens AFTER that.
         await editSave(`state.player = { x: ${shelterAt.x}, y: ${shelterAt.y + 6} };`);
-        const beforeSlide = await live();
         await faceNode(shelterAt.x, shelterAt.y);
-        await walkToward(shelterAt.x, shelterAt.y, 3.0);
-        const afterSlide = await live();
-        const lateral = Math.abs(afterSlide.player.x - beforeSlide.player.x);
-        const closed = Math.hypot(beforeSlide.player.x - shelterAt.x, beforeSlide.player.y - shelterAt.y)
-                     - Math.hypot(afterSlide.player.x - shelterAt.x, afterSlide.player.y - shelterAt.y);
-        //  Either they slid sideways, or they are still moving after contact. What must NOT
-        //  happen is the old behaviour: dead stop, zero lateral, parked on the contact point.
-        check('PART 2 — walking head-on into a structure SLIDES, it does not pin the player',
-            lateral > 0.15 || closed > 4.0,
-            `lateral ${lateral.toFixed(2)}m, closed ${closed.toFixed(2)}m, ended (${afterSlide.player.x.toFixed(1)},${afterSlide.player.y.toFixed(1)})`);
+        await walkToward(shelterAt.x, shelterAt.y, 3.0);        // travel — not evidence
+        const atContact = (await live()).player;
+        await walkToward(shelterAt.x, shelterAt.y, 2.0);        // press INTO it — the evidence
+        const afterPress = (await live()).player;
+        const moved = Math.hypot(afterPress.x - atContact.x, afterPress.y - atContact.y);
+        knownOpen('PART 2 — pressing into a structure still MOVES you (slide, not pin)',
+            moved > 0.20,
+            `moved ${moved.toFixed(2)}m in 2s of pressing, from (${atContact.x.toFixed(1)},${atContact.y.toFixed(1)}) to (${afterPress.x.toFixed(1)},${afterPress.y.toFixed(1)})`,
+            'D-078(B) — the unified collision fix, Slice 1 opening item, fail-then-pass across all three symptoms');
     }
 
     //  FIX 5 — THE PACK ON THE SURVIVOR'S BACK, and the witness it shipped twice without.
@@ -2501,7 +2568,24 @@ async function main() {
     check('no console errors during the whole run', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 
     await browser.close();
-    console.log(`\n${results.length - failures}/${results.length} checks passed. Screenshots in .smoke/\n`);
+    const openCount = results.filter((r) => r.knownOpen).length;
+    const graded = results.length - openCount;
+    console.log(`
+${graded - failures}/${graded} checks passed. Screenshots in .smoke/`);
+    //  Known-open defects are reprinted here, every run, so a scheduled defect can never
+    //  quietly become a forgotten one. They are NOT counted as passes and NOT counted as
+    //  failures — a run that reads "all green" while carrying an unmeasured pin is exactly
+    //  what C3's finding A5 was about.
+    if (openDefects.length > 0) {
+        console.log(`
+${openDefects.length} KNOWN-OPEN defect(s) — measured, not fixed, each owned by a named item:`);
+        for (const d of openDefects) {
+            console.log(`  OPEN  ${d.name}`);
+            console.log(`        ${d.detail}`);
+            console.log(`        closed by: ${d.closedBy}`);
+        }
+    }
+    console.log('');
     process.exit(failures === 0 ? 0 : 1);
 }
 

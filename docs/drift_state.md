@@ -1,7 +1,7 @@
 # THE FIRST NIGHT (DRIFT) — State
 *The now-pointer. Canonical home: repo `/docs/drift_state.md`. Regenerated at every cycle CLOSE; C2 updates it after ship (Ops §2). This is the only handover document — any session can recover the project from here plus the cycle log.*
 
-**As of:** 2026-07-27 (**URGENT player-safety fix SHIPPED (D-065)** — the "Carried" freeze root-caused to a panel that was created but never revealed: `.panel` is `opacity: 0` until a `visible` class lands, `showLoadout` was the one panel that never added it, so it sat full-screen, transparent and `pointer-events: auto`, swallowing every tap while `panelOpen` blocked Settings and the clock kept running. The reveal now belongs to `panel()` itself, and `guardPanelLock` takes control back if any panel ever holds it without showing itself. Also: storage's "+15 durability" was a repair-priority starvation, not a D-051 hit-test recurrence; the shelter's poles were unpickable so its silhouette was not its hit target; carried items now open from a drawn **backpack** and storage from **tapping the box**. Previously: **Gate 0 items 1/2/4 (D-063)** and **reachability, third strike (D-064)**, both **PASS-WITH-NOTES** from C3 — finding A1 (`openDeath` never joined the panel pair) remediated in D-065; A2–A5, B1–B2 remain open. Before that: **Ch.6, "The Body Model" SHIPPED (D-058)** — carry weight + load bands, the rest redesign replacing C05's instant sleep-refill, fatigue with its own offline law, and the death cost; brain-layer, one long session under the new supervision-by-waypoint doctrine (**D-057, ops → v1.6**). Previously: **Ch.2, "The Knowledge Model" (D-056, PASS-WITH-NOTES)** — domain state, the learning-event evaluator, three binding C1 amendments honored, brain-layer only; device-harness confirmed 136/138; C3's own device-harness re-run was blocked by a third occurrence of the worktree-destruction hazard, now escalated as a tracked item — follows **Ch.1 v3 (D-055)** and **charter → v0.5, the social economy pillar (D-054)**)
+**As of:** 2026-07-28 (**GATE 0 — the machine half CLOSED**, pending the director's playtest verdict. **Ch.10 v1 is RATIFIED** ([[D-078]]) with five amendments — the Fun Gate (Bible Book X) governs, the unified collision fix is **Slice 1's opening item**, illness gets its own Medicine Slice after Threats & Fauna, a parallel non-blocking Design-Track lane converts PROVISIONAL sections as they land — over the gate amendment that let v1 be drafted before the register completes ([[D-077]]). Both are **DESIGN-BINDING**. This batch also closed **standing hazard #4** (hook-driven device checks, [[D-075]]), ratified **build law 12, the Effectivity Law** ([[D-076]]), built the **bench mutex** and then found it deadlocked against the harness it exists to guard, redid **FIX 5** (the backpack tap) for the third time and finally with a witness, and remediated C3's closing audit, which returned **FAIL**. Previously: **URGENT player-safety fix SHIPPED (D-065)** — the "Carried" freeze root-caused to a panel that was created but never revealed: `.panel` is `opacity: 0` until a `visible` class lands, `showLoadout` was the one panel that never added it, so it sat full-screen, transparent and `pointer-events: auto`, swallowing every tap while `panelOpen` blocked Settings and the clock kept running. The reveal now belongs to `panel()` itself, and `guardPanelLock` takes control back if any panel ever holds it without showing itself.)
 
 ## Now
 - **Title: The First Night** (D-015). DRIFT remains the internal codename for files and the repo.
@@ -66,9 +66,22 @@
 - **Android-first**: Android Chrome is the primary device until launch-prep.
 
 ## Next actions
-1. **C3's D-056 audit is closed, PASS-WITH-NOTES** — see the "Open design notes and watch items" section above for full status; nothing further owed on D-056 itself.
-2. **Director** — nothing new to look at yet: Ch.2 is brain-layer only this pass, by design (Ch.4 owns the reveal). The Tier-0 tier from D-055 (hammer → blade → axe, with a grade mark on the model) is still the most recent player-visible thing to react to, if that reaction hasn't landed yet.
-3. **SON** — resume the **Cycle 06 — threats** spec (first creature, spear, defense) — embedded inline in the handoff per D-046(b), flagged to **C1** for MAJOR-artifact audit, cleared for BUILD only once C1's "AUDITED — GO" is relayed by the director (D-046(c)). **C1** — KEY REPORT is in the cycle log's D-056 entry in full; D-052's still-open question (whether warmth should join thirst/hunger/energy in the reduced respawn fraction) remains flagged for the death chapter's own OPEN, not decided here; Ch.4 now owns two named debts to pay when it opens — the knowledge model's depth-dial admission test (perceive/influence/narrate), and the actual reveal of domain scores to the player.
+1. **DIRECTOR — the playtest verdict is the gate.** Gate 0's machine half is closed; what remains is a judgement no
+   test can make. The two questions, unchanged: does it FEEL right (F1 embodied feel, F2 the expedition loop as
+   pleasure, F3 one truthful first night), and does it clear the LDOE bar? Slice 1 does not open until that verdict
+   lands ([[D-078]]).
+2. **C2 — Slice 1 opens with the unified collision fix** ([[D-078]] amendment B), fail-then-pass across all three
+   historical symptoms (movement hard-block, shelter pin, stalled `approach()`), plus the feel-court check that
+   sliding along an obstacle reads as sliding. The harness check that guards it is now honest and currently reports
+   **OPEN** — see the known-open list in any harness run. It must go green by the fix, not by the check.
+3. **C3 — the closing audit's remediation is itself unaudited.** A1–A10 were addressed this batch, several with
+   mechanisms rather than prose (the Effectivity Law's missing witness now exists as a real check; the bench mutex
+   has six tests it never had). None of that has been read by an auditor.
+4. **C1** — two declarations were added to [[D-077]] and [[D-078]] by C2 under [[D-076]], because the new
+   docs-integrity check refused the log without them. They are marked as C2's reading and need C1's confirmation or
+   correction; the constitutional pen is not C2's. Note also that **OPERATIVE now names two different things** — a
+   law's class under [[D-076]] and a Ch.10 section's class under [[D-077]] — which is why the check keys on an
+   explicit `**Class:**` line rather than the bare word.
 
 ## Awaiting the director (⚑ fork, does not block)
 *(none open — the crew-composition fork is resolved; see D-047)*
