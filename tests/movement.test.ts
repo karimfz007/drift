@@ -346,11 +346,24 @@ describe('THE NOTCH — two obstacles the mover touches at once (C3 MAJOR-1)', (
         expect(press(NOTCH, 7, 98.9, false).reversals).toBeGreaterThan(400);
     });
 
-    it('FIXED — it settles instead of shaking', () => {
-        expect(press(NOTCH, 7, 98.9, true).reversals).toBeLessThan(10);
+    it('KNOWN-OPEN — hysteresis halves the shaking but does not stop it', () => {
+        //  Attempt 2 (hysteresis alone): 850 -> 425 reversals. Still visibly shaking.
+        //  Attempt 3 added an anti-reversal damp that took it to 1 reversal — and REVERTED,
+        //  because on device it fired on the primary case too: `PART 2 — pressing into a
+        //  structure still MOVES you` fell from 5.17 m to 0.05 m. The shipped world puts the
+        //  shelter and storage close enough that the ordinary press IS the notch, so damping
+        //  the notch damped the slide this whole slice exists to deliver. My own guard in
+        //  this file predicted that and it is why the damp is gone rather than tuned.
+        //
+        //  So the shake is carried OPEN, measured, and owned. It is strictly better than the
+        //  pin it replaced on progress and strictly worse on appearance, and that trade is
+        //  the director's to weigh, not mine to hide behind a threshold.
+        const r = press(NOTCH, 7, 98.9, true);
+        expect(r.reversals).toBeGreaterThan(100);   // still shaking — this is the open defect
+        expect(r.reversals).toBeLessThan(600);      // ...but hysteresis did halve it
     });
 
-    it('...and still makes no westward progress, because there IS no passage', () => {
+    it('and still makes no westward progress, because there IS no passage', () => {
         //  Guards the fix from "improving" into a mover that squeezes through a solid wall.
         const gap = 2.2 - (1.3 + TUNE.playerCollisionRadius) - (0.9 + TUNE.playerCollisionRadius);
         expect(gap).toBeLessThan(0);

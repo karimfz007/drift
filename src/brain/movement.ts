@@ -199,29 +199,6 @@ export function stepMovement(
                 deflected = true;
             }
 
-            //  IMPASSABLE POCKET: stop cleanly rather than shake.
-            //
-            //  Where two obstacles overlap once expanded by the mover's radius there is no
-            //  passage at all — the shipped shelter/storage cluster is exactly this, with a
-            //  passage width of MINUS 0.80 m. Making no westward progress there is correct;
-            //  a body cannot walk through a wall. What is NOT correct is vibrating against
-            //  it, which is what the deflection produced: the resultant normal alternates
-            //  between the two obstacles, so the slide direction reverses frame to frame.
-            //
-            //  So while contact is unbroken, a slide is never allowed to REVERSE. If the
-            //  direction that survives this frame opposes the one we were already going, the
-            //  mover stops instead of flipping. A clean stop reads as "blocked", which is
-            //  the truth; the flip reads as a broken game. Single-obstacle deflection is
-            //  untouched — there the direction is consistent and this never fires.
-            const priorLen = Math.hypot(priorTravelX, priorTravelZ);
-            if (priorLen > 1e-3) {
-                const nowLen = Math.hypot(velX, velZ);
-                if (nowLen > 1e-6) {
-                    const agree = (velX * priorTravelX + velZ * priorTravelZ) / (nowLen * priorLen);
-                    if (agree < -0.2) { velX = 0; velZ = 0; }
-                }
-            }
-
             //  Re-resolve after the slide so the step never ends inside an obstacle.
             const slid = pushOut(x + velX * dt, z + velZ * dt, radius, obstacles);
             x = slid.x;
