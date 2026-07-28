@@ -83,7 +83,11 @@ describe('the bench mutex', () => {
         expect(r.stderr).not.toContain('could not run');
         expect(r.stdout).toMatch(/\d+\.\d+\.\d+/);
         expect(r.status).toBe(0);
-    });
+        //  20s, not vitest's default 5s: spawning npm through a shell on Windows is slow,
+        //  and slower still when a device harness has the machine. It timed out here once
+        //  for exactly that reason -- a scheduling fact about the test, not a claim about
+        //  the mutex, so it gets room rather than a weakened assertion.
+    }, 20_000);
 
     it('still REFUSES an unrelated contender — re-entrancy must not weaken the mutex', () => {
         //  The nesting fix keys on an env handoff. If it had keyed on anything ambient —
