@@ -576,6 +576,25 @@ export class Game {
      * (no explanation owed) apart from "hit something real that produced no verb" (D-042's
      * fail-loud law: silence is never a legal outcome for the latter).
      */
+    /**
+     * Is this screen point on the pack the survivor is wearing?
+     *
+     * Purely screen-space: the pack mesh is deliberately NOT pickable (see `entities.ts`),
+     * so this never touches `scene.pick`. The survivor is drawn at their own world position,
+     * so the region is that position projected, raised to shoulder height, with a radius
+     * scaled to how large they currently appear.
+     */
+    private tappedPackRegion(screenX: number, screenY: number): boolean {
+        const s = session().state;
+        const centre = runtime.projectToScreen(s.player.x, s.player.y);
+        if (!centre) return false;
+        //  Raise from the feet toward the pack, and scale the target with apparent size: the
+        //  camera keeps a near-constant distance, so a fixed radius reads the same on screen.
+        const dx = screenX - centre.x;
+        const dy = screenY - (centre.y - TUNE.packTapScreenRaisePx);
+        return Math.hypot(dx, dy) <= TUNE.packTapScreenRadiusPx;
+    }
+
     private pickHitPoint(screenX: number, screenY: number): { x: number; z: number; unexpectedMesh: string | null } | null {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top, (m: AbstractMesh) => m.isPickable);
@@ -661,15 +680,18 @@ export class Game {
         //  (checked first) swallow taps square on the storage crate whenever the two sat
         //  within about 2.8 m of each other — a REGRESSION found via the device harness:
         //  a tap aimed at storage kept silently repairing the shelter instead.
-        //  The pack worn on the survivor's back (director's request), resolved LAST. The
-        //  survivor is drawn at the centre of a third-person view, so their body sits where a
-        //  great many world targets project — checking the pack first would let it quietly
-        //  intercept taps meant for the world, which is the same shape of bug as the felled
-        //  tree's ghost hit-box (D-045) and the shelter swallowing storage taps (D-051).
-        //  World targets win; the pack is what you get when the tap meant nothing else.
-        //  Additive as asked: the HUD bag icon is untouched and still opens the same panel.
         const point = this.pickHitPoint(screenX, screenY);
-        if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
+        if (!point) {
+            //  The ray left the world entirely (sky, or over the shoulder). The pack can
+            //  still be there — a survivor on a ridge line has open sky behind them.
+            if (this.tappedPackRegion(screenX, screenY)) {
+                this.recordTap(screenX, screenY, 'backpack');
+                this.openLoadout();
+                return;
+            }
+            this.recordTap(screenX, screenY, 'no-hit');
+            return;
+        }
 
         const s = session().state;
         type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
@@ -692,6 +714,25 @@ export class Game {
         }
         candidates.sort((a, b) => a.d - b.d);
         const winner = candidates[0];
+        if (!winner && this.tappedPackRegion(screenX, screenY)) {
+            //  THE PACK ON THE SURVIVOR'S BACK (director's request), redone properly.
+            //
+            //  The first attempt made the pack mesh `isPickable` and it broke nine gather
+            //  verbs at once: `scene.pick` returns the NEAREST mesh, and a pack worn on a
+            //  body drawn centre-screen is nearer than anything the player walks up to, so
+            //  `pickNode` got the pack and its near-miss fallback then measured from a point
+            //  on the survivor's own body, past `nodeTapSlack`. Reverted in D-074.
+            //
+            //  This is a SCREEN-SPACE region instead. The mesh stays unpickable, so it never
+            //  enters `scene.pick` at all and **cannot** corrupt node or world resolution —
+            //  the failure is impossible by construction rather than guarded against by an
+            //  ordering rule that a future pick site could forget. And it is tested only
+            //  once every world target has already declined the tap, so nothing the player
+            //  was actually aiming at can ever lose to it.
+            this.recordTap(screenX, screenY, 'backpack');
+            this.openLoadout();
+            return;
+        }
         if (winner) {
             this.pending = { kind: winner.kind };
             this.cues.play(CUES.target);
