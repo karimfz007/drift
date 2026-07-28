@@ -269,6 +269,7 @@ export class Game {
         //  for each interaction raycast, not just for the renderer.
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
         runtime.lastTapOutcome = () => this.tapBreadcrumbs[this.tapBreadcrumbs.length - 1]?.outcome ?? null;
+        runtime.refuge = () => refugeReport(session().state);
         runtime.slideReadout = () => ({
             contact: this.lastContact,
             deflected: this.lastDeflected,

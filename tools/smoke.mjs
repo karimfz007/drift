@@ -2668,26 +2668,42 @@ async function main() {
 
     //  --- F1a: tap-to-response latency. The tap sets an intention; the castaway must start
     //  moving promptly enough that the tap reads as the cause of the movement.
-    await editSave('state.player = { x: 0, y: 40 };');
-    await sleep(400);
-    const beforeTap = (await live()).player;
-    const f1TapAt = await screenOf(6, 46);
+    //  ROOT CAUSE of this check's "NEVER MOVED": it tapped BARE GROUND and expected a walk.
+    //  A tap on empty ground is the player's documented "never mind" gesture — `onTap` records
+    //  `empty-ground` and CLEARS any pending intention. It has never walked anyone anywhere,
+    //  by design. So the check was asserting a behaviour the game does not have and never did.
+    //  The game was right; my check was measuring a verb that does not exist.
+    //
+    //  A tap on a NODE is what sets a walk intention, so that is what latency means here. The
+    //  tap's own resolution is asserted first — via the breadcrumb the real tap wrote — so
+    //  this can never again silently drift back onto empty ground and blame the game for it.
+    const walkTarget = await nodeOf('tree');
     let firstMoveMs = -1;
-    if (f1TapAt) {
+    let tapResolvedTo = 'no tree available';
+    let beforeTap = null;
+    if (walkTarget) {
+        await editSave(`state.player = { x: ${walkTarget.x + 9}, y: ${walkTarget.y + 9} };`);
+        await sleep(400);
+        beforeTap = (await live()).player;
+        await faceNode(walkTarget.x, walkTarget.y);
         const t0 = Date.now();
-        await tapWorld(6, 46, 0);
+        await tapWorld(walkTarget.x, walkTarget.y, 55);
+        tapResolvedTo = await page.evaluate(() => window.__drift.lastTapOutcome());
         for (let i = 0; i < 40; i++) {
             await sleep(50);
             const p = (await live()).player;
             if (Math.hypot(p.x - beforeTap.x, p.y - beforeTap.y) > 0.05) { firstMoveMs = Date.now() - t0; break; }
         }
     }
+    check('F1 — the tap under test actually resolved to the node (not empty ground)',
+        typeof tapResolvedTo === 'string' && tapResolvedTo.startsWith('node:'),
+        `tap resolved to ${tapResolvedTo}`);
     //  `-1` means the loop never saw the castaway move at all. Printing it as "-1 ms" read
     //  like a measured latency and hid the real failure — the tap produced NO movement inside
     //  the two seconds we watched, which is a different and much worse fact than "slow". A
     //  sentinel must never be dressed as data.
-    const latencyDetail = f1TapAt === null
-        ? 'NO TAP TARGET — could not project the destination on screen; nothing was measured'
+    const latencyDetail = walkTarget === null
+        ? 'NO TREE — nothing to walk to; nothing was measured'
         : firstMoveMs < 0
             ? 'NEVER MOVED — no movement at all within 2000 ms of the tap (not a latency figure)'
             : `first movement ${firstMoveMs} ms after the tap`;
@@ -2751,18 +2767,24 @@ async function main() {
         //  broken" from "we never got close enough to try" from "no axe". Three very
         //  different bugs behind one word. It now says which, because the first thing the
         //  previous run's `gather false` needed was a root cause and it carried none.
+        //  ROOT CAUSE of `gather false`: `harvest(kind, budget)` takes a node KIND, and I
+        //  passed it coordinates — `harvest(target.x, target.y)` asked for a node of kind
+        //  `10` with a 58-second budget, found none, and returned instantly. The harvest verb
+        //  was never invoked at all. The diagnostic added last pass is what made this
+        //  findable: it reported arrival 1.20 m and `axe true`, which ruled out both the
+        //  collision cause and a missing tool and left only the call itself.
         const stBefore = await live();
         const invBefore = stBefore.inventory.wood;
         const arrivedAt = Math.hypot(stBefore.player.x - target.x, stBefore.player.y - target.y);
         const hasAxe = Boolean(stBefore.tools?.axe);
         await faceNode(target.x, target.y);
-        await harvest(target.x, target.y);
+        const harvested = await harvest('tree');
         const invAfter = (await live()).inventory.wood;
         loop.gather = invAfter > invBefore;
         gatherDiag = loop.gather
             ? `wood ${invBefore} -> ${invAfter}`
-            : `wood ${invBefore} -> ${invAfter}; arrived ${arrivedAt.toFixed(2)} m from the tree `
-              + `(interact radius ${TUNE.interactRadiusM} m), axe ${hasAxe}`;
+            : `wood ${invBefore} -> ${invAfter}; harvest ${JSON.stringify(harvested?.reason ?? harvested?.ok)}; `
+              + `arrived ${arrivedAt.toFixed(2)} m from the tree (interact radius ${TUNE.interactRadiusM} m), axe ${hasAxe}`;
     }
     //  Leg 3 — COME BACK. The return trip is half the loop and the half that stalls.
     if (homeAt?.built) {
@@ -2777,6 +2799,53 @@ async function main() {
     check('F2 — every leg of the expedition loop makes real progress (no dead leg)',
         loop.out && loop.gather && loop.back && loop.deposit,
         `out ${loop.out}, gather ${loop.gather} [${gatherDiag}], back ${loop.back}, within-reach-of-home ${loop.deposit}`);
+
+    // ---- F3 — refuge quality, on device (Slice 1 item 2's perceivability half) ----
+    //
+    //  The brain layer is asserted in `tests/refuge.test.ts` against warmth measured through
+    //  reconcile. What no unit test can reach is whether the player is ever SHOWN it: F3's
+    //  whole complaint was that the exposure model was honest and invisible. So this opens
+    //  the real construction surface through a real tap and reads what is actually rendered.
+    console.log('\nF3 — the refuge line is on the screen, and says why');
+    const shelterForF3 = (await live()).shelter;
+    if (shelterForF3.built) {
+        //  Stand at the shelter, dry, so the working case is the one under test.
+        await editSave(`state.player = { x: ${shelterForF3.x}, y: ${shelterForF3.y} }; state.wet = 0;`);
+        await sleep(400);
+        const opened = await clickDom('.build-button');
+        await sleep(500);
+        const refugeOn = await page.evaluate(() => {
+            const el = document.querySelector('.panel .refuge-item .refuge-line');
+            const head = document.querySelector('.panel .refuge-item .build-head');
+            return el ? { line: el.textContent.trim(), head: head ? head.textContent.trim() : '', visible: getComputedStyle(el).opacity !== '0' } : null;
+        });
+        check('F3 — the Build card shows what the refuge is doing, in words and a number',
+            Boolean(opened) && Boolean(refugeOn) && /\d+%/.test(refugeOn.line) && refugeOn.visible,
+            refugeOn ? `head "${refugeOn.head}" / line "${refugeOn.line}"` : 'no refuge row rendered');
+
+        //  ...and the number is the one the brain computed, not a second copy that can drift.
+        const brainPct = await page.evaluate(() => window.__drift.refuge?.()?.reductionPct ?? null);
+        check('F3 — the number on screen is the brain\'s number, not a re-derivation',
+            brainPct === null || (refugeOn && refugeOn.line.includes(`${brainPct}%`)),
+            `brain says ${brainPct}%, screen says "${refugeOn ? refugeOn.line : 'nothing'}"`);
+        await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
+        await sleep(400);
+
+        //  The FAILURE mode has to be legible too — walking away must say so, not go quiet.
+        await editSave(`state.player = { x: ${shelterForF3.x + TUNE.shelterRadius + 12}, y: ${shelterForF3.y} };`);
+        await sleep(400);
+        await clickDom('.build-button');
+        await sleep(500);
+        const refugeOff = await page.evaluate(() => {
+            const el = document.querySelector('.panel .refuge-item .refuge-line');
+            return el ? el.textContent.trim() : null;
+        });
+        check('F3 — out of range it says SO, and says how close you must be',
+            Boolean(refugeOff) && /too far/i.test(refugeOff) && refugeOff.includes(`${TUNE.shelterRadius} m`),
+            refugeOff ? `"${refugeOff}"` : 'no refuge row rendered');
+        await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
+        await sleep(300);
+    }
 
     // ---- Hygiene ----
     console.log('\nHygiene');

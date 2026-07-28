@@ -62,6 +62,8 @@ export const runtime = {
     //  harness still moves the player with real touch input (hazard #4). Without this an
     //  on-device check can see that the player moved but not WHY, and "it slid" and "it was
     //  never actually blocked" look identical from the outside.
+    refuge: (() => ({ reductionPct: 0, status: 'none', line: '' })) as
+        () => { reductionPct: number; status: string; line: string },
     slideReadout: (() => ({ contact: false, deflected: false, contactFrames: 0, deflectFrames: 0 })) as
         () => { contact: boolean; deflected: boolean; contactFrames: number; deflectFrames: number },
     //  Installed by the game — see the `stick`/`velocity` debug hooks above.
@@ -203,6 +205,9 @@ function installDebugHook(): void {
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
         slideReadout: () => runtime.slideReadout(),
+        //  F3: the brain's own refuge numbers, so a device check can prove the screen is
+        //  showing THEM rather than a second copy that can drift. A read, never a driver.
+        refuge: () => runtime.refuge(),
         //  D-064: the harness drives the REAL spawn and the REAL placement validator, so its
         //  reachability check exercises the shipped rule rather than re-deriving it.
         spawnSalvage: (seed: number) => spawnSalvageNode(seed),
