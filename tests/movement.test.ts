@@ -250,3 +250,58 @@ describe('the fix does not break what already worked', () => {
         }
     });
 });
+
+describe('WHO OWNS velX — the acceleration model, not the resolver', () => {
+    //  The body accelerates velocity toward the stick's desired direction every frame. The
+    //  first wiring of this fix wrote the DEFLECTED velocity back into that same variable, so
+    //  `approachScalar` dragged it back toward dead-into-the-wall before it could move
+    //  anyone. The deflection was correct and then thrown away. My first attempt to explain
+    //  the resulting decay blamed the slide's SPEED and renormalised it, which moved the
+    //  device numbers not at all — a magnitude fix for an ownership bug.
+    //
+    //  This reproduces both wirings against the same obstacle, speed and accel model, and
+    //  asserts the difference. It is the fail-then-pass for the second attempt, measured
+    //  against the first attempt's own baseline rather than against a fresh guess.
+    const shelter: Obstacle[] = [{ x: 0, z: 98, radius: TUNE.shelterCollisionRadius }];
+    const approachScalar = (cur: number, target: number, maxDelta: number) => {
+        const d = target - cur;
+        return Math.abs(d) <= maxDelta ? target : cur + Math.sign(d) * maxDelta;
+    };
+
+    /** Press at the obstacle's centre through the body's real accel model, both wirings. */
+    function pressThroughAccel(feedDeflectionBackIn: boolean, seconds = 2.4) {
+        const dt = 1 / 60;
+        const speed = TUNE.walkSpeedMps;
+        let x = 0, z = 101.2, velX = 0, velZ = 0;
+        const from = { x, z };
+        for (let t = 0; t < seconds; t += dt) {
+            const dx = shelter[0].x - x, dz = shelter[0].z - z;
+            const len = Math.hypot(dx, dz) || 1;
+            const accel = TUNE.moveAccelMps2 * dt;
+            velX = approachScalar(velX, (dx / len) * speed, accel);
+            velZ = approachScalar(velZ, (dz / len) * speed, accel);
+            const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, shelter);
+            x = r.x; z = r.z;
+            if (feedDeflectionBackIn) { velX = r.velX; velZ = r.velZ; }
+        }
+        return Math.hypot(x - from.x, z - from.z);
+    }
+
+    it('PRE-FIX — feeding the deflection back into the accelerator stalls the slide dead', () => {
+        //  Not "slower": it decays to a standstill and stays there while the stick is held.
+        expect(pressThroughAccel(true)).toBeLessThan(2.0);
+    });
+
+    it('FIXED — keeping the intent lets the slide run at a steady pace indefinitely', () => {
+        //  4.0 m, not the 6.05 m a full 2.4 s at slideRetention would give: the first half
+        //  second is spent crossing open ground and accelerating before contact. Measured
+        //  4.83 m at TUNE.walkSpeedMps, against under 2.0 m for the pre-fix wiring.
+        expect(pressThroughAccel(false)).toBeGreaterThan(4.0);
+    });
+
+    it('and the gap between the two wirings is decisive, not marginal', () => {
+        //  Guards against a future change that narrows this by slowing the fixed path rather
+        //  than by fixing anything — the shape of "fix" that produced attempt one.
+        expect(pressThroughAccel(false)).toBeGreaterThan(pressThroughAccel(true) * 3);
+    });
+});

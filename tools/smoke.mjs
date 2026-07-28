@@ -2677,8 +2677,17 @@ async function main() {
             if (Math.hypot(p.x - beforeTap.x, p.y - beforeTap.y) > 0.05) { firstMoveMs = Date.now() - t0; break; }
         }
     }
+    //  `-1` means the loop never saw the castaway move at all. Printing it as "-1 ms" read
+    //  like a measured latency and hid the real failure — the tap produced NO movement inside
+    //  the two seconds we watched, which is a different and much worse fact than "slow". A
+    //  sentinel must never be dressed as data.
+    const latencyDetail = f1TapAt === null
+        ? 'NO TAP TARGET — could not project the destination on screen; nothing was measured'
+        : firstMoveMs < 0
+            ? 'NEVER MOVED — no movement at all within 2000 ms of the tap (not a latency figure)'
+            : `first movement ${firstMoveMs} ms after the tap`;
     check('F1 — a tap produces visible movement fast enough to read as its cause',
-        firstMoveMs >= 0 && firstMoveMs <= 600, `first movement ${firstMoveMs} ms after the tap`);
+        firstMoveMs >= 0 && firstMoveMs <= 600, latencyDetail);
 
     //  --- F1b: camera smoothness. Sampled across a real drag. A camera that jumps between
     //  samples reads as broken however correct its final angle is. The bound is per-sample
@@ -2724,6 +2733,7 @@ async function main() {
 
     //  Leg 1 — GO OUT. A real walk to a real resource.
     const target = await nodeOf('tree');
+    let gatherDiag = 'no tree available to walk to';
     if (target) {
         const beforeOut = (await live()).player;
         await approach(target.x, target.y, 20);
@@ -2731,10 +2741,23 @@ async function main() {
         loop.out = Math.hypot(afterOut.x - beforeOut.x, afterOut.y - beforeOut.y) > 3;
 
         //  Leg 2 — GATHER. The verb produces material.
-        const invBefore = (await live()).inventory.wood;
+        //
+        //  This reported a bare `gather false`, which cannot tell "the harvest verb is
+        //  broken" from "we never got close enough to try" from "no axe". Three very
+        //  different bugs behind one word. It now says which, because the first thing the
+        //  previous run's `gather false` needed was a root cause and it carried none.
+        const stBefore = await live();
+        const invBefore = stBefore.inventory.wood;
+        const arrivedAt = Math.hypot(stBefore.player.x - target.x, stBefore.player.y - target.y);
+        const hasAxe = Boolean(stBefore.tools?.axe);
         await faceNode(target.x, target.y);
         await harvest(target.x, target.y);
-        loop.gather = (await live()).inventory.wood > invBefore;
+        const invAfter = (await live()).inventory.wood;
+        loop.gather = invAfter > invBefore;
+        gatherDiag = loop.gather
+            ? `wood ${invBefore} -> ${invAfter}`
+            : `wood ${invBefore} -> ${invAfter}; arrived ${arrivedAt.toFixed(2)} m from the tree `
+              + `(interact radius ${TUNE.interactRadiusM} m), axe ${hasAxe}`;
     }
     //  Leg 3 — COME BACK. The return trip is half the loop and the half that stalls.
     if (homeAt?.built) {
@@ -2748,7 +2771,7 @@ async function main() {
     }
     check('F2 — every leg of the expedition loop makes real progress (no dead leg)',
         loop.out && loop.gather && loop.back && loop.deposit,
-        `out ${loop.out}, gather ${loop.gather}, back ${loop.back}, within-reach-of-home ${loop.deposit}`);
+        `out ${loop.out}, gather ${loop.gather} [${gatherDiag}], back ${loop.back}, within-reach-of-home ${loop.deposit}`);
 
     // ---- Hygiene ----
     console.log('\nHygiene');

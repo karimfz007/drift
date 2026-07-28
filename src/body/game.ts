@@ -169,6 +169,8 @@ export class Game {
     //  Feel-court instrumentation for the unified collision fix. Not debug scaffolding: the
     //  acceptance gate is that sliding READS as sliding through the player path, and an
     //  on-device check has no other way to witness the deflection branch firing.
+    private lastTravelX = 0;
+    private lastTravelZ = 0;
     private lastContact = false;
     private lastDeflected = false;
     private contactFrames = 0;
@@ -1444,8 +1446,28 @@ export class Game {
         );
         x = step.x;
         z = step.z;
-        this.velX = step.velX;
-        this.velZ = step.velZ;
+        //  WHO OWNS `velX`. Not the collision resolver — the acceleration model does.
+        //
+        //  This used to write the deflected velocity back (`this.velX = step.velX`), and the
+        //  very next frame `approachScalar` dragged it straight back toward the stick's
+        //  desired direction, which during a press is dead into the wall. The deflection was
+        //  computed correctly and then discarded before it could move anyone. Measured, one
+        //  variable, same obstacle and speed:
+        //
+        //      fed back into accel:  [0.66 1.36 1.38 0.32 0.04 0.00 0.00 0.00]  <- decays to nothing
+        //      intent kept:          [0.66 1.13 1.22 1.22 1.22 1.22 1.22 1.22]  <- steady
+        //
+        //  The device showed the same shape: [1.00 0.58 0.29 0.08 0.09 0.08 0.09 0.09].
+        //  My first attempt at this blamed the slide's SPEED and renormalised it, which
+        //  changed the device numbers not at all — the decay was never about magnitude, it
+        //  was about the two systems fighting over one variable.
+        //
+        //  So `velX/velZ` stay what the accelerator makes them: the player's INTENT. The
+        //  resolver reads that intent, redirects it around the obstacle for this step, and
+        //  returns where the body actually ended up. Nothing is written back, so the slide is
+        //  recomputed from full intent every frame instead of decaying into the wall.
+        this.lastTravelX = step.velX;
+        this.lastTravelZ = step.velZ;
         //  Feel-court instrumentation: the harness reads these to tell "sliding" from
         //  "stuck" through the real player path, and they are the only way an on-device
         //  check can witness the deflection branch firing at all.
@@ -1462,7 +1484,10 @@ export class Game {
 
         //  Turn to face travel with a frame-rate-independent slerp — smoother than a fixed
         //  degrees-per-second cap, and the second half of "smooth".
-        const heading = Math.atan2(this.velX, this.velZ);
+        //  Face the way the body actually TRAVELLED, not the way the stick was pushed —
+        //  during a slide those differ, and facing into the wall while moving along it is
+        //  precisely the "stuck" read the feel court exists to catch.
+        const heading = Math.atan2(this.lastTravelX, this.lastTravelZ);
         this.facing = slerpAngle(this.facing, heading, TUNE.turnSlerpSpeed, dt);
 
         session().markFirstMove(msSinceControl());

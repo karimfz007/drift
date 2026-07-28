@@ -174,27 +174,6 @@ export function stepMovement(
                 deflected = true;
             }
 
-            //  SUSTAINED SLIDE PACE. Removing the inward component leaves whatever the
-            //  geometry happens to leave, which for a near-radial press against a curved
-            //  surface is almost nothing — so the mover crawls. The device feel-court caught
-            //  exactly that: pressing into a shelter gave steps of
-            //  [1.04 0.56 0.31 0.09 0.09 0.08 0.09 0.09] m — a confident slide that bleeds
-            //  out into a crawl while the thumb is still down. Continuous, technically
-            //  unpinned, and it reads as being stuck.
-            //
-            //  So a slide holds a consistent pace: whatever direction survives contact is
-            //  renormalised to the same fraction of the incoming speed the deflection uses.
-            //  Never faster than the mover was going, and only ever while actually in
-            //  contact — this cannot push anyone anywhere they were not already heading.
-            const along = Math.hypot(velX, velZ);
-            if (along > 1e-6) {
-                const target = Math.min(incoming, incoming * TUNE.slideRetention);
-                if (along < target) {
-                    velX = (velX / along) * target;
-                    velZ = (velZ / along) * target;
-                }
-            }
-
             //  Re-resolve after the slide so the step never ends inside an obstacle.
             const slid = pushOut(x + velX * dt, z + velZ * dt, radius, obstacles);
             x = slid.x;
