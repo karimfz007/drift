@@ -3,6 +3,12 @@
 
 ---
 
+**D-079 · 2026-07-28 — Director's Gate 0 playtest verdict, the Fun Gate's first read.** **F1** (embodied feel/verb quality) **PASS**. **F2** (one complete expedition loop as pleasure, not operations) **PASS**. **F3** (one truthful first night at the v0_14 balance target) — **NOT MET**, needs substantial work; **not treated as a new defect**, since this is exactly Slice 1's named certification target ([[D-078]] amendment A). Both halves of Gate 0 now complete: the machine half (C3's audited remediation, 199/209, root cause of all remaining failures documented as one collision-model cause) and this playtest verdict. **Gate 0 CLOSED pending C1's formal close verdict.** Slice 1 opens next: **the collision-model fix first** ([[D-078]] amendment B), then **F3's exposure-reduction work as its primary certification target**, with F1/F2 already passing as the baseline to protect.
+
+**Class: DESIGN-BINDING** — trigger named: **Slice 1**, opening on C1's formal close verdict. The verdict records a judgement and sets the next slice's agenda; it changes nothing in the live game by itself. *(Declaration added by C2 because [[D-076]]'s docs-integrity check refuses any decision after D-076 that does not declare a class — see [[D-077]]/[[D-078]] for the same. C2's reading; C1 to confirm or correct.)*
+
+---
+
 **D-078 · 2026-07-28 — Ch.10 v1 RATIFIED, with amendments (C1).** Slices 1–5 and their ordering are **OPERATIVE and binding**; Slice 6+ remain named and **PROVISIONAL**, per the draft's own classes. Five amendments bind the text:
 
 **(A) The Fun Gate (Bible Book X) is supplied as the plan's governing law.** **F1** (embodied feel / verb quality on a real phone), **F2** (one complete expedition loop as *pleasure*, not operations) and **F3** (one truthful first night at the v0_14 balance target) are **Slice 1's certification targets**. **F4** — the Thin Complete Road: one continuous authored path from first minute through survival, contact, departure, boundary, external reception, human consequence — **is its own slice.** Catalogues (routes, crafts, endings, deaths, junctions) open **family-by-family only behind F4 plus each family's representative proof** (Laws 65–69), bound explicitly in the plan text rather than left implicit.
