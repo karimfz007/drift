@@ -479,7 +479,12 @@ export const TUNE = {
     /** [TUNE] D-055 — shelter's warmth-drain multiplier by grade (replaces the old flat
      *  `shelterWarmthDrainMultiplier`; lower is better, same meaning as before).
      *  `serviceable` (0.5) reproduces the pre-grade value exactly. */
-    shelterGradeWarmthMultiplier: { crude: 0.65, serviceable: 0.5, refined: 0.35, exceptional: 0.2 },
+    shelterGradeWarmthMultiplier: { crude: 0.55, serviceable: 0.5, refined: 0.35, exceptional: 0.2 },
+    //  [TUNE] F3 (Slice 1 item 2): `crude` moved 0.65 -> 0.55. The first shelter a castaway
+    //  can build on night one now cuts 45% of the night's cold, inside F3's 40-50% target
+    //  band; at 0.65 it cut 35% and missed the band low. `serviceable` (0.5 = 50%) sits at
+    //  the top of the band, and the better grades deliberately exceed it — the target is the
+    //  BASELINE refuge, not a ceiling on the ones you work for.
 
     // ---- Ch.2, "The Knowledge Model" (MAJOR artifact) — domain scores ------
     /** [TUNE] Ch.2 — every domain score's ceiling (Technique/Understanding/Adaptation). */

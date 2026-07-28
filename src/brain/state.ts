@@ -1141,3 +1141,94 @@ export function respawn(state: GameState, cause: string): void {
 export function lastRespawnMessage(state: GameState): string | null {
     return state.lastDeathCause === null ? null : respawnMessageFor(state.lastDeathCause);
 }
+
+/**
+ * WHY THE SHELTER IS OR IS NOT WORKING — F3, refuge quality (Slice 1 item 2).
+ *
+ * The exposure model was already honest and already invisible. Warmth drained more slowly
+ * under a shelter and the player was told nothing: not the size of the relief, not that
+ * standing six metres away had switched it off, not that being soaked had eaten most of it.
+ * A hidden number is not a system the player can play — it fails the depth-dial admission
+ * test on all three counts at once, since you cannot influence what you cannot perceive and
+ * cannot narrate what you were never shown.
+ *
+ * This adds no parallel system. It reports the one already shipped: `shelterActive`
+ * (near AND not in disrepair) times the grade multiplier, times the wet penalty — the exact
+ * product `reconcile` applies to the night-time drain. If this and reconcile ever disagree,
+ * this is the liar, and `tests/refuge.test.ts` asserts they agree across the whole grid.
+ */
+export interface RefugeReport {
+    /**
+     * What fraction of the night's cold the refuge is actually cutting, 0–1, right now.
+     *
+     * This is the shelter's share and it does NOT move with wetness. My first cut multiplied
+     * it by the wet penalty, which reads plausible and is wrong: wet raises the drain INSIDE
+     * and OUTSIDE by the same factor, so it cancels in the ratio and the shelter keeps
+     * cutting the same fraction either way. The grid test in `tests/refuge.test.ts` caught
+     * it — reported 0.38 against 0.45 measured through reconcile — which is the entire
+     * reason that test compares against the model instead of against this file.
+     */
+    reduction: number;
+    /** The same as a whole percent, for the UI to show without re-deriving it. */
+    reductionPct: number;
+    /** What the shelter WOULD cut if the player were under it and it were sound. */
+    potentialPct: number;
+    /**
+     * How much harsher being wet makes the night, as a whole percent ON TOP of everything —
+     * a separate cost, not a discount on the shelter. 0 when dry.
+     */
+    wetPenaltyPct: number;
+    /** Is it helping at this moment? */
+    working: boolean;
+    /** Machine-readable cause, so the UI never has to parse prose. */
+    status: 'none' | 'too-far' | 'disrepair' | 'wet-reduced' | 'working';
+    /** One plain sentence: what is happening and, when it is not working, what to do. */
+    line: string;
+}
+
+export function refugeReport(state: GameState): RefugeReport {
+    const grade = state.shelter.grade;
+    const potential = 1 - TUNE.shelterGradeWarmthMultiplier[grade];
+    const pct = (v: number) => Math.round(v * 100);
+
+    const wetMultiplier = 1 + (TUNE.wetWarmthDrainMultiplierAtMaxWet - 1) * (state.wet / TUNE.wetMax);
+    const wetPenaltyPct = Math.round((wetMultiplier - 1) * 100);
+    const soaked = state.wet > TUNE.wetMax * 0.25;
+    const wetTail = soaked ? ` Being soaked makes the whole night ${wetPenaltyPct}% colder — dry off.` : '';
+
+    if (!state.shelter.built) {
+        return {
+            reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
+            status: 'none',
+            line: `No shelter. The night takes its full toll — a lean-to would cut it by about half.${wetTail}`,
+        };
+    }
+    if (isInDisrepair(state.shelter)) {
+        return {
+            reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
+            status: 'disrepair',
+            line: `The shelter has fallen apart — it cuts nothing until it is mended. Sound, it would hold off ${pct(potential)}% of the cold.${wetTail}`,
+        };
+    }
+    if (!isNearShelter(state)) {
+        return {
+            reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
+            status: 'too-far',
+            line: `Too far from the shelter for it to help. Within ${TUNE.shelterRadius} m it would hold off ${pct(potential)}% of the cold.${wetTail}`,
+        };
+    }
+    //  Working. The shelter's share is the grade multiplier and nothing else — see the note
+    //  on `reduction`. Wet is reported alongside it, as its own cost, because it IS its own
+    //  cost: it makes the night harsher everywhere rather than making the shelter worse.
+    //  Keeping them separate is what lets the player act on each one independently, which is
+    //  the whole point of the influence half of the depth-dial test.
+    return {
+        reduction: potential,
+        reductionPct: pct(potential),
+        potentialPct: pct(potential),
+        wetPenaltyPct,
+        working: true,
+        status: soaked ? 'wet-reduced' : 'working',
+        line: `The shelter is holding off ${pct(potential)}% of the night's cold.${wetTail}`,
+    };
+}

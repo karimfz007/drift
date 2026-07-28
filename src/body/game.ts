@@ -57,6 +57,7 @@ import {
     ownedTools,
     stowActiveHand,
     stepMovement,
+    refugeReport,
     tryCombine,
     announcementFor,
     loadSpeedMultiplierOf,
@@ -1209,6 +1210,8 @@ export class Game {
         showBuildCard(
             this.overlay,
             {
+                //  F3: rendered, not derived — `refugeReport` is the single source.
+                refuge: refugeReport(session().state),
                 torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned },
                 axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe },
                 shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built },

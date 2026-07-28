@@ -298,6 +298,16 @@ export interface BuildCardView {
      *  at their own shelter, which is the same one-control-two-verbs disease it was meant
      *  to cure. The Build card already IS the construction surface; nothing is displaced. */
     mendShelter: { durability: number; max: number; gain: number } | null;
+    /**
+     * F3 — refuge quality made perceivable (Slice 1 item 2). The exposure model was already
+     * honest and entirely invisible: warmth drained more slowly under a shelter and the
+     * player was told nothing — not the size of the relief, not that standing six metres away
+     * had switched it off, not that being soaked had made the night harsher anyway. A hidden
+     * number fails the depth-dial test on all three counts at once, because you cannot
+     * influence what you cannot perceive. Comes straight from `refugeReport`; this layer
+     * renders it and derives nothing.
+     */
+    refuge: { line: string; working: boolean; reductionPct: number; status: string };
     /** Resting. Always offered — a tired human can lie down anywhere — but it says plainly
      *  whether this will be a night under the roof or a night on the ground. */
     rest: { sheltered: boolean };
@@ -389,6 +399,15 @@ export function showBuildCard(
     const el = panel(overlay, 'build');
     el.innerHTML = `
         <div class="build-list">
+            <!--  F3: what the refuge is doing FOR you, and when it is not, why not and what
+                  to do about it. Sits at the top of the construction surface because it is
+                  the reason to build or mend anything on the list below it.  -->
+            <div class="build-item refuge-item ${view.refuge.working ? 'refuge-on' : 'refuge-off'}">
+                <div class="build-head">
+                    <strong>Shelter${view.refuge.working ? `  ·  −${view.refuge.reductionPct}% cold` : ''}</strong>
+                </div>
+                <p class="subtitle refuge-line">${view.refuge.line}</p>
+            </div>
             <!--  Rest sits FIRST. The card grew past the 412px fold as items were added,
                   and a device probe caught the sleep button rendering below it
                   (inViewport:false) — reachable only by scrolling. The panel is

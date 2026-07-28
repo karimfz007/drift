@@ -2639,6 +2639,117 @@ async function main() {
     check('GATE 0 — save/reload returns the same state, field by field', reloadClean,
         `wood ${beforeReload.inventory.wood}->${afterReload.inventory.wood}, stone ${beforeReload.inventory.stone}->${afterReload.inventory.stone}, technique ${beforeReload.knowledge.domains.harvestingFabrication.technique}->${afterReload.knowledge.domains.harvestingFabrication.technique}`);
 
+    // ---- F1 / F2 REGRESSION LOCK (Slice 1 item 3) --------------------------------
+    //
+    //  The director passed F1 (embodied feel) and F2 (the expedition loop as pleasure) at
+    //  Gate 0. Those verdicts were REMEMBERED, not guarded — which is exactly the state the
+    //  Vacuity Law distrusts, and it means the next regression is found by another playtest
+    //  rather than by the machine. These convert both into standing checks.
+    //
+    //  THE TRANSLATION IS A JUDGMENT CALL AND IS RECORDED AS ONE. "Feel" and "pleasure" are
+    //  not measurable; what they RUN ON is. So each subjective verdict is decomposed into the
+    //  objective properties whose absence would certainly destroy it — necessary conditions,
+    //  never sufficient ones. Passing these does not mean the game feels good. FAILING them
+    //  means it cannot, and that is the whole value: they are a floor, not a verdict, and
+    //  they never replace the director's own read.
+    //
+    //    F1, embodied feel  -> a tap produces a VISIBLE response fast enough to read as
+    //                          causal; the camera moves smoothly rather than in steps; input
+    //                          is never swallowed.
+    //    F2, expedition loop -> every leg of go-out / gather / come-back / deposit makes real
+    //                          progress, and none of them contains dead time where the player
+    //                          is holding an input and nothing is happening.
+    console.log('\nF1/F2 — the regression lock on the director\'s passed verdicts');
+
+    //  --- F1a: tap-to-response latency. The tap sets an intention; the castaway must start
+    //  moving promptly enough that the tap reads as the cause of the movement.
+    await editSave('state.player = { x: 0, y: 40 };');
+    await sleep(400);
+    const beforeTap = (await live()).player;
+    const f1TapAt = await screenOf(6, 46);
+    let firstMoveMs = -1;
+    if (f1TapAt) {
+        const t0 = Date.now();
+        await tapWorld(6, 46, 0);
+        for (let i = 0; i < 40; i++) {
+            await sleep(50);
+            const p = (await live()).player;
+            if (Math.hypot(p.x - beforeTap.x, p.y - beforeTap.y) > 0.05) { firstMoveMs = Date.now() - t0; break; }
+        }
+    }
+    check('F1 — a tap produces visible movement fast enough to read as its cause',
+        firstMoveMs >= 0 && firstMoveMs <= 600, `first movement ${firstMoveMs} ms after the tap`);
+
+    //  --- F1b: camera smoothness. Sampled across a real drag. A camera that jumps between
+    //  samples reads as broken however correct its final angle is. The bound is per-sample
+    //  change, not total: turning a long way is fine, teleporting is not.
+    const rectF1 = await canvasRect();
+    const cx = rectF1.left + rectF1.width * 0.72;
+    const cy = rectF1.top + rectF1.height * 0.5;
+    const yaws = [];
+    await page.touchscreen.touchStart(cx, cy);
+    for (let i = 1; i <= 10; i++) {
+        await page.touchscreen.touchMove(cx + i * 12, cy);
+        await sleep(70);
+        yaws.push((await camera()).yaw);
+    }
+    await page.touchscreen.touchEnd();
+    let maxJerk = 0;
+    let totalTurn = 0;
+    for (let i = 1; i < yaws.length; i++) {
+        const d = Math.abs(yaws[i] - yaws[i - 1]);
+        maxJerk = Math.max(maxJerk, d);
+        totalTurn += d;
+    }
+    check('F1 — the camera turns SMOOTHLY under a drag, no jumps between frames',
+        totalTurn > 0.05 && maxJerk < 0.35,
+        `turned ${totalTurn.toFixed(3)} rad total, largest single step ${maxJerk.toFixed(3)} rad`);
+
+    //  --- F1c: input is never swallowed. `failedTaps` counts taps the game could not route.
+    //  A tap that reached something real and produced nothing is COUNTED by the fail-loud
+    //  path, not swallowed — that counter is exercised deliberately earlier in this run, so
+    //  the bar here is that it has not grown since. Reading the trace field directly rather
+    //  than a hook that does not exist: `?? 0` would have made this check permanently green.
+    const swallowedNow = (await live()).trace.failedInteractionTaps;
+    check('F1 — no input went missing during the feel section',
+        typeof swallowedNow === 'number' && swallowedNow === failedTapsAfter,
+        `failedInteractionTaps ${failedTapsAfter} at the fail-loud check, ${swallowedNow} now`);
+
+    //  --- F2: the expedition loop, leg by leg, each with a progress assertion. The pleasure
+    //  of the loop is not measurable; DEAD TIME inside it certainly kills that pleasure, so
+    //  every leg must move the world.
+    await editSave('state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0 };');
+    const loop = { out: false, gather: false, back: false, deposit: false };
+    const homeAt = (await live()).storage;
+
+    //  Leg 1 — GO OUT. A real walk to a real resource.
+    const target = await nodeOf('tree');
+    if (target) {
+        const beforeOut = (await live()).player;
+        await approach(target.x, target.y, 20);
+        const afterOut = (await live()).player;
+        loop.out = Math.hypot(afterOut.x - beforeOut.x, afterOut.y - beforeOut.y) > 3;
+
+        //  Leg 2 — GATHER. The verb produces material.
+        const invBefore = (await live()).inventory.wood;
+        await faceNode(target.x, target.y);
+        await harvest(target.x, target.y);
+        loop.gather = (await live()).inventory.wood > invBefore;
+    }
+    //  Leg 3 — COME BACK. The return trip is half the loop and the half that stalls.
+    if (homeAt?.built) {
+        const beforeBack = (await live()).player;
+        await approach(homeAt.x, homeAt.y, 25);
+        const afterBack = (await live()).player;
+        const closed = Math.hypot(beforeBack.x - homeAt.x, beforeBack.y - homeAt.y)
+                     - Math.hypot(afterBack.x - homeAt.x, afterBack.y - homeAt.y);
+        loop.back = closed > 3;
+        loop.deposit = Math.hypot(afterBack.x - homeAt.x, afterBack.y - homeAt.y) <= TUNE.interactRadiusM;
+    }
+    check('F2 — every leg of the expedition loop makes real progress (no dead leg)',
+        loop.out && loop.gather && loop.back && loop.deposit,
+        `out ${loop.out}, gather ${loop.gather}, back ${loop.back}, within-reach-of-home ${loop.deposit}`);
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
