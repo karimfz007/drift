@@ -10,13 +10,22 @@
  * Usage as a library:   import { acquire, release } from './bench-lock.mjs'
  * Usage as a wrapper:   node tools/bench-lock.mjs run "<label>" -- <command...>
  *   ...which takes the lock, runs the command, and releases on every exit path.
+ *
+ * On Windows the wrapped command goes through a shell (npm and npx are .cmd shims there),
+ * so a multi-line inline script — `-- node -e "<many lines>"` — will not survive the trip.
+ * Put such a script in a file and wrap `node <file>` instead.
  */
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
-const LOCK = join(fileURLToPath(new URL('../.smoke/', import.meta.url)), 'bench.lock');
+//  The lock file is overridable ONLY so the mutex's own tests can run against a private
+//  lock instead of the live one — without that, testing the bench would mean fighting any
+//  real run for it, and the alternative (skip when busy) is a vacuous test (D-066). Nothing
+//  in the app or the harness sets this; if you find it set anywhere else, that is a bug.
+const LOCK = process.env.DRIFT_BENCH_LOCK_FILE
+    || join(fileURLToPath(new URL('../.smoke/', import.meta.url)), 'bench.lock');
 
 /** Is the process that holds the lock still alive? A dead holder's lock is stale, not binding. */
 function holderAlive(pid) {
@@ -33,10 +42,39 @@ export function readHolder() {
 }
 
 /**
+ * RE-ENTRANCY ACROSS THE PROCESS TREE.
+ *
+ * The wrapper takes the lock and then runs a command. If that command also takes the
+ * lock — and the device harness does, by design, because it must refuse to run on a
+ * shared bench even when nobody wrapped it — the child waits on a lock its own parent
+ * holds and will not release until the child exits. Deadlock, not refusal: a silent
+ * 30-minute hang with three lines of output.
+ *
+ * This is not hypothetical. I hit it running the FIX-5 A/B: `bench-lock run "..." --
+ * node tools/smoke.mjs` sat at "No git worktree operation in progress." until I killed
+ * it. C3's finding A3 had already reported the wrapper couldn't wrap the harness; the
+ * cause is here.
+ *
+ * The wrapper hands its lock down through the environment. A descendant that finds
+ * DRIFT_BENCH_LOCK matching the live lock file's pid is already inside the bench and
+ * takes it as a no-op — so nesting is safe, and an UNWRAPPED harness still refuses a
+ * genuinely contended bench exactly as before.
+ */
+const HANDOFF = 'DRIFT_BENCH_LOCK';
+
+function heldByAncestor() {
+    const inherited = Number(process.env[HANDOFF]);
+    if (!Number.isFinite(inherited) || inherited <= 0) return false;
+    const holder = readHolder();
+    return Boolean(holder) && holder.pid === inherited;
+}
+
+/**
  * Take the bench. Returns a release function.
  * `waitMs > 0` queues for that long before giving up; 0 refuses immediately.
  */
 export async function acquire(label, waitMs = 0) {
+    if (heldByAncestor()) return () => {}; // already ours, one level up
     mkdirSync(dirname(LOCK), { recursive: true });
     const deadline = Date.now() + waitMs;
     for (;;) {
@@ -84,7 +122,20 @@ if (process.argv[1] && process.argv[1].endsWith('bench-lock.mjs')) {
             process.exit(1);
         }
         console.log(`Bench acquired by "${label}" (pid ${process.pid}).`);
-        const child = spawn(cmd[0], cmd.slice(1), { stdio: 'inherit' });
+        //  `shell: true` on Windows, because `npm`/`npx` are .cmd shims there and a bare
+        //  spawn of them fails with EINVAL — which is why C3 found the wrapper could not
+        //  wrap a build. Args carrying spaces are quoted, since the shell re-splits them.
+        const useShell = process.platform === 'win32';
+        const quote = (a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
+        const spawnArgs = useShell
+            ? [cmd.map(quote).join(' '), []] // one string: an args array with shell:true is deprecated
+            : [cmd[0], cmd.slice(1)];
+        const child = spawn(spawnArgs[0], spawnArgs[1], {
+            stdio: 'inherit',
+            shell: useShell,
+            env: { ...process.env, [HANDOFF]: String(process.pid) }, // nesting is safe
+        });
+        child.on('error', (e) => { console.error(`REFUSED: could not run ${cmd[0]}: ${e.message}`); release(); process.exit(1); });
         child.on('exit', (code) => { release(); process.exit(code ?? 0); });
     } else if (mode === 'status') {
         const holder = readHolder();
