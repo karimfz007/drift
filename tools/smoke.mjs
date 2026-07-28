@@ -1490,6 +1490,12 @@ async function main() {
         await faceNode(shelterAt.x, shelterAt.y);
         const samples = [];
         const pressFrom = (await live()).player;
+        //  The axis the press travels along. Everything across it is slide.
+        const axisX = shelterAt.x - pressFrom.x;
+        const axisZ = shelterAt.y - pressFrom.y;
+        const axisLen = Math.hypot(axisX, axisZ) || 1;
+        const approachUx = axisX / axisLen;
+        const approachUz = axisZ / axisLen;
         let prev = pressFrom;
         let facingSpread = 0;
         let camJump = 0;
@@ -1506,11 +1512,20 @@ async function main() {
                 contactFrames: rd.contactFrames,
             });
             camJump = Math.max(camJump, Math.abs(cam - prevCam));
-            //  Distance from where the press STARTED, not spread along the x-axis. The
-            //  x-axis version assumed the slide runs east-west; it does not, and it reported
-            //  0.55 m in the same press where `PART 2` independently measured 5.17 m of
-            //  travel. The game was right and the yardstick was pointing the wrong way.
-            facingSpread = Math.max(facingSpread, Math.hypot(st.player.x - pressFrom.x, st.player.y - pressFrom.y));
+            //  PERPENDICULAR to the approach axis — the only component that can distinguish
+            //  sliding from walking. C3 BLOCKING-1 on the previous form: it measured straight
+            //  distance from the press start, which sits 3.2 m out while contact stand-off is
+            //  1.70 m, so 1.50 m of free approach cleared a 0.80 m bar unconditionally. A
+            //  mover that walked to the wall and pinned dead scored 1.50 and passed. That was
+            //  my "correction" to an earlier broken metric, and it was worse: the first
+            //  version measured the wrong axis, this one could not fail at all.
+            //
+            //  Displacement parallel to the approach is what walking into a wall produces.
+            //  Displacement ACROSS it is what only sliding produces. So the cross product
+            //  with the approach unit vector is the whole measurement, and a pin scores 0.
+            const dX = st.player.x - pressFrom.x;
+            const dZ = st.player.y - pressFrom.y;
+            facingSpread = Math.max(facingSpread, Math.abs(dX * approachUz - dZ * approachUx));
             prev = st.player;
             prevCam = cam;
         }
@@ -1539,9 +1554,9 @@ async function main() {
 
         //  (4) The character goes SOMEWHERE — lateral travel along the surface, which is what
         //      the eye reads as sliding rather than vibrating in place.
-        check('FEEL COURT — the castaway visibly travels ALONG the obstacle',
+        check('FEEL COURT — the castaway visibly travels ACROSS the approach, not just into it',
             facingSpread > 0.8,
-            `${facingSpread.toFixed(2)} m from where the press began`);
+            `${facingSpread.toFixed(2)} m perpendicular to the approach axis (a dead pin scores 0.00)`);
 
         //  (5) The camera stays civil. A slide that yanks the view reads as a collision bug
         //      even when the position math is perfect.
@@ -2686,9 +2701,28 @@ async function main() {
         await sleep(400);
         beforeTap = (await live()).player;
         await faceNode(walkTarget.x, walkTarget.y);
+        //  A fixed 55 px raise landed on the ground BESIDE the trunk — the guard check caught
+        //  it (`tap resolved to empty-ground`), which is exactly why that guard exists. The
+        //  raise that hits a trunk depends on how far away it is and how tall it draws, so it
+        //  cannot be a constant. Probe for a pixel that resolves to this node, then tap THERE
+        //  for real. The probe is a READ (`tapTargetAt`); the tap is the shipped player path,
+        //  so hazard #4 holds — a hook may locate a target, it may not stand in for the verb.
+        const base = await screenOf(walkTarget.x, walkTarget.y);
+        let aim = null;
+        if (base) {
+            aim = await page.evaluate((b, id) => {
+                for (let up = 0; up <= 110; up += 5) {
+                    const hit = window.__drift.tapTargetAt(b.x, b.y - up);
+                    if (hit === `node:${id}`) return { x: b.x, y: b.y - up, up };
+                }
+                return null;
+            }, base, walkTarget.id);
+        }
         const t0 = Date.now();
-        await tapWorld(walkTarget.x, walkTarget.y, 55);
+        if (aim) await tapAt(aim.x, aim.y, 55);
+        else await tapWorld(walkTarget.x, walkTarget.y, 55);
         tapResolvedTo = await page.evaluate(() => window.__drift.lastTapOutcome());
+        if (!aim) tapResolvedTo = `${tapResolvedTo} (no pixel on screen resolved to node:${walkTarget.id})`;
         for (let i = 0; i < 40; i++) {
             await sleep(50);
             const p = (await live()).player;
@@ -2812,37 +2846,68 @@ async function main() {
         //  Stand at the shelter, dry, so the working case is the one under test.
         await editSave(`state.player = { x: ${shelterForF3.x}, y: ${shelterForF3.y} }; state.wet = 0;`);
         await sleep(400);
-        const opened = await clickDom('.build-button');
+        //  `realTapDom`, not `clickDom` (C3 NOTE). clickDom dispatches straight at the element
+        //  regardless of whether it is on-screen or covered — the exact gap that once let a
+        //  real bug past 57/57 checks — so it cannot tell "the card did not open" from "the
+        //  row is missing". This settles which, by reporting BOTH separately.
+        const opened = await realTapDom('.secondary-action');
         await sleep(500);
-        const refugeOn = await page.evaluate(() => {
+        const dom = await page.evaluate(() => {
+            const panel = document.querySelector('.panel');
             const el = document.querySelector('.panel .refuge-item .refuge-line');
             const head = document.querySelector('.panel .refuge-item .build-head');
-            return el ? { line: el.textContent.trim(), head: head ? head.textContent.trim() : '', visible: getComputedStyle(el).opacity !== '0' } : null;
+            const item = document.querySelector('.panel .refuge-item');
+            return {
+                panelOpen: Boolean(panel),
+                panelClass: panel ? panel.className : null,
+                rowInDom: Boolean(item),
+                rowClass: item ? item.className : null,
+                line: el ? el.textContent.trim() : null,
+                head: head ? head.textContent.trim() : null,
+                visible: el ? getComputedStyle(el).opacity !== '0' : false,
+            };
         });
+        check('F3 — the Build card actually opened under a real tap',
+            opened.ok === true && dom.panelOpen,
+            `realTapDom ${JSON.stringify(opened)}, panel ${dom.panelClass ?? 'ABSENT'}`);
         check('F3 — the Build card shows what the refuge is doing, in words and a number',
-            Boolean(opened) && Boolean(refugeOn) && /\d+%/.test(refugeOn.line) && refugeOn.visible,
-            refugeOn ? `head "${refugeOn.head}" / line "${refugeOn.line}"` : 'no refuge row rendered');
+            dom.rowInDom && Boolean(dom.line) && /\d+%/.test(dom.line) && dom.visible,
+            dom.rowInDom ? `head "${dom.head}" / line "${dom.line}"` : `refuge row NOT in the DOM (panel ${dom.panelOpen ? 'was open' : 'never opened'})`);
+        //  The row must announce it is WORKING, not merely contain a percentage — C3
+        //  BLOCKING-2: both the working and the too-far lines contain the same "45%", so a
+        //  row permanently stuck on "Too far" passed every check in this trio.
+        check('F3 — and it says the shelter is WORKING, not merely quotes a number',
+            dom.rowInDom && /refuge-on/.test(dom.rowClass ?? '') && /holding off/i.test(dom.line ?? ''),
+            `class "${dom.rowClass ?? 'none'}" / line "${dom.line ?? 'none'}"`);
 
         //  ...and the number is the one the brain computed, not a second copy that can drift.
-        const brainPct = await page.evaluate(() => window.__drift.refuge?.()?.reductionPct ?? null);
+        //  No `?? null` escape (C3 MAJOR-4): if the hook is missing this must FAIL, not pass.
+        //  An anti-drift assertion that evaporates when the thing it reads is gone is worse
+        //  than no assertion, because it reports confidence it does not have.
+        const brainPct = await page.evaluate(() => {
+            const r = window.__drift.refuge;
+            return typeof r === 'function' ? r().reductionPct : 'HOOK-MISSING';
+        });
         check('F3 — the number on screen is the brain\'s number, not a re-derivation',
-            brainPct === null || (refugeOn && refugeOn.line.includes(`${brainPct}%`)),
-            `brain says ${brainPct}%, screen says "${refugeOn ? refugeOn.line : 'nothing'}"`);
+            typeof brainPct === 'number' && dom.line !== null && dom.line.includes(`${brainPct}%`),
+            `brain says ${brainPct}${typeof brainPct === 'number' ? '%' : ''}, screen says "${dom.line ?? 'nothing'}"`);
         await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
         await sleep(400);
 
         //  The FAILURE mode has to be legible too — walking away must say so, not go quiet.
         await editSave(`state.player = { x: ${shelterForF3.x + TUNE.shelterRadius + 12}, y: ${shelterForF3.y} };`);
         await sleep(400);
-        await clickDom('.build-button');
+        await realTapDom('.secondary-action');
         await sleep(500);
-        const refugeOff = await page.evaluate(() => {
+        const off = await page.evaluate(() => {
             const el = document.querySelector('.panel .refuge-item .refuge-line');
-            return el ? el.textContent.trim() : null;
+            const item = document.querySelector('.panel .refuge-item');
+            return { line: el ? el.textContent.trim() : null, cls: item ? item.className : null };
         });
-        check('F3 — out of range it says SO, and says how close you must be',
-            Boolean(refugeOff) && /too far/i.test(refugeOff) && refugeOff.includes(`${TUNE.shelterRadius} m`),
-            refugeOff ? `"${refugeOff}"` : 'no refuge row rendered');
+        check('F3 — out of range it says SO, says how close you must be, and marks itself OFF',
+            Boolean(off.line) && /too far/i.test(off.line) && off.line.includes(`${TUNE.shelterRadius} m`)
+            && /refuge-off/.test(off.cls ?? ''),
+            `class "${off.cls ?? 'none'}" / line "${off.line ?? 'no refuge row rendered'}"`);
         await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
         await sleep(300);
     }
