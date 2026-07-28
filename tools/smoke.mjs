@@ -2707,6 +2707,12 @@ async function main() {
         //  cannot be a constant. Probe for a pixel that resolves to this node, then tap THERE
         //  for real. The probe is a READ (`tapTargetAt`); the tap is the shipped player path,
         //  so hazard #4 holds — a hook may locate a target, it may not stand in for the verb.
+        //  The camera CHASES its target angle (slerp), so `faceNode` returns while it is
+        //  still settling. Probing then tapping across that drift meant the pixel that
+        //  resolved to the node no longer pointed at it by the time the finger landed — the
+        //  probe reported a hit and the real tap still found empty ground. Settle first, and
+        //  keep the gap between probe and tap as short as possible.
+        await sleep(700);
         const base = await screenOf(walkTarget.x, walkTarget.y);
         let aim = null;
         if (base) {
@@ -2897,6 +2903,15 @@ async function main() {
         //  The FAILURE mode has to be legible too — walking away must say so, not go quiet.
         await editSave(`state.player = { x: ${shelterForF3.x + TUNE.shelterRadius + 12}, y: ${shelterForF3.y} };`);
         await sleep(400);
+        //  Where the player ACTUALLY ended up. The previous form asserted the row said
+        //  "too far" without ever checking the player was far, so a failure could not be told
+        //  apart from the reposition simply not taking — and it reported the UI as broken
+        //  when the row was, for all it knew, telling the truth.
+        const awayState = await live();
+        const awayDist = Math.hypot(awayState.player.x - shelterForF3.x, awayState.player.y - shelterForF3.y);
+        check('F3 setup — the player is genuinely out of the shelter radius before we look',
+            awayDist > TUNE.shelterRadius,
+            `${awayDist.toFixed(2)} m from the shelter (radius ${TUNE.shelterRadius} m)`);
         await realTapDom('.secondary-action');
         await sleep(500);
         const off = await page.evaluate(() => {
@@ -2907,7 +2922,7 @@ async function main() {
         check('F3 — out of range it says SO, says how close you must be, and marks itself OFF',
             Boolean(off.line) && /too far/i.test(off.line) && off.line.includes(`${TUNE.shelterRadius} m`)
             && /refuge-off/.test(off.cls ?? ''),
-            `class "${off.cls ?? 'none'}" / line "${off.line ?? 'no refuge row rendered'}"`);
+            `at ${awayDist.toFixed(2)} m — class "${off.cls ?? 'none'}" / line "${off.line ?? 'no refuge row rendered'}"`);
         await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
         await sleep(300);
     }
