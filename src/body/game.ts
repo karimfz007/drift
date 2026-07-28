@@ -56,6 +56,7 @@ import {
     loadoutView,
     ownedTools,
     stowActiveHand,
+    stepMovement,
     tryCombine,
     announcementFor,
     loadSpeedMultiplierOf,
@@ -164,6 +165,13 @@ export class Game {
 
     //  Movement carries momentum now — acceleration, not instant velocity.
     private velX = 0;
+    //  Feel-court instrumentation for the unified collision fix. Not debug scaffolding: the
+    //  acceptance gate is that sliding READS as sliding through the player path, and an
+    //  on-device check has no other way to witness the deflection branch firing.
+    private lastContact = false;
+    private lastDeflected = false;
+    private contactFrames = 0;
+    private deflectFrames = 0;
     private velZ = 0;
 
     //  Direct-world interaction: where the tap wants to go, and any auto-hold in progress.
@@ -258,6 +266,12 @@ export class Game {
         //  for each interaction raycast, not just for the renderer.
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
         runtime.lastTapOutcome = () => this.tapBreadcrumbs[this.tapBreadcrumbs.length - 1]?.outcome ?? null;
+        runtime.slideReadout = () => ({
+            contact: this.lastContact,
+            deflected: this.lastDeflected,
+            contactFrames: this.contactFrames,
+            deflectFrames: this.deflectFrames,
+        });
         runtime.stickReadout = () => this.controls.read();
         runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
         runtime.fovReadout = () => (this.camera.fov * 180) / Math.PI;
@@ -1407,42 +1421,35 @@ export class Game {
         let x = state.player.x + this.velX * dt;
         let z = state.player.y + this.velZ * dt;
 
-        //  COLLIDE-AND-SLIDE. A modest movement improvement — **NOT** the cause of the
-        //  movement hard-block, though it was committed as such before the A/B was run.
+        //  THE UNIFIED COLLISION MODEL (Slice 1's opening item, D-078 B). One rule, in the
+        //  brain, where it can be tested: push out, remove the inward component, and — the
+        //  part that was missing — DEFLECT along the surface when removing the inward
+        //  component leaves nothing at all.
         //
-        //  The honest measurement, glancing approach past a shelter, 3 s of held stick:
-        //      radial push-out alone (pre-fix):  lateral 0.50 m, ended (-0.50, 94.77)
-        //      with collide-and-slide (post-fix): lateral 0.50 m, ended (-0.50, 93.35)
-        //  The radial push-out ALREADY slides, because a glancing contact has a lateral
-        //  component in the push itself. This only makes the slide a little more efficient
-        //  (~1.4 m further in the same time). Kept because it is more principled and costs
-        //  nothing; it does not close the hard-block, and must not be described as if it did.
-        //
-        //  A perfectly PERPENDICULAR approach still stops the player dead, and that is
-        //  correct physics — there is no tangential component to preserve. Measured: walking
-        //  due south into a shelter at (0, 98) pins at exactly (0, 99.70) = 98 + 1.3 + 0.4.
+        //  The line that used to sit here said a perpendicular approach stopping dead was
+        //  "correct physics — there is no tangential component to preserve." True, and the
+        //  bug. A circle approached dead-on has exactly zero tangential component, so the
+        //  mover pinned and stayed pinned for as long as the stick was held. Three symptoms
+        //  traced to it: the movement hard-block, the shelter pin (`moved 0.00m in 2s`), and
+        //  the quarry/storage approach stall, since `approach()` walks at a target's CENTRE,
+        //  which is the definition of dead-on. Three previous attempts patched symptoms.
+        //  `tests/movement.test.ts` proves all three against the pre-fix mechanism.
         const dynamic = this.dynamicObstacles();
-        const resolved = this.island.resolveCollision(x, z, TUNE.playerCollisionRadius, dynamic);
-        const pushX = resolved.x - x;
-        const pushZ = resolved.z - z;
-        x = resolved.x;
-        z = resolved.z;
-        const pushLen = Math.hypot(pushX, pushZ);
-        if (pushLen > 1e-6) {
-            const nx = pushX / pushLen;
-            const nz = pushZ / pushLen;
-            //  Remove only the inward component; whatever runs along the surface survives.
-            const into = this.velX * nx + this.velZ * nz;
-            if (into < 0) {
-                this.velX -= nx * into;
-                this.velZ -= nz * into;
-                const slid = this.island.resolveCollision(
-                    x + this.velX * dt, z + this.velZ * dt, TUNE.playerCollisionRadius, dynamic
-                );
-                x = slid.x;
-                z = slid.z;
-            }
-        }
+        const step = stepMovement(
+            state.player.x, state.player.y, this.velX, this.velZ, dt,
+            TUNE.playerCollisionRadius, this.island.obstacleField(dynamic),
+        );
+        x = step.x;
+        z = step.z;
+        this.velX = step.velX;
+        this.velZ = step.velZ;
+        //  Feel-court instrumentation: the harness reads these to tell "sliding" from
+        //  "stuck" through the real player path, and they are the only way an on-device
+        //  check can witness the deflection branch firing at all.
+        this.lastContact = step.contacted;
+        this.lastDeflected = step.deflected;
+        if (step.contacted) this.contactFrames++;
+        if (step.deflected) this.deflectFrames++;
 
         const radius = Math.hypot(x, z);
         if (radius > WALKABLE_RADIUS) { const k = WALKABLE_RADIUS / radius; x *= k; z *= k; }

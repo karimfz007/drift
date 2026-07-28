@@ -57,6 +57,13 @@ export const runtime = {
     //  Comparing them is the only way to catch the two paths drifting apart, which they
     //  have now done three times (C3 finding A9).
     lastTapOutcome: (() => null) as () => string | null,
+    //  Slice 1 feel-court: whether the last movement frame touched an obstacle, whether the
+    //  dead-on deflection fired, and how many frames of each. A READ, not a driver — the
+    //  harness still moves the player with real touch input (hazard #4). Without this an
+    //  on-device check can see that the player moved but not WHY, and "it slid" and "it was
+    //  never actually blocked" look identical from the outside.
+    slideReadout: (() => ({ contact: false, deflected: false, contactFrames: 0, deflectFrames: 0 })) as
+        () => { contact: boolean; deflected: boolean; contactFrames: number; deflectFrames: number },
     //  Installed by the game — see the `stick`/`velocity` debug hooks above.
     stickReadout: (() => ({ x: 0, y: 0, magnitude: 0 })) as () => { x: number; y: number; magnitude: number },
     velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number },
@@ -195,6 +202,7 @@ function installDebugHook(): void {
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
+        slideReadout: () => runtime.slideReadout(),
         //  D-064: the harness drives the REAL spawn and the REAL placement validator, so its
         //  reachability check exercises the shipped rule rather than re-deriving it.
         spawnSalvage: (seed: number) => spawnSalvageNode(seed),

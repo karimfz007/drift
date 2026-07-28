@@ -1462,10 +1462,87 @@ async function main() {
         await walkToward(shelterAt.x, shelterAt.y, 2.0);        // press INTO it — the evidence
         const afterPress = (await live()).player;
         const moved = Math.hypot(afterPress.x - atContact.x, afterPress.y - atContact.y);
-        knownOpen('PART 2 — pressing into a structure still MOVES you (slide, not pin)',
+        check('PART 2 — pressing into a structure still MOVES you (slide, not pin)',
             moved > 0.20,
-            `moved ${moved.toFixed(2)}m in 2s of pressing, from (${atContact.x.toFixed(1)},${atContact.y.toFixed(1)}) to (${afterPress.x.toFixed(1)},${afterPress.y.toFixed(1)})`,
-            'D-078(B) — the unified collision fix, Slice 1 opening item, fail-then-pass across all three symptoms');
+            `moved ${moved.toFixed(2)}m in 2s of pressing, from (${atContact.x.toFixed(1)},${atContact.y.toFixed(1)}) to (${afterPress.x.toFixed(1)},${afterPress.y.toFixed(1)})`);
+
+        //  ---- THE FEEL COURT (Slice 1 acceptance gate, not a note) --------------------
+        //
+        //  "Sliding must READ as sliding under a thumb." Position alone cannot say that: a
+        //  player who lurches 0.3 m, stops, lurches again has moved, and feels stuck. So the
+        //  gate is CONTINUITY and the character's own testimony, sampled while a real thumb
+        //  holds a real stick — no hook drives anything here (hazard #4); `slideReadout` is
+        //  read only, to witness WHICH branch fired, because "it slid" and "it was never
+        //  actually blocked" look identical from outside.
+        //
+        //  Free-walk speed is measured first, on open ground, in the same run — so the slide
+        //  is judged against this device on this day rather than against a number I typed in.
+        await editSave(`state.player = { x: ${shelterAt.x + 14}, y: ${shelterAt.y + 14} };`);
+        await sleep(300);
+        const freeFrom = (await live()).player;
+        await walkToward(shelterAt.x + 14, shelterAt.y + 20, 1.5);
+        const freeTo = (await live()).player;
+        const freeSpeed = Math.hypot(freeTo.x - freeFrom.x, freeTo.y - freeFrom.y) / 1.5;
+
+        //  Now press square into the shelter and sample the whole press.
+        await editSave(`state.player = { x: ${shelterAt.x}, y: ${shelterAt.y + 3.2} };`);
+        await sleep(300);
+        await faceNode(shelterAt.x, shelterAt.y);
+        const samples = [];
+        let prev = (await live()).player;
+        let facingSpread = 0;
+        let camJump = 0;
+        let prevCam = (await camera()).yaw;
+        const firstCam = prevCam;
+        for (let i = 0; i < 8; i++) {
+            await walkToward(shelterAt.x, shelterAt.y, 0.30);
+            const st = await live();
+            const cam = (await camera()).yaw;
+            const rd = await page.evaluate(() => window.__drift.slideReadout());
+            samples.push({
+                step: Math.hypot(st.player.x - prev.x, st.player.y - prev.y),
+                deflectFrames: rd.deflectFrames,
+                contactFrames: rd.contactFrames,
+            });
+            camJump = Math.max(camJump, Math.abs(cam - prevCam));
+            facingSpread = Math.max(facingSpread, Math.abs(st.player.x - shelterAt.x));
+            prev = st.player;
+            prevCam = cam;
+        }
+        const contactSamples = samples.filter((s) => s.contactFrames > 0);
+        const stalls = samples.filter((s) => s.step < 0.03).length;
+        const slideSpeed = samples.reduce((a, s) => a + s.step, 0) / (samples.length * 0.30);
+        const deflectedOnDevice = samples[samples.length - 1].deflectFrames > 0;
+
+        //  (1) The mechanism fired. WITNESS (D-066 a): without this the whole section could
+        //      pass by never having been blocked at all.
+        check('FEEL COURT — the dead-on deflection actually fired on device',
+            deflectedOnDevice && contactSamples.length > 0,
+            `deflectFrames ${samples[samples.length - 1].deflectFrames}, contactFrames ${samples[samples.length - 1].contactFrames}`);
+
+        //  (2) CONTINUITY — the difference between sliding and stuttering. At most one sample
+        //      of eight may be near-motionless; two or more reads as catching and releasing.
+        check('FEEL COURT — motion is CONTINUOUS while pressing, not stutter-and-catch',
+            stalls <= 1,
+            `${stalls}/8 samples under 3cm — steps [${samples.map((s) => s.step.toFixed(2)).join(' ')}]`);
+
+        //  (3) The slide carries real pace. Judged against THIS run's own free-walk speed:
+        //      a slide at a crawl is technically unstuck and still feels like being stuck.
+        check('FEEL COURT — sliding keeps a real fraction of walking pace',
+            freeSpeed > 0.5 && slideSpeed > freeSpeed * 0.35,
+            `slide ${slideSpeed.toFixed(2)} m/s vs free walk ${freeSpeed.toFixed(2)} m/s (${(slideSpeed / (freeSpeed || 1) * 100).toFixed(0)}%)`);
+
+        //  (4) The character goes SOMEWHERE — lateral travel along the surface, which is what
+        //      the eye reads as sliding rather than vibrating in place.
+        check('FEEL COURT — the castaway visibly travels ALONG the obstacle',
+            facingSpread > 0.8,
+            `${facingSpread.toFixed(2)} m of lateral travel across the press`);
+
+        //  (5) The camera stays civil. A slide that yanks the view reads as a collision bug
+        //      even when the position math is perfect.
+        check('FEEL COURT — the camera does not jerk when contact happens',
+            camJump < 0.5,
+            `largest single-sample camera yaw change ${camJump.toFixed(3)} rad (drift over the whole press ${Math.abs(prevCam - firstCam).toFixed(3)})`);
     }
 
     //  FIX 5 — THE PACK ON THE SURVIVOR'S BACK, and the witness it shipped twice without.

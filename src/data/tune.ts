@@ -76,6 +76,17 @@ export const TUNE = {
     /** [TUNE] C03+ — the castaway's collision radius, in metres. Governs how close you can
      *  get to a trunk or a rock — a reachability number, so it belongs here (D-026's rule). */
     playerCollisionRadius: 0.4,
+
+    /** [TUNE] Slice 1 — the unified collision fix. Below this fraction of the incoming speed,
+     *  the velocity left after removing the inward component counts as "nothing survived":
+     *  the contact was dead-on, and the mover DEFLECTS along the surface instead of stopping.
+     *  A circle approached head-on has exactly zero tangential component, so without this the
+     *  mover pins — the one cause behind the movement hard-block, the shelter pin, and the
+     *  quarry/storage approach stall. Raise it and glancing blows start deflecting too. */
+    slideDeflectThreshold: 0.35,
+    /** [TUNE] Slice 1 — fraction of the incoming speed kept while sliding along a surface.
+     *  Not 1.0: pressing into a wall should cost something, or the wall reads as a conveyor. */
+    slideRetention: 0.72,
     /** [TUNE] C03+ — collision footprints, in metres, for the things you cannot walk through. */
     treeCollisionRadius: 0.8,
     rockCollisionRadius: 1.1,

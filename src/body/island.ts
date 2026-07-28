@@ -10,6 +10,7 @@
  * whether warmth is draining — so the sky and the cold can never disagree.
  */
 
+import { pushOut } from '../brain/movement';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
@@ -127,39 +128,22 @@ export class Island {
         mast.freezeWorldMatrix();
     }
 
-    /** Push a point out of every obstacle it overlaps. Returns the corrected (x, z). */
+    /** Every obstacle in play this frame — the static field plus whatever is built. */
+    obstacleField(dynamic: readonly Obstacle[]): Obstacle[] {
+        return [...this.staticObstacles, ...dynamic];
+    }
+
+    /**
+     * Push a point out of every obstacle it overlaps. Returns the corrected (x, z).
+     *
+     * The maths moved to `src/brain/movement.ts` (Slice 1's unified collision fix) so it can
+     * be unit-tested at all — this layer imports Babylon, which the purity law keeps out of
+     * the brain, so nothing here has ever had a unit test. This delegates, and is still the
+     * right call for PLACEMENT (fire, shelter, storage): placement wants a point shoved to
+     * legal ground, not a slide. Movement wants `stepMovement`, and calls it directly.
+     */
     resolveCollision(x: number, z: number, radius: number, dynamic: readonly Obstacle[]): { x: number; z: number } {
-        let px = x;
-        let pz = z;
-        //  A couple of relaxation passes so wedging between two obstacles still resolves.
-        for (let pass = 0; pass < 2; pass++) {
-            for (const list of [this.staticObstacles, dynamic]) {
-                for (const o of list) {
-                    const dx = px - o.x;
-                    const dz = pz - o.z;
-                    const min = o.radius + radius;
-                    const d2 = dx * dx + dz * dz;
-                    if (d2 < min * min) {
-                        if (d2 > 1e-9) {
-                            const d = Math.sqrt(d2);
-                            const push = (min - d) / d;
-                            px += dx * push;
-                            pz += dz * push;
-                        } else {
-                            //  Degenerate: the point sits exactly on the obstacle's centre —
-                            //  e.g. two structures placed from the same spot at the same
-                            //  offset (C05). There is no defined push direction, so pick a
-                            //  deterministic one from the obstacle's own position rather than
-                            //  silently leaving the overlap unresolved.
-                            const angle = (o.x * 12.9898 + o.z * 78.233) % (Math.PI * 2);
-                            px = o.x + Math.cos(angle) * min;
-                            pz = o.z + Math.sin(angle) * min;
-                        }
-                    }
-                }
-            }
-        }
-        return { x: px, z: pz };
+        return pushOut(x, z, radius, this.obstacleField(dynamic));
     }
 
     /** Unlit-ish, cheap, no specular — the low-poly look and the phone-GPU budget agree. */

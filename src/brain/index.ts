@@ -6,6 +6,7 @@
 export * from './types';
 export * from './clock';
 export * from './vitals';
+export * from './movement';
 export * from './skills';
 export * from './materials';
 export * from './knowledge';
