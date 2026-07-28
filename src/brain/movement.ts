@@ -120,6 +120,23 @@ export function stepMovement(
     dt: number,
     radius: number,
     obstacles: readonly Obstacle[],
+    /**
+     * The direction the mover was already travelling, if it was in contact last frame.
+     *
+     * C3 MAJOR-1: in a NOTCH — two obstacles close enough that the mover touches both, which
+     * is the shipped shelter-plus-storage cluster exactly — the resultant push normal flips
+     * between the two obstacles frame to frame. The tangent flips with it, so the deflection
+     * side flips, and the mover enters a period-2 limit cycle: 833 of 960 frames reversing
+     * heading, 3 cm of jitter, zero net progress. Worse than the pin it replaced, because the
+     * pin at least stood still quietly while this shakes.
+     *
+     * Committing to a direction fixes it. Once sliding, the mover keeps going the way it was
+     * already going for as long as contact persists; the obstacle hash only has to break the
+     * very first tie. Hysteresis, not a new rule — and it is what a body squeezing along a
+     * gap actually does, rather than reconsidering which way to lean sixty times a second.
+     */
+    priorTravelX = 0,
+    priorTravelZ = 0,
 ): MoveStep {
     const startX = px;
     const startZ = pz;
@@ -156,9 +173,17 @@ export function stepMovement(
                 //  decides, deterministically.
                 let tx = -nz;
                 let tz = nx;
+                //  Three tie-breakers, most authoritative first.
+                //    1. Where we were ALREADY going. Committing to it is what stops a notch
+                //       from oscillating (C3 MAJOR-1) — see `priorTravelX`.
+                //    2. Which way the mover's own residual leans, for a first contact.
+                //    3. The obstacle itself, deterministically, for a true dead stalemate.
+                const priorAlong = priorTravelX * tx + priorTravelZ * tz;
                 const lean = velX * tx + velZ * tz;
                 let side: number;
-                if (Math.abs(lean) > 1e-6) {
+                if (Math.abs(priorAlong) > 1e-3) {
+                    side = priorAlong > 0 ? 1 : -1;
+                } else if (Math.abs(lean) > 1e-6) {
                     side = lean > 0 ? 1 : -1;
                 } else {
                     const nearest = nearestObstacle(x, z, obstacles);
@@ -172,6 +197,29 @@ export function stepMovement(
                 velX = tx * slideSpeed;
                 velZ = tz * slideSpeed;
                 deflected = true;
+            }
+
+            //  IMPASSABLE POCKET: stop cleanly rather than shake.
+            //
+            //  Where two obstacles overlap once expanded by the mover's radius there is no
+            //  passage at all — the shipped shelter/storage cluster is exactly this, with a
+            //  passage width of MINUS 0.80 m. Making no westward progress there is correct;
+            //  a body cannot walk through a wall. What is NOT correct is vibrating against
+            //  it, which is what the deflection produced: the resultant normal alternates
+            //  between the two obstacles, so the slide direction reverses frame to frame.
+            //
+            //  So while contact is unbroken, a slide is never allowed to REVERSE. If the
+            //  direction that survives this frame opposes the one we were already going, the
+            //  mover stops instead of flipping. A clean stop reads as "blocked", which is
+            //  the truth; the flip reads as a broken game. Single-obstacle deflection is
+            //  untouched — there the direction is consistent and this never fires.
+            const priorLen = Math.hypot(priorTravelX, priorTravelZ);
+            if (priorLen > 1e-3) {
+                const nowLen = Math.hypot(velX, velZ);
+                if (nowLen > 1e-6) {
+                    const agree = (velX * priorTravelX + velZ * priorTravelZ) / (nowLen * priorLen);
+                    if (agree < -0.2) { velX = 0; velZ = 0; }
+                }
             }
 
             //  Re-resolve after the slide so the step never ends inside an obstacle.

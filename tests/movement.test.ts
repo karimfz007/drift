@@ -305,3 +305,63 @@ describe('WHO OWNS velX — the acceleration model, not the resolver', () => {
         expect(pressThroughAccel(false)).toBeGreaterThan(pressThroughAccel(true) * 3);
     });
 });
+
+describe('THE NOTCH — two obstacles the mover touches at once (C3 MAJOR-1)', () => {
+    //  The shipped shelter/storage cluster. Expanded by the mover's radius the two circles
+    //  OVERLAP -- passage width is MINUS 0.80 m -- so there is no way through, and making no
+    //  progress there is correct. What was not correct is what the deflection did about it:
+    //  the resultant normal alternated between the two obstacles, the slide direction flipped
+    //  with it, and the mover vibrated at 3 cm and 30 Hz. Worse than the pin it replaced,
+    //  because the pin at least stood still quietly.
+    //
+    //  Two rules fix it, and both are needed: commit to the direction already being travelled
+    //  while contact holds, and never let a slide REVERSE against it -- stop instead. A clean
+    //  stop reads as "blocked", which is true. The flip reads as a broken game.
+    const NOTCH: Obstacle[] = [{ x: 0, z: 100, radius: 1.3 }, { x: 0, z: 97.8, radius: 0.9 }];
+    const SINGLE: Obstacle[] = [{ x: 0, z: 98, radius: TUNE.shelterCollisionRadius }];
+    const approachScalar = (c: number, t: number, m: number) => {
+        const d = t - c; return Math.abs(d) <= m ? t : c + Math.sign(d) * m;
+    };
+
+    /** Press west through the body's accel model; `hyst` selects the shipped wiring. */
+    function press(o: Obstacle[], startX: number, startZ: number, hyst: boolean) {
+        const dt = 1 / 60;
+        let x = startX, z = startZ, velX = 0, velZ = 0, tX = 0, tZ = 0, contact = false;
+        const from = { x, z };
+        let reversals = 0;
+        let prevH: number | null = null;
+        for (let f = 0; f < 960; f++) {
+            velX = approachScalar(velX, -TUNE.walkSpeedMps, TUNE.moveAccelMps2 * dt);
+            velZ = approachScalar(velZ, 0, TUNE.moveAccelMps2 * dt);
+            const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, o,
+                hyst && contact ? tX : 0, hyst && contact ? tZ : 0);
+            const h = Math.atan2(r.velX, r.velZ);
+            if (prevH !== null && Math.abs(((h - prevH + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 2.0) reversals++;
+            prevH = h; x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted;
+        }
+        return { net: Math.hypot(x - from.x, z - from.z), reversals };
+    }
+
+    it('PRE-FIX — the mover vibrates against an impassable notch, hundreds of reversals', () => {
+        expect(press(NOTCH, 7, 98.9, false).reversals).toBeGreaterThan(400);
+    });
+
+    it('FIXED — it settles instead of shaking', () => {
+        expect(press(NOTCH, 7, 98.9, true).reversals).toBeLessThan(10);
+    });
+
+    it('...and still makes no westward progress, because there IS no passage', () => {
+        //  Guards the fix from "improving" into a mover that squeezes through a solid wall.
+        const gap = 2.2 - (1.3 + TUNE.playerCollisionRadius) - (0.9 + TUNE.playerCollisionRadius);
+        expect(gap).toBeLessThan(0);
+        expect(press(NOTCH, 7, 98.9, true).net).toBeLessThan(7);
+    });
+
+    it('a SINGLE obstacle is untouched — the dead-on fix still slides freely', () => {
+        //  The anti-reversal rule must never fire on a normal slide. If this drops, the notch
+        //  fix has started damping the thing the whole slice exists to deliver.
+        const r = press(SINGLE, 0, 105, true);
+        expect(r.reversals).toBe(0);
+        expect(r.net).toBeGreaterThan(40);
+    });
+});

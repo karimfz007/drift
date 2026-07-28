@@ -1441,9 +1441,16 @@ export class Game {
         //  which is the definition of dead-on. Three previous attempts patched symptoms.
         //  `tests/movement.test.ts` proves all three against the pre-fix mechanism.
         const dynamic = this.dynamicObstacles();
+        //  Last frame's TRAVEL direction is handed back in — but only while contact is
+        //  unbroken, so a fresh contact is decided on its own merits rather than by whatever
+        //  the mover happened to be doing a minute ago. This is the notch fix (C3 MAJOR-1);
+        //  it is NOT the velocity write-back that caused the decay, because it feeds the
+        //  resolver a hint, never the accelerator a velocity.
         const step = stepMovement(
             state.player.x, state.player.y, this.velX, this.velZ, dt,
             TUNE.playerCollisionRadius, this.island.obstacleField(dynamic),
+            this.lastContact ? this.lastTravelX : 0,
+            this.lastContact ? this.lastTravelZ : 0,
         );
         x = step.x;
         z = step.z;
