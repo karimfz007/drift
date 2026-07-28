@@ -1,7 +1,7 @@
 # THE FIRST NIGHT (DRIFT) — State
 *The now-pointer. Canonical home: repo `/docs/drift_state.md`. Regenerated at every cycle CLOSE; C2 updates it after ship (Ops §2). This is the only handover document — any session can recover the project from here plus the cycle log.*
 
-**As of:** 2026-07-28 (**GATE 0 — the machine half CLOSED**, pending the director's playtest verdict. **Ch.10 v1 is RATIFIED** ([[D-078]]) with five amendments — the Fun Gate (Bible Book X) governs, the unified collision fix is **Slice 1's opening item**, illness gets its own Medicine Slice after Threats & Fauna, a parallel non-blocking Design-Track lane converts PROVISIONAL sections as they land — over the gate amendment that let v1 be drafted before the register completes ([[D-077]]). Both are **DESIGN-BINDING**. This batch also closed **standing hazard #4** (hook-driven device checks, [[D-075]]), ratified **build law 12, the Effectivity Law** ([[D-076]]), built the **bench mutex** and then found it deadlocked against the harness it exists to guard, redid **FIX 5** (the backpack tap) for the third time and finally with a witness, and remediated C3's closing audit, which returned **FAIL**. Previously: **URGENT player-safety fix SHIPPED (D-065)** — the "Carried" freeze root-caused to a panel that was created but never revealed: `.panel` is `opacity: 0` until a `visible` class lands, `showLoadout` was the one panel that never added it, so it sat full-screen, transparent and `pointer-events: auto`, swallowing every tap while `panelOpen` blocked Settings and the clock kept running. The reveal now belongs to `panel()` itself, and `guardPanelLock` takes control back if any panel ever holds it without showing itself.)
+**As of:** 2026-07-28 (**GATE 0 CLOSED: PASS** on all three gates ([[D-080]]). The machine half: **199/209**, every remaining failure traced to the one documented collision-model cause, **zero unknowns**. The director's half ([[D-079]]): **F1 PASS**, **F2 PASS**, **F3 carried** — not a defect, it is Slice 1's own certification target ([[D-078]] amendment A). Gate 0's full arc: [[D-063]] → [[D-080]]. **⚑ SLICE 1, "FUN FOUNDATIONS", IS OPEN.** Also this batch: [[D-081]] separated three vocabularies that had collided on the word OPERATIVE — laws use OPERATIVE/DESIGN-BINDING, plan sections use RATIFIED/PROVISIONAL, build artifacts use the evidence vocabulary. Standing hazard #4 closed, build law 12 ratified, the bench mutex built and then found deadlocking against the harness it guards, FIX 5 redone for the third time and finally with a witness, and C3's closing audit — which returned **FAIL** — remediated across A1–A11.)
 
 ## Now
 - **Title: The First Night** (D-015). DRIFT remains the internal codename for files and the repo.
@@ -25,7 +25,7 @@
 
 ## The standing plan
 
-- **Ch.10 v1 is RATIFIED and is the standing plan (D-078).** Slices 1–5 and their ordering are **OPERATIVE and binding**; Slice 6+ are named and **PROVISIONAL**. The **Fun Gate (Bible Book X)** governs it: F1/F2/F3 are Slice 1's certification targets, **F4 (the Thin Complete Road) is its own slice**, and catalogues open family-by-family only behind F4 plus each family's representative proof. **The collision model's unified fix is Slice 1's opening item.** Illness has its own **Medicine Slice** after Threats & Fauna. A parallel **Design-Track lane** converts PROVISIONAL sections as witnesses land and never gates a slice. Sequence: Gate 0's machine half → the director's playtest verdict → Slice 1. Classification rules are D-077.
+- **Ch.10 v1 is RATIFIED and is the standing plan (D-078).** Slices 1–5 and their ordering are **RATIFIED** (spine binding); Slice 6+ are named and **PROVISIONAL**. The **Fun Gate (Bible Book X)** governs it: F1/F2/F3 are Slice 1's certification targets, **F4 (the Thin Complete Road) is its own slice**, and catalogues open family-by-family only behind F4 plus each family's representative proof. **The collision model's unified fix is Slice 1's opening item.** Illness has its own **Medicine Slice** after Threats & Fauna. A parallel **Design-Track lane** converts PROVISIONAL sections as witnesses land and never gates a slice. Sequence: Gate 0's machine half → the director's playtest verdict → Slice 1. Classification rules are D-077.
 
 ## Dossier tracker
 ***This table is the SINGLE SOURCE OF TRUTH for chapter numbering (D-060, ops v1.10 §2).*** Where it and any conversation disagree, this table is right by definition, and a renumber is only real once it lands here. *First captured in this doc as of D-054/D-055 (2026-07-24/25) — this repo had no written record of the Living Island dossier's chapter numbering before this pass. Only the chapters actually named in a ruling to C2 are populated below; the rest are known to C1/SON/the director but have not yet been relayed into these docs. Don't infer content for an unlisted chapter — ask C1/SON for the relay before building against it.*
@@ -66,22 +66,33 @@
 - **Android-first**: Android Chrome is the primary device until launch-prep.
 
 ## Next actions
-1. **DIRECTOR — the playtest verdict is the gate.** Gate 0's machine half is closed; what remains is a judgement no
-   test can make. The two questions, unchanged: does it FEEL right (F1 embodied feel, F2 the expedition loop as
-   pleasure, F3 one truthful first night), and does it clear the LDOE bar? Slice 1 does not open until that verdict
-   lands ([[D-078]]).
-2. **C2 — Slice 1 opens with the unified collision fix** ([[D-078]] amendment B), fail-then-pass across all three
-   historical symptoms (movement hard-block, shelter pin, stalled `approach()`), plus the feel-court check that
-   sliding along an obstacle reads as sliding. The harness check that guards it is now honest and currently reports
-   **OPEN** — see the known-open list in any harness run. It must go green by the fix, not by the check.
-3. **C3 — the closing audit's remediation is itself unaudited.** A1–A10 were addressed this batch, several with
-   mechanisms rather than prose (the Effectivity Law's missing witness now exists as a real check; the bench mutex
-   has six tests it never had). None of that has been read by an auditor.
-4. **C1** — two declarations were added to [[D-077]] and [[D-078]] by C2 under [[D-076]], because the new
-   docs-integrity check refused the log without them. They are marked as C2's reading and need C1's confirmation or
-   correction; the constitutional pen is not C2's. Note also that **OPERATIVE now names two different things** — a
-   law's class under [[D-076]] and a Ch.10 section's class under [[D-077]] — which is why the check keys on an
-   explicit `**Class:**` line rather than the bare word.
+
+**⚑ SLICE 1, "FUN FOUNDATIONS", IS OPEN** ([[D-080]]). Order confirmed, and it is an order, not a menu:
+
+1. **The unified collision-model fix — the opening item.** Fail-then-pass across all three historical symptoms:
+   the movement hard-block, the shelter pin, and the stalled `approach()`. Plus the feel-court check that sliding
+   along an obstacle **reads as sliding, never as stuck**. The harness already carries the measurement it must
+   move: `moved 0.00m in 2s of pressing`, registered known-open against [[D-078]](B). It goes green by the fix,
+   not by the check. Closing this also closes the storage cluster, which is the same cause wearing a third hat —
+   `approach()` gives up 3.79 m short of the 2.5 m interact radius and the box takes 6476 ms to open.
+2. **F3 — refuge quality delivering the 40–50% exposure reduction**, truthfully and legibly, at the v0_14 balance
+   target. This is the gate the director did **not** pass, and it was always Slice 1's own target.
+3. **Feel/expedition certification, regression-locked.** F1 and F2 passed and are currently *remembered*, not
+   *guarded* — exactly the condition [[D-066]] exists to distrust. Formalize them against the now-passed reads so a
+   later change cannot quietly cost what this gate won.
+
+**Standing gates and perf rails unchanged.**
+
+**Also owed, not blocking Slice 1:**
+- **C3** — the Gate 0 remediation is itself unaudited. A1–A11 were addressed, several with mechanisms rather than
+  prose (the Effectivity Law's missing witness now exists as a real check; the bench mutex has six tests it never
+  had). No auditor has read any of it.
+- **C1** — three class declarations are C2's reading and flagged for confirmation, in the same way [[D-077]] and
+  [[D-078]]'s were before [[D-081]] corrected them: [[D-079]] (DESIGN-BINDING), [[D-080]] and [[D-081]] (both
+  OPERATIVE). Not something to wait on.
+- **The comparison sheet** at `/docs/reference/drift_comparison_sheet.md` was regenerated at this gate close per
+  [[D-078]] amendment E. The **director's own sheet never landed** in the repo, so this edition is a repo-side
+  regeneration citing only what the repository can witness, to be reconciled when the director's copy arrives.
 
 ## Awaiting the director (⚑ fork, does not block)
 *(none open — the crew-composition fork is resolved; see D-047)*

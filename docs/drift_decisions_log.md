@@ -3,13 +3,33 @@
 
 ---
 
+**D-081 · 2026-07-28 — Terminology ruling: three vocabularies, none overloading (C1).** Mechanical amendment, **no substance change**. C2's Gate 0 remediation surfaced a real collision — **OPERATIVE** was carrying two unrelated meanings at once, a law's effectivity class under [[D-076]] and a Ch.10 plan section's standing under [[D-077]]. Resolved by separating the vocabularies:
+
+- **LAWS** — **OPERATIVE** / **DESIGN-BINDING** ([[D-076]]), unchanged.
+- **PLAN SECTIONS** — **RATIFIED** (spine binding) / **PROVISIONAL** (converting on witness). Everywhere [[D-077]] and [[D-078]] described plan sections as "OPERATIVE", read **RATIFIED**; PROVISIONAL is unchanged. **Ch.10's own text is amended identically** wherever it describes sections as OPERATIVE.
+- **BUILD ARTIFACTS** — the evidence vocabulary (**VERIFIED** / **PARTIAL** / etc.), carried by the comparison sheet.
+
+[[D-077]] and [[D-078]] **themselves, as laws, are OPERATIVE** under [[D-076]]'s law-class vocabulary — their mechanism (the ratified plan text, and the gating process) is live. **C2's self-declarations from the Gate 0 remediation are CONFIRMED in substance** — the instinct to self-declare was right, and the collision it exposed was real — and are corrected only to match this ruling's wording.
+
+**Class: OPERATIVE** — mechanism named: **`tools/check-docs-integrity.mjs`**, which already refuses any decision after [[D-076]] that declares no class, and which accepts **only** the two law classes in a `**Class:**` line — so a section vocabulary can never again be mistaken for a law's. Shipped; green at 81 decisions. *(Class is C2's reading; C1 to confirm or correct.)*
+
+---
+
+**D-080 · 2026-07-28 — ⚑ GATE 0 CLOSED: PASS (C1, on the three gates).** **Machine:** 199/209, all failures the documented **collision-model cause**, zero unknowns. **Director ([[D-079]]):** F1 PASS, F2 PASS, **F3 carried** — it is Slice 1's own target, not a defect. **Carried debts, named:** (a) the **unified collision-model fix** (Slice 1 opener, fail-then-pass across all three historical symptoms + the sliding-reads-as-sliding feel check); (b) **F3 exposure-reduction certification** (v0_14 target). **Gate 0's full arc: [[D-063]] → this entry.**
+
+**⚑ SLICE 1, "FUN FOUNDATIONS", IS OPEN.** Order confirmed: **(1)** the unified collision-model fix — opening item, all three historical symptoms plus the feel-court sliding check; **(2)** **F3** — refuge quality delivering the **40–50% exposure reduction**, truthfully and legibly; **(3)** feel/expedition certification formalized against the now-passed F1/F2, **regression-locked rather than just remembered**. Standing gates and perf rails unchanged.
+
+**Class: OPERATIVE** — mechanism named: **the harness's known-open register**, which already carries the collision pin measured at `moved 0.00m in 2s of pressing` and names [[D-078]](B) as its closer, so debt (a) cannot be silently dropped; debt (b) converts to a regression lock under item (3). *(Class is C2's reading; C1 to confirm or correct.)*
+
+---
+
 **D-079 · 2026-07-28 — Director's Gate 0 playtest verdict, the Fun Gate's first read.** **F1** (embodied feel/verb quality) **PASS**. **F2** (one complete expedition loop as pleasure, not operations) **PASS**. **F3** (one truthful first night at the v0_14 balance target) — **NOT MET**, needs substantial work; **not treated as a new defect**, since this is exactly Slice 1's named certification target ([[D-078]] amendment A). Both halves of Gate 0 now complete: the machine half (C3's audited remediation, 199/209, root cause of all remaining failures documented as one collision-model cause) and this playtest verdict. **Gate 0 CLOSED pending C1's formal close verdict.** Slice 1 opens next: **the collision-model fix first** ([[D-078]] amendment B), then **F3's exposure-reduction work as its primary certification target**, with F1/F2 already passing as the baseline to protect.
 
 **Class: DESIGN-BINDING** — trigger named: **Slice 1**, opening on C1's formal close verdict. The verdict records a judgement and sets the next slice's agenda; it changes nothing in the live game by itself. *(Declaration added by C2 because [[D-076]]'s docs-integrity check refuses any decision after D-076 that does not declare a class — see [[D-077]]/[[D-078]] for the same. C2's reading; C1 to confirm or correct.)*
 
 ---
 
-**D-078 · 2026-07-28 — Ch.10 v1 RATIFIED, with amendments (C1).** Slices 1–5 and their ordering are **OPERATIVE and binding**; Slice 6+ remain named and **PROVISIONAL**, per the draft's own classes. Five amendments bind the text:
+**D-078 · 2026-07-28 — Ch.10 v1 RATIFIED, with amendments (C1).** Slices 1–5 and their ordering are **RATIFIED** (spine binding); Slice 6+ remain named and **PROVISIONAL**, per the draft's own classes. Five amendments bind the text:
 
 **(A) The Fun Gate (Bible Book X) is supplied as the plan's governing law.** **F1** (embodied feel / verb quality on a real phone), **F2** (one complete expedition loop as *pleasure*, not operations) and **F3** (one truthful first night at the v0_14 balance target) are **Slice 1's certification targets**. **F4** — the Thin Complete Road: one continuous authored path from first minute through survival, contact, departure, boundary, external reception, human consequence — **is its own slice.** Catalogues (routes, crafts, endings, deaths, junctions) open **family-by-family only behind F4 plus each family's representative proof** (Laws 65–69), bound explicitly in the plan text rather than left implicit.
 
@@ -23,13 +43,13 @@
 
 **Sequence otherwise unchanged:** Gate 0's machine half finishes → the director's playtest verdict → Slice 1.
 
-**Class: DESIGN-BINDING** — trigger named: **Slice 1**, which begins after the director's playtest verdict. Nothing here changes the live game today; the amendments bind the plan and the slice that opens next. *(Declaration added by C2 under [[D-076]], which requires every decision ratified after it to declare a class. The classification is C2's reading, not C1's words — C1 to confirm or correct. The OPERATIVE/PROVISIONAL classes in the entry above are Ch.10 **section** classes from [[D-077]], a different taxonomy from this law's; the checker keys on this explicit line precisely because the bare word is now overloaded.)*
+**Class: OPERATIVE** — mechanism named: **the ratified plan text itself, and the process this entry defines**, both live now. *(Declared DESIGN-BINDING by C2 and **corrected to OPERATIVE by C1** in the terminology ruling at [[D-081]] — the self-declaration was confirmed in substance, and the vocabulary collision it exposed was real. As a law this entry is in force; what it classes as RATIFIED or PROVISIONAL are Ch.10 **sections**, a separate vocabulary. See [[D-081]] for the three non-overloading vocabularies.)*
 
 ---
 
-**D-077 · 2026-07-28 — Ch.10 gate amendment (C1).** Register completion gates Ch.10's **FINAL ratification of provisional sections**, not its **v1 drafting**. Ratified reception rulings are **Effectivity-Law witnesses** ([[D-076]]) — first read: C1 at reception; second: SON's register. Ch.10 v1 sections class as **OPERATIVE** (resting on a ratified ruling, D-ref cited) or **PROVISIONAL** (resting on an unread remainder or an unaudited v2.2 section, converting when its witness lands).
+**D-077 · 2026-07-28 — Ch.10 gate amendment (C1).** Register completion gates Ch.10's **FINAL ratification of provisional sections**, not its **v1 drafting**. Ratified reception rulings are **Effectivity-Law witnesses** ([[D-076]]) — first read: C1 at reception; second: SON's register. Ch.10 v1 sections class as **RATIFIED** (resting on a ratified ruling, D-ref cited) or **PROVISIONAL** (resting on an unread remainder or an unaudited v2.2 section, converting when its witness lands).
 
-**Class: DESIGN-BINDING** — trigger named: **Ch.10's final ratification pass**, which runs when SON's register completes. It governs how a future document is drafted and ratified, and asserts nothing about the running game. *(Declaration added by C2 under [[D-076]]; C1 to confirm or correct.)*
+**Class: OPERATIVE** — mechanism named: **the gating process this entry defines**, live from ratification and already governing Ch.10's section classes. *(Declared DESIGN-BINDING by C2 and **corrected to OPERATIVE by C1** in the terminology ruling at [[D-081]]; the instinct to self-declare was confirmed, the wording corrected.)*
 
 ---
 
