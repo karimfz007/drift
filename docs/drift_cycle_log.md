@@ -1821,3 +1821,142 @@ A zero-effort tap now yields **+50% fibre**, and two foraging verbs gained a har
 
 **The quarry three-taps miss remains OPEN and un-amnestied.** D-072 withdrew its "known machine-specific" status and it has not been re-granted; nothing in this package touches it, and I did not re-diagnose it. Fast-movement was reported fixed at `ce586be` and is likewise not re-opened here. **Neither is affected by F1** — but note that F1's failures are *new* and must not be folded into either of those standing excuses.
 
+
+---
+
+## GATE 0 CLOSING AUDIT — C3, 2026-07-28
+
+**Target: `57beb2d`** (HEAD), covering the whole Gate 0 batch **D-063 → D-078** and every source commit since the D-073 audit: `240176c`, `a336819`, `d1429d2`, `942c2b3`, `a8ca2fe`, `3fe3b8c`, `3df7c94`, `57beb2d`.
+
+**VERDICT: FAIL — on one item, `3df7c94` (FIX 5 REDO). Everything else in the batch holds, and most of it holds well.** The redo's *mechanism* is correct and I confirmed it: the pack mesh is genuinely unpickable, the region is consulted last, and **no gather verb regressed** — 41 checks / 0 failures at exactly the point where the first attempt gave 41 / 12, plus my own nine-verb sweep at 9/9. It fails for two other reasons. **(a) It shipped with no witness of any kind** — no test can exist (no unit test in this repo imports `src/body`, and the purity law makes that structural), and no harness check was added, so the device harness was the only possible witness and it got none. That is C3 finding F5/F3 verbatim — *"FIX 5 shipped with no regression test"* — repeated on the commit that redoes FIX 5, two commits after D-075 and D-076 were ratified to stop exactly this. **(b) It regressed the game, and the regression is already on the record and was misread.** The screen-space region takes the player's `empty-ground` "never mind" tap in a band around their own feet and leaves a modal panel open over the game. Proven by a one-variable A/B I ran myself, and visible in C2's own two harness logs from either side of `3df7c94`.
+
+FIX 5 should be re-cut a third time or re-parked. **Nothing else in the batch needs to be held back for it.**
+
+### Pins, and the isolation tradeoff stated plainly
+
+Run in the **main checkout, no git worktree**, on the standing instruction that worktrees have been destroyed mid-audit five times here. **There is therefore no filesystem isolation**, and every mitigation below is discipline rather than infrastructure: HEAD was pinned at `57beb2d` and re-verified at the end; every revert experiment restored its file and `git status` was checked empty immediately after each one; the HEAD artifact was rebuilt after the control arm and came back to the identical bundle hash (`index-DKJYp4b8.js`). The only file this audit changes is this one. The tree was clean at the start and is clean now.
+
+**Bench hygiene (D-072, ops v1.10 §5 law 10).** `bench-lock.mjs status` read `bench free` before I began. The build ran under the wrapper; the harness takes the lock itself; both my probes take it via `acquire()`. Never two at once, and I never removed a lock I did not own. **One disclosure:** I ran the unit-leg revert experiments (plain `vitest`, no browser) while the device harness still held the bench, to keep the audit inside one session. Under the lock's own stated scope that is sharing the bench. It changed nothing — the run's results match C2's own `final4`/`gate0` logs check-for-check apart from the deltas named below — but it is stated rather than buried.
+
+**Identity-gating.** Port 4192, `vite preview` over my own `dist/`. Before trusting anything: `<title>The First Night</title>`, `pack-icon` present, and — because this audit turns on which side of `3df7c94` is being served — `packTapScreenRaisePx`/`packTapScreenRadiusPx` confirmed **present** in the served bundle for the HEAD arm (`index-DKJYp4b8.js`) and **absent** for the control arm (`index-D_M1V-IM.js`).
+
+### Legs that genuinely ran, per target (D-066(c)) — nothing below is implied
+
+| target | static | unit | device |
+|---|---|---|---|
+| 1 · FIX 5 REDO | **YES** | **N/A, and that is the finding** — no unit test can reach `src/body`; proven, not assumed | **YES** — shipped harness on HEAD (199/206), my own 9-verb sweep, and a one-variable A/B probe (HEAD vs `3df7c94^`) |
+| 2 · hazard #4 harness audit | **YES** — I classified every `__drift` *and* `__driftScene` use myself | **N/A** | **YES** — both converted checks ran green in my harness run |
+| 3 · the bench mutex | **YES** | **N/A** | **YES (behavioural)** — four live experiments, results below |
+| 4 · F3 and F5 | **YES** | **YES** — my own revert-and-run, both directions | F5: **N/A**. F3's device counterpart (`D-075 — experimentation is reachable BY THE PLAYER`) **ran and passed** |
+| 5 · the mastery guard | **YES** | **YES** — both historical hand-fix errors re-injected and caught | **YES** — `the salvage find granted stone as rolled — stone 2` |
+| 6 · vacuity / effectivity | **YES** | **YES** — five reverts run | **YES** — the collide-and-slide check observed passing on its weak disjunct |
+
+**Not attempted, not implied:** the sky-path branch of the pack region. It exists in the code (`src/body/game.ts:684-694`) and I verified it by reading, but neither camera pose I could construct put open sky inside the region, so **no device evidence supports it either way.**
+
+---
+
+### 1. FIX 5 REDO — the mechanism is right, the regression is real, and it has no witness
+
+**What is genuinely fixed.** `src/body/entities.ts:149` sets `this.pack.isPickable = false` (the player capsule too, at `:125`), and both resolvers filter on `m.isPickable` (`src/body/game.ts:554`, `:600`), so the pack **cannot enter `scene.pick`** — the D-074 failure mode is impossible by construction, not guarded against. Ordering is as claimed: `pickNode` first (`:667`), every world candidate next (`:699-716`), the region last (`:717`). I confirmed the consequence rather than the code:
+
+| gather verb, shipped harness, my run at `57beb2d` | |
+|---|---|
+| reeds `+2` · deadfall · rock `stone 2` · coconut palm `coconut 1, fibre 2` · driftwood · shellfish · berries · felling `+8` · pond flask `sips 0 → 1` | **all PASS** |
+| checks at the same point in the run where D-074 recorded 41 / **12 failures** | **41 / 0 failures** |
+| my own bespoke nine-verb sweep (reed, deadfall, driftwood, rock, berrybush, coconutpalm, shellfish, quarry, tree) | **9 / 9** |
+
+**What is broken.** The region is tested when no world candidate wins — which is *before* the fail-loud `unexpectedMesh` branch (`:749`) and before `empty-ground`, the player's documented "never mind" gesture (`:756-760`). `openLoadout()` has no auto-close, and `guardPanelLock` only rescues panels that are *invisible*; this one is visible. So it sticks. **A/B, my own, same machine, same session, same server, same probe, only `3df7c94` differing:**
+
+| probe | HEAD `57beb2d` | control `3df7c94^` |
+|---|---|---|
+| real tap 70 px above the projected feet | `-> backpack`, **`panel loadout visible:Carried` opens** | `-> empty-ground`, no panel |
+| column of taps, 0→150 px above the feet | `empty-ground` ×4, then **`backpack` at 40/50/70/90/100 (panel left open)**, then `empty-ground` ×3 | `empty-ground` ×12 |
+| the shipped harness's own decorative-tree tap (`tools/smoke.mjs:1160-1170`) replayed: player 1.10 m out, tap projects **55 px** above the feet | `-> backpack`, **panel left open** | `-> empty-ground`, no panel |
+
+The band is `[36,104]` px, exactly `packTapScreenRaisePx ± packTapScreenRadiusPx`. **Every tap it takes would otherwise have been `empty-ground`.**
+
+**And the shipped harness already told us, from the first run after `3df7c94`.** That decorative-tree check asserts only `pending === null` and `failedInteractionTaps` unchanged — both **true** of an opened Carried panel — so it passes green while leaving the panel up, and the next thing needing a panel-free game fails instead. C2's own logs, single variable:
+
+| run | tree | `the "Copy debug info" button is reachable by a real tap` |
+|---|---|---|
+| `final4` (at `a8ca2fe`) | pre-REDO | **PASS** |
+| `gate0` (at `3df7c94`) | post-REDO | **FAIL — not-found** |
+
+A `diff` of those two 206-check logs shows **exactly** those two lines plus the salvage `stone 3 → 2` fix `a8ca2fe` made. My own run at HEAD reproduces it and — thanks to `57beb2d`'s stronger assertion — names the cause outright: `the Look button opens settings — clicked=true, settings=false, opacity=0, panels=[panel loadout visible]`. **199/206, 7 failures**: the four known-open storage checks, plus these three.
+
+**A note in the fix's favour, and one against.** The pack region is **not** implicated in the four storage failures: a region hit leaves `.panel.loadout` *present* with the heading "Carried", and those checks report the panel **absent**. Against: `openLoadout` now has four call sites (`:229`, `:689`, `:733`, `:876`), two of them new and neither observable from `tapTargetAt`.
+
+### 2. Hazard #4's one-time harness audit — the classification is honest, and it holds
+
+I re-derived it rather than reading it back. `__drift.tryCombine` and `__drift.intend` survive in `tools/smoke.mjs` **only inside comments** explaining their own removal (`:565`, `:647`, `:2365`). Both checks now drive real paths: experimentation through `realTapDom('.carried-button')` then two `.combine-chip` taps then `.try-combine-btn` (a genuine viewport-and-occlusion-respecting touch, `:250-271`), and the out-of-range regression through `faceNode` plus a real `tapWorld` on `cp1`. Both **passed in my run** (`D-075 — experimentation is reachable BY THE PLAYER … ok`; `REGRESSION #3 … 14.0 → 8.9 m` then acts on arrival). `spawnSalvage` is world setup whose verification is done by real touches; `tapTargetAt` (`src/body/game.ts:629-654`) is genuinely side-effect-free and sits beside a real-tap leg. **No DRIVE-class hook call remains.** Two additions to the classification: `persist`/`reset` are unused by the harness (`startFresh` clears storage directly), and **`__driftScene`** — a second, broader hook exposing the whole mutable Babylon scene — was not named in the classification at all; its three uses (`:511`, `:536`, `:1040`) are all reads, so the conclusion survives, but the sweep was `__drift`-only.
+
+### 3. The bench mutex — the refusal is real; "builds too" is not enforced by anything
+
+Four experiments, all run:
+
+- **A contender genuinely refuses.** `Bench acquired by "outer C3 audit" (pid 9712)` … `REFUSED: bench busy: outer C3 audit (pid 9712) … Concurrent bench use is forbidden` — exit 1, holder named, lock released afterwards.
+- **It never kills what it does not own.** No `taskkill`/`pkill` survives anywhere in `tools/` or `src/` (only a comment at `tools/smoke.mjs:161` describing the old one); teardown is `browser.process()?.kill()` on `exit`/`SIGINT`/`SIGTERM` only.
+- **Builds are NOT covered.** With the bench held by a live process labelled "SIMULATED harness run", **`npm run build` ran to completion, exit 0, and rewrote `dist/`**; so did `npm run typecheck`. Nothing in `package.json` takes the lock. `tools/bench-lock.mjs:5-8` and `tools/smoke.mjs:170-174` both claim it covers "harness runs, builds and audits alike" and name *"a second BUILD corrupting a running harness's `dist/`"* as the failure it closes. **That claim has no mechanism** — which is precisely the unmarked middle D-076 forbids. ops v1.10 §5 law 10 still says "**One harness at a time**", so the protocol and the tool also disagree about the law's own scope.
+- **The documented wrapper cannot run the harness.** `tools/smoke.mjs:176` acquires the bench itself, so `node tools/bench-lock.mjs run "C3 audit" -- node tools/smoke.mjs <url>` makes the inner acquire contend with its own parent: `Bench acquired by "C3 audit" (pid 49364)` … `REFUSED: bench busy: C3 audit (pid 49364)`. At the 30-minute default it hangs for half an hour first. Separately, `tools/bench-lock.mjs:78` spawns without `shell: true`, so on Windows `-- npm run build` dies with `spawn npm ENOENT` — the documented way to put a build on the bench does not work on this machine at all.
+
+### 4. F3 and F5 — F5 is genuinely fixed; F3's test cannot witness the defect it names
+
+**F5 is real now, and I proved it in both directions.** Nerfing `energyRecoveryPerGameHourResting` 7 → 3.85 (the same 45% cut that passed the old guard) fails the named test outright: `AssertionError: expected 46.2 to be greater than 82.32` — and **only** that test, 1 failed / 40 passed in `tests/construction.test.ts`. Restored: 358/358. Worth recording *why* the absolute bound matters: the pre-existing test at `tests/construction.test.ts:487-488`, which D-073's audit credited with protecting the property, derives its expectation from the same tune constants, so it **passed on the nerf**. The two are complementary — that one catches a code-path change, the new one catches a tune change — and the batch got this right.
+
+**F3 does not witness F2.** `tests/experiment.test.ts:278-321` tests `src/brain/experiment.ts`. F2's damage was entirely in `src/body/game.ts`'s `onTryCombine` — the `as { outcome: string }` cast, `'failed'`, `blueprintName` — and the brain was never wrong. Proven by restoring `86ebc16`'s whole `game.ts` (which carries the broken `onTryCombine`) into the live tree: **`tests/experiment.test.ts` passes 27/27, and the whole suite passes 358/358.** So `942c2b3`'s claim — *"plus the assertion that would have caught F2's real damage"* — is false; nothing in the suite catches it. The **outcome-contract test itself is good and worth keeping**, and its D-066(a) witness (`expect(seen.size).toBeGreaterThanOrEqual(3)`) is a real bar. It is the *regression* framing that is vacuous under D-066(b). FIX 2's genuine witness is the device check, which exists and passes.
+
+### 5. The mastery map's structural guard — it catches both historical hand-fix errors
+
+Re-injected each one into the live tree and ran the named test:
+
+| re-injected error | result |
+|---|---|
+| `case 'salvage':` back in the mastery map (hand-fix error #1) | **FAIL** — `+ "salvage: mastery=true expected=false"` |
+| `case 'coconutpalm':` stripped again (hand-fix error #2) | **FAIL** — `+ "coconutpalm: mastery=false expected=true"` |
+| mastery pointed back at the *training* map (the original D-073 bug) | **FAIL** — `expected 1.5 to be less than 1.5` |
+
+Restored after each: 358/358, clean tree. The rule — mastery iff hold-kind, with `crashbox` exempted by name — is genuinely asserted rather than hand-listed, and the device leg agrees: `the salvage find granted stone as rolled — stone 2`, against the `stone 3` that caught it. **One prospective gap:** the guard iterates its own literal `ALL: NodeKind[]` (`tests/knowledge.test.ts:445-446`), a *third* hand-maintained copy of the kind list — `src/brain/state.ts:125` already has a compiler-enforced `Record<NodeKind, NodeSpec>`, and the same test file already has `ALL_NODE_KINDS` at `:135`. Since `masteryDomainForNodeKind` ends in `default: return null`, a new hold-kind node would silently get no mastery and the guard would not see it. Currently complete (11 of 11), so this is a future hole, not a live one.
+
+### 6. Vacuity and Effectivity across the batch
+
+**Three fail-then-pass claims re-derived by actually reverting the fix — all three (F5, mastery ×2, D-073's mastery reach) genuinely fail pre-fix. One does not (F3/F2), and is reported as such.**
+
+**The Effectivity Law's own witness cannot detect a violation of it.** D-076 names "the docs-integrity check plus C3's audit reading". `tools/check-docs-integrity.mjs` only resolves `D-NNN` citations against definition lines — it has no concept of an effectivity class and passes on any unmarked law. The human half is the whole mechanism. And the first two entries after ratification, both self-described amendments, **do not declare their own class**: D-077 assigns classes to Ch.10 *sections*, D-078 to *slices*. D-078 further declares Slices 1–5 **OPERATIVE**, which D-076 defines as *"in force against the live game; its satisfying mechanism is NAMED … and either already exists or lands in the same batch"* — they are future work, which is what DESIGN-BINDING exists for — and introduces **PROVISIONAL**, a third class D-076 does not define.
+
+**The collide-and-slide check still cannot fail for its own cause.** `tools/smoke.mjs:1399-1401` reads `lateral > 0.15 || closed > 4.0`. My run: `PASS — lateral 0.00m, closed 4.30m, ended (0.0,103.5)` — **zero lateral movement**, i.e. the player pinned head-on, which is the exact case the check exists to catch, passing on the disjunct. C2 disclosed this weakness at the end of the parallel-closure session and it was never remediated, while F3 and F5 were. It matters more now than it did then: D-078(B) makes the collision model **Slice 1's opening item**, requiring fail-then-pass across all three historical symptoms, and the one shipped check guarding that behaviour is currently vacuous and green.
+
+---
+
+### Findings
+
+**A1 — BLOCKING. `3df7c94` shipped a player-facing body-layer capability with no witness of any kind.** `src/body/game.ts:587-596`, `:684-694`, `:717-735`; `src/data/tune.ts:86,90`. No test — `grep -rn "src/body" tests/` returns nothing, so the whole body layer has zero unit coverage, structurally, because it imports Babylon and `tools/check-purity.mjs` keeps that out of the brain — and no harness check: `packTapScreenRaisePx`, `packTapScreenRadiusPx` and `tappedPackRegion` appear nowhere in `tools/` or `tests/`. The device harness was the only witness available and got none. This is F3 on D-073 repeated verbatim, two commits after D-075/D-076.
+
+**A2 — BLOCKING. The pack region hijacks the `empty-ground` "never mind" tap and leaves a modal panel open.** `src/body/game.ts:717` sits ahead of the fail-loud branch (`:749`) and `empty-ground` (`:756-760`). A/B and mechanism as above; the harness's own decorative-tree check (`tools/smoke.mjs:1160-1170`) triggers it, passes anyway, and poisons the next two checks. **Recommended:** consult the region only on the sky branch, or gate it behind something a "never mind" tap cannot satisfy; then ship (i) a harness check that taps the region and asserts Carried opens, and (ii) its companion that taps just outside and asserts **no** panel opens. Without (ii) the same class recurs.
+
+**A3 — MAJOR. The bench mutex's "builds too" is prose, not a mechanism** (measured: `npm run build` completes with the bench held), **and the documented harness wrapper self-refuses** (measured). `tools/bench-lock.mjs:5-8`, `:78`; `tools/smoke.mjs:170-181`; `package.json`; ops v1.10 §5 law 10.
+
+**A4 — MAJOR. F3's regression cannot fail on the pre-fix tree** — 358/358 with `86ebc16`'s broken `onTryCombine` restored. A D-066 clause (b) violation as framed; the test itself is worth keeping, relabelled as a contract lock rather than F2's regression. `tests/experiment.test.ts:278-321`.
+
+**A5 — MAJOR. The collide-and-slide check is vacuous and green on a measured pin**, on the exact behaviour D-078 elevates to Slice 1's opening item. `tools/smoke.mjs:1399-1401`.
+
+**A6 — NOTE. D-076's named witness cannot witness it, and D-077/D-078 do not declare their own class.** `docs/drift_decisions_log.md:6`, `:22`, `:26-30`; `tools/check-docs-integrity.mjs`.
+
+**A7 — NOTE. The mastery guard's own kind list is a third hand-maintained copy.** `tests/knowledge.test.ts:445-446` versus `src/brain/state.ts:125` and `tests/knowledge.test.ts:135`.
+
+**A8 — NOTE. Screen-space constants that do not scale.** `packTapScreenRaisePx: 70` was measured at 915×412. On-screen size scales with render height (angular FOV, constant camera distance), so at 720 px tall the drawn pack sits roughly 122 px above the feet while the region stays at 70 — on the legs, which is the exact failure the 46 px first attempt had. The disc always fires when tapped at its own centre, so this is about whether the region sits **on the pack a player can see**; I did **not** verify where the pack renders at other viewports, only that the region fires at 70 px on 1280×720 and 844×390.
+
+**A9 — NOTE. `tapTargetAt` and `onTap` diverge again** — D-073's F9, recreated. `src/body/game.ts:629-654` has no pack branch; `:662-761` has two. D-050's harness-fidelity mandate says that function runs "exactly the same" resolution as `onTap`; it no longer does, in precisely the region where the new behaviour lives.
+
+**A10 — NOTE. Stale text the batch's own corrections left behind.** `src/body/entities.ts:131-148` still says the pack tap is reverted and "Parked" — it shipped. `src/brain/knowledge.ts:278-284` still calls `coconutpalm` TAP-kind while it sits in the map eight lines above and `src/brain/state.ts:131` marks it `hold`; **D-074's own ledger entry carries the same error uncorrected**, and that error is what caused hand-fix mistake #2. `src/body/game.ts:573-578` — the `unexpectedMesh`/`pickHitPoint` docstring is now orphaned above `tappedPackRegion`, two functions from what it documents (F10's shape, recurring).
+
+**A11 — NOTE. Records.** This cycle log ended at the **D-073 AUDIT**: there is no as-built for D-074 through D-078, the bench-mutex session, item 6, or FIX 5 REDO. `a8ca2fe`, `3df7c94` and `57beb2d` changed source with no ledger entry; D-074 explicitly PARKED FIX 5 and it was un-parked with no ruling. `docs/drift_state.md:4` still reads "As of: 2026-07-27 (URGENT player-safety fix SHIPPED (D-065))" and its Next-actions block still discusses D-056, in a document that calls itself "the only handover document". And **HEAD had never been run by the builder** — the last harness log predates `57beb2d` by two minutes; mine is the first.
+
+**A12 — NOTE, in the batch's favour, since it was an open obligation.** D-072's corollary withdrew the amnesty from two misses pending re-evaluation. **Both are green in my run:** the quarry (`setup — the player actually REACHED the quarry … 2.00 m — try1:2.0m`, then all three taps land) and fast movement (`normal 7.0m, fast 19.7m`). The quarry's root cause — `approach()` timing out against the same radial push-out — is correctly identified as a harness defect, and the fix adds a **positive arrival assertion**, so the check can no longer pass or fail for the wrong reason. The obligation is discharged.
+
+### Standing items, unchanged by this audit
+
+**The four storage checks remain OPEN and were not re-diagnosed.** They reproduce exactly (`panel ABSENT, durability 82.9 → 74.9, wood 6`), state-dependent late in a run, while `the tap right after a fell reaches storage, not silence — stored.wood 0→4` passes in the same run. Durability **decreased**, so it is decay, not a repair. The pack region is **not** implicated, for the reason given above.
+
+**The collision model.** Three defects this batch — the movement hard-block, the shelter pin, and the stalled `approach()` behind item 6 — trace to the radial push-out cancelling motion on perpendicular contact. D-078 makes the unified fix Slice 1's opening item; A5 says the check that is supposed to guard it must be fixed first, or the fail-then-pass D-078 requires cannot be honest.
+
+**Carried forward from D-073, never claimed fixed, still true:** F6 (stone has no online replenishment path), F7 (`src/body/entities.ts:657` still lists `rock` among kinds that regrow from themselves), F8 (`src/body/game.ts:936` and `src/brain/session.ts:113` still carry the unreachable "Too far from the shelter to sleep.").
