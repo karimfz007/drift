@@ -27,7 +27,7 @@ import {
     gatherNode,
     knapSharpblade,
     lightTorch,
-    repairStructure, nodeHoldSeconds, nodeSpec } from '../src/brain/state';
+    repairStructure, nodeHoldSeconds, nodeSpec, ALL_NODE_KINDS } from '../src/brain/state';
 import { recordCombinationAttempts } from '../src/brain/recipes';
 import { TUNE } from '../src/data/tune';
 import { POND } from '../src/data/world';
@@ -442,8 +442,9 @@ describe('mastery only ever rewards effortful work (structural guard)', () => {
     //  already rolled at spawn. A hand-maintained list drifts; this asserts the rule itself,
     //  so any kind added to the mastery map in future must be hold-kind or fail here.
     it('every kind in the mastery map is hold-kind, and no tap-kind sneaks in', () => {
-        const ALL: NodeKind[] = ['driftwood', 'deadfall', 'tree', 'rock', 'berrybush',
-            'coconutpalm', 'reed', 'shellfish', 'crashbox', 'quarry', 'salvage'];
+        //  Derived, never re-typed (C3 finding A8): a kind added to the game and forgotten
+        //  in a hand-written list would be skipped here in silence.
+        const ALL: NodeKind[] = ALL_NODE_KINDS;
         //  One named exemption: `crashbox` is hold-kind but is a one-time story beat with
         //  fixed contents, not a resource — the same exemption regrowth already makes. Named
         //  here so the rule stays exact instead of being loosened to accommodate it.

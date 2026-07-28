@@ -17,9 +17,13 @@
 
 **Sequence otherwise unchanged:** Gate 0's machine half finishes → the director's playtest verdict → Slice 1.
 
+**Class: DESIGN-BINDING** — trigger named: **Slice 1**, which begins after the director's playtest verdict. Nothing here changes the live game today; the amendments bind the plan and the slice that opens next. *(Declaration added by C2 under [[D-076]], which requires every decision ratified after it to declare a class. The classification is C2's reading, not C1's words — C1 to confirm or correct. The OPERATIVE/PROVISIONAL classes in the entry above are Ch.10 **section** classes from [[D-077]], a different taxonomy from this law's; the checker keys on this explicit line precisely because the bare word is now overloaded.)*
+
 ---
 
 **D-077 · 2026-07-28 — Ch.10 gate amendment (C1).** Register completion gates Ch.10's **FINAL ratification of provisional sections**, not its **v1 drafting**. Ratified reception rulings are **Effectivity-Law witnesses** ([[D-076]]) — first read: C1 at reception; second: SON's register. Ch.10 v1 sections class as **OPERATIVE** (resting on a ratified ruling, D-ref cited) or **PROVISIONAL** (resting on an unread remainder or an unaudited v2.2 section, converting when its witness lands).
+
+**Class: DESIGN-BINDING** — trigger named: **Ch.10's final ratification pass**, which runs when SON's register completes. It governs how a future document is drafted and ratified, and asserts nothing about the running game. *(Declaration added by C2 under [[D-076]]; C1 to confirm or correct.)*
 
 ---
 

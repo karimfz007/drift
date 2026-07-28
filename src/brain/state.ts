@@ -141,6 +141,18 @@ export function nodeSpec(kind: NodeKind): NodeSpec {
 }
 
 /**
+ * Every node kind there is, derived from the spec table rather than typed out again.
+ *
+ * C3 finding A8: the mastery guard asserted its rule against `NODE_SPECS.interaction`
+ * (good) but iterated a hand-written list of kinds (not good) — so a kind added to the
+ * game and forgotten in that list would be skipped in silence, and the guard would stay
+ * green while the very drift it exists to catch went unexamined. `NODE_SPECS` is
+ * `Record<NodeKind, NodeSpec>`, so its keys ARE the exhaustive set and the compiler
+ * maintains them. One list, one place.
+ */
+export const ALL_NODE_KINDS = Object.keys(NODE_SPECS) as NodeKind[];
+
+/**
  * Energy spent on ONE successful gather of this kind (FIX-1, Living Island Track A).
  * Root cause closed: `gatherNode` never charged energy at all — the ambient per-game-hour
  * drain in reconcile.ts was the only cost that existed, so a felled tree and an idle

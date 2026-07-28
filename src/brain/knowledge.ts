@@ -276,12 +276,21 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
         case 'crashbox':
             return null;
         default:
-            //  C3 finding F4 on D-073: this briefly included `reed` and `coconutpalm`, which
-            //  are TAP-kind — no hold to shorten — so mastery silently handed out a yield
-            //  bonus for no work at all (measured: fibre 2 → 3 on a single reed tap), while
-            //  excluding `crashbox` for no stated reason. The rule is now the principled one
-            //  it should always have been: **mastery rewards effortful work**, so it applies
-            //  to hold-kind harvesting and nothing else. Picking a reed is not a skill.
+            //  C3 finding F4 on D-073: this briefly included `reed`, which is TAP-kind — no
+            //  hold to shorten — so mastery silently handed out a yield bonus for no work at
+            //  all (measured: fibre 2 → 3 on a single reed tap), while excluding `crashbox`
+            //  for no stated reason. The rule is now the principled one it should always have
+            //  been: **mastery rewards effortful work**, so it applies to hold-kind harvesting
+            //  and nothing else. Picking a reed is not a skill.
+            //
+            //  CORRECTION (C3 finding A10). This comment used to name `coconutpalm` alongside
+            //  `reed` as wrongly-included tap-kind. That was false, and it contradicted the
+            //  `case 'coconutpalm'` two branches up which correctly grants it mastery. The
+            //  palm is hold-kind — `NODE_SPECS.coconutpalm.interaction` is `'hold'` and
+            //  `effortEnergyCostFor` charges it — so it belongs in the map. The F4 fix
+            //  over-corrected and stripped it; the structural guard below is what caught
+            //  that, and this text is the last place the wrong version survived.
+            //  D-074's log entry repeats the same error and is corrected on the record.
             return null;
     }
 }

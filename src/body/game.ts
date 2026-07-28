@@ -57,6 +57,7 @@ import {
     ownedTools,
     stowActiveHand,
     tryCombine,
+    announcementFor,
     loadSpeedMultiplierOf,
     nodeHoldSeconds,
     nodeSpec,
@@ -513,28 +514,19 @@ export class Game {
         //  one of the five real outcomes — so `failed-attempt`, `already-known` AND `refused`
         //  all fell through to the success branch and were announced with the unlock cue,
         //  and a genuine invention never named its plan because the field is `blueprint`,
-        //  not `blueprintName`. The `as { outcome: string }` cast is what hid all of it, so
-        //  the cast is gone and the compiler now checks this exhaustively.
+        //  not `blueprintName`. The `as { outcome: string }` cast is what hid all of it.
+        //
+        //  C3 finding A4 on the F3 remediation: the regression written for that locked the
+        //  BRAIN's contract, which had never broken — so it passed on the pre-fix tree and
+        //  proved nothing. The mistranslation was HERE, and this layer cannot be unit-tested
+        //  (Babylon; the purity law). So the decision moved to `announcementFor`, where a
+        //  test can reach it, and this is now rendering only.
         const result = tryCombine(session().state, a as 'wood', b as 'wood');
         session().persist(now());
-        switch (result.outcome) {
-            case 'invented':
-                this.floatText(result.blueprint ? `${result.blueprint.name} — you see how it works` : 'Something works');
-                this.cues.play(CUES.unlock);
-                break;
-            case 'failed-attempt':
-                this.explain('It does not hold. Not this time.');
-                break;
-            case 'no-relationship':
-                this.explain('Nothing comes of it. You note that down.');
-                break;
-            case 'already-known':
-                this.explain('You have tried this before. You know how it goes.');
-                break;
-            case 'refused':
-                this.explain(result.reason ?? 'You cannot try that right now.');
-                break;
-        }
+        const said = announcementFor(result);
+        if (said.presentation === 'float') this.floatText(said.text);
+        else this.explain(said.text);
+        if (said.triumphant) this.cues.play(CUES.unlock);
         this.lastActivityAt = now();
     }
 

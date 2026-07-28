@@ -284,3 +284,55 @@ function blueprintNameFor(recipeId: string): string {
         default: return recipeId;
     }
 }
+
+/**
+ * WHAT THE PLAYER IS TOLD, and whether it sounds like a win.
+ *
+ * C3 finding A4 on the F3 remediation: the regression written for F2 locks the BRAIN's
+ * outcome contract — and the brain's contract was never broken. F2's actual defect lived
+ * in the body, which tested `outcome === 'failed'`, a string that is not one of the five,
+ * so `failed-attempt`, `already-known` and `refused` all fell through to the success
+ * branch and were announced with the unlock cue. The brain returned the right answer the
+ * whole time; the body mistranslated it. So that regression passes on the pre-fix tree,
+ * which makes it a contract lock, not a regression — exactly what C3 said.
+ *
+ * The body cannot be unit-tested here (it imports Babylon; the purity law keeps that out
+ * of the brain). So the DECISION moves to where it can be: which words, and whether the
+ * unlock cue fires, is brain logic. The body's remaining job is to render this verbatim.
+ *
+ * Every outcome must yield text — D-042's fail-loud law: silence is not a legal outcome,
+ * because a button that says nothing is indistinguishable from a broken one, which is how
+ * the whole experimentation feature stayed invisible through D-063.
+ */
+export interface ExperimentAnnouncement {
+    /** The words to show. Never empty. */
+    text: string;
+    /** True ONLY for a real invention — this is what plays the unlock cue. */
+    triumphant: boolean;
+    /** `float` reads as a reward; `explain` reads as information. */
+    presentation: 'float' | 'explain';
+}
+
+export function announcementFor(result: ExperimentResult): ExperimentAnnouncement {
+    switch (result.outcome) {
+        case 'invented':
+            return {
+                text: result.blueprint ? `${result.blueprint.name} — you see how it works` : 'Something works',
+                triumphant: true,
+                presentation: 'float',
+            };
+        case 'failed-attempt':
+            return { text: 'It does not hold. Not this time.', triumphant: false, presentation: 'explain' };
+        case 'no-relationship':
+            return { text: 'Nothing comes of it. You note that down.', triumphant: false, presentation: 'explain' };
+        case 'already-known':
+            return { text: 'You have tried this before. You know how it goes.', triumphant: false, presentation: 'explain' };
+        case 'refused':
+            //  A refusal always has a reason worth reading, but never trust it to be non-empty.
+            return {
+                text: result.reason || 'You cannot try that right now.',
+                triumphant: false,
+                presentation: 'explain',
+            };
+    }
+}

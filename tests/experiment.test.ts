@@ -6,12 +6,14 @@ import {
     hasTried,
     relationshipFor,
     successChanceFor,
-    tryCombine
+    tryCombine,
+    announcementFor,
+    type ExperimentResult
 } from '../src/brain/experiment';
 import { allRecipes } from '../src/brain/recipes';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
-import type { GameState } from '../src/brain/types';
+import type { Blueprint, GameState } from '../src/brain/types';
 
 function run(): GameState {
     return createInitialState(0);
@@ -318,5 +320,58 @@ describe('experimentation outcomes are a closed contract (C3 finding F3/F2 on D-
             if (r.outcome === 'invented') expect(r.blueprint?.name).toBeTruthy();
             else expect(r.blueprint).toBeNull();
         }
+    });
+});
+
+// ---- A4 remediation: the regression F2 ACTUALLY needed ------------------
+
+describe('what the player is TOLD is only ever triumphant for a real invention (C3 finding A4)', () => {
+    //  C3: the F3 remediation above locks the brain's outcome contract — and the brain's
+    //  contract was never broken. It passes on the pre-fix tree, so it is a contract lock,
+    //  not F2's regression. F2's damage was a MISTRANSLATION in the body: `outcome ===
+    //  'failed'` matched none of the five outcomes, so three non-successes were announced
+    //  with the unlock cue. The body cannot be tested here (Babylon; the purity law), so
+    //  the decision moved into `announcementFor` and these are the assertions that would
+    //  have caught the real bug.
+    const OUTCOMES = ['invented', 'failed-attempt', 'no-relationship', 'already-known', 'refused'] as const;
+    const resultWith = (outcome: (typeof OUTCOMES)[number], over: Partial<ExperimentResult> = {}): ExperimentResult => ({
+        ok: outcome !== 'refused',
+        outcome,
+        reason: outcome === 'refused' ? 'Too tired to try.' : null,
+        blueprint: null,
+        recipeId: null,
+        spent: null,
+        ...over,
+    });
+
+    it('ONLY `invented` is triumphant — the unlock cue cannot fire on a non-success', () => {
+        for (const outcome of OUTCOMES) {
+            const said = announcementFor(resultWith(outcome));
+            expect(said.triumphant).toBe(outcome === 'invented');
+            //  Presentation must agree: a float reads as a reward, an explain as news.
+            expect(said.presentation).toBe(outcome === 'invented' ? 'float' : 'explain');
+        }
+    });
+
+    it('every outcome says SOMETHING — silence is not a legal outcome (D-042 fail-loud)', () => {
+        //  A button that says nothing is indistinguishable from a broken one, which is
+        //  precisely how experimentation stayed invisible from D-063 until the playtest.
+        for (const outcome of OUTCOMES) {
+            expect(announcementFor(resultWith(outcome)).text.trim().length).toBeGreaterThan(0);
+        }
+        //  Including a refusal whose reason came back empty, which `??` would have let through.
+        expect(announcementFor(resultWith('refused', { reason: '' })).text.trim().length).toBeGreaterThan(0);
+    });
+
+    it('a real invention NAMES the plan — the field is `blueprint`, not `blueprintName`', () => {
+        //  The other half of F2: a genuine success announced "Something works" forever,
+        //  because the body read a field that does not exist and TypeScript could not say
+        //  so through the `as { outcome: string }` cast.
+        const plan: Blueprint = {
+            id: 'bp', name: 'Cordage', recipeId: 'cordage', inputs: ['fiber'], version: 1,
+            workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 3,
+        };
+        const said = announcementFor(resultWith('invented', { blueprint: plan, recipeId: 'cordage' }));
+        expect(said.text).toContain('Cordage');
     });
 });
