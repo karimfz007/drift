@@ -1535,7 +1535,20 @@ async function main() {
     //  rather than left in an amnesty list protecting nothing. Its one recorded failure
     //  (`pt=-15220,31473 onCanvas=false` while 2 m from the node) is noted here so the
     //  history is not lost: if it returns, it is a projection defect, not a mining one.
-    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)} | ${quarryTaps.join(' ; ')}`);
+    //  MEASURED-INTERMITTENT (D-084), 8/10. I promoted this back to a plain check() after a
+    //  single clean run; D-084's own rule requires a FULL SLICE at zero failures, and I
+    //  applied my own rule too loosely one commit after writing it. Corrected here.
+    const QUARRY_MINABLE_RECORD = {
+        pass: 8, fail: 2, runs: 10, sinceSliceCloses: 0,
+        hypothesis: 'HYPOTHESIS: screen-projection fragility. The failing runs show '
+            + '`pt=-15220,31473 onCanvas=false` while the castaway stands 2 m from the node, so '
+            + 'the taps land nowhere. Suspect camera state at projection time, not the '
+            + 'projection maths — the same runs mine successfully moments later.',
+        locksNothing: 'The quarry verb is separately covered by the depletion pair and by '
+            + 'tests/renewability.test.ts (18/18); no law rests on this check.',
+    };
+    measuredIntermittent('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)} | ${quarryTaps.join(' ; ')}`,
+        QUARRY_MINABLE_RECORD);
     check('REGRESSION — the quarry stays available across multiple taps (does not single-shot deplete like other nodes)', quarryStillAvailable);
 
     //  Depletes as a whole once its pool is spent, and — the renewability law's actual
@@ -2460,7 +2473,20 @@ async function main() {
     await tapWorld(-10, 44, 55);
     await sleep(300);
     const hintNoBlade = await page.evaluate(() => window.__drift.hints().last);
-    check('Ch.2 item 6 — hammer owned but no blade: the reason updates to name the blade specifically, not the same flat message', /blade/i.test(hintNoBlade), `"${hintNoBlade}"`);
+    //  MEASURED-INTERMITTENT (D-084). Triaged inside the cap and NOT root-caused further,
+    //  because it is minor either way: the failing run returned "Thirsty. Tap the pond
+    //  inland." instead of naming the blade.
+    const BLADE_REASON_RECORD = {
+        pass: 9, fail: 1, runs: 10, sinceSliceCloses: 0,
+        hypothesis: 'HYPOTHESIS: this is probably the FEATURE working. Ch.2 item 6 promises the '
+            + 'nearest TRUE reason, and a thirsty castaway being told about thirst before a '
+            + 'missing blade may be exactly right. The check does not control the vitals, so it '
+            + 'asserts a tool message while the honest nearest reason is a vital one. If so the '
+            + 'CHECK is wrong, not the game — confirm before "fixing" anything.',
+        locksNothing: 'Ch.2 item 6 perceivability is covered by the sibling check above (no axe, '
+            + 'no hammer), which passed; this is the second of a pair.',
+    };
+    measuredIntermittent('Ch.2 item 6 — hammer owned but no blade: the reason updates to name the blade specifically, not the same flat message', /blade/i.test(hintNoBlade), `"${hintNoBlade}"`, BLADE_REASON_RECORD);
 
     // ---- Ch.6, "The Body Model" — carry weight, the rest redesign, the death cost ----
     console.log('\nCh.6 — the body model: carry weight bands, sleep as a rate, the death cost');

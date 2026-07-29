@@ -2527,3 +2527,12 @@ test, with its staging, and the table cites which test pins it.
 
 **Numbers after remediation: 412/412 unit tests** (was 408 — +4 from this audit), purity,
 docs-integrity (83 decisions), tune-mirror, typecheck all green.
+
+---
+
+## SLICE 1 — "FUN FOUNDATIONS" — AS-BUILT CORRECTION
+
+**On the premature promotion.** I promoted `REGRESSION — the quarry is repeat-minable` from
+measured-intermittent back to a plain `check()` after a single clean run. [[D-084]]'s own rule
+requires **a full slice at zero failures**, not one run, and I applied my own rule too loosely
+one commit after writing it. It is reclassified at its real ratio, 8/10 over ten recorded runs.
