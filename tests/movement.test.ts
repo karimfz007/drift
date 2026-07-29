@@ -368,6 +368,23 @@ describe('THE NOTCH — two obstacles the mover touches at once (C3 MAJOR-1)', (
         expect(press(NOTCH, 7, 98.9, false).reversals).toBeGreaterThan(400);
     });
 
+    it('THE REGISTER\'S OWN NUMBERS still hold — 845 without hysteresis, 376 with', () => {
+        //  `tools/smoke.mjs`'s `knownOpen()` entry QUOTES these two figures, and that register
+        //  is what the director reads. It was quoting 425/850 while the truth was 376/845 —
+        //  nobody noticed, because the assertions either side of it were a 100..600 band wide
+        //  enough to swallow the drift. A witness that cites a number no test pins is a witness
+        //  testifying to something it has not seen.
+        //
+        //  Pinned to +/-5. These are deterministic simulations with no randomness anywhere, so
+        //  they reproduce exactly unless a tune constant or the resolver actually changes — and
+        //  in that case failing is the correct outcome, not a brittle one: it means the number
+        //  the director reads has gone stale and must be updated in the same commit. A +/-50
+        //  band was the first cut and it would have swallowed the exact 425-vs-376 drift this
+        //  test exists to catch, which is the whole lesson.
+        expect(press(NOTCH, 7, 98.9, false).reversals).toBeCloseTo(845, -1);
+        expect(press(NOTCH, 7, 98.9, true).reversals).toBeCloseTo(376, -1);
+    });
+
     it('KNOWN-OPEN — hysteresis halves the shaking but does not stop it', () => {
         //  Attempt 2 (hysteresis alone): 850 -> 425 reversals. Still visibly shaking.
         //  Attempt 3 added an anti-reversal damp that took it to 1 reversal — and REVERTED,
@@ -398,5 +415,403 @@ describe('THE NOTCH — two obstacles the mover touches at once (C3 MAJOR-1)', (
         const r = press(SINGLE, 0, 105, true);
         expect(r.reversals).toBe(0);
         expect(r.net).toBeGreaterThan(40);
+    });
+});
+
+describe('THE BURSTED PRESS — judging intent, not the accelerator\'s lag', () => {
+    //  THE DEFECT THE PRESS TRACE FOUND (C1's diagnostic ruling).
+    //
+    //  The feel court read 0.38, 0.55 and 0.52 m against a 0.80 m bar across three device
+    //  runs, and three separate root causes were published for it — all three wrong. Every
+    //  one of them was argued from position samples taken five times a second. Instrumenting
+    //  the resolver itself ended the argument in one run:
+    //
+    //      obstacles overlapped         1        <- genuinely isolated, not a notch
+    //      applied slide speed          2.21 m/s <- full slideRetention x walk. No decay.
+    //      per-frame movement           0.02-0.04 m, continuously. No stall.
+    //      raw path integral            6.55 m
+    //      net perpendicular            0.51 m
+    //      perpendicular, every frame   0.51 m   <- vs the gate's 8-sample 0.50. Honest ruler.
+    //      applied-direction reversals  6, every one on a burst boundary
+    //
+    //  Moving a lot and arriving nowhere, with a healthy tangent and an honest ruler, is an
+    //  oscillation — and the trace named the mechanism exactly. At each reversal:
+    //
+    //      the player's request      dead-on to 0.1 deg
+    //      the current velocity      31 deg off-normal (the accelerator, mid-ramp)
+    //      prior travel              0.167 m/s, one way
+    //      tangential residual       0.170 m/s, the OTHER way
+    //
+    //  The dead-on test judged the VELOCITY's angle. At 31 deg it says "glancing, handle it
+    //  naturally" — so the branch did not fire, and the hysteresis that exists to stop this
+    //  lives inside that branch. `priorTravel` was correct, present, and never read. A
+    //  0.17 m/s incidental drift — 5% of walking pace, invisible on screen — therefore
+    //  outvoted the direction the body was actually travelling, once per burst.
+    //
+    //  It needs BOTH halves of the harness's input to appear, which is why neither the
+    //  "bursts" nor the "aims at the centre" hypothesis explained it alone. Measured:
+    //
+    //      re-aim + release   0.42 m, 6 reversals   <- the shipped press
+    //      re-aim, no release 1.71 m, 0 reversals
+    //      aim once, release  1.70 m, 0 reversals
+    //
+    //  And it is not a harness artifact. Nudge-nudge-nudge is how a thumb steers on a phone;
+    //  a player who taps the stick while pressed against a rock gets the same wobble.
+    //
+    //  The fail-then-pass below is a ONE-ARGUMENT A/B on the shipped resolver — omitting the
+    //  intent reproduces the defect exactly, supplying it fixes it — so the pre-fix side is
+    //  the real code path rather than a hand-copied reimplementation that can drift out of
+    //  agreement with it (Vacuity clause (b)).
+    const SHELTER: Obstacle[] = [{ x: 0, z: 98, radius: TUNE.shelterCollisionRadius }];
+    const approachScalar = (c: number, t: number, m: number) => {
+        const d = t - c; return Math.abs(d) <= m ? t : c + Math.sign(d) * m;
+    };
+
+    /**
+     * The harness's own press, reproduced: eight 0.30 s bursts with the stick RELEASED
+     * between them, re-aimed at the shelter's centre each time from a position read a beat
+     * earlier (the harness reads state, then round-trips twice, then deflects the stick).
+     *
+     * `tellIntent` is the whole experiment: it decides whether the resolver is shown what the
+     * player asked for, or only the accelerator's lagging answer to it.
+     */
+    function burstedPress(tellIntent: boolean, rememberLean = false, startZ = 101.2) {
+        const dt = 1 / 60;
+        const speed = TUNE.walkSpeedMps * 0.875;   //  the stick's real deflection on device
+        let x = 0, z = startZ, velX = 0, velZ = 0;
+        let contact = false, gap = Infinity, travelX = 0, travelZ = 0;
+        let path = 0, perpendicular = 0, reversals = 0, prevAlong = 0;
+        let deflected = 0, contacted = 0;
+        let aimX = 0, aimZ = -1;
+
+        const frame = (wantX: number, wantZ: number) => {
+            velX = approachScalar(velX, wantX, TUNE.moveAccelMps2 * dt);
+            velZ = approachScalar(velZ, wantZ, TUNE.moveAccelMps2 * dt);
+            if (Math.hypot(velX, velZ) < 0.001) { velX = 0; velZ = 0; return; }
+            //  One call, with the intent supplied or withheld — the whole A/B is those two
+            //  arguments, which is the point: the pre-fix side IS the shipped resolver.
+            //  `leaning` mirrors game.ts's own gate on the direction memory.
+            const leaning = rememberLean ? (contact || gap <= TUNE.slideMemoryGapM) : contact;
+            const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                leaning ? travelX : 0, leaning ? travelZ : 0,
+                tellIntent ? wantX : undefined, tellIntent ? wantZ : undefined);
+            path += Math.hypot(r.x - x, r.z - z);
+            x = r.x; z = r.z; travelX = r.velX; travelZ = r.velZ;
+            contact = r.contacted; gap = r.nearestGapM;
+            if (r.contacted) {
+                contacted++;
+                //  Signed travel along the surface. A sign change IS the wobble.
+                const along = r.velX * -r.normalZ + r.velZ * r.normalX;
+                if (prevAlong !== 0 && along !== 0 && Math.sign(along) !== Math.sign(prevAlong)) reversals++;
+                prevAlong = along;
+            }
+            if (r.deflected) deflected++;
+            //  The approach axis is due south, so everything across it is |x|.
+            perpendicular = Math.max(perpendicular, Math.abs(x));
+        };
+        const run = (ms: number, wx: number, wz: number) => { for (let t = 0; t < ms / 1000; t += dt) frame(wx, wz); };
+
+        for (let burst = 0; burst < 8; burst++) {
+            const readX = x, readZ = z;
+            run(120, 0, 0);                                   //  round-trip latency: stick down, at rest
+            const dx = -readX, dz = 98 - readZ;
+            const len = Math.hypot(dx, dz) || 1;
+            aimX = dx / len; aimZ = dz / len;
+            run(300, aimX * speed, aimZ * speed);             //  the burst
+            run(406, 0, 0);                                   //  released between bursts
+        }
+        return { path, perpendicular, reversals, deflected, contacted };
+    }
+
+    const BAR = 0.8;   //  the feel court's own bar, so this test fails when that gate would
+
+    it('WITNESS — the press really does press: contact and the dead-on branch both fire', () => {
+        //  Vacuity clause (a). Without this the whole block could pass by never touching the
+        //  shelter at all, which is exactly how an earlier version of this gate went green.
+        const blind = burstedPress(false);
+        expect(blind.contacted).toBeGreaterThan(100);
+        expect(blind.deflected).toBeGreaterThan(100);
+    });
+
+    it('PRE-FIX — judging the velocity makes the castaway wobble: metres of path, no progress', () => {
+        const blind = burstedPress(false);
+        expect(blind.perpendicular).toBeLessThan(BAR);        //  the gate goes red
+        expect(blind.path).toBeGreaterThan(4);                //  ...while moving the whole time
+        expect(blind.reversals).toBeGreaterThanOrEqual(4);    //  because it keeps turning round
+    });
+
+    it('FIXED — judging the request walks the castaway around the shelter', () => {
+        const seeing = burstedPress(true);
+        expect(seeing.perpendicular).toBeGreaterThan(BAR);
+        expect(seeing.reversals).toBeLessThan(4);
+    });
+
+    it('and it is PROGRESS that improved, not merely motion — same path, more arrival', () => {
+        //  The trap this guards: a "fix" that scores by moving the castaway further rather
+        //  than by getting them somewhere. Path length is near-identical between the two;
+        //  what changes is how much of it went anywhere.
+        const blind = burstedPress(false);
+        const seeing = burstedPress(true);
+        expect(Math.abs(seeing.path - blind.path)).toBeLessThan(blind.path * 0.25);
+        expect(seeing.perpendicular / blind.perpendicular).toBeGreaterThan(2.5);
+    });
+
+    it('a HELD stick is unchanged — the fix touches the bursted case only', () => {
+        //  One unbroken hold already worked (device: 1.70 m, 0 reversals). If this moves, the
+        //  change is not the narrow one it claims to be.
+        const dt = 1 / 60;
+        const hold = (tellIntent: boolean) => {
+            let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0, perp = 0;
+            const len = Math.hypot(0, 98 - 101.2) || 1;
+            const wantX = 0, wantZ = ((98 - 101.2) / len) * TUNE.walkSpeedMps;
+            for (let t = 0; t < 2.4; t += dt) {
+                velX = approachScalar(velX, wantX, TUNE.moveAccelMps2 * dt);
+                velZ = approachScalar(velZ, wantZ, TUNE.moveAccelMps2 * dt);
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                    contact ? tX : 0, contact ? tZ : 0,
+                    tellIntent ? wantX : undefined, tellIntent ? wantZ : undefined);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted;
+                perp = Math.max(perp, Math.abs(x));
+            }
+            return perp;
+        };
+        expect(hold(true)).toBeCloseTo(hold(false), 2);
+        expect(hold(true)).toBeGreaterThan(BAR);
+    });
+
+    it('THE SECOND CAUSE — contact is penetration, so a coasting mover loses its memory', () => {
+        //  Found by re-running the trace AFTER the intent fix: four reversals survived, and on
+        //  every one the dead-on branch DID fire and `priorAlong` was exactly 0.000. The hint
+        //  was not being ignored any more; it was empty.
+        //
+        //  Because contact means overlapping, and a mover coasting along a curved surface
+        //  leaves it — by 2.5 cm, measured. That ends contact while the castaway is plainly
+        //  still against the shelter, so every stick release wiped the direction memory and
+        //  the next press re-picked a side. This is C3's NOTE N6, carried as
+        //  IDENTIFIED-NOT-VERIFIED since the last pass; the trace verifies it here.
+        //
+        //  Asserted as the mechanism, not just the outcome: the gap really does leave contact
+        //  while staying inside the memory band, so the fix is aimed at something real.
+        const dt = 1 / 60;
+        let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0;
+        let leftContactWhileStillLeaning = 0;
+        const run = (seconds: number, wx: number, wz: number) => {
+            for (let t = 0; t < seconds; t += dt) {
+                velX = approachScalar(velX, wx, TUNE.moveAccelMps2 * dt);
+                velZ = approachScalar(velZ, wz, TUNE.moveAccelMps2 * dt);
+                if (Math.hypot(velX, velZ) < 0.001) { velX = 0; velZ = 0; continue; }
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                    contact ? tX : 0, contact ? tZ : 0, wx, wz);
+                if (!r.contacted && r.nearestGapM <= TUNE.slideMemoryGapM) leftContactWhileStillLeaning++;
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted;
+            }
+        };
+        run(1.2, 0, -TUNE.walkSpeedMps);   //  press in and start sliding
+        run(0.5, 0, 0);                    //  release — the castaway coasts along the surface
+        expect(leftContactWhileStillLeaning).toBeGreaterThan(0);
+    });
+
+    it('CAUSE 2 ALONE — the leaning memory, A/B\'d with the intent fix already in place', () => {
+        //  C3 MAJOR-1. The first cut of this block only ever compared "neither fix" against
+        //  "both fixes", so the leaning gate had NO regression of its own — deleting it from
+        //  `game.ts` left the whole suite green. Worse, the staging those tests used (z=101.2)
+        //  is one of the few where the gate is a small NEGATIVE, so even a direct A/B there
+        //  would have argued against it.
+        //
+        //  Measured across stagings, intent fix on both sides, perpendicular in metres:
+        //
+        //      startZ   intent only   + leaning
+        //      100.5       1.114         1.706
+        //      101.2       1.702         1.622   <- the old staging: the gate looks bad here
+        //      102.0       0.943         1.649
+        //      102.5       0.643         1.702   <- fails the bar without it, clears with it
+        //      103.0       0.392         1.631
+        //      104.0       0.450         1.611
+        //
+        //  So it is tested at 102.5, where it is the difference between red and green, and the
+        //  102.5-vs-101.2 spread is itself asserted below so nobody re-tunes the staging back
+        //  to the one distance that flatters the wrong answer.
+        const withoutMemory = burstedPress(true, false, 102.5);
+        const withMemory = burstedPress(true, true, 102.5);
+        expect(withoutMemory.perpendicular).toBeLessThan(BAR);      //  the intent fix alone is not enough
+        expect(withMemory.perpendicular).toBeGreaterThan(BAR);
+        expect(withMemory.reversals).toBeLessThan(withoutMemory.reversals);
+    });
+
+    it('the leaning memory helps at MOST press distances, not just the one it is tested at', () => {
+        //  Guards against the fix being a coincidence of staging — the exact shape C3 MAJOR-2
+        //  caught on an earlier metric in this same file.
+        const distances = [100.5, 102.0, 102.5, 103.0, 104.0];
+        const improved = distances.filter((z) =>
+            burstedPress(true, true, z).perpendicular > burstedPress(true, false, z).perpendicular);
+        expect(improved.length).toBe(distances.length);
+    });
+
+    it('FIXED, both causes — the memory survives a release and the wobble stops', () => {
+        const blind = burstedPress(false, false);
+        const both = burstedPress(true, true);
+        expect(both.perpendicular).toBeGreaterThan(BAR);
+        expect(both.reversals).toBeLessThanOrEqual(blind.reversals / 2);
+    });
+
+    it('a mover that walks away DOES forget — but it takes 23 frames, not the one I claimed', () => {
+        //  C3 MAJOR-2. The comment here used to read "one frame of walking at speed covers far
+        //  more ground than the band allows", under an assertion carrying a `* 0.5` fudge —
+        //  because the strong form is false and only the weakened one passed. One frame at
+        //  walking pace is 5.8 cm against a 10 cm band, and a mover reversing out of a press
+        //  must first turn 3.5 -> -3.5 m/s at `moveAccelMps2`. Measured: 23 frames, 383 ms.
+        //
+        //  The claim is now the measurement, and the fudge is gone. The band's real guarantee
+        //  is geometric, not temporal — asserted in the sibling test below.
+        const dt = 1 / 60;
+        expect(TUNE.walkSpeedMps * dt).toBeLessThan(TUNE.slideMemoryGapM);   //  the honest direction
+        let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0;
+        let gap = Infinity;
+        const step = (wx: number, wz: number) => {
+            velX = approachScalar(velX, wx, TUNE.moveAccelMps2 * dt);
+            velZ = approachScalar(velZ, wz, TUNE.moveAccelMps2 * dt);
+            const leaning = contact || gap <= TUNE.slideMemoryGapM;
+            const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                leaning ? tX : 0, leaning ? tZ : 0, wx, wz);
+            x = r.x; z = r.z; tX = r.velX; tZ = r.velZ;
+            contact = r.contacted; gap = r.nearestGapM;
+            return leaning;
+        };
+        for (let t = 0; t < 1; t += dt) step(0, -TUNE.walkSpeedMps);   //  press in — memory live
+        expect(contact || gap <= TUNE.slideMemoryGapM).toBe(true);
+        let frames = 0;
+        while (step(0, TUNE.walkSpeedMps) && frames < 600) frames++;   //  then walk straight off
+        expect(frames).toBeCloseTo(23, -1);                            //  measured, not asserted
+        expect(contact).toBe(false);
+        expect(gap).toBeGreaterThan(TUNE.slideMemoryGapM);
+    });
+
+    it('and a SECOND obstacle does not inherit the first one\'s direction', () => {
+        //  C3 MAJOR-2, second half. The old version of this guard named exactly this risk in
+        //  its comment and then tested it against a field containing ONE obstacle — it could
+        //  not fail. This one has two, staged on the side the slide actually exits toward, at
+        //  a spread of separations, and compares the resolved position frame by frame against
+        //  the old contact-only gate. If the band ever steers a contact with B using a
+        //  direction earned against A, the two runs diverge.
+        const dt = 1 / 60;
+        const walk = (useBand: boolean, separation: number) => {
+            const field: Obstacle[] = [
+                { x: 0, z: 98, radius: TUNE.shelterCollisionRadius },
+                { x: separation, z: 98, radius: TUNE.shelterCollisionRadius },
+            ];
+            let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0;
+            let gap = Infinity;
+            const path: number[] = [];
+            for (let t = 0; t < 4; t += dt) {
+                //  Press at the first, then drift along toward the second.
+                const wantX = t > 1.2 ? TUNE.walkSpeedMps : 0;
+                const wantZ = t > 1.2 ? 0 : -TUNE.walkSpeedMps;
+                velX = approachScalar(velX, wantX, TUNE.moveAccelMps2 * dt);
+                velZ = approachScalar(velZ, wantZ, TUNE.moveAccelMps2 * dt);
+                if (Math.hypot(velX, velZ) < 0.001) { velX = 0; velZ = 0; continue; }
+                const leaning = useBand ? (contact || gap <= TUNE.slideMemoryGapM) : contact;
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, field,
+                    leaning ? tX : 0, leaning ? tZ : 0, wantX, wantZ);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ;
+                contact = r.contacted; gap = r.nearestGapM;
+                path.push(x, z);
+            }
+            return path;
+        };
+        for (const separation of [2.6, 3.2, 4.0, 5.0]) {
+            const banded = walk(true, separation);
+            const contactOnly = walk(false, separation);
+            expect(banded.length).toBe(contactOnly.length);
+            for (let i = 0; i < banded.length; i++) {
+                expect(banded[i]).toBeCloseTo(contactOnly[i], 6);
+            }
+        }
+    });
+
+    it('THE GUARD TABLE\'S OWN NUMBERS — the conveyor rate and the pin, pinned', () => {
+        //  C3 MINOR-2: the as-built quotes "conveyor 0.925x" and "the pin 4.38 m" as evidence
+        //  that this slice broke nothing, and neither figure appeared in any test, tool or
+        //  source file — only in prose. C3 could not reproduce either, because the staging that
+        //  produces them was recorded nowhere. Both are real; what was missing was anything
+        //  that would notice if they stopped being real. That is the whole Vacuity problem in
+        //  miniature: a number in a report that nothing checks is a number nobody has verified.
+        //
+        //  Pinned here WITH their staging, and asserted identical across the A/B, because the
+        //  claim being made is "unchanged", not "some particular value".
+        const dt = 1 / 60;
+        const conveyorRate = (deg: number, tellIntent: boolean) => {
+            const a = (deg * Math.PI) / 180;
+            let x = Math.sin(a) * 6, z = 98 + Math.cos(a) * 6;
+            //  A fixed world direction at full walking pace, held for 4 s — a glancing blow
+            //  that must never travel faster than walking. C3 MAJOR-3 measured 1.99x here.
+            const velX = -Math.sin(a) * TUNE.walkSpeedMps, velZ = -Math.cos(a) * TUNE.walkSpeedMps;
+            let contact = false, gap = Infinity, tX = 0, tZ = 0, moved = 0;
+            for (let i = 0; i < 240; i++) {
+                const leaning = contact || gap <= TUNE.slideMemoryGapM;
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                    leaning ? tX : 0, leaning ? tZ : 0,
+                    tellIntent ? velX : undefined, tellIntent ? velZ : undefined);
+                moved += Math.hypot(r.x - x, r.z - z);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted; gap = r.nearestGapM;
+            }
+            return moved / (240 * dt) / TUNE.walkSpeedMps;
+        };
+        for (const deg of [10, 45, 80]) {
+            expect(conveyorRate(deg, true)).toBeCloseTo(0.9246, 3);
+            expect(conveyorRate(deg, true)).toBeCloseTo(conveyorRate(deg, false), 9);
+            expect(conveyorRate(deg, true)).toBeLessThan(1);   //  never a conveyor
+        }
+
+        const pinTravel = (tellIntent: boolean) => {
+            let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, gap = Infinity, tX = 0, tZ = 0;
+            const from = { x, z };
+            for (let t = 0; t < 2; t += dt) {
+                const dx = -x, dz = 98 - z, len = Math.hypot(dx, dz) || 1;
+                const wx = (dx / len) * TUNE.walkSpeedMps, wz = (dz / len) * TUNE.walkSpeedMps;
+                velX = approachScalar(velX, wx, TUNE.moveAccelMps2 * dt);
+                velZ = approachScalar(velZ, wz, TUNE.moveAccelMps2 * dt);
+                const leaning = contact || gap <= TUNE.slideMemoryGapM;
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                    leaning ? tX : 0, leaning ? tZ : 0,
+                    tellIntent ? wx : undefined, tellIntent ? wz : undefined);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted; gap = r.nearestGapM;
+            }
+            return Math.hypot(x - from.x, z - from.z);
+        };
+        expect(pinTravel(true)).toBeCloseTo(4.379, 2);
+        expect(pinTravel(true)).toBeCloseTo(pinTravel(false), 9);
+    });
+
+    it('deliberate STEERING along the wall still steers, at any stick pressure', () => {
+        //  The failure mode of this fix: treating every contact as dead-on and snapping the
+        //  castaway onto a committed tangent, so a player pushing sideways gets overruled.
+        //  A lightly-held stick is the sharp case — the slowest legal walk is 1.59 m/s
+        //  (exhausted x heavy), and a partly-deflected stick is slower still, so anything
+        //  keyed to `walkSpeedMps` would hijack it. This is keyed to the request's own
+        //  direction, which is scale-free, and both pressures must survive.
+        const dt = 1 / 60;
+        const steer = (tellIntent: boolean, speed: number) => {
+            let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0;
+            const run = (seconds: number, wx: number, wz: number) => {
+                for (let t = 0; t < seconds; t += dt) {
+                    velX = approachScalar(velX, wx, TUNE.moveAccelMps2 * dt);
+                    velZ = approachScalar(velZ, wz, TUNE.moveAccelMps2 * dt);
+                    if (Math.hypot(velX, velZ) < 0.001) { velX = 0; velZ = 0; continue; }
+                    const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                        contact ? tX : 0, contact ? tZ : 0,
+                        tellIntent ? wx : undefined, tellIntent ? wz : undefined);
+                    x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted;
+                }
+            };
+            run(1, 0, -speed);                //  press in
+            const pressedAt = x;
+            run(1.5, speed, 0);               //  then push hard along the wall
+            return x - pressedAt;
+        };
+        for (const speed of [TUNE.walkSpeedMps, 0.7]) {
+            //  Steering must work, and must be unchanged by the fix.
+            expect(steer(true, speed)).toBeGreaterThan(0.5);
+            expect(steer(true, speed)).toBeCloseTo(steer(false, speed), 1);
+        }
     });
 });

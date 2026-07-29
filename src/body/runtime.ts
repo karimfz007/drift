@@ -11,6 +11,51 @@ import { SAVE_KEY, Session, createSaveRepository, salvageCandidatePoint, spawnSa
 import { isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
+/**
+ * One movement frame, exactly as the resolver saw it. Everything a diagnosis of the feel
+ * court needs and no position sample can supply — see `runtime.pressTrace`.
+ *
+ * Flat numbers on purpose: this crosses `page.evaluate()`'s structured-clone boundary into
+ * a node script, and a shape that survives `JSON.stringify` unchanged is one less thing that
+ * can be wrong about a measurement four sessions have already been wrong about.
+ */
+export interface PressFrame {
+    /** ms since `arm()`. */
+    t: number;
+    dt: number;
+    /** Position BEFORE the step, and after. */
+    fromX: number; fromZ: number;
+    toX: number; toZ: number;
+    /** The stick, and the world-space direction it asked for (zero when released). */
+    stickMag: number;
+    wantX: number; wantZ: number;
+    /** Intent velocity after acceleration — what the resolver was handed. */
+    velX: number; velZ: number;
+    /** The contact normal, the inward component, and the tangential remainder. */
+    normalX: number; normalZ: number;
+    into: number;
+    residualX: number; residualZ: number;
+    /** What the resolver actually applied (post dead-on substitution). */
+    outVelX: number; outVelZ: number;
+    contacted: boolean;
+    deflected: boolean;
+    /** 2+ means the contact was a notch, whatever the staging check believed. */
+    overlaps: number;
+    nearestX: number; nearestZ: number;
+    /**
+     * Surface-to-surface gap to the nearest obstacle after resolution. Zero or below means
+     * touching. C3 N1: this was missing from the first cut, which meant the trace could not
+     * re-witness the very quantity the second cause turns out to BE — a mover that has left
+     * contact while still leaning on the thing. A diagnostic that cannot show the defect it
+     * found is half an instrument.
+     */
+    nearestGapM: number;
+    /** Distance this single frame actually moved — the path integral's increment. */
+    movedM: number;
+    /** The hysteresis hint the resolver was given, i.e. whether contact carried over. */
+    hintX: number; hintZ: number;
+}
+
 export const runtime = {
     session: null as Session | null,
     /** The report for the absence that just ended, consumed once by the game. */
@@ -66,6 +111,28 @@ export const runtime = {
         () => { reductionPct: number; status: string; line: string },
     slideReadout: (() => ({ contact: false, deflected: false, contactFrames: 0, deflectFrames: 0 })) as
         () => { contact: boolean; deflected: boolean; contactFrames: number; deflectFrames: number },
+    //  THE PRESS TRACE (C1's diagnostic ruling). `slideReadout` above answers "did the branch
+    //  fire" and a position sample answers "where did they end up" — and four sessions have
+    //  proved those two together cannot tell a decayed tangent from a healthy one that goes
+    //  nowhere from a ruler that is lying. This records EVERY movement frame between `arm()`
+    //  and `dump()`: the stick's world direction, the intent velocity, the contact normal, the
+    //  tangential component the resolver computed, the resolution it applied, and the position
+    //  either side of the step.
+    //
+    //  Read-only, and armed-only: nothing is recorded until a diagnostic asks, and nothing
+    //  recorded is ever read back by the game. Hazard #4 is about hooks DRIVING a path; this
+    //  drives nothing — the thumb still holds the stick.
+    pressTrace: {
+        arm: (() => {}) as (capacity?: number) => void,
+        dump: (() => []) as () => PressFrame[],
+    },
+    //  Every obstacle the resolver can actually see, within a radius of a point. The feel
+    //  court's "the obstacle under test is ISOLATED" check computes a gap from the HARNESS's
+    //  own hand-copied radii and looks at the storage box alone — it cannot see a decorative
+    //  tree or rock, which are in `staticObstacles` and just as solid. This reads the real
+    //  field, so "isolated" becomes something witnessed rather than assumed.
+    obstaclesNear: (() => []) as (x: number, z: number, within: number) =>
+        { x: number; z: number; radius: number }[],
     //  Installed by the game — see the `stick`/`velocity` debug hooks above.
     stickReadout: (() => ({ x: 0, y: 0, magnitude: 0 })) as () => { x: number; y: number; magnitude: number },
     velocityReadout: (() => ({ x: 0, z: 0 })) as () => { x: number; z: number },
@@ -205,6 +272,9 @@ function installDebugHook(): void {
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
         slideReadout: () => runtime.slideReadout(),
+        armPressTrace: (capacity?: number) => runtime.pressTrace.arm(capacity),
+        dumpPressTrace: () => runtime.pressTrace.dump(),
+        obstaclesNear: (x: number, z: number, within: number) => runtime.obstaclesNear(x, z, within),
         //  F3: the brain's own refuge numbers, so a device check can prove the screen is
         //  showing THEM rather than a second copy that can drift. A read, never a driver.
         refuge: () => runtime.refuge(),

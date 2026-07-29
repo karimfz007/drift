@@ -243,12 +243,52 @@ async function preflight(url) {
     console.log('  Bench mutex acquired — this run owns the bench (harness, builds and audits alike).');
     console.log('  Not killing any Chrome: this run tears down only the browser it launches (D-072).');
 
+    //  IS THIS ACTUALLY OUR BUILD? (D-056 named this gap and recommended the check; it was
+    //  not actioned, and it then cost this slice a run.) A 200 proves something is listening,
+    //  not that it is serving the bundle just built here.
+    //
+    //  THE MECHANISM, corrected after actually looking at the process table rather than
+    //  inferring it. A `vite preview` from another checkout of THIS SAME project, two days
+    //  old, was bound to `127.0.0.1:4173`. This worktree's preview was then started on the
+    //  same port WITH `--strictPort` and did not refuse — it bound `[::1]:4173` instead.
+    //  Dual-stack: IPv4 and IPv6 loopback are different addresses, so both servers held
+    //  "port 4173" simultaneously and neither noticed. Puppeteer and curl were pointed at
+    //  `127.0.0.1`, which resolves to IPv4, so every request went to the two-day-old bundle
+    //  while a perfectly good server sat unused on the other stack.
+    //
+    //  So `--strictPort` is NOT proof you own the port, and "my server started fine" is not
+    //  proof anything is talking to it. That is what makes this worth a mechanism rather than
+    //  a habit: the two facts that would normally reassure you both stayed true.
+    //
+    //  `dist/index.html` names its own content-hashed entry chunk. Serving a different one
+    //  means serving different code, so comparing them is a complete answer, costs one fetch,
+    //  and needs no marker planted in the source.
+    let served;
     try {
         const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        served = await res.text();
         console.log(`  Target URL responds (${res.status}): ${url}`);
     } catch (e) {
         console.error(`  REFUSED: ${url} is not reachable (${e.message}). Start the preview server first.`);
         process.exit(1);
+    }
+    const distIndex = fileURLToPath(new URL('../dist/index.html', import.meta.url));
+    if (existsSync(distIndex)) {
+        const entryOf = (html) => html.match(/assets\/index-[A-Za-z0-9_-]+\.js/)?.[0] ?? null;
+        const want = entryOf(readFileSync(distIndex, 'utf8'));
+        const got = entryOf(served);
+        if (want && got && want !== got) {
+            console.error(`  REFUSED: ${url} is serving a DIFFERENT build than dist/.`);
+            console.error(`    dist/index.html expects  ${want}`);
+            console.error(`    the server is serving    ${got}`);
+            console.error('    Something else is answering on this port. The usual cause is a stale preview from');
+            console.error('    another checkout — and note it can coexist with yours: --strictPort does NOT refuse');
+            console.error('    when the other server holds 127.0.0.1 and yours takes [::1], or vice versa.');
+            console.error('    Check BOTH stacks (netstat -ano | findstr :<port>), kill the stale one, or use a free port.');
+            console.error('    A green run against the wrong bundle is worse than no run.');
+            process.exit(1);
+        }
+        console.log(`  Build identity confirmed: serving ${got ?? '(no entry chunk found — unbuilt page?)'}`);
     }
 }
 
@@ -1533,9 +1573,17 @@ async function main() {
         const boxGap = Math.hypot(staged.storage.x - shelterAt.x, staged.storage.y - shelterAt.y)
                      - (TUNE.shelterCollisionRadius + TUNE.playerCollisionRadius)
                      - (TUNE.storageCollisionRadius + TUNE.playerCollisionRadius);
+        //  ISOLATION, READ FROM THE RESOLVER'S OWN FIELD — not inferred from the storage box
+        //  and this file's hand-copied radii. The gap arithmetic above cannot see a decorative
+        //  tree or rock (they live in `staticObstacles` and are just as solid), so it could
+        //  certify "isolated" while the press sat in a notch made of something else entirely.
+        //  A whole session was spent on a notch hypothesis this would have settled in a line.
+        const nearField = await page.evaluate(([x, z]) => window.__drift.obstaclesNear(x, z, 6), [shelterAt.x, shelterAt.y]);
         check('FEEL COURT setup — the obstacle under test is ISOLATED, not a notch',
-            boxGap > 2,
-            `${boxGap.toFixed(2)} m of clear passage beside the shelter (a notch is negative)`);
+            boxGap > 2 && nearField.length === 1,
+            `${boxGap.toFixed(2)} m of clear passage beside the shelter (a notch is negative); `
+            + `the resolver sees ${nearField.length} obstacle(s) within 6 m: `
+            + nearField.map((o) => `(${o.x.toFixed(1)},${o.z.toFixed(1)})r${o.radius.toFixed(1)}`).join(' '));
 
         //  Now press square into the shelter and sample the whole press.
         await editSave(`state.player = { x: ${shelterAt.x}, y: ${shelterAt.y + 3.2} };`);
@@ -1549,6 +1597,12 @@ async function main() {
         //  never having been blocked at all" could not itself fail. Snapshot first, assert
         //  the DELTA.
         const beforeCounters = await page.evaluate(() => window.__drift.slideReadout());
+        //  THE PRESS TRACE (C1's diagnostic ruling), armed for the real press. Read-only; the
+        //  thumb below still drives everything (hazard #4). Three root causes were published
+        //  for this gate and all three were wrong, because "it slid", "it was never blocked"
+        //  and "the ruler is lying" are indistinguishable from a position sample five times a
+        //  second. They are not indistinguishable from the resolver's own testimony.
+        await page.evaluate(() => window.__drift.armPressTrace(3000));
         const pressFrom = (await live()).player;
         //  The axis the press travels along. Everything across it is slide.
         const axisX = shelterAt.x - pressFrom.x;
@@ -1627,6 +1681,57 @@ async function main() {
         check('FEEL COURT — the camera does not jerk when contact happens',
             camJump < 0.5,
             `largest single-sample camera yaw change ${camJump.toFixed(3)} rad (drift over the whole press ${Math.abs(prevCam - firstCam).toFixed(3)})`);
+
+        //  ---- (6) and (7): what the press trace is for -------------------------------
+        //
+        //  The gate above measures WHERE the castaway got to. These two measure HOW, from
+        //  inside the resolver, and they exist because this gate has now been wrong about
+        //  its own cause three times running.
+        const trace = await page.evaluate(() => window.__drift.dumpPressTrace());
+        const inContact = trace.filter((f) => f.contacted);
+        let pathIntegral = 0;
+        let perpTrue = 0;
+        let reversals = 0;
+        let prevAlong = 0;
+        for (const f of trace) {
+            pathIntegral += f.movedM;
+            const dX = f.toX - pressFrom.x, dZ = f.toZ - pressFrom.y;
+            perpTrue = Math.max(perpTrue, Math.abs(dX * approachUz - dZ * approachUx));
+            if (!f.contacted) continue;
+            //  Signed travel along the surface. A sign change is the castaway turning round.
+            const along = f.outVelX * -f.normalZ + f.outVelZ * f.normalX;
+            if (prevAlong !== 0 && along !== 0 && Math.sign(along) !== Math.sign(prevAlong)) reversals++;
+            prevAlong = along;
+        }
+        const maxOverlaps = trace.reduce((a, f) => Math.max(a, f.overlaps), 0);
+
+        //  (6) THE RULER IS A WITNESS TOO (Vacuity). The gate reads the perpendicular at 8
+        //      sample points; the trace has every frame. If those two ever disagree, the
+        //      number every conclusion above rests on is the defect, and no amount of
+        //      collision work will move it. Measured, they agree to a centimetre.
+        check('FEEL COURT — the gate\'s own ruler agrees with the full-rate truth',
+            Math.abs(perpTrue - facingSpread) < 0.15,
+            `sampled ${facingSpread.toFixed(2)} m vs every-frame ${perpTrue.toFixed(2)} m `
+            + `(raw path integral ${pathIntegral.toFixed(2)} m over ${trace.length} frames, ${inContact.length} in contact)`);
+
+        //  (7) THE CASTAWAY DOES NOT TURN ROUND. The defect this slice's diagnostic found:
+        //      a healthy 2.21 m/s tangent, continuous motion, an honest ruler — and 6.55 m of
+        //      path for 0.51 m of progress, because the slide reversed once per burst. The
+        //      resolver was judging the ACCELERATOR's lagging direction rather than the
+        //      player's, and at 31 deg off-normal it read a dead-on press as glancing, so the
+        //      hysteresis that exists to prevent exactly this was never consulted.
+        //      `movement.test.ts` proves it fails without the fix; this proves it on a device.
+        //
+        //      IT IS ALSO THE WIRING WITNESS (C3 MAJOR-1). The brain tests prove the RULE, but
+        //      `game.ts` has no unit coverage by construction — the purity law keeps Babylon
+        //      out of the brain, so the `leaning` gate that hands the rule its hint can only be
+        //      witnessed here. The bar is deliberately set where that matters: this device
+        //      press measured 6 reversals unfixed, 4 with the intent fix alone, and 0 with
+        //      both, so `< 4` goes red if either half of the fix is unwired.
+        check('FEEL COURT — the slide does not turn round under a bursted press',
+            reversals < 4 && maxOverlaps <= 1,
+            `${reversals} direction reversals across ${inContact.length} contact frames, `
+            + `max ${maxOverlaps} obstacle(s) overlapped (2+ would mean a notch, whatever the staging said)`);
 
         //  PUT THE BOX BACK. Moving it for the measurement leaked into everything after:
         //  the storage section then walked to a box 60 m from where it expected one, left a
@@ -2746,10 +2851,15 @@ async function main() {
     //  Naming it with an honest provenance beats leaving it invisible.
     knownOpen('THE NOTCH — pressing into two obstacles that overlap makes the castaway shake',
         false,
-        'measured in tests/movement.test.ts, not here: 425 heading reversals per 960 frames '
-        + '(850 before slide-direction hysteresis). Confined to the impassable band — where a '
-        + 'gap the player can actually fit through exists, C3 measured 0 reversals. Position '
-        + 'is settled to ~3 cm; it is the FACING that oscillates',
+        //  Re-measured at D-083 against `tests/movement.test.ts`'s own NOTCH geometry, because
+        //  a register that quotes stale figures is a witness testifying to something it has not
+        //  seen. It read 425/850; the actual numbers are 376 and 845. Re-measured again after
+        //  D-083's two resolver fixes and IDENTICAL to three decimal places on both reversals
+        //  and net travel — this pass genuinely did not touch the notch, which is the claim.
+        'measured in tests/movement.test.ts, not here: 376 heading reversals per 960 frames '
+        + '(845 before slide-direction hysteresis; unchanged by D-083, re-measured). Confined '
+        + 'to the impassable band — where a gap the player can actually fit through exists, C3 '
+        + 'measured 0 reversals. Position is settled to ~3 cm; it is the FACING that oscillates',
         'Slice 2 — either sum the deflections across all contacting obstacles, or damp the '
         + 'reversal without costing the primary slide (attempt 1 took the shake to 1 reversal '
         + 'and dropped PART 2 from 5.17 m to 0.05 m, and was reverted)');

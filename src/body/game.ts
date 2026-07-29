@@ -57,6 +57,7 @@ import {
     ownedTools,
     stowActiveHand,
     stepMovement,
+    type MoveStep,
     refugeReport,
     tryCombine,
     announcementFor,
@@ -94,7 +95,7 @@ import {
     showSettings
 } from './hud';
 import { Island, type Obstacle } from './island';
-import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session } from './runtime';
+import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session, type PressFrame } from './runtime';
 import { RENDER } from './theme';
 
 /** What the player has tapped and wants to reach, if anything. */
@@ -172,9 +173,18 @@ export class Game {
     private lastTravelX = 0;
     private lastTravelZ = 0;
     private lastContact = false;
+    /** Surface-to-surface gap to the nearest obstacle after the last resolved frame. See the
+     *  `leaning` gate in `stepMovement` — contact is penetration, and "still leaning on it"
+     *  is the question the direction memory actually wants answered. */
+    private lastNearestGapM = Infinity;
     private lastDeflected = false;
     private contactFrames = 0;
     private deflectFrames = 0;
+    //  THE PRESS TRACE (C1's diagnostic ruling). Null until a diagnostic arms it; capped, so
+    //  an armed-and-forgotten trace cannot grow without bound. Never read by the game.
+    private pressFrames: PressFrame[] | null = null;
+    private pressCapacity = 0;
+    private pressArmedAt = 0;
     private velZ = 0;
 
     //  Direct-world interaction: where the tap wants to go, and any auto-hold in progress.
@@ -276,6 +286,19 @@ export class Game {
             contactFrames: this.contactFrames,
             deflectFrames: this.deflectFrames,
         });
+        //  THE PRESS TRACE. Arming clears; dumping does not, so a diagnostic can read the same
+        //  press twice and get the same answer — a dump that consumes its own evidence is how
+        //  you end up arguing about a measurement nobody can re-read.
+        runtime.pressTrace.arm = (capacity = 1800) => {
+            this.pressFrames = [];
+            this.pressCapacity = Math.max(1, Math.floor(capacity));
+            this.pressArmedAt = now();
+        };
+        runtime.pressTrace.dump = () => this.pressFrames ?? [];
+        runtime.obstaclesNear = (x, z, within) => this.island
+            .obstacleField(this.dynamicObstacles())
+            .filter((o) => Math.hypot(o.x - x, o.z - z) - o.radius <= within)
+            .map((o) => ({ x: o.x, z: o.z, radius: o.radius }));
         runtime.stickReadout = () => this.controls.read();
         runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
         runtime.fovReadout = () => (this.camera.fov * 180) / Math.PI;
@@ -1422,7 +1445,17 @@ export class Game {
         this.velZ = approachScalar(this.velZ, desiredZ, accel);
 
         const speedNow = Math.hypot(this.velX, this.velZ);
-        if (speedNow < 0.001) { this.velX = 0; this.velZ = 0; return; }
+        if (speedNow < 0.001) {
+            this.velX = 0; this.velZ = 0;
+            //  Recorded, not skipped. The stick is RELEASED between the harness's bursts, and
+            //  a trace that silently omits those frames would hide the very gaps a burst
+            //  hypothesis lives or dies on.
+            if (this.pressFrames) {
+                this.recordPressFrame(dt, state.player.x, state.player.y, state.player.x, state.player.y,
+                    stick.magnitude, desiredX, desiredZ, 0, 0, null);
+            }
+            return;
+        }
 
         let x = state.player.x + this.velX * dt;
         let z = state.player.y + this.velZ * dt;
@@ -1446,11 +1479,38 @@ export class Game {
         //  the mover happened to be doing a minute ago. This is the notch fix (C3 MAJOR-1);
         //  it is NOT the velocity write-back that caused the decay, because it feeds the
         //  resolver a hint, never the accelerator a velocity.
+        //  STILL LEANING ON IT counts as still sliding on it. This was gated on `lastContact`
+        //  alone, and contact means PENETRATION: a mover coasting along a curved surface
+        //  leaves it by a couple of centimetres, which ends contact while the castaway is
+        //  plainly still against the shelter. Every time the stick was released the direction
+        //  memory was wiped, so the next press re-picked a side from whatever the residual
+        //  happened to be — the second half of the feel court's wobble, measured on device
+        //  (four reversals, every one with `priorAlong` exactly 0.000).
+        //
+        //  It is still a real gate, but NOT for the reason the first draft of this comment
+        //  gave (C3 MAJOR-2). "Clears 0.1 m within one frame at walking pace" is false: one
+        //  frame is 5.8 cm, and a mover reversing out of a press takes 23 frames to get clear.
+        //  The gate holds geometrically instead — to inherit a stale direction you must come
+        //  within 10 cm of another surface, and two surfaces that close together are a notch,
+        //  where committing is the behaviour we want anyway.
+        const leaning = this.lastContact || this.lastNearestGapM <= TUNE.slideMemoryGapM;
+        const hintX = leaning ? this.lastTravelX : 0;
+        const hintZ = leaning ? this.lastTravelZ : 0;
+        const fromX = state.player.x;
+        const fromZ = state.player.y;
+        //  The stick's own desired velocity goes in alongside the accelerated one. "Is this
+        //  contact dead-on?" is a question about what the player is ASKING for, and for the
+        //  first fifth of a second after any fresh press `this.velX` is not that — it is the
+        //  accelerator still catching up, pointing somewhere neither the old motion nor the
+        //  new request does. Judging it there is what made the castaway rock back and forth
+        //  across the shelter instead of walking around it (the press trace, C1's ruling).
         const step = stepMovement(
             state.player.x, state.player.y, this.velX, this.velZ, dt,
             TUNE.playerCollisionRadius, this.island.obstacleField(dynamic),
-            this.lastContact ? this.lastTravelX : 0,
-            this.lastContact ? this.lastTravelZ : 0,
+            hintX,
+            hintZ,
+            desiredX,
+            desiredZ,
         );
         x = step.x;
         z = step.z;
@@ -1480,6 +1540,7 @@ export class Game {
         //  "stuck" through the real player path, and they are the only way an on-device
         //  check can witness the deflection branch firing at all.
         this.lastContact = step.contacted;
+        this.lastNearestGapM = step.nearestGapM;
         this.lastDeflected = step.deflected;
         if (step.contacted) this.contactFrames++;
         if (step.deflected) this.deflectFrames++;
@@ -1489,6 +1550,13 @@ export class Game {
 
         state.player.x = x;
         state.player.y = z;
+
+        //  Recorded AFTER the shore clamp, so `toX/toZ` is where the castaway genuinely ended
+        //  the frame — not where the resolver would have put them.
+        if (this.pressFrames) {
+            this.recordPressFrame(dt, fromX, fromZ, x, z, stick.magnitude, desiredX, desiredZ,
+                hintX, hintZ, step);
+        }
 
         //  Turn to face travel with a frame-rate-independent slerp — smoother than a fixed
         //  degrees-per-second cap, and the second half of "smooth".
@@ -1500,6 +1568,48 @@ export class Game {
 
         session().markFirstMove(msSinceControl());
         this.lastActivityAt = now();
+    }
+
+    /**
+     * One row of the press trace. `step` is null for a frame that never reached the resolver
+     * (velocity below the idle threshold — which is exactly what a released stick produces).
+     *
+     * Stops at capacity rather than wrapping: a diagnostic that arms, presses once and dumps
+     * wants the BEGINNING of the press, and a ring buffer would quietly eat it.
+     */
+    private recordPressFrame(
+        dt: number, fromX: number, fromZ: number, toX: number, toZ: number,
+        stickMag: number, wantX: number, wantZ: number,
+        hintX: number, hintZ: number,
+        step: MoveStep | null,
+    ): void {
+        const buf = this.pressFrames;
+        if (!buf || buf.length >= this.pressCapacity) return;
+        buf.push({
+            t: now() - this.pressArmedAt,
+            dt,
+            fromX, fromZ, toX, toZ,
+            stickMag, wantX, wantZ,
+            velX: this.velX, velZ: this.velZ,
+            normalX: step?.normalX ?? 0,
+            normalZ: step?.normalZ ?? 0,
+            into: step?.into ?? 0,
+            residualX: step?.residualX ?? 0,
+            residualZ: step?.residualZ ?? 0,
+            outVelX: step?.velX ?? 0,
+            outVelZ: step?.velZ ?? 0,
+            contacted: step?.contacted ?? false,
+            deflected: step?.deflected ?? false,
+            overlaps: step?.overlaps ?? 0,
+            nearestX: step?.nearestX ?? NaN,
+            nearestZ: step?.nearestZ ?? NaN,
+            nearestGapM: step?.nearestGapM ?? Infinity,
+            //  Measured from the recorded positions, not from the resolver's own `movedM` —
+            //  the shore clamp runs after it, and the path integral must be the path the
+            //  castaway actually took.
+            movedM: Math.hypot(toX - fromX, toZ - fromZ),
+            hintX, hintZ,
+        });
     }
 
     /** Once the walk-to has arrived, act. */

@@ -59,6 +59,61 @@ export interface MoveStep {
     contacted: boolean;
     /** Distance actually travelled this step. The number the pin made zero. */
     movedM: number;
+
+    //  ---- THE PRESS TRACE (C1's diagnostic ruling) --------------------------------------
+    //
+    //  Four sessions have now argued about this resolver from the OUTSIDE — from positions
+    //  sampled five times a second, on a device, through a metric that has itself been wrong
+    //  twice. Three diagnoses were published and all three were wrong. The reason is the same
+    //  every time: "it slid", "it was never blocked", and "it slid and the ruler missed it"
+    //  are indistinguishable from a position sample. So the resolver now reports what it
+    //  actually did, per step, and the argument moves to evidence.
+    //
+    //  These shipped as pure outputs — nothing read them to decide anything, and removing them
+    //  changed no behaviour, because a diagnostic that can alter the thing it measures is not
+    //  a diagnostic.
+    //
+    //  ONE EXCEPTION, called out rather than left to be discovered: `nearestGapM` is now
+    //  load-bearing. It was added to make the trace legible, the trace then found a second
+    //  defect that turns out to BE that quantity (contact means penetration, and a mover
+    //  coasting along a curve leaves the surface by centimetres while still leaning on it),
+    //  and `game.ts` reads it to gate the slide-direction memory. Everything else here is
+    //  still write-only.
+
+    /** The contact normal used this step — unit, pointing OUT of the surface. (0,0) if idle. */
+    normalX: number;
+    normalZ: number;
+    /**
+     * The incoming velocity's component along that normal. NEGATIVE means "moving into the
+     * surface"; the resolver only acts when it is. Zero when nothing was touched.
+     */
+    into: number;
+    /**
+     * What survives after the inward component is removed, BEFORE the dead-on branch can
+     * substitute a tangent for it. This is the *computed tangential component* — the number
+     * that separates "the tangent decayed to nothing" from "the tangent was healthy and the
+     * mover still went nowhere". Equals the incoming velocity when there was no contact.
+     */
+    residualX: number;
+    residualZ: number;
+    /**
+     * How many obstacles the advanced point was actually inside. A notch reads 2+; the feel
+     * court's own staging check asserts only that the STORAGE box is far away, which is not
+     * the same claim. This one is measured at the point of contact and cannot be staged wrong.
+     */
+    overlaps: number;
+    /** Centre of the obstacle that owns the contact — a per-frame flip between two centres is
+     *  the notch signature, and no position sample can show it. NaN when uncontacted. */
+    nearestX: number;
+    nearestZ: number;
+    /**
+     * Distance from the mover's SURFACE to the nearest obstacle's, after resolution. Zero or
+     * below means touching. Reported on every step, contact or not, because the interesting
+     * case is the one just barely off: a mover coasting along a curved surface leaves it by
+     * millimetres, which stops being "contact" while remaining, in every sense a player would
+     * recognise, still leaning on the thing. Infinity if there are no obstacles at all.
+     */
+    nearestGapM: number;
 }
 
 /**
@@ -137,10 +192,53 @@ export function stepMovement(
      */
     priorTravelX = 0,
     priorTravelZ = 0,
+    /**
+     * WHAT THE MOVER IS ASKING FOR — the stick's own world-space desired velocity, before
+     * the accelerator has caught up to it. Optional; defaults to the incoming velocity,
+     * which is exactly what this function used to assume.
+     *
+     * THE DEFECT THIS CLOSES (the press trace, C1's diagnostic ruling). "Is this contact
+     * dead-on?" is a question about DIRECTION, and the resolver was answering it from the
+     * current velocity — which, for the first ~0.2 s after any fresh press, is not the
+     * player's direction at all. It is a lagging blend of the leftover motion and the new
+     * intent, and it points somewhere neither of them do.
+     *
+     * Measured, at the moment the castaway reversed on device:
+     *
+     *     intent            dead-on to 0.1 deg   <- what the player asked for
+     *     velocity          31 deg off-normal    <- what the resolver judged
+     *     tangential drift  0.17 m/s             <- 5% of walking pace; invisible on screen
+     *     prior travel      0.167 m/s, the OTHER way
+     *
+     * At 31 deg the ratio test says "glancing — handle it naturally", so the dead-on branch
+     * did not fire, and the hysteresis that exists to stop exactly this lives INSIDE that
+     * branch. `priorTravel` was correct, present, and never read. A 0.17 m/s incidental
+     * residual therefore outvoted the direction the body was actually travelling, once per
+     * burst, and the castaway swept back and forth across ~25 deg of the shelter instead of
+     * walking around it: 6.55 m of path for 0.51 m of progress.
+     *
+     * Judging the INTENT instead removes the transient from the decision entirely.
+     *
+     * When no intent is supplied this reduces to the previous behaviour: `aim` becomes the
+     * incoming velocity, `aimLen` is then exactly `incoming` (same two values, same `hypot`),
+     * and `aimTangential` is `residual` — a 2D velocity minus its normal component IS its
+     * tangential component. Not bit-for-bit, though, and C3 was right to catch that claim:
+     * `hypot(v - n(v·n))` and `|v·t|` are the same number mathematically and differ in the
+     * last bits because `n` is only unit to about 1 ULP. Measured over 600,000 randomized
+     * inputs (203,064 contacting, 7,996 deflecting) the two produce IDENTICAL outputs; a
+     * deliberate ULP-scan of the threshold boundary found 3 disagreements in 2,755 scanned
+     * points, in a window ~5e-14 rad wide. So: behaviourally identical, provably not
+     * bit-identical, and the difference is unreachable by anything a player can do.
+     */
+    desiredX?: number,
+    desiredZ?: number,
 ): MoveStep {
     const startX = px;
     const startZ = pz;
     const incoming = Math.hypot(velX, velZ);
+    //  Captured before the inward component is removed below.
+    const inVelX = velX;
+    const inVelZ = velZ;
 
     let x = px + velX * dt;
     let z = pz + velZ * dt;
@@ -155,19 +253,55 @@ export function stepMovement(
     let deflected = false;
     const contacted = pushLen > 1e-6;
 
+    //  Trace outputs, defaulted to the uncontacted answer and overwritten below.
+    let normalX = 0;
+    let normalZ = 0;
+    let intoOut = 0;
+    let residualX = velX;
+    let residualZ = velZ;
+    let overlaps = 0;
+    let nearestX = NaN;
+    let nearestZ = NaN;
+
     if (contacted) {
+        //  Only meaningful for the contact branch; the unconditional gap is measured at the
+        //  end, once the final position is known.
         const nx = pushX / pushLen;
         const nz = pushZ / pushLen;
         const into = velX * nx + velZ * nz;
+        normalX = nx;
+        normalZ = nz;
+        intoOut = into;
+        //  Counted at the ADVANCED point — the set that generated this contact.
+        const advX = px + velX * dt;
+        const advZ = pz + velZ * dt;
+        for (const o of obstacles) {
+            const min = o.radius + radius;
+            const ddx = advX - o.x;
+            const ddz = advZ - o.z;
+            if (ddx * ddx + ddz * ddz < min * min) overlaps++;
+        }
+        const owner = nearestObstacle(x, z, obstacles);
+        if (owner) { nearestX = owner.x; nearestZ = owner.z; }
         if (into < 0) {
             //  Remove the inward component; whatever runs along the surface survives. On a
             //  glancing contact this is the whole fix and always was — it is the dead-on
             //  case, where nothing survives, that stalled.
             velX -= nx * into;
             velZ -= nz * into;
+            residualX = velX;
+            residualZ = velZ;
 
-            const residual = Math.hypot(velX, velZ);
-            if (incoming > 1e-6 && residual < incoming * TUNE.slideDeflectThreshold) {
+            //  The direction being judged. A released stick asks for nothing, so a coasting
+            //  mover's own velocity is the honest reading of its intent.
+            const wantLen = desiredX === undefined || desiredZ === undefined
+                ? 0 : Math.hypot(desiredX, desiredZ);
+            const aimX = wantLen > 1e-6 ? (desiredX as number) : inVelX;
+            const aimZ = wantLen > 1e-6 ? (desiredZ as number) : inVelZ;
+            const aimLen = Math.hypot(aimX, aimZ);
+            //  |aim · t| — the part of the request that runs ALONG the surface.
+            const aimTangential = Math.abs(aimX * -nz + aimZ * nx);
+            if (aimLen > 1e-6 && aimTangential < aimLen * TUNE.slideDeflectThreshold) {
                 //  DEAD-ON. The surface tangent, taking the side the mover already leans
                 //  toward; when they lean neither way — the true stalemate — the obstacle
                 //  decides, deterministically.
@@ -223,7 +357,21 @@ export function stepMovement(
         deflected,
         contacted,
         movedM: Math.hypot(x - startX, z - startZ),
+        normalX,
+        normalZ,
+        into: intoOut,
+        residualX,
+        residualZ,
+        overlaps,
+        nearestX,
+        nearestZ,
+        nearestGapM: gapTo(nearestObstacle(x, z, obstacles), x, z, radius),
     };
+}
+
+/** Surface-to-surface distance from the mover to one obstacle. Infinity if there is none. */
+function gapTo(o: Obstacle | null, x: number, z: number, radius: number): number {
+    return o ? Math.hypot(x - o.x, z - o.z) - o.radius - radius : Infinity;
 }
 
 /** The obstacle whose surface the mover is currently against — the one that owns the contact. */
