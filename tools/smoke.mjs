@@ -50,7 +50,19 @@ const CHROME_CANDIDATES = [
 const SAVE_KEY = 'drift.save.v1';
 const LOOK_KEY = 'drift.look.v1';
 
-const TUNE = {
+//  THE HARNESS'S OWN COPY of the tune constants — a fourth hand-maintained copy alongside
+//  `src/data/tune.ts`, and it drifts exactly the way C3's A7/A8 said such copies do. The F3
+//  out-of-range check read `TUNE.shelterRadius`, which was simply absent here: `undefined`
+//  went into a template string, the reposition wrote NaN, the player never moved, and the
+//  check then reported the UI as broken for correctly saying the shelter was working. A
+//  silent no-op that accused the game of a defect it did not have.
+//
+//  The Proxy makes that impossible to repeat: reading a key this object does not define now
+//  THROWS instead of yielding undefined. It cannot make the copy stop drifting — only
+//  importing the real tune could do that, and this file runs as plain node against a built
+//  bundle — but it converts the silent failure into a loud one, which is the half that
+//  actually costs sessions.
+const TUNE = new Proxy({
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
@@ -58,6 +70,8 @@ const TUNE = {
     drinkPerSip: 25,
     treeWoodYield: 8,
     reedFiberYield: 2,
+    //  Added after the F3 out-of-range check read it and got `undefined` (see the Proxy note).
+    shelterRadius: 6,
     coldLoadBudgetSeconds: 8,
     fpsFloorMedian: 30,
     frameTimeP95BudgetMs: 33,
@@ -92,7 +106,18 @@ const TUNE = {
     deathResourceLossFraction: 0.25,
     fatigueRecoveryPerGameHourResting: 12,
     sleepDurationGameHours: 8
-};
+}, {
+    get(target, key) {
+        if (typeof key === 'string' && !(key in target)) {
+            throw new Error(
+                `TUNE.${key} is not defined in the harness's own copy of the tune constants ` +
+                `(tools/smoke.mjs). Add it, matching src/data/tune.ts. Reading it as undefined ` +
+                `is how a check silently no-ops and then blames the game.`
+            );
+        }
+        return target[key];
+    },
+});
 
 //  This local TUNE mirror has now produced THREE separate false failures in one pass, each
 //  time by a check comparing a real measurement against `undefined` (which is never true)
