@@ -1576,7 +1576,11 @@ async function main() {
         locksNothing: 'D-070 the LAW is separately locked in the brain by tests/renewability.test.ts; '
             + 'this device check is a second, weaker witness, so the law is not resting on it.',
     };
-measuredIntermittent('REGRESSION — the quarry depletes once its pool is fully spent', quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available === false, QUARRY_DEPLETION_RECORD);
+    measuredIntermittent('REGRESSION — the quarry depletes once its pool is fully spent',
+        quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available === false,
+        `available=${quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available}`,
+        QUARRY_DEPLETION_RECORD);
+
     //  GEOLOGY V2 (D-070): the seam is FINITE. This check used to assert the opposite — that
     //  the quarry regrew to full capacity — and it is inverted rather than deleted, because a
     //  deliberate behaviour change deserves an assertion that would catch a silent revert.
