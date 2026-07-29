@@ -245,11 +245,20 @@ async function preflight(url) {
 
     //  IS THIS ACTUALLY OUR BUILD? (D-056 named this gap and recommended the check; it was
     //  not actioned, and it then cost this slice a run.) A 200 proves something is listening,
-    //  not that it is serving the bundle just built here. A stale `vite preview` from another
-    //  checkout of THIS SAME project held port 4173 and answered 200 with an older bundle —
-    //  the harness drove it happily and reported a missing debug hook as a product defect.
-    //  The nastier cousin of D-056's original (a different project squatting), because every
-    //  page looked right.
+    //  not that it is serving the bundle just built here.
+    //
+    //  THE MECHANISM, corrected after actually looking at the process table rather than
+    //  inferring it. A `vite preview` from another checkout of THIS SAME project, two days
+    //  old, was bound to `127.0.0.1:4173`. This worktree's preview was then started on the
+    //  same port WITH `--strictPort` and did not refuse — it bound `[::1]:4173` instead.
+    //  Dual-stack: IPv4 and IPv6 loopback are different addresses, so both servers held
+    //  "port 4173" simultaneously and neither noticed. Puppeteer and curl were pointed at
+    //  `127.0.0.1`, which resolves to IPv4, so every request went to the two-day-old bundle
+    //  while a perfectly good server sat unused on the other stack.
+    //
+    //  So `--strictPort` is NOT proof you own the port, and "my server started fine" is not
+    //  proof anything is talking to it. That is what makes this worth a mechanism rather than
+    //  a habit: the two facts that would normally reassure you both stayed true.
     //
     //  `dist/index.html` names its own content-hashed entry chunk. Serving a different one
     //  means serving different code, so comparing them is a complete answer, costs one fetch,
@@ -272,8 +281,11 @@ async function preflight(url) {
             console.error(`  REFUSED: ${url} is serving a DIFFERENT build than dist/.`);
             console.error(`    dist/index.html expects  ${want}`);
             console.error(`    the server is serving    ${got}`);
-            console.error('    Something else owns this port (a stale preview from another checkout is the usual cause).');
-            console.error('    Kill it or run against a different port — a green run against the wrong bundle is worse than no run.');
+            console.error('    Something else is answering on this port. The usual cause is a stale preview from');
+            console.error('    another checkout — and note it can coexist with yours: --strictPort does NOT refuse');
+            console.error('    when the other server holds 127.0.0.1 and yours takes [::1], or vice versa.');
+            console.error('    Check BOTH stacks (netstat -ano | findstr :<port>), kill the stale one, or use a free port.');
+            console.error('    A green run against the wrong bundle is worse than no run.');
             process.exit(1);
         }
         console.log(`  Build identity confirmed: serving ${got ?? '(no entry chunk found — unbuilt page?)'}`);

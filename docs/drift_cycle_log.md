@@ -2266,14 +2266,34 @@ Two new device checks, so the ruler and the wobble are witnessed every run inste
 ### A run was lost to a hazard D-056 named and nobody actioned
 
 The first diagnostic run reported a missing debug hook as a product defect. It wasn't: a **stale
-`vite preview` from another checkout of this same project** held port 4173 and answered 200 with
-an older bundle. `preflight()` only ever checked for a 200. D-056 named this gap and recommended
-the check; it was not actioned, and it then cost this slice a run — the nastier cousin of the
-original, because every page looked right.
+`vite preview` from another checkout of this same project**, two days old, was answering on 4173
+with an older bundle. `preflight()` only ever checked for a 200. D-056 named this gap and
+recommended the check; it was not actioned, and it then cost this slice a run.
+
+**The mechanism, corrected — and I got it wrong the first time by inferring it instead of looking.**
+This section originally said the stale server "held port 4173", implying the port was unavailable
+to this worktree. It was not. Reading the process table afterwards:
+
+| | |
+|---|---|
+| stale preview (7/27, other checkout) | bound `127.0.0.1:4173` |
+| this worktree's preview, started **with `--strictPort`** | **did not refuse** — bound `[::1]:4173` |
+| Puppeteer and `curl`, given `127.0.0.1` | resolved IPv4 → the two-day-old bundle, every time |
+
+IPv4 and IPv6 loopback are different addresses, so **both servers held "port 4173" at once and
+neither noticed**, while a perfectly good server sat unused on the other stack. So `--strictPort`
+is **not** proof you own a port, and "my server started without error" is **not** proof anything
+is talking to it. That is what makes this worth a recorded mechanism rather than a habit: the two
+facts that would normally reassure you both stayed true while the run measured the wrong code.
+
+It is also, pointedly, the same error this whole slice is about — a conclusion published from
+inference when the instrument was one command away. The fix was already right; the story attached
+to it was not, and the story is what the next session reads.
 
 `preflight()` now compares the content-hashed entry chunk the server serves against the one
-`dist/index.html` names, and **refuses** on a mismatch. One fetch, no marker planted in source, a
-complete answer. **A green run against the wrong bundle is worse than no run.**
+`dist/index.html` names, and **refuses** on a mismatch — which catches this regardless of which
+stack answered. One fetch, no marker planted in source, a complete answer. **A green run against
+the wrong bundle is worse than no run.**
 
 ### The known-open register was quoting numbers nobody had measured
 
