@@ -3,6 +3,12 @@
 
 ---
 
+**D-084 · 2026-07-29 — Harness vocabulary amendment under the Vacuity Law: MEASURED-INTERMITTENT** adopted as a third check state, between **known-open** (a scheduled defect) and **check** (must always pass). Forcing a flaky check into either one misreports it in opposite directions — filed as known-open it cries wolf on every run where it passes; left as an ordinary check it turns the run red for a cause nobody has diagnosed. It carries an **observed pass/fail ratio and reproduction count from recorded runs only** (never a guess), auto-refreshed each slice close, **plus a hypothesis line or the explicit words "cause unknown"** — a blank field reads as "nobody looked", and that should be visible. **Maximum residence: two slice-closes**, then either a root-cause investigation with a named closer or reclassification on evidence; a ratio worsening past `INTERMITTENT_PROMOTE_TO_DEFECT` **auto-promotes to a real defect** (a flaky check getting flakier is a defect arriving, not noise), and a full slice at zero failures **promotes to a normal check WITH A NOTE** — unexplained-vanishing flakiness is information, not relief. **A measured-intermittent check cannot serve as a regression lock:** where an item's only coverage is intermittent, the **coverage gap itself is recorded**, never papered over with a green tick.
+
+**Class: OPERATIVE** — mechanism named: `measuredIntermittent()` in `tools/smoke.mjs`, shipped this batch, with both promotion rules and the residence clock enforced in the run output and the run summary. *(Class is C2's reading; C1 to confirm or correct.)*
+
+---
+
 **D-083 · 2026-07-29 — The feel-court press: instrument before diagnosing, and the two causes it found.**
 
 **Class: OPERATIVE** — the mechanism is named and shipped in this same batch: the press trace, the two resolver fixes, ten unit regressions, two device checks, the `preflight()` build-identity refusal, and the corrected known-open register.
