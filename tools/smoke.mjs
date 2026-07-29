@@ -1514,6 +1514,13 @@ async function main() {
         await sleep(300);
         await faceNode(shelterAt.x, shelterAt.y);
         const samples = [];
+        //  C3 MAJOR-A: `contactFrames`/`deflectFrames` only ever increment and are never
+        //  reset, and `PART 2` above presses into this same shelter first — deflecting on
+        //  113 of 113 contact frames. So both counters were far above zero before sample 0,
+        //  and the check whose stated job is "without this the whole section could pass by
+        //  never having been blocked at all" could not itself fail. Snapshot first, assert
+        //  the DELTA.
+        const beforeCounters = await page.evaluate(() => window.__drift.slideReadout());
         const pressFrom = (await live()).player;
         //  The axis the press travels along. Everything across it is slide.
         const axisX = shelterAt.x - pressFrom.x;
@@ -1557,13 +1564,17 @@ async function main() {
         const contactSamples = samples.filter((s) => s.contactFrames > 0);
         const stalls = samples.filter((s) => s.step < 0.03).length;
         const slideSpeed = samples.reduce((a, s) => a + s.step, 0) / (samples.length * 0.30);
-        const deflectedOnDevice = samples[samples.length - 1].deflectFrames > 0;
+        const lastCounters = samples[samples.length - 1];
+        const deflectDelta = lastCounters.deflectFrames - beforeCounters.deflectFrames;
+        const contactDelta = lastCounters.contactFrames - beforeCounters.contactFrames;
+        const deflectedOnDevice = deflectDelta > 0;
 
         //  (1) The mechanism fired. WITNESS (D-066 a): without this the whole section could
         //      pass by never having been blocked at all.
-        check('FEEL COURT — the dead-on deflection actually fired on device',
-            deflectedOnDevice && contactSamples.length > 0,
-            `deflectFrames ${samples[samples.length - 1].deflectFrames}, contactFrames ${samples[samples.length - 1].contactFrames}`);
+        check('FEEL COURT — the dead-on deflection actually fired DURING THIS PRESS',
+            deflectedOnDevice && contactDelta > 0,
+            `+${deflectDelta} deflect frames and +${contactDelta} contact frames during the press `
+            + `(totals ${lastCounters.deflectFrames}/${lastCounters.contactFrames} include earlier sections)`);
 
         //  (2) CONTINUITY — the difference between sliding and stuttering. At most one sample
         //      of eight may be near-motionless; two or more reads as catching and releasing.
@@ -2683,6 +2694,26 @@ async function main() {
         Math.abs(afterReload.knowledge.domains.harvestingFabrication.technique - beforeReload.knowledge.domains.harvestingFabrication.technique) < 0.001;
     check('GATE 0 — save/reload returns the same state, field by field', reloadClean,
         `wood ${beforeReload.inventory.wood}->${afterReload.inventory.wood}, stone ${beforeReload.inventory.stone}->${afterReload.inventory.stone}, technique ${beforeReload.knowledge.domains.harvestingFabrication.technique}->${afterReload.knowledge.domains.harvestingFabrication.technique}`);
+
+    //  THE CARRIED-OPEN DEFECT, on the record in the run the director actually reads.
+    //
+    //  C3 MAJOR-B: `knownOpen()` was built so "a scheduled defect can never quietly become a
+    //  forgotten one" and was then never called once. The ledger printed nothing, and the
+    //  slice's one live carried-open defect appeared nowhere in the device output. A register
+    //  with no entries is not a register.
+    //
+    //  The measurement is a unit measurement, and says so — the shake is a heading
+    //  oscillation, and the harness has no per-frame heading readout to catch it on device.
+    //  Naming it with an honest provenance beats leaving it invisible.
+    knownOpen('THE NOTCH — pressing into two obstacles that overlap makes the castaway shake',
+        false,
+        'measured in tests/movement.test.ts, not here: 425 heading reversals per 960 frames '
+        + '(850 before slide-direction hysteresis). Confined to the impassable band — where a '
+        + 'gap the player can actually fit through exists, C3 measured 0 reversals. Position '
+        + 'is settled to ~3 cm; it is the FACING that oscillates',
+        'Slice 2 — either sum the deflections across all contacting obstacles, or damp the '
+        + 'reversal without costing the primary slide (attempt 1 took the shake to 1 reversal '
+        + 'and dropped PART 2 from 5.17 m to 0.05 m, and was reverted)');
 
     // ---- F1 / F2 REGRESSION LOCK (Slice 1 item 3) --------------------------------
     //

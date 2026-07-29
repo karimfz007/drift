@@ -199,8 +199,17 @@ export function stepMovement(
                 deflected = true;
             }
 
-            //  Re-resolve after the slide so the step never ends inside an obstacle.
-            const slid = pushOut(x + velX * dt, z + velZ * dt, radius, obstacles);
+            //  Re-resolve after the slide, FROM THE ORIGINAL POSITION — not from the
+            //  already-advanced one.
+            //
+            //  C3 MAJOR-3: this advanced a second full `dt` on top of the first, and because
+            //  the push-out is radial the first advance's tangential component survives to be
+            //  stacked on. A glancing contact therefore travelled at up to 1.99x walking
+            //  speed — the wall became a conveyor, which is the exact thing
+            //  `TUNE.slideRetention`'s comment says it exists to prevent. Inherited from the
+            //  pre-fix code rather than introduced here, but this slice rewrote the function
+            //  and claimed the guard, so it is this slice's to fix.
+            const slid = pushOut(px + velX * dt, pz + velZ * dt, radius, obstacles);
             x = slid.x;
             z = slid.z;
         }

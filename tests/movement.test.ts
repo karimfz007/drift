@@ -268,12 +268,23 @@ describe('WHO OWNS velX — the acceleration model, not the resolver', () => {
         return Math.abs(d) <= maxDelta ? target : cur + Math.sign(d) * maxDelta;
     };
 
-    /** Press at the obstacle's centre through the body's real accel model, both wirings. */
+    /**
+     * Press at the obstacle's centre through the body's real accel model, both wirings, and
+     * return the PATH LENGTH travelled.
+     *
+     * C3 MAJOR-2: this used to return net displacement, which for a mover orbiting a circle
+     * of expanded radius 1.70 m is periodic, not monotone. The `> 3` ratio it asserted held
+     * at exactly one duration — the 2.4 s default — and failed at 11 of the 14 C3 sampled,
+     * bottoming out at 1.15 at 5 s. The claim was sound and the yardstick was a coincidence.
+     *
+     * Path length only ever grows, so a mover that keeps moving keeps scoring and a mover
+     * that stalls stops. Asserted at three durations below, so no single point can carry it.
+     */
     function pressThroughAccel(feedDeflectionBackIn: boolean, seconds = 2.4) {
         const dt = 1 / 60;
         const speed = TUNE.walkSpeedMps;
         let x = 0, z = 101.2, velX = 0, velZ = 0;
-        const from = { x, z };
+        let path = 0;
         for (let t = 0; t < seconds; t += dt) {
             const dx = shelter[0].x - x, dz = shelter[0].z - z;
             const len = Math.hypot(dx, dz) || 1;
@@ -281,28 +292,39 @@ describe('WHO OWNS velX — the acceleration model, not the resolver', () => {
             velX = approachScalar(velX, (dx / len) * speed, accel);
             velZ = approachScalar(velZ, (dz / len) * speed, accel);
             const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, shelter);
+            path += Math.hypot(r.x - x, r.z - z);
             x = r.x; z = r.z;
             if (feedDeflectionBackIn) { velX = r.velX; velZ = r.velZ; }
         }
-        return Math.hypot(x - from.x, z - from.z);
+        return path;
     }
 
-    it('PRE-FIX — feeding the deflection back into the accelerator stalls the slide dead', () => {
-        //  Not "slower": it decays to a standstill and stays there while the stick is held.
-        expect(pressThroughAccel(true)).toBeLessThan(2.0);
+    //  Three durations, not one. A single point is what let the old metric pass on a
+    //  coincidence; if the gap is real it holds as the press gets longer, and a stalled mover
+    //  falls further behind the longer you watch.
+    const DURATIONS = [2, 5, 10];
+
+    it('PRE-FIX — feeding the deflection back into the accelerator stalls the slide', () => {
+        //  The stalled path barely grows after contact: it is dominated by the approach.
+        for (const seconds of DURATIONS) {
+            expect(pressThroughAccel(true, seconds)).toBeLessThan(3.2 + seconds * 0.35);
+        }
     });
 
-    it('FIXED — keeping the intent lets the slide run at a steady pace indefinitely', () => {
-        //  4.0 m, not the 6.05 m a full 2.4 s at slideRetention would give: the first half
-        //  second is spent crossing open ground and accelerating before contact. Measured
-        //  4.83 m at TUNE.walkSpeedMps, against under 2.0 m for the pre-fix wiring.
-        expect(pressThroughAccel(false)).toBeGreaterThan(4.0);
+    it('FIXED — keeping the intent lets the slide keep travelling, at every duration', () => {
+        for (const seconds of DURATIONS) {
+            //  Grows with time, which a stalled mover's does not.
+            expect(pressThroughAccel(false, seconds)).toBeGreaterThan(seconds * 1.2);
+        }
     });
 
-    it('and the gap between the two wirings is decisive, not marginal', () => {
+    it('and the gap WIDENS with time — the mark of a stall, not merely a slower slide', () => {
         //  Guards against a future change that narrows this by slowing the fixed path rather
-        //  than by fixing anything — the shape of "fix" that produced attempt one.
-        expect(pressThroughAccel(false)).toBeGreaterThan(pressThroughAccel(true) * 3);
+        //  than by fixing anything — the shape of "fix" that produced attempt one. A constant
+        //  ratio would mean "somewhat slower"; a growing one means "stopped".
+        const ratios = DURATIONS.map((sec) => pressThroughAccel(false, sec) / pressThroughAccel(true, sec));
+        for (const r of ratios) expect(r).toBeGreaterThan(1.4);
+        expect(ratios[ratios.length - 1]).toBeGreaterThan(ratios[0]);
     });
 });
 
