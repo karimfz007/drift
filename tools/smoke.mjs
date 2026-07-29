@@ -72,6 +72,12 @@ const TUNE = new Proxy({
     reedFiberYield: 2,
     //  Added after the F3 out-of-range check read it and got `undefined` (see the Proxy note).
     shelterRadius: 6,
+    //  Collision radii — added when the feel court was restaged and needed to compute whether
+    //  two structures leave a passable gap. `tools/check-tune-mirror.mjs` now proves every
+    //  live `TUNE.<key>` in this file is present here, so the Proxy can never throw mid-run.
+    shelterCollisionRadius: 1.3,
+    storageCollisionRadius: 0.9,
+    playerCollisionRadius: 0.4,
     coldLoadBudgetSeconds: 8,
     fpsFloorMedian: 30,
     frameTimeP95BudgetMs: 33,
@@ -1508,6 +1514,27 @@ async function main() {
         await walkToward(shelterAt.x + 14, shelterAt.y + 20, 1.5);
         const freeTo = (await live()).player;
         const freeSpeed = Math.hypot(freeTo.x - freeFrom.x, freeTo.y - freeFrom.y) / 1.5;
+
+        //  STAGE AGAINST AN ISOLATED OBSTACLE. This pressed into the shelter while the
+        //  storage box sat ~2.2 m away, and those two expanded by the player's radius OVERLAP
+        //  — a passage width of MINUS 0.80 m. There is no way around that pair, so
+        //  perpendicular travel is physically capped there and the gate read 0.38–0.55 m
+        //  against its 0.80 m bar. The gate was right and the staging was wrong: it asked the
+        //  castaway to slide around something with no way around it. C3 measured 1.700 m on
+        //  an isolated obstacle, comfortably clear.
+        //
+        //  So the box is moved away first, and the isolation is ASSERTED rather than assumed
+        //  — otherwise a later change could quietly reintroduce the notch and this gate would
+        //  go red again for a reason that has nothing to do with sliding.
+        await editSave(`state.storage = { ...state.storage, x: ${shelterAt.x + 45}, y: ${shelterAt.y - 45} };`);
+        await sleep(300);
+        const staged = await live();
+        const boxGap = Math.hypot(staged.storage.x - shelterAt.x, staged.storage.y - shelterAt.y)
+                     - (TUNE.shelterCollisionRadius + TUNE.playerCollisionRadius)
+                     - (TUNE.storageCollisionRadius + TUNE.playerCollisionRadius);
+        check('FEEL COURT setup — the obstacle under test is ISOLATED, not a notch',
+            boxGap > 2,
+            `${boxGap.toFixed(2)} m of clear passage beside the shelter (a notch is negative)`);
 
         //  Now press square into the shelter and sample the whole press.
         await editSave(`state.player = { x: ${shelterAt.x}, y: ${shelterAt.y + 3.2} };`);

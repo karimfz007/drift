@@ -15,9 +15,10 @@
     "purity": "node tools/check-purity.mjs",
     "docs-integrity": "node tools/check-docs-integrity.mjs",
     "gen:audio": "node tools/gen-audio.mjs",
-    "done-checks": "npm run purity && npm run docs-integrity && npm run typecheck && npm run test",
+    "done-checks": "npm run purity && npm run docs-integrity && npm run tune-mirror && npm run typecheck && npm run test",
     "smoke": "node tools/smoke.mjs",
-    "build:raw": "vite build --config vite/config.prod.mjs"
+    "build:raw": "vite build --config vite/config.prod.mjs",
+    "tune-mirror": "node tools/check-tune-mirror.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "24.15.0",
