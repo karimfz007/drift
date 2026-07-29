@@ -1526,6 +1526,7 @@ async function main() {
         //  So the box is moved away first, and the isolation is ASSERTED rather than assumed
         //  — otherwise a later change could quietly reintroduce the notch and this gate would
         //  go red again for a reason that has nothing to do with sliding.
+        const storageHome = (await live()).storage;
         await editSave(`state.storage = { ...state.storage, x: ${shelterAt.x + 45}, y: ${shelterAt.y - 45} };`);
         await sleep(300);
         const staged = await live();
@@ -1626,6 +1627,17 @@ async function main() {
         check('FEEL COURT — the camera does not jerk when contact happens',
             camJump < 0.5,
             `largest single-sample camera yaw change ${camJump.toFixed(3)} rad (drift over the whole press ${Math.abs(prevCam - firstCam).toFixed(3)})`);
+
+        //  PUT THE BOX BACK. Moving it for the measurement leaked into everything after:
+        //  the storage section then walked to a box 60 m from where it expected one, left a
+        //  loadout panel open, and that panel took out the Look button and both debug-info
+        //  checks. A staging change that survives its own section is a defect generator.
+        await editSave(`state.storage = { ...state.storage, x: ${storageHome.x}, y: ${storageHome.y} };`);
+        await sleep(300);
+        const restored = (await live()).storage;
+        check('FEEL COURT teardown — the storage box is back where the rest of the run expects it',
+            Math.hypot(restored.x - storageHome.x, restored.y - storageHome.y) < 0.01,
+            `back at (${restored.x.toFixed(1)},${restored.y.toFixed(1)}), staged from (${storageHome.x.toFixed(1)},${storageHome.y.toFixed(1)})`);
     }
 
     //  FIX 5 — THE PACK ON THE SURVIVOR'S BACK, and the witness it shipped twice without.
