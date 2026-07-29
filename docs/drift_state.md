@@ -81,6 +81,12 @@
    penetration rather than on still-leaning, so every stick release wiped it. The second is C3's NOTE N6,
    carried IDENTIFIED-NOT-VERIFIED since the last pass and now verified. The notch shake stays this slice's one
    carried known-open defect, measured unchanged.
+   **C3 re-verdict: PASS-WITH-NOTES, remediated in session** — zero BLOCKING, and it re-derived the mechanism
+   independently rather than checking the arithmetic ("not a story fitted to a number"). Its two MAJORs were
+   both real and both fixed: cause 2 shipped with no regression of its own (deleting it left the suite green,
+   and it was tested at the one distance where it looks *bad*), and a claim that a mover walking away clears
+   the memory band "within one frame" was simply false — it takes 23 — under a guard weakened with a `* 0.5`
+   fudge to let it pass. **412/412** after remediation. Full verdict in the cycle log's D-083 AUDIT section.
 2. **F3 — refuge quality delivering the 40–50% exposure reduction**, truthfully and legibly, at the v0_14 balance
    target. This is the gate the director did **not** pass, and it was always Slice 1's own target.
 3. **Feel/expedition certification, regression-locked.** F1 and F2 passed and are currently *remembered*, not

@@ -2135,9 +2135,10 @@ One real feel-court press, instrumented on device (`tools/press-diagnostic.mjs`)
 - **H1 (tangent decays, stall-pole): NO.** The tangent never decays. It holds at full
   `slideRetention` x walk speed and the castaway moves every frame. There is no stall and no pole.
 - **H2 (tangent high + no advance, push-out anchor bug): SIGNATURE YES, MECHANISM NO.** The
-  tangent is high and there is no net advance — but the push-out anchors on live, correct
-  geometry every frame (distance to centre sat at 1.700-1.705 m throughout). Nothing is being
-  resolved against stale geometry.
+    tangent is high and there is no net advance — but the push-out anchors on live, correct
+  geometry every frame: distance to centre p50 **1.7031**, p95 **1.7059**, max **1.7488** against
+  a 1.700 m stand-off. (Quoted as "1.700-1.705 throughout" at first; that is the p95, not the
+  range, and C3 was right to qualify it.) Nothing is being resolved against stale geometry.
 - **H3 (measurement artifact): NO.** The full-rate perpendicular is 0.51 m against the gate's
   0.50 m. **The ruler is honest to a centimetre**, and it stays a witness — the harness now
   asserts that agreement every run rather than remembering it.
@@ -2160,11 +2161,16 @@ request does. At the moment the castaway reversed:
 | prior travel | 0.167 m/s, one way |
 | tangential residual | 0.170 m/s, **the other way** |
 
-At 31 degrees the ratio test says "glancing — handle it naturally", so the dead-on branch never
-fired — and the hysteresis that exists to stop exactly this **lives inside that branch**.
-`priorTravel` was correct, present, and never read. A 0.17 m/s incidental drift — 5% of walking
-pace, invisible on screen — therefore outvoted the direction the body was actually travelling,
-once per burst.
+At 31 degrees the ratio test says "glancing — handle it naturally", so the dead-on branch did not
+fire — and the hysteresis that exists to stop exactly this **lives inside that branch**.
+`priorTravel` was correct, present, and never read.
+
+It is a *targeted* failure, not a general one, and the distinction matters (C3 N8): the branch
+still fired on **166 of 187** contact frames. It failed on the other ~21 — every one of them at a
+burst boundary, which is precisely where the direction gets re-decided. "The branch never fired"
+was the wrong summary of a real defect. A 0.17 m/s incidental drift — 5% of walking pace,
+invisible on screen — therefore outvoted the direction the body was actually travelling, once per
+burst.
 
 It needs *both* halves of the input to appear, which is why neither earlier hypothesis explained
 it alone:
@@ -2191,8 +2197,11 @@ the first — not, as guessed, the whole story.
 1. **`stepMovement` is told what the mover is asking for.** The dead-on test measures the
    *request's* angle, not the velocity's. `slideDeflectThreshold` keeps its name and its 0.35,
    because against a steady velocity the two readings agree exactly — they diverge only on the
-   transient, which is precisely where the old one was wrong. When no intent is supplied the
-   behaviour is bit-for-bit what it was.
+   transient, which is precisely where the old one was wrong. With no intent supplied the
+   behaviour is **identical over 600,000 randomized inputs** — though *not* bit-for-bit, which
+   is what this said first and C3 correctly refused: the two expressions agree to about 1 ULP,
+   and a deliberate scan of the threshold boundary found 3 disagreements in 2,755 points inside
+   a window ~5e-14 rad wide. Unreachable by anything a player can do; still not "bit-for-bit".
 2. **The direction memory is gated on *leaning*, not on penetration** — `contacted ||
    nearestGapM <= slideMemoryGapM` (0.1 m). Small on purpose: a mover that genuinely walks away
    clears it inside one frame at walking pace, so a fresh contact is still decided on its own
@@ -2217,22 +2226,31 @@ walks around the shelter instead of rocking across 25 degrees of it.
 
 ### Every guard held, and was measured rather than assumed
 
-| guard | before | after |
-|---|---|---|
-| conveyor rate (C3 MAJOR-3), 10/45/80 deg | 0.925x | **0.925x** |
-| deliberate steering, full stick | 4.54 m | 4.56 m |
-| deliberate steering, light stick (0.7 m/s) | 1.05 m | **1.05 m** |
-| unbroken 2.4 s hold | 1.70 m | **1.70 m** |
-| the notch (carried known-open) | 376 reversals, 6.00 m net | **376, 6.00 m** |
-| the pin (symptom 1) | 4.38 m | 4.38 m |
+| guard | before | after | pinned by |
+|---|---|---|---|
+| conveyor rate (C3 MAJOR-3), 10/45/80 deg | 0.9246x | **0.9246x** | `THE GUARD TABLE'S OWN NUMBERS` |
+| deliberate steering, full stick | 4.535 m | 4.563 m | `deliberate STEERING along the wall` |
+| deliberate steering, light stick (0.7 m/s) | 1.050 m | **1.050 m** | same |
+| unbroken 2.4 s hold | 1.6999 m | **1.6999 m** | `a HELD stick is unchanged` |
+| the notch (carried known-open) | 845 / 376 reversals, 5.997 m net | **845 / 376, 5.997 m** | `THE REGISTER'S OWN NUMBERS` |
+| the pin (symptom 1) | 4.379 m | 4.379 m | `THE GUARD TABLE'S OWN NUMBERS` |
+
+Every row is now asserted by a named test, **with its staging**. C3 MINOR-2: the first cut quoted
+`0.925x` and `4.38 m` as proof this slice broke nothing, and neither figure existed anywhere but
+in this prose — C3 could not reproduce either, because the staging that produces them was written
+down nowhere. Both are real (0.9246 and 4.379 on the staging now recorded in the test). What was
+missing was anything that would notice if they stopped being real, which is the Vacuity problem in
+miniature: a number in a report that nothing checks is a number nobody has verified.
 
 The notch is deliberately unchanged: it is this slice's one carried-open defect, and the last
 attempt to damp it cost the primary slide and was reverted.
 
 ### The regression lock
 
-Ten new tests in `tests/movement.test.ts`, nine of them built as a **one-argument A/B on the shipped
-resolver** — omitting the intent reproduces the defect exactly, supplying it fixes it. The
+Fourteen new tests in `tests/movement.test.ts`. The method throughout is a **one-argument A/B on
+the shipped resolver** — omitting the intent reproduces the defect exactly, supplying it fixes it.
+(Precisely: 4 run both sides inside one test, 2 form an A/B across a pair, and 4 are single-sided
+witnesses or pins; "nine of them built as an A/B" was loose and C3 counted it.) The
 pre-fix side is therefore the real code path, not a hand-copied reimplementation that can drift
 out of agreement with it (Vacuity clause (b)). A witness test asserts contact and the dead-on
 branch both fire before anything else is claimed (clause (a)); a further test asserts the
@@ -2327,10 +2345,10 @@ code-path argument, not on a measurement I took. Flagged rather than assumed.
 
 | | |
 |---|---|
-| Unit tests | **408/408** (was 398 — +10: 6 bursted-press, 2 second-cause, 1 memory guard, 1 notch-register pin) |
+| Unit tests | **412/412** (was 398 — +14, incl. 4 added in C3 remediation) |
 | Device harness | **224/230**, 1 known-open (a second run of the same build: 227/230) |
 | Purity | 17 brain files, 19 modules, zero rendering-engine imports |
-| Docs-integrity | 82 decisions, every D-ref resolves |
+| Docs-integrity | 83 decisions, every D-ref resolves |
 | TUNE mirror | 28 live references all mirrored, 36 values none drifted |
 | Typecheck / production build | green |
 
@@ -2340,3 +2358,152 @@ memory band, PASS); progress-not-motion (path length within 25% either way, perp
 2.5x, so a "fix" that merely moves the castaway further cannot score); and the three original
 symptoms plus the ownership and notch blocks, all still passing against their own pre-fix
 mechanisms.
+
+---
+
+## D-083 AUDIT — C3, 2026-07-29 — **PASS-WITH-NOTES**, remediated in session
+
+Fresh-context audit per D-002, against commit `7422fa3`. C3 re-derived the mechanism
+independently rather than checking C2's arithmetic: it rebuilt the bursted press from scratch,
+extracted the pre-fix resolver from `HEAD~1`, and ran both sides over 600,000 randomized inputs
+plus a deliberate ULP-scan of the decision boundary.
+
+**The headline: the diagnosis survives adversarial re-derivation.** C3 reproduced the reversal
+moment without using C2's numbers — on the blind run's 21 non-deflecting contact frames the
+request sits **0.1–0.9°** off-normal while the velocity reads **24–37°**, and side flips go
+**6 → 2** when the intent is supplied. Its words: *"the mechanism is not a story fitted to a
+number."* Given three previous published diagnoses of this gate were all wrong, that is the
+finding that mattered.
+
+**Zero BLOCKING. Two MAJOR, three MINOR, nine NOTEs. Everything actionable was fixed in session**
+and the audit's own numbers were adopted where they were better than C2's.
+
+### MAJOR-1 — the second fix shipped with no regression of its own
+
+C3 deleted `|| this.lastNearestGapM <= TUNE.slideMemoryGapM` from `game.ts` and **the whole suite
+stayed green**. Nothing compared `(intent, no-lean)` against `(intent, lean)`; the two
+"second-cause" tests compared *neither fix* to *both fixes*. Worse, the staging they used
+(`startZ 101.2`) is one of the few where the leaning gate is a small **negative** — so even a
+direct A/B there would have argued against the thing being shipped.
+
+C3 also did the work to show the fix is right anyway, across 84 configurations: perpendicular
+delta **−0.093 m to +1.395 m**, and configurations failing the 0.80 m bar dropping **51 → 17**.
+
+**Fixed.** A `CAUSE 2 ALONE` test now A/Bs the leaning gate with the intent fix already in place,
+at `startZ 102.5` where it is the difference between red and green (**0.643 m → 1.702 m**), plus a
+sibling asserting it improves at *every* sampled distance so it cannot be a staging coincidence.
+The staging table is in the test comment, so nobody re-tunes it back to the one distance that
+flatters the wrong answer. The device check `the slide does not turn round under a bursted press`
+is named as the **wiring** witness — `game.ts` has no unit coverage by construction, and its `< 4`
+bar sits exactly where the intent fix alone (4 reversals) goes red.
+
+### MAJOR-2 — a claim that was simply false, under a guard quietly weakened to let it pass
+
+Four places asserted that a mover walking away clears the 0.1 m band "within a single frame at
+walking pace". **It takes 23 frames — 383 ms, 0.170 m** — because the mover must first reverse
+3.5 → −3.5 m/s at `moveAccelMps2`. And the strong form is arithmetically impossible anyway: one
+frame at walking pace is **0.0583 m**, *less* than the band.
+
+The guard test carried `expect(walkSpeedMps * dt).toBeGreaterThan(slideMemoryGapM * 0.5)` — a
+`* 0.5` fudge making the assertion "covers more than *half* the band", under a comment claiming
+the strong form. The comment asserted one thing and the code the only version that passed.
+
+Its sibling gap was worse: the test's comment named the risk *"a stale direction from one obstacle
+starts steering contacts with the next"* and the field **contained one obstacle**. It could not
+fail. C3 built the two-obstacle case itself and found the band does carry across into a fresh
+contact 2–3 times per run — but **changed the resolved position in 0 frames**.
+
+**Fixed.** The claim is now the measurement in all four places, the fudge is gone (the assertion
+runs the honest direction, `walkSpeedMps * dt < slideMemoryGapM`), the frame count is pinned, and
+a real two-obstacle test compares resolved positions frame-by-frame against the contact-only gate
+across four separations. The justification is now geometric rather than temporal, which is the
+form that actually holds: **to inherit a stale direction you must come within 10 cm of another
+surface, and two surfaces that close together are a notch — the one case where committing is the
+behaviour we want anyway.**
+
+### MINOR-1 — "bit-for-bit" was checkably false
+
+C2 claimed the no-intent path was bit-for-bit the old behaviour. C3 proved it is not:
+`hypot(v − n(v·n))` and `|v·t|` differ in **126,288 of 200,000** samples (max relative difference
+**1.387e-13**), because the normal is unit only to ~1 ULP. Over 600,000 trials the *outputs* were
+identical **100.000000%**, zero decision flips — but a genuine counterexample exists, found by
+bisecting the boundary: **3 disagreements in 2,755 scanned points**, in a window ~5e-14 rad wide.
+Restated as "behaviourally identical, provably not bit-identical".
+
+### MINOR-2 — two numbers offered as proof, backed by nothing
+
+`0.925x` (conveyor) and `4.38 m` (the pin) were quoted as evidence this slice broke nothing, and
+appeared in **no test, no tool, no source file** — only in prose. C3 could not reproduce either,
+because the staging that produces them was recorded nowhere. Both are real (**0.9246** and
+**4.379 m** on the staging now written into the test). What was missing was anything that would
+notice if they stopped being real. **Fixed** — every guard-table row is now asserted by a named
+test, with its staging, and the table cites which test pins it.
+
+### MINOR-3 — the Numbers table said 82 decisions; the checker said 83. Fixed.
+
+### NOTES adopted
+
+- **N1** — `nearestGapM` was missing from `PressFrame`, so the shipped trace could not re-witness
+  the very quantity cause 2 *is*. **Added.**
+- **N7** — "nine of them built as a one-argument A/B" was a loose count. **Restated exactly.**
+- **N8** — "the branch never fired" overstates it: the branch fired on **166 of 187** contact
+  frames and failed on ~21, all at burst boundaries. A targeted failure, not a general one.
+  **Corrected**, because the precise version is the one that explains the defect.
+- **N3** — "1.700–1.705 m throughout" is a p95, not a range (p50 1.7031, p95 1.7059, **max
+  1.7488**). **Corrected.**
+- **N2** — the 0.1 m band has ~18% headroom over the largest excursion actually observed on
+  device (8.2 cm across 86 in-band non-contact frames). Recorded in the tune comment.
+- **N4** — the memory is *frozen*, not decayed, across a full stop: `stepMovement` returns before
+  updating `lastContact`/`lastNearestGapM`, so a teleport or respawn carries a stale hint into the
+  first contact at the new location. **Pre-existing** — the old contact-only gate froze
+  identically — but it qualifies "a fresh contact is decided on its own merits". Carried.
+- **N5** — `nearestX/nearestZ` (captured pre-slide) and `nearestGapM` (measured post-slide) can
+  name different obstacles. Write-only, so no behavioural risk; a trace-legibility wrinkle.
+  Carried.
+- **N6** — `nearestObstacle` now runs unconditionally each step over ~101 static obstacles. Cost
+  is trivial; noted so it is not a surprise later.
+- **N9** — the "check 112 vs 130" ordering claim cites log lines, not check numbers. The ordering
+  itself is correct.
+
+### What C3 confirmed clean, having tried to break it
+
+- **The fail-then-pass is not timing-coincidental.** Over a **125-combination** sweep (latency
+  60–200 ms × burst 200–400 ms × gap 250–600 ms) the pre-fix side was RED in **125/125** on both
+  criteria and the fixed side cleared the bar in **125/125**; extended over start distance and
+  stick pressure, 84 more configs, it holds. *"This is not C3 MAJOR-2's shape."* One caveat worth
+  keeping: latency and gap have **zero** effect in that sweep — velocity fully decays in 219 ms —
+  so robustness is established over burst length, start distance and stick pressure, not over all
+  five knobs.
+- **The witness is real** (`contacted > 100`, `deflected > 100`; measured 187/166). Not vacuous.
+- **`nearestGapM` is correct** — measured at the final resolved position, both radii subtracted,
+  argmin provably unaffected by the constant offset (**0 mismatches over 200,000 random fields**),
+  `Infinity` safe against the `<=` test.
+- **The notch is genuinely untouched** — **845**/**376** reversals and **5.984**/**5.997 m** net,
+  identical on the pre-fix resolver to three decimals.
+- **The device evidence matches the log verbatim**, every figure, and 224 PASS + 6 FAIL = 230.
+- **The old 425/850 register text in the captured log is not a green-looking artifact** —
+  `knownOpen()` stores the string as data, nothing asserts it, it is excluded from the tally, and
+  the run *did* include this commit's other harness changes.
+- **The A/B gap on the two failing clusters is less material than C2 flagged**, and C3 found
+  evidence C2 did not cite: the cycle log records a previously green run at the **same 2.00 m
+  arrival distance** with all three quarry taps landing, which kills the hypothesis that this
+  slice's collision work moved the arrival and pushed the target off-viewport. *One nit carried:*
+  this run's quarry signature (`onCanvas=false`, pool unchanged, **no** tap landing) differs from
+  the historically documented one (`pool 220 → 216`, one of three landing), so "the long-standing
+  quarry three-taps miss" matches the **check**, not the **failure mode**.
+
+### NOT VERIFIED — carried openly
+
+1. **The pre-fix device trace is not on disk.** `.smoke/` is gitignored, and `press-trace.json` is
+   a post-fix capture. The H1/H2/H3 verdict figures (6.55 m path, 0.51 m perpendicular, 6
+   reversals, the 31°/0.1° moment, the 2.5 cm excursion) come from a run whose artifact did not
+   survive. *Mitigated:* C3 reproduced the mechanism independently in simulation and confirmed the
+   excursion phenomenon on the post-fix capture.
+2. **Nothing was verified on device by C3** — it was instructed not to take the bench (a
+   65-minute run). `preflight()`'s build-identity check is read-verified but never exercised.
+3. **The 227/230 second run** cannot be checked: its log was truncated by C2's own `tail`.
+4. **Whether reverting cause 2 changes anything on device** — established as no-change in the
+   suite; the device claim rests on a single un-repeated capture.
+
+**Numbers after remediation: 412/412 unit tests** (was 408 — +4 from this audit), purity,
+docs-integrity (83 decisions), tune-mirror, typecheck all green.

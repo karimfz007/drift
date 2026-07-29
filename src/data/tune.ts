@@ -100,8 +100,17 @@ export const TUNE = {
      *  memory was gated on contact, so it was wiped every time the stick was released, and
      *  each fresh press re-picked a side. That is the second half of the feel court's wobble.
      *
-     *  Small on purpose: this is "still touching it, near enough", not "was near it recently".
-     *  A mover that genuinely walks away is past this within a single frame at walking pace. */
+     *  Sized to the phenomenon, and measured rather than guessed: the largest excursion seen
+     *  on a real device press is 8.2 cm, so 10 cm carries it with about 18% to spare.
+     *
+     *  It is a DISTANCE, deliberately, not a timer. An earlier draft of this comment claimed a
+     *  mover walking away clears it "within a single frame at walking pace" — that was simply
+     *  false and C3 caught it: one frame at walking pace is 5.8 cm, LESS than the band, and a
+     *  mover that has to reverse 3.5 -> -3.5 m/s at `moveAccelMps2` first takes 23 frames
+     *  (383 ms) to get clear. The correct argument is the geometric one: to inherit a stale
+     *  direction you must come within 10 cm of another surface, and two surfaces that close
+     *  together ARE a notch — which is the one case where committing to a direction is the
+     *  behaviour we want anyway. */
     slideMemoryGapM: 0.1,
     /** [TUNE] Slice 1 — fraction of the incoming speed kept while sliding along a surface.
      *  Not 1.0: pressing into a wall should cost something, or the wall reads as a conveyor. */

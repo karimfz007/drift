@@ -1487,8 +1487,12 @@ export class Game {
         //  happened to be — the second half of the feel court's wobble, measured on device
         //  (four reversals, every one with `priorAlong` exactly 0.000).
         //
-        //  It is still a real gate: a mover that genuinely walks away clears 0.1 m within one
-        //  frame at walking pace, so a fresh contact is still decided on its own merits.
+        //  It is still a real gate, but NOT for the reason the first draft of this comment
+        //  gave (C3 MAJOR-2). "Clears 0.1 m within one frame at walking pace" is false: one
+        //  frame is 5.8 cm, and a mover reversing out of a press takes 23 frames to get clear.
+        //  The gate holds geometrically instead — to inherit a stale direction you must come
+        //  within 10 cm of another surface, and two surfaces that close together are a notch,
+        //  where committing is the behaviour we want anyway.
         const leaning = this.lastContact || this.lastNearestGapM <= TUNE.slideMemoryGapM;
         const hintX = leaning ? this.lastTravelX : 0;
         const hintZ = leaning ? this.lastTravelZ : 0;
@@ -1599,6 +1603,7 @@ export class Game {
             overlaps: step?.overlaps ?? 0,
             nearestX: step?.nearestX ?? NaN,
             nearestZ: step?.nearestZ ?? NaN,
+            nearestGapM: step?.nearestGapM ?? Infinity,
             //  Measured from the recorded positions, not from the resolver's own `movedM` —
             //  the shore clamp runs after it, and the path integral must be the path the
             //  castaway actually took.

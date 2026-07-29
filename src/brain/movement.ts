@@ -217,9 +217,18 @@ export function stepMovement(
      * burst, and the castaway swept back and forth across ~25 deg of the shelter instead of
      * walking around it: 6.55 m of path for 0.51 m of progress.
      *
-     * Judging the INTENT instead removes the transient from the decision entirely. When no
-     * intent is supplied this is bit-for-bit the previous behaviour: with `aim` = the
-     * incoming velocity, `aimTangential` IS `residual` and `aimLen` IS `incoming`.
+     * Judging the INTENT instead removes the transient from the decision entirely.
+     *
+     * When no intent is supplied this reduces to the previous behaviour: `aim` becomes the
+     * incoming velocity, `aimLen` is then exactly `incoming` (same two values, same `hypot`),
+     * and `aimTangential` is `residual` — a 2D velocity minus its normal component IS its
+     * tangential component. Not bit-for-bit, though, and C3 was right to catch that claim:
+     * `hypot(v - n(v·n))` and `|v·t|` are the same number mathematically and differ in the
+     * last bits because `n` is only unit to about 1 ULP. Measured over 600,000 randomized
+     * inputs (203,064 contacting, 7,996 deflecting) the two produce IDENTICAL outputs; a
+     * deliberate ULP-scan of the threshold boundary found 3 disagreements in 2,755 scanned
+     * points, in a window ~5e-14 rad wide. So: behaviourally identical, provably not
+     * bit-identical, and the difference is unreachable by anything a player can do.
      */
     desiredX?: number,
     desiredZ?: number,

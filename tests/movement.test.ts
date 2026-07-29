@@ -475,10 +475,10 @@ describe('THE BURSTED PRESS — judging intent, not the accelerator\'s lag', () 
      * `tellIntent` is the whole experiment: it decides whether the resolver is shown what the
      * player asked for, or only the accelerator's lagging answer to it.
      */
-    function burstedPress(tellIntent: boolean, rememberLean = false) {
+    function burstedPress(tellIntent: boolean, rememberLean = false, startZ = 101.2) {
         const dt = 1 / 60;
         const speed = TUNE.walkSpeedMps * 0.875;   //  the stick's real deflection on device
-        let x = 0, z = 101.2, velX = 0, velZ = 0;
+        let x = 0, z = startZ, velX = 0, velZ = 0;
         let contact = false, gap = Infinity, travelX = 0, travelZ = 0;
         let path = 0, perpendicular = 0, reversals = 0, prevAlong = 0;
         let deflected = 0, contacted = 0;
@@ -611,6 +611,42 @@ describe('THE BURSTED PRESS — judging intent, not the accelerator\'s lag', () 
         expect(leftContactWhileStillLeaning).toBeGreaterThan(0);
     });
 
+    it('CAUSE 2 ALONE — the leaning memory, A/B\'d with the intent fix already in place', () => {
+        //  C3 MAJOR-1. The first cut of this block only ever compared "neither fix" against
+        //  "both fixes", so the leaning gate had NO regression of its own — deleting it from
+        //  `game.ts` left the whole suite green. Worse, the staging those tests used (z=101.2)
+        //  is one of the few where the gate is a small NEGATIVE, so even a direct A/B there
+        //  would have argued against it.
+        //
+        //  Measured across stagings, intent fix on both sides, perpendicular in metres:
+        //
+        //      startZ   intent only   + leaning
+        //      100.5       1.114         1.706
+        //      101.2       1.702         1.622   <- the old staging: the gate looks bad here
+        //      102.0       0.943         1.649
+        //      102.5       0.643         1.702   <- fails the bar without it, clears with it
+        //      103.0       0.392         1.631
+        //      104.0       0.450         1.611
+        //
+        //  So it is tested at 102.5, where it is the difference between red and green, and the
+        //  102.5-vs-101.2 spread is itself asserted below so nobody re-tunes the staging back
+        //  to the one distance that flatters the wrong answer.
+        const withoutMemory = burstedPress(true, false, 102.5);
+        const withMemory = burstedPress(true, true, 102.5);
+        expect(withoutMemory.perpendicular).toBeLessThan(BAR);      //  the intent fix alone is not enough
+        expect(withMemory.perpendicular).toBeGreaterThan(BAR);
+        expect(withMemory.reversals).toBeLessThan(withoutMemory.reversals);
+    });
+
+    it('the leaning memory helps at MOST press distances, not just the one it is tested at', () => {
+        //  Guards against the fix being a coincidence of staging — the exact shape C3 MAJOR-2
+        //  caught on an earlier metric in this same file.
+        const distances = [100.5, 102.0, 102.5, 103.0, 104.0];
+        const improved = distances.filter((z) =>
+            burstedPress(true, true, z).perpendicular > burstedPress(true, false, z).perpendicular);
+        expect(improved.length).toBe(distances.length);
+    });
+
     it('FIXED, both causes — the memory survives a release and the wobble stops', () => {
         const blind = burstedPress(false, false);
         const both = burstedPress(true, true);
@@ -618,32 +654,132 @@ describe('THE BURSTED PRESS — judging intent, not the accelerator\'s lag', () 
         expect(both.reversals).toBeLessThanOrEqual(blind.reversals / 2);
     });
 
-    it('but a mover that genuinely WALKS AWAY still forgets — it is a band, not a timer', () => {
-        //  The guard on the memory fix. `slideMemoryGapM` must stay small enough that leaving
-        //  the obstacle is unambiguous, or a stale direction from one obstacle starts steering
-        //  contacts with the next — which is the exact failure the original contact gate was
-        //  written to prevent, and it must still be prevented.
+    it('a mover that walks away DOES forget — but it takes 23 frames, not the one I claimed', () => {
+        //  C3 MAJOR-2. The comment here used to read "one frame of walking at speed covers far
+        //  more ground than the band allows", under an assertion carrying a `* 0.5` fudge —
+        //  because the strong form is false and only the weakened one passed. One frame at
+        //  walking pace is 5.8 cm against a 10 cm band, and a mover reversing out of a press
+        //  must first turn 3.5 -> -3.5 m/s at `moveAccelMps2`. Measured: 23 frames, 383 ms.
+        //
+        //  The claim is now the measurement, and the fudge is gone. The band's real guarantee
+        //  is geometric, not temporal — asserted in the sibling test below.
         const dt = 1 / 60;
-        //  One frame of walking at speed covers far more ground than the band allows.
-        expect(TUNE.walkSpeedMps * dt).toBeGreaterThan(TUNE.slideMemoryGapM * 0.5);
+        expect(TUNE.walkSpeedMps * dt).toBeLessThan(TUNE.slideMemoryGapM);   //  the honest direction
         let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0;
         let gap = Infinity;
-        const run = (seconds: number, wx: number, wz: number) => {
-            for (let t = 0; t < seconds; t += dt) {
+        const step = (wx: number, wz: number) => {
+            velX = approachScalar(velX, wx, TUNE.moveAccelMps2 * dt);
+            velZ = approachScalar(velZ, wz, TUNE.moveAccelMps2 * dt);
+            const leaning = contact || gap <= TUNE.slideMemoryGapM;
+            const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                leaning ? tX : 0, leaning ? tZ : 0, wx, wz);
+            x = r.x; z = r.z; tX = r.velX; tZ = r.velZ;
+            contact = r.contacted; gap = r.nearestGapM;
+            return leaning;
+        };
+        for (let t = 0; t < 1; t += dt) step(0, -TUNE.walkSpeedMps);   //  press in — memory live
+        expect(contact || gap <= TUNE.slideMemoryGapM).toBe(true);
+        let frames = 0;
+        while (step(0, TUNE.walkSpeedMps) && frames < 600) frames++;   //  then walk straight off
+        expect(frames).toBeCloseTo(23, -1);                            //  measured, not asserted
+        expect(contact).toBe(false);
+        expect(gap).toBeGreaterThan(TUNE.slideMemoryGapM);
+    });
+
+    it('and a SECOND obstacle does not inherit the first one\'s direction', () => {
+        //  C3 MAJOR-2, second half. The old version of this guard named exactly this risk in
+        //  its comment and then tested it against a field containing ONE obstacle — it could
+        //  not fail. This one has two, staged on the side the slide actually exits toward, at
+        //  a spread of separations, and compares the resolved position frame by frame against
+        //  the old contact-only gate. If the band ever steers a contact with B using a
+        //  direction earned against A, the two runs diverge.
+        const dt = 1 / 60;
+        const walk = (useBand: boolean, separation: number) => {
+            const field: Obstacle[] = [
+                { x: 0, z: 98, radius: TUNE.shelterCollisionRadius },
+                { x: separation, z: 98, radius: TUNE.shelterCollisionRadius },
+            ];
+            let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, tX = 0, tZ = 0;
+            let gap = Infinity;
+            const path: number[] = [];
+            for (let t = 0; t < 4; t += dt) {
+                //  Press at the first, then drift along toward the second.
+                const wantX = t > 1.2 ? TUNE.walkSpeedMps : 0;
+                const wantZ = t > 1.2 ? 0 : -TUNE.walkSpeedMps;
+                velX = approachScalar(velX, wantX, TUNE.moveAccelMps2 * dt);
+                velZ = approachScalar(velZ, wantZ, TUNE.moveAccelMps2 * dt);
+                if (Math.hypot(velX, velZ) < 0.001) { velX = 0; velZ = 0; continue; }
+                const leaning = useBand ? (contact || gap <= TUNE.slideMemoryGapM) : contact;
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, field,
+                    leaning ? tX : 0, leaning ? tZ : 0, wantX, wantZ);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ;
+                contact = r.contacted; gap = r.nearestGapM;
+                path.push(x, z);
+            }
+            return path;
+        };
+        for (const separation of [2.6, 3.2, 4.0, 5.0]) {
+            const banded = walk(true, separation);
+            const contactOnly = walk(false, separation);
+            expect(banded.length).toBe(contactOnly.length);
+            for (let i = 0; i < banded.length; i++) {
+                expect(banded[i]).toBeCloseTo(contactOnly[i], 6);
+            }
+        }
+    });
+
+    it('THE GUARD TABLE\'S OWN NUMBERS — the conveyor rate and the pin, pinned', () => {
+        //  C3 MINOR-2: the as-built quotes "conveyor 0.925x" and "the pin 4.38 m" as evidence
+        //  that this slice broke nothing, and neither figure appeared in any test, tool or
+        //  source file — only in prose. C3 could not reproduce either, because the staging that
+        //  produces them was recorded nowhere. Both are real; what was missing was anything
+        //  that would notice if they stopped being real. That is the whole Vacuity problem in
+        //  miniature: a number in a report that nothing checks is a number nobody has verified.
+        //
+        //  Pinned here WITH their staging, and asserted identical across the A/B, because the
+        //  claim being made is "unchanged", not "some particular value".
+        const dt = 1 / 60;
+        const conveyorRate = (deg: number, tellIntent: boolean) => {
+            const a = (deg * Math.PI) / 180;
+            let x = Math.sin(a) * 6, z = 98 + Math.cos(a) * 6;
+            //  A fixed world direction at full walking pace, held for 4 s — a glancing blow
+            //  that must never travel faster than walking. C3 MAJOR-3 measured 1.99x here.
+            const velX = -Math.sin(a) * TUNE.walkSpeedMps, velZ = -Math.cos(a) * TUNE.walkSpeedMps;
+            let contact = false, gap = Infinity, tX = 0, tZ = 0, moved = 0;
+            for (let i = 0; i < 240; i++) {
+                const leaning = contact || gap <= TUNE.slideMemoryGapM;
+                const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
+                    leaning ? tX : 0, leaning ? tZ : 0,
+                    tellIntent ? velX : undefined, tellIntent ? velZ : undefined);
+                moved += Math.hypot(r.x - x, r.z - z);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted; gap = r.nearestGapM;
+            }
+            return moved / (240 * dt) / TUNE.walkSpeedMps;
+        };
+        for (const deg of [10, 45, 80]) {
+            expect(conveyorRate(deg, true)).toBeCloseTo(0.9246, 3);
+            expect(conveyorRate(deg, true)).toBeCloseTo(conveyorRate(deg, false), 9);
+            expect(conveyorRate(deg, true)).toBeLessThan(1);   //  never a conveyor
+        }
+
+        const pinTravel = (tellIntent: boolean) => {
+            let x = 0, z = 101.2, velX = 0, velZ = 0, contact = false, gap = Infinity, tX = 0, tZ = 0;
+            const from = { x, z };
+            for (let t = 0; t < 2; t += dt) {
+                const dx = -x, dz = 98 - z, len = Math.hypot(dx, dz) || 1;
+                const wx = (dx / len) * TUNE.walkSpeedMps, wz = (dz / len) * TUNE.walkSpeedMps;
                 velX = approachScalar(velX, wx, TUNE.moveAccelMps2 * dt);
                 velZ = approachScalar(velZ, wz, TUNE.moveAccelMps2 * dt);
                 const leaning = contact || gap <= TUNE.slideMemoryGapM;
                 const r = stepMovement(x, z, velX, velZ, dt, TUNE.playerCollisionRadius, SHELTER,
-                    leaning ? tX : 0, leaning ? tZ : 0, wx, wz);
-                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ;
-                contact = r.contacted; gap = r.nearestGapM;
+                    leaning ? tX : 0, leaning ? tZ : 0,
+                    tellIntent ? wx : undefined, tellIntent ? wz : undefined);
+                x = r.x; z = r.z; tX = r.velX; tZ = r.velZ; contact = r.contacted; gap = r.nearestGapM;
             }
+            return Math.hypot(x - from.x, z - from.z);
         };
-        run(1, 0, -TUNE.walkSpeedMps);            //  press into it — memory is live
-        expect(contact || gap <= TUNE.slideMemoryGapM).toBe(true);
-        run(1, 0, TUNE.walkSpeedMps);             //  then walk straight back off it
-        expect(contact).toBe(false);
-        expect(gap).toBeGreaterThan(TUNE.slideMemoryGapM);   //  ...and the memory is gone
+        expect(pinTravel(true)).toBeCloseTo(4.379, 2);
+        expect(pinTravel(true)).toBeCloseTo(pinTravel(false), 9);
     });
 
     it('deliberate STEERING along the wall still steers, at any stick pressure', () => {

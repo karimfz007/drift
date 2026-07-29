@@ -42,6 +42,14 @@ export interface PressFrame {
     /** 2+ means the contact was a notch, whatever the staging check believed. */
     overlaps: number;
     nearestX: number; nearestZ: number;
+    /**
+     * Surface-to-surface gap to the nearest obstacle after resolution. Zero or below means
+     * touching. C3 N1: this was missing from the first cut, which meant the trace could not
+     * re-witness the very quantity the second cause turns out to BE — a mover that has left
+     * contact while still leaning on the thing. A diagnostic that cannot show the defect it
+     * found is half an instrument.
+     */
+    nearestGapM: number;
     /** Distance this single frame actually moved — the path integral's increment. */
     movedM: number;
     /** The hysteresis hint the resolver was given, i.e. whether contact carried over. */

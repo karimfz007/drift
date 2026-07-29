@@ -1709,6 +1709,13 @@ async function main() {
         //      player's, and at 31 deg off-normal it read a dead-on press as glancing, so the
         //      hysteresis that exists to prevent exactly this was never consulted.
         //      `movement.test.ts` proves it fails without the fix; this proves it on a device.
+        //
+        //      IT IS ALSO THE WIRING WITNESS (C3 MAJOR-1). The brain tests prove the RULE, but
+        //      `game.ts` has no unit coverage by construction — the purity law keeps Babylon
+        //      out of the brain, so the `leaning` gate that hands the rule its hint can only be
+        //      witnessed here. The bar is deliberately set where that matters: this device
+        //      press measured 6 reversals unfixed, 4 with the intent fix alone, and 0 with
+        //      both, so `< 4` goes red if either half of the fix is unwired.
         check('FEEL COURT — the slide does not turn round under a bursted press',
             reversals < 4 && maxOverlaps <= 1,
             `${reversals} direction reversals across ${inContact.length} contact frames, `
