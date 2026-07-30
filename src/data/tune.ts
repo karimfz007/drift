@@ -95,6 +95,43 @@ export const TUNE = {
      *  reliable by shaping (b); below it, grade variance is legal but arbitrary failure is
      *  never. Not a difficulty dial so much as the line between repeating and explaining. */
     ladderUnderstoodAt: 60,
+
+    // ---- Bible v2.3 §13 — the workload formula and its channels (Slice 2B Stage B) ----
+    //  Every activity declares its own factors; these are the per-unit rates the single
+    //  workload number is routed through. §14 forbids authoring an activity as
+    //  "-5 food, +2 strength", so nothing here is a per-action constant — they are rates.
+    /** [TUNE] §13 — stamina drawn per unit of workload. The seconds-to-minutes reserve. */
+    workStaminaPerUnit: 6,
+    /** [TUNE] §13 — hydration lost per unit, before the heat multiplier. Sweat and breath. */
+    workHydrationPerUnit: 4,
+    /** [TUNE] §13 — alertness spent and recovery debt accrued per unit. NOT stamina. */
+    workEnergyPerUnit: 2.5,
+    /** [TUNE] §13 — nutrition DEBT accrued per unit. Delayed and accumulated: this becomes
+     *  hunger later, and is never an instant per-swing subtraction. */
+    workNutritionDebtPerUnit: 1.8,
+    /** [TUNE] §13 — metabolic heat produced per unit of work. */
+    workThermalGainPerUnit: 1.2,
+
+    /** [TUNE] §13 — carried-load zone boundaries, as a fraction of the individual's own
+     *  capacity. Ratios, never a universal kg cap: the same mass is a different zone for a
+     *  different castaway on a different route. */
+    loadZoneFreeAt: 0.2,
+    loadZoneWorkingAt: 0.5,
+    loadZoneTrainingAt: 0.75,
+    loadZoneOverloadAt: 1.0,
+    /** [TUNE] §13 — how much harder the same act is in each zone. */
+    loadZoneEffortMultiplier: {
+        free: 1.0, working: 1.25, 'training-heavy': 1.6,
+        'operational-overload': 2.2, immovable: 3.5,
+    } as Record<'free' | 'working' | 'training-heavy' | 'operational-overload' | 'immovable', number>,
+
+    /** [TUNE] §13 walking — base demand of putting one foot in front of the other. Low: on
+     *  level ground unloaded walking drains little stamina, by the director's explicit rule. */
+    walkBaseDemand: 0.8,
+    /** [TUNE] §13 walking — a walk trains endurance only when it is a MEANINGFUL stimulus
+     *  relative to what this body can already do. Expressed as distance over current
+     *  capacity, so the same stroll that trains a newcomer is a rest day for a walker. */
+    walkStimulusFraction: 0.6,
     slideDeflectThreshold: 0.35,
     /** [TUNE] Slice 1 — how close the mover must stay to a surface, in metres, to still count
      *  as sliding along it for the purpose of remembering WHICH WAY.
