@@ -72,6 +72,8 @@ const TUNE = new Proxy({
     reedFiberYield: 2,
     //  Added after the F3 out-of-range check read it and got `undefined` (see the Proxy note).
     shelterRadius: 6,
+    //  Added for Slice 2 hold detection: a hold is a stationary press past this.
+    tapMaxMs: 320,
     //  Collision radii — added when the feel court was restaged and needed to compute whether
     //  two structures leave a passable gap. `tools/check-tune-mirror.mjs` now proves every
     //  live `TUNE.<key>` in this file is present here, so the Proxy can never throw mid-run.
@@ -859,12 +861,44 @@ async function main() {
                     .map((b) => b.querySelector('.verb-reason')?.textContent?.trim() ?? ''),
             };
         });
-        check('SLICE 2 — with a flask, tapping the pond OFFERS the choice instead of choosing for you',
-            Boolean(circleUp) && circleUp.ready.includes('drink') && circleUp.ready.includes('fill-flask'),
-            circleUp ? `ready [${circleUp.ready.join(', ')}] blocked [${circleUp.blocked.join(', ')}]` : 'no circle opened');
+        //  THE DEFAULT-VERB LAW (C1) supersedes my own supersession. A TAP must still drink —
+        //  acquiring a flask may not tax the reason you walked to the water. The circle is on
+        //  the HOLD, checked separately below.
+        check('SLICE 2 — with a flask, TAPPING the pond still drinks (no menu, no slowdown)',
+            !circleUp && after.thirst > before.thirst,
+            `circle ${circleUp ? 'OPENED (wrong)' : 'did not open'}, thirst ${before.thirst} -> ${after.thirst}`);
+        //  Now the HOLD: same pixel, longer press, and the circle divides.
+        const holdPoint = await screenOf(POND.x, POND.y);
+        if (holdPoint) await tapAt(holdPoint.x, holdPoint.y, TUNE.tapMaxMs + 260);
+        await sleep(500);
+        const held = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (!el) return null;
+            const segs = Array.from(el.querySelectorAll('.verb-seg'));
+            return {
+                ready: segs.filter((b) => b.classList.contains('ready')).map((b) => b.dataset.verb),
+                blocked: segs.filter((b) => b.classList.contains('blocked')).map((b) => b.dataset.verb),
+                reasons: segs.filter((b) => b.classList.contains('blocked'))
+                    .map((b) => b.querySelector('.verb-reason')?.textContent?.trim() ?? ''),
+                //  ONE-THUMB REACH: every segment must land inside the viewport, and none
+                //  below the press point, which is where the hand already is.
+                offscreen: segs.filter((b) => {
+                    const r = b.getBoundingClientRect();
+                    return r.left < 0 || r.top < 0 || r.right > window.innerWidth || r.bottom > window.innerHeight;
+                }).length,
+                lowest: Math.max(...segs.map((b) => b.getBoundingClientRect().bottom)),
+                pressY: 0,
+            };
+        });
+        check('SLICE 2 — HOLDING the pond opens the circle',
+            Boolean(held) && held.ready.includes('drink') && held.ready.includes('fill-flask'),
+            held ? `ready [${held.ready.join(', ')}] blocked [${held.blocked.join(', ')}]` : 'no circle opened on hold');
         check('SLICE 2 — a blocked segment is SHOWN, greyed, carrying its own reason',
-            Boolean(circleUp) && (circleUp.blocked.length === 0 || circleUp.reasons.every((r) => r.length > 0)),
-            circleUp ? `blocked [${circleUp.blocked.join(', ')}] reasons [${circleUp.reasons.join(' | ')}]` : 'no circle opened');
+            Boolean(held) && (held.blocked.length === 0 || held.reasons.every((r) => r.length > 0)),
+            held ? `blocked [${held.blocked.join(', ')}] reasons [${held.reasons.join(' | ')}]` : 'no circle opened');
+        check('SLICE 2 — ONE-THUMB REACH: every segment is on-screen',
+            Boolean(held) && held.offscreen === 0,
+            held ? `${held.offscreen} segment(s) off-screen, lowest edge at ${held.lowest.toFixed(0)}px` : 'no circle');
         await page.evaluate(() => document.querySelector('.panel.verb-circle')?.dispatchEvent(
             new PointerEvent('pointerdown', { bubbles: true })));
         await sleep(400);

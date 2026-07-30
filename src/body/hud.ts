@@ -768,7 +768,15 @@ export function showVerbCircle(
             </button>`;
     }).join('');
 
-    el.innerHTML = `<div class="verb-hub" style="left:${atX}px; top:${atY}px">${segs}</div>`;
+    //  KEEP THE WHOLE ARC ON SCREEN. The arc opens upward, so a press near the top of the
+    //  viewport threw segments off it — the one-thumb-reach check caught exactly that, three
+    //  segments outside the screen. The hub is nudged inward until the arc's own bounding box
+    //  fits, rather than the arc being shrunk: a smaller wheel would be harder to hit, which
+    //  trades one reach problem for another.
+    const pad = 76;                       // half a segment plus breathing room
+    const hubX = Math.min(Math.max(atX, radius + pad), window.innerWidth - radius - pad);
+    const hubY = Math.min(Math.max(atY, radius + pad), window.innerHeight - pad);
+    el.innerHTML = `<div class="verb-hub" style="left:${hubX}px; top:${hubY}px">${segs}</div>`;
 
     for (const button of Array.from(el.querySelectorAll<HTMLButtonElement>('.verb-seg.ready'))) {
         button.addEventListener('click', () => {
