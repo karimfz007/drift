@@ -1116,17 +1116,23 @@ async function main() {
         growth.hows >= 8, `${growth.hows} "comes from" lines`);
     //  NO NUMBERS. A castaway does not know they are at 78, and the state above deliberately
     //  sets scores that would be conspicuous if any of them leaked to the screen.
-    //  Guarded twice over. It first passed on the run where the panel failed to open, because
-    //  an empty string contains no numbers — a leak check going green on nothing, hazard #2 in
-    //  miniature and in a check written this same session. Then the fix for THAT passed too,
-    //  because two rounds of escape mangling had turned the word boundary into a literal
-    //  backspace and the regex could never match. So: no backslash escapes anywhere, digit
-    //  runs compared as plain strings, and the panel must be open with real text in it.
+    //  Guarded three times, and the third correction is the check learning what it meant.
+    //  It first passed on the run where the panel never opened, because an empty string
+    //  contains no numbers. The fix for that passed too, because escape mangling had turned
+    //  a word boundary into a literal backspace and the regex could never match. Then
+    //  forbidding ALL digits failed on '3 of 8 have shifted since you landed' — which is a
+    //  COUNT, and counts are fine. What must never appear is a raw capacity SCORE, so the
+    //  state above plants conspicuous ones and this looks for exactly those.
+    //  '10' included: it is the innate floor five of the eight sit at, so it is the
+    //  most likely value to leak. Safe against the summary's counts, which never exceed 8.
+    const PLANTED_SCORES = ['78', '45', '12', '10'];
     const digitRuns = (growth.text ?? '').match(/[0-9]+/g) ?? [];
+    const leaked = digitRuns.filter((d) => PLANTED_SCORES.includes(d));
     check('FIX 1 — and NOT ONE raw score leaks to the player',
-        growth.open && (growth.text ?? '').length > 200 && digitRuns.length === 0,
+        growth.open && (growth.text ?? '').length > 200
+        && leaked.length === 0 && !(growth.text ?? '').includes('%'),
         growth.open
-            ? `${(growth.text ?? '').length} chars, digit runs [${digitRuns.join(', ')}]`
+            ? `${(growth.text ?? '').length} chars, digit runs [${digitRuns.join(', ')}], leaked [${leaked.join(', ')}]`
             : 'panel never opened');
     await realTapDom('.panel.growth .close-btn');
     await sleep(400);
