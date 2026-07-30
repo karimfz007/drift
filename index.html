@@ -216,6 +216,23 @@
         .carried-button .pack-load.heavy { color: var(--danger); }
         /*  Try-Combining's surface. Chips are pick-to-select; the button stays disabled
             until exactly two are chosen, so the verb cannot fire half-formed.  */
+        /*  THE RADIAL CIRCLE (Slice 2). The hub is absolutely positioned so the inline
+            left/top the renderer computes actually applies — without this the segments lay
+            out in normal flow and translate from wherever that landed, which is exactly how
+            three of them ended up off-screen with the clamp doing nothing. The panel itself
+            goes full-bleed and transparent: it is a tap-catcher, not a card.  */
+        .panel.verb-circle { position: fixed; inset: 0; background: transparent; border: none;
+            box-shadow: none; padding: 0; max-width: none; width: 100%; height: 100%; }
+        .panel.verb-circle .verb-hub { position: absolute; width: 0; height: 0; }
+        .panel.verb-circle .verb-seg { position: absolute; left: 0; top: 0; margin: -26px 0 0 -58px;
+            width: 116px; min-height: 52px; display: flex; flex-direction: column; gap: 2px;
+            align-items: center; justify-content: center; padding: 6px 8px;
+            border-radius: 14px; border: 1px solid var(--line);
+            background: rgba(18, 20, 24, 0.92); color: var(--fg); font: inherit; }
+        .panel.verb-circle .verb-seg.ready { border-color: var(--good); }
+        .panel.verb-circle .verb-seg.blocked { opacity: 0.55; }
+        .panel.verb-circle .verb-label { font-weight: 600; }
+        .panel.verb-circle .verb-reason { font-size: 11px; opacity: 0.8; text-align: center; line-height: 1.2; }
         .panel .combine-row { display: flex; flex-direction: column; gap: 6px; align-items: center; }
         .panel .combine-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
         .panel .combine-chip.picked { outline: 2px solid var(--good); color: var(--fg); }

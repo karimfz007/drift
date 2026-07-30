@@ -773,7 +773,7 @@ export function showVerbCircle(
     //  segments outside the screen. The hub is nudged inward until the arc's own bounding box
     //  fits, rather than the arc being shrunk: a smaller wheel would be harder to hit, which
     //  trades one reach problem for another.
-    const pad = 76;                       // half a segment plus breathing room
+    const pad = 62;                       // half a segment (58px) plus breathing room
     const hubX = Math.min(Math.max(atX, radius + pad), window.innerWidth - radius - pad);
     const hubY = Math.min(Math.max(atY, radius + pad), window.innerHeight - pad);
     el.innerHTML = `<div class="verb-hub" style="left:${hubX}px; top:${hubY}px">${segs}</div>`;
