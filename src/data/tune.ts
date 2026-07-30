@@ -90,6 +90,11 @@ export const TUNE = {
      *  does, and judging it there read a dead-on press as 31 deg glancing. The fraction is
      *  unchanged, because against a steady velocity the two readings agree; they diverge only
      *  on the transient, which is exactly where the old one was wrong. */
+    /** [TUNE] Slice 2B Stage A — domain understanding at or above which a demonstrated
+     *  recipe counts as UNDERSTOOD on the six-state ladder (D-086). Above this, execution is
+     *  reliable by shaping (b); below it, grade variance is legal but arbitrary failure is
+     *  never. Not a difficulty dial so much as the line between repeating and explaining. */
+    ladderUnderstoodAt: 60,
     slideDeflectThreshold: 0.35,
     /** [TUNE] Slice 1 — how close the mover must stay to a surface, in metres, to still count
      *  as sliding along it for the purpose of remembering WHICH WAY.

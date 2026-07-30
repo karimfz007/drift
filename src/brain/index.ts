@@ -8,6 +8,7 @@ export * from './clock';
 export * from './vitals';
 export * from './movement';
 export * from './verbs';
+export * from './ladder';
 export * from './skills';
 export * from './materials';
 export * from './knowledge';
