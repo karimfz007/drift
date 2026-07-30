@@ -1,11 +1,10 @@
 /**
  * THE RADIAL CIRCLE — what a tap can do here, and why it cannot do the rest (Slice 2).
  *
- * The rule the whole slice rests on: **a tap is the default verb.** When the survivor's
- * capability creates more than one thing worth doing at a target, and only then, the circle
- * divides. One option is never a menu; it is just the verb, and the tap performs it. This is
- * why the circle can be introduced without making the early game slower — a castaway with no
- * flask and no line taps the pond and drinks, exactly as before, and never sees a wheel.
+ * The rule the whole slice rests on: **a tap is the default verb, always.** The circle opens
+ * on HOLD. A castaway taps the pond and drinks whether or not they carry a flask, taps their
+ * shelter and sleeps whether or not they carry mending wood — capability adds options to the
+ * hold, and never taxes the tap.
  *
  * WHY IT LIVES IN THE BRAIN. Two interim hacks are being retired here, and both existed
  * because the body had no way to ask "what are my options at this thing?" — shelter's mend
@@ -71,21 +70,68 @@ export function availableVerbs(state: GameState, target: VerbTarget): VerbOption
 }
 
 /**
- * THE SLICE'S CENTRAL RULE. A tap performs the default verb when there is exactly one thing
- * to do; the circle opens only when capability has produced a genuine choice.
+ * THE DEFAULT-VERB LAW (C1, binding, governs the circle everywhere).
  *
- * Note it counts AVAILABLE options, not total ones. A pond with a blocked "Fill flask"
- * segment still opens no circle for a survivor who has no flask — they would be choosing
- * between one real option and one grey one, which is a menu pretending to be a decision.
+ * **A tap ALWAYS fires the context's default verb** — the most frequent, most expected action
+ * for that object. **The circle opens on HOLD**, or on a tap only when no sensible default is
+ * available. Never both: a tap must not sometimes act and sometimes ask.
+ *
+ * This supersedes my first cut, which opened the circle on tap whenever two or more options
+ * were available. That rule had a defect class in it, and C1 named it: a survivor carrying
+ * wood who taps their shelter got a menu instead of sleep, so the single most frequent action
+ * in the game silently became two taps. Counting options is not the same as knowing which one
+ * the player wanted, and "more than one thing is possible" is a terrible reason to stop
+ * doing the obvious one.
+ *
+ * The frequent-verb-slowdown pattern this exists to prevent, stated so it can be swept for:
+ * **an object's most common action must never become slower because a rarer one became
+ * possible.** Acquiring a capability may add options; it may never tax the ordinary act.
+ */
+const DEFAULT_VERB: Record<VerbTarget, string> = {
+    //  Thirst is why you walk to water. Filling a flask is the errand you run while you are
+    //  there — real, frequent, and still not the reason you came.
+    pond: 'drink',
+    //  Sleep is what a shelter is FOR. Mending is maintenance you do because you noticed.
+    shelter: 'sleep',
+    //  You open a box to see what is in it. Mending it is the rarer act, by a wide margin.
+    storage: 'open-store',
+    //  A fire is fed. Lighting a torch from it is occasional and only ever briefly possible.
+    fire: 'feed-fire',
+};
+
+/**
+ * What a TAP does here. The declared default when it is available; otherwise the single
+ * remaining option if there is exactly one; otherwise null, and only then does a tap ask.
+ */
+export function defaultVerb(state: GameState, target: VerbTarget): VerbOption | null {
+    const usable = availableVerbs(state, target);
+    const declared = usable.find((v) => v.id === DEFAULT_VERB[target]);
+    if (declared) return declared;
+    //  The default is blocked. One remaining option is still unambiguous — a survivor whose
+    //  shelter has collapsed taps it and mends it, because that is the only thing to do.
+    return usable.length === 1 ? usable[0] : null;
+}
+
+/**
+ * Does a TAP open the circle? Only when there is no sensible default to fire — i.e. the
+ * declared default is unavailable AND more than one alternative remains, so the game genuinely
+ * cannot know which was wanted.
  */
 export function tapOpensCircle(state: GameState, target: VerbTarget): boolean {
+    return defaultVerb(state, target) === null && availableVerbs(state, target).length > 1;
+}
+
+/**
+ * Does a HOLD open the circle? Whenever there is more than one thing to choose between.
+ * This is the deliberate route to the rarer verbs, and it costs nothing to the frequent one.
+ */
+export function holdOpensCircle(state: GameState, target: VerbTarget): boolean {
     return availableVerbs(state, target).length > 1;
 }
 
-/** What a tap does when it does NOT open a circle. Null if nothing is possible here. */
-export function defaultVerb(state: GameState, target: VerbTarget): VerbOption | null {
-    const usable = availableVerbs(state, target);
-    return usable.length === 1 ? usable[0] : null;
+/** The declared default for a target, whether or not it is currently available. */
+export function declaredDefaultVerbId(target: VerbTarget): string {
+    return DEFAULT_VERB[target];
 }
 
 // ---- the targets ---------------------------------------------------------

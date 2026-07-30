@@ -57,6 +57,7 @@ import {
     stowActiveHand,
     stepMovement,
     tapOpensCircle,
+    holdOpensCircle,
     defaultVerb,
     verbsFor,
     type MoveStep,
@@ -175,6 +176,12 @@ export class Game {
     //  on-device check has no other way to witness the deflection branch firing.
     /** Where the last world tap landed, so a circle opens under the thumb that made it. */
     private lastTapPoint: { x: number; y: number } | null = null;
+    /**
+     * Was the pending intention set by a HOLD rather than a tap? The default-verb law turns
+     * on this: a hold asks, a tap acts. Kept beside `pending` because it is a property of how
+     * the intention was formed, and it must be cleared with it or a later tap inherits it.
+     */
+    private pendingWasHold = false;
     private lastTravelX = 0;
     private lastTravelZ = 0;
     private lastContact = false;
@@ -259,6 +266,7 @@ export class Game {
             onPressWorld: () => false, //  No press-claim: everything is a tap or the stick now.
             onReleaseWorld: () => {},
             onTap: (x, y) => this.onTap(x, y),
+            onHold: (x, y) => this.onHold(x, y),
             onActivity: () => { this.lastActivityAt = now(); this.cues.unlock(); }
         });
 
@@ -738,7 +746,23 @@ export class Game {
      * A tap sets an intention. The frame loop walks the castaway to it and acts on arrival.
      * A tap that lands on nothing interactive is a look-around, not a failure.
      */
+    /**
+     * A stationary hold on the world. Sets the same intention a tap would, flagged as a hold
+     * so `actOnArrival` opens the circle instead of firing the default verb.
+     *
+     * It routes through `onTap` deliberately: one resolution path, so a hold can never target
+     * something a tap could not. Divergence between two paths that resolve the same pixel is
+     * the bug C3 found twice between `tapTargetAt` and `onTap`.
+     */
+    private onHold(screenX: number, screenY: number): void {
+        this.onTap(screenX, screenY);
+        if (this.pending) this.pendingWasHold = true;
+    }
+
     private onTap(screenX: number, screenY: number): void {
+        //  A fresh tap is a tap until proven otherwise — clearing this here means a hold's
+        //  flag can never be inherited by the next ordinary tap.
+        this.pendingWasHold = false;
         if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
         this.lastActivityAt = now();
 
@@ -876,6 +900,7 @@ export class Game {
 
     private clearPending(): void {
         this.pending = null;
+        this.pendingWasHold = false;
         this.cancelHold();
     }
 
@@ -921,7 +946,12 @@ export class Game {
         //  flask taps the pond and drinks, exactly as before, and never sees a wheel.
         if (this.pending.kind === 'pond' || this.pending.kind === 'shelter' || this.pending.kind === 'storage') {
             const target = this.pending.kind;
-            if (tapOpensCircle(s, target)) {
+            //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
+            //  which gesture set this intention, so arriving after a hold opens the circle and
+            //  arriving after a tap never does. A tap opens it only in the narrow case where
+            //  the default is blocked and more than one alternative is left — there the game
+            //  genuinely cannot know what was wanted, and guessing would be worse than asking.
+            if (this.pendingWasHold ? holdOpensCircle(s, target) : tapOpensCircle(s, target)) {
                 const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
                 this.pending = null;
                 this.beginPanel();

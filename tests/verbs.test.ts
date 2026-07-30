@@ -1,15 +1,18 @@
 /**
  * THE RADIAL CIRCLE — the interaction matrix (Slice 2).
  *
- * The slice's central rule is a claim about COUNTS: a tap is the default verb, and the circle
- * divides only when capability has produced more than one thing worth doing. That claim is
- * checkable, so it is checked — including its negative half, which is the half that decides
- * whether the early game got slower. A circle that opens for a castaway with one option is
- * the failure this design exists to avoid.
+ * THE DEFAULT-VERB LAW (C1, binding): a tap ALWAYS fires the context's default verb, and the
+ * circle opens on HOLD. My first cut opened it on tap whenever two options existed, which
+ * carried a defect class C1 named — a survivor carrying wood tapped their shelter and got a
+ * menu instead of sleep, so the most frequent action in the game silently cost two taps.
+ *
+ * The negative half is the half worth testing hardest, and it is a sweep rather than a
+ * spot-check: no capability, at any target, may ever change what a tap does.
  */
 import { describe, expect, it } from 'vitest';
 import {
-    availableVerbs, canFish, defaultVerb, tapOpensCircle, verbsFor, type VerbTarget,
+    availableVerbs, canFish, declaredDefaultVerbId, defaultVerb, holdOpensCircle,
+    tapOpensCircle, verbsFor, type VerbTarget,
 } from '../src/brain/verbs';
 import { buildShelter, buildStorage, createInitialState } from '../src/brain/state';
 import { POND } from '../src/data/world';
@@ -35,23 +38,26 @@ describe('THE ACCEPTANCE CASE — the pond divides as capability arrives', () =>
         expect(defaultVerb(s, 'pond')?.id).toBe('drink');
     });
 
-    it('+ flask: drink OR fill — the circle divides in two', () => {
+    it('+ flask: drink OR fill — the circle divides in two, ON HOLD', () => {
         const s = atPond();
         s.tools.flask = true;
         s.tools.flaskSips = 0;
         expect(ids(availableVerbs(s, 'pond'))).toEqual(['drink', 'fill-flask']);
-        expect(tapOpensCircle(s, 'pond')).toBe(true);
-        //  No single default any more — the tap must ask.
-        expect(defaultVerb(s, 'pond')).toBeNull();
+        expect(holdOpensCircle(s, 'pond')).toBe(true);
+        //  THE DEFAULT-VERB LAW: the tap still drinks. Acquiring a flask must not tax the
+        //  reason you walked to the water in the first place.
+        expect(tapOpensCircle(s, 'pond')).toBe(false);
+        expect(defaultVerb(s, 'pond')?.id).toBe('drink');
     });
 
-    it('+ fishing line: THREE segments, exactly as specced', () => {
+    it('+ fishing line: THREE segments on the hold, and the tap STILL drinks', () => {
         const s = atPond();
         s.tools.flask = true;
         s.tools.flaskSips = 0;
         s.tools.fishingLine = true;
         expect(ids(availableVerbs(s, 'pond'))).toEqual(['drink', 'fill-flask', 'fish']);
-        expect(tapOpensCircle(s, 'pond')).toBe(true);
+        expect(holdOpensCircle(s, 'pond')).toBe(true);
+        expect(defaultVerb(s, 'pond')?.id).toBe('drink');
     });
 
     it('the three stages are strictly cumulative — capability only ever ADDS options', () => {
@@ -69,6 +75,76 @@ describe('THE ACCEPTANCE CASE — the pond divides as capability arrives', () =>
     });
 });
 
+describe('THE DEFAULT-VERB LAW — no capability may ever tax the frequent verb', () => {
+    //  C1's ruling, as a sweep rather than a spot-check. The defect class: an object's most
+    //  common action becoming SLOWER because a rarer one became possible. My first cut had
+    //  exactly that — a survivor carrying wood taps their shelter and gets a menu instead of
+    //  sleep. This walks every target through every capability grant and asserts the tap
+    //  never changes what it does.
+    const CAPABILITIES: Array<(s: GameState) => void> = [
+        (s) => { s.tools.flask = true; s.tools.flaskSips = 0; },
+        (s) => { s.tools.fishingLine = true; },
+        (s) => { s.inventory.wood = 20; },              // makes mending possible everywhere
+        (s) => { s.shelter.durability = 40; },          // ...and worth doing
+        (s) => { s.storage.durability = 40; },
+    ];
+    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire'];
+
+    it('acquiring ANY capability never changes what a tap does, at any target', () => {
+        let compared = 0;
+        for (const target of TARGETS) {
+            const base = builtEverything();
+            const before = defaultVerb(base, target)?.id ?? null;
+            for (const grant of CAPABILITIES) {
+                const after = builtEverything();
+                grant(after);
+                const now = defaultVerb(after, target)?.id ?? null;
+                //  The tap may go from nothing to something as capability arrives. It may
+                //  never go from something to nothing, and never swap to a different verb.
+                if (before !== null) expect(now).toBe(before);
+                compared++;
+            }
+        }
+        //  WITNESS (D-066 a): the sweep must actually have compared combinations.
+        expect(compared).toBe(TARGETS.length * CAPABILITIES.length);
+    });
+
+    it('the shelter defect C1 named is gone: wood in hand still sleeps on a tap', () => {
+        const s = builtEverything();
+        s.inventory.wood = 20;
+        s.shelter.durability = 40;
+        expect(availableVerbs(s, 'shelter').map((v) => v.id)).toEqual(['sleep', 'mend']);
+        expect(defaultVerb(s, 'shelter')?.id).toBe('sleep');
+        expect(tapOpensCircle(s, 'shelter')).toBe(false);
+        expect(holdOpensCircle(s, 'shelter')).toBe(true);
+    });
+
+    it('every target declares a default, and it is one of that target own verbs', () => {
+        for (const target of TARGETS) {
+            const declared = declaredDefaultVerbId(target);
+            const known = verbsFor(createInitialState(9), target).map((v) => v.id);
+            expect(known).toContain(declared);
+        }
+    });
+
+    it('a tap asks ONLY when the default is blocked and more than one thing remains', () => {
+        const s = atPond();
+        s.thirst = TUNE.thirstMax;              // not thirsty: drink, the default, is blocked
+        s.tools.flask = true; s.tools.flaskSips = 0;
+        s.tools.fishingLine = true;             // fill AND fish remain
+        expect(defaultVerb(s, 'pond')).toBeNull();
+        expect(tapOpensCircle(s, 'pond')).toBe(true);
+    });
+
+    it('when the default is blocked with ONE thing left, the tap just does it', () => {
+        const s = builtEverything();
+        s.shelter.durability = 0;               // collapsed: sleep blocked
+        s.inventory.wood = 20;                  // mend is the only remaining option
+        expect(defaultVerb(s, 'shelter')?.id).toBe('mend');
+        expect(tapOpensCircle(s, 'shelter')).toBe(false);
+    });
+});
+
 describe('a tap is the DEFAULT VERB — the circle is the exception, not the rule', () => {
     it('exactly one available option means a default verb and NO circle', () => {
         const s = atPond();
@@ -77,13 +153,13 @@ describe('a tap is the DEFAULT VERB — the circle is the exception, not the rul
         expect(defaultVerb(s, 'pond')).not.toBeNull();
     });
 
-    it('a BLOCKED extra segment does not open a circle — a grey option is not a choice', () => {
+    it('a BLOCKED extra segment does not open a HOLD circle — a grey option is not a choice', () => {
         //  The trap this guards: counting total segments instead of usable ones would open a
         //  wheel for a survivor with no flask, forcing a decision between one real option and
         //  one they cannot take. That is the early game getting slower for nothing.
         const s = atPond();
         expect(verbsFor(s, 'pond').length).toBeGreaterThan(1);   // the segments exist...
-        expect(tapOpensCircle(s, 'pond')).toBe(false);           // ...and still no circle
+        expect(holdOpensCircle(s, 'pond')).toBe(false);          // ...and still no circle
     });
 
     it('nothing available means no default and no circle — the tap does nothing here', () => {

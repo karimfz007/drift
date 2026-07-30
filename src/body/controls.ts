@@ -12,7 +12,8 @@
  *   3. Otherwise, it is the look drag — and if it never really moved, it was a tap.
  *
  * Since Cycle 04 every verb is a tap: a quick jab anywhere sets an intention, and the game
- * walks the castaway to it and acts on arrival (D-042). Holding a spot does nothing — the
+ * walks the castaway to it and acts on arrival (D-042). Holding a spot opens the radial
+ * circle (Slice 2), and is never REQUIRED for anything — the
  * work happens automatically once you are in reach — so "the wood is behind the joystick"
  * is not a trap, and neither is "I didn't know I had to hold."
  */
@@ -33,6 +34,18 @@ export interface ControlHandlers {
     onReleaseWorld: () => void;
     /** A quick press-and-release that was not a drag: reach out at this point. */
     onTap: (screenX: number, screenY: number) => void;
+    /**
+     * A stationary press held past `tapMaxMs`. Under the default-verb law (C1) this is how
+     * the radial circle opens: a tap always fires the object's frequent verb, and a hold asks
+     * for the rest.
+     *
+     * The old comment above said holding does nothing, and that "I didn't know I had to hold"
+     * must never be a trap. That constraint SURVIVES, and is the reason the law is shaped
+     * this way: hold is never required for anything. Every verb a hold can reach is reachable
+     * otherwise, and the frequent verb is always on the tap. A player who never discovers the
+     * hold loses convenience, never capability.
+     */
+    onHold: (screenX: number, screenY: number) => void;
     /** Any input at all — resets the idle-hint timer. */
     onActivity: () => void;
 }
@@ -160,6 +173,9 @@ export class Controls {
     private onUp = (event: PointerEvent): void => {
         const heldMs = performance.now() - this.pressStartedAt;
         const wasTap = heldMs <= TUNE.tapMaxMs && this.pressMoved <= TUNE.tapMaxMovePx;
+        //  A HOLD is the same gesture held longer: stationary, but past the tap window. The
+        //  movement bound is what separates it from a look-drag, which also exceeds the time.
+        const wasStationaryHold = heldMs > TUNE.tapMaxMs && this.pressMoved <= TUNE.tapMaxMovePx;
 
         if (event.pointerId === this.worldPointer) {
             this.worldPointer = null;
@@ -171,14 +187,17 @@ export class Controls {
             this.stickPointer = null;
             this.stick = { x: 0, y: 0, magnitude: 0 };
             this.setStickVisible(false);
-            //  A quick jab in the stick zone was aimed at the world, not at steering.
+            //  A quick jab in the stick zone was aimed at the world, not at steering — and
+            //  by the same reasoning, so is a stationary hold there.
             if (wasTap) this.handlers.onTap(event.clientX, event.clientY);
+            else if (wasStationaryHold) this.handlers.onHold(event.clientX, event.clientY);
             return;
         }
 
         if (event.pointerId === this.lookPointer) {
             this.lookPointer = null;
             if (wasTap) this.handlers.onTap(event.clientX, event.clientY);
+            else if (wasStationaryHold) this.handlers.onHold(event.clientX, event.clientY);
         }
     };
 
