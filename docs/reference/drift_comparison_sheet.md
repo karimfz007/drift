@@ -1,6 +1,6 @@
 # THE FIRST NIGHT (DRIFT) — Comparison Sheet
 
-*A living document. Regenerated at every gate close ([[D-078]] amendment E). This edition: **Slice 2 close**, 2026-07-30 ([[D-087]]).*
+*A living document. Regenerated at every gate close ([[D-078]] amendment E). This edition: **Slice 2B Stage A close**, 2026-07-30 ([[D-088]]).*
 
 **Vocabulary.** Build artifacts use the **evidence vocabulary** ([[D-081]]): what is claimed, set against what actually witnesses it. Laws use OPERATIVE / DESIGN-BINDING ([[D-076]]); plan sections use RATIFIED / PROVISIONAL ([[D-077]]). Three vocabularies, none overloading.
 
@@ -62,20 +62,33 @@
 
 ---
 
-## Slice 2B Stage 2a — discovery routes (in progress)
+## Slice 2B Stage A — the invention pivot ([[D-088]])
+
+*Stage B ("Embodied Growth") is **not begun**. Nothing below speaks for it.*
 
 | Claim | Status | Witness |
 |---|---|---|
-| All five pre-listed items have a working discovery route | **VERIFIED** | `tests/discovery.test.ts` — axe, torch, shelter, storage, stone hammer; the first test is the dependency written down and fails the moment the catalogue is emptied for an unreachable item |
-| A discovery prompt names a need and a material, never the product | **VERIFIED** | Two tests: one borrows `affordance.ts`'s own `namesAFinishedAnswer` detector so the layers cannot drift; one checks the blunt case that no prompt contains its own product's name |
-| A suspicion requires all three legs — need, makings in hand, property | **VERIFIED** | `tests/discovery.test.ts` — need alone, makings alone, and a partial handful each yield no suspicion |
-| Knowledge stays monotonic under the new reader | **VERIFIED** | `ladderFor` consults suspicion *after* the blueprint check; the test fails when the order is inverted, because `conceptually-suspected` sits below `demonstrated` |
-| Fail-then-pass proven per [[D-066]] | **VERIFIED** | With `suspected` widened to `needFelt \|\| complete` and the ladder's suspicion check hoisted, **11 tests fail**, including both guard groups |
-| The manufacture catalogue is emptied | **OPEN** | Not yet — Stage 2b. The routes exist first by design: emptying it is a dependency inversion, not a deletion |
-| F3's 40–50% first-night exposure survives the pivot | **OPEN** | Not yet re-measured post-pivot — Stage 2c. Last measured **45.00%** at [[D-085]], pre-pivot |
-| Migration: structures persist as matter, crafted types enter at Demonstrated | **PARTIAL** | `migratedLadderFor` exists and is tested; not yet wired to the live save path — Stage 2d |
+| A fresh castaway is offered nothing to build | **VERIFIED** | Device: *"THE PIVOT: a fresh castaway is offered NOTHING to build — 0 row(s)"*; `tests/reveal.test.ts` asserts the same for all five |
+| A row exists only because it was earned, or is survival-basic and suspected | **VERIFIED** | `src/brain/reveal.ts` `revealedInPanel`; 15 unit tests incl. "earning an axe teaches you nothing about storage" |
+| Law 113: fire reveals itself when cold and holding the makings, and really crafts | **VERIFIED** | Device: *"the fire route reveals itself — rows: Torch"*, *"the scaffold does NOT leak — 1 row"*, *"really craftable — tap true, owned true"* |
+| The scaffold is a floor, not a ceiling — once earned it stops depending on the need | **VERIFIED** | Device: *"warm and by daylight it STAYS"*; unit: "knowledge does not switch off at dawn" |
+| Subtraction never shipped alone — a suspected thing nags | **VERIFIED** | Device: **3 hints** rendered and visible (shelter, stonehammer, storage) |
+| A hint names a need and a material, never the product | **VERIFIED** | Device asserts the rendered text contains no product name; units borrow `affordance.ts`'s own `namesAFinishedAnswer` so the layers cannot drift |
+| The pivot removed the catalogue, not the panel | **VERIFIED** | Device: rest and the F3 refuge line both survive an otherwise-empty panel |
+| A minted blueprint puts the row back | **VERIFIED** | Device: *"a minted blueprint puts the row back: the panel is the EARNED record"* |
+| All five pre-listed items have a discovery route | **VERIFIED** | `tests/discovery.test.ts` — the first test is the dependency written down |
+| **2d** — a really-played v11 save migrates; every crafted type enters at Demonstrated | **VERIFIED** | Device, on the run's own accumulated state rewound to v11: schema 12, blueprints minted for every crafted type, six rows shown to the returning survivor |
+| **2d** — structures are matter | **VERIFIED** | Device: shelter and store still standing, durability unchanged to within 0.2 |
+| **2c** — F3's 40–50% band re-verified on device, post-pivot | **VERIFIED** | Device: **45%** on a `crude` shelter, read off the rendered line — Slice 1's own number, [[D-085]] |
+| Migration confirmed against the director's actual save | **PARTIAL** | Confirmed against a *really-played* save, not a fixture — but not against the director's device, which this machine cannot reach. Stated rather than implied |
+| The notch | **OPEN** | Untouched by this stage. Carried from [[D-085]] / [[D-087]] |
+| Slice 2B Stage B — capacities, combinations, confidence layer | **OPEN** | Not begun |
 
-**Interim signal, stated so it is not mistaken for the design.** "Has handled this material" currently reads from what the survivor is carrying, because inspection is not yet persisted. When it is, that one predicate changes and the routes do not.
+**Where the value was.** The pre-scan, not the code. Emptying the catalogue looked like a deletion and was a **dependency inversion**: ~31 checks and a new player's whole first night ran *through* the list, with six harness click-sites feeding the progression spine. Building all five discovery routes *before* removing anything is the only reason this stage did not make the game uncompletable.
+
+**Three corrections, all mine.** (1) The 2d check read zero rows and I nearly filed it as a migration failure — the Build button was **correctly hidden** by D-053's gate, asserted two checks below in the same run. I tapped a button the game had deliberately removed. (2) Fixing that by un-building the shelter stranded it down for the rest of the run: **249 checks became 240** and I nearly read that as progress. (3) The old *"lists all five craftables"* check asserted the **catalogue** — keeping it would have locked the retired behaviour in as a regression test.
+
+**One correction nobody flagged.** F3's new band check first passed at **50%**, inside 40–50 and still wrong: `reductionPct` is grade-driven and that run's shelter had rolled better than crude, so the check certified a shelter F3 is not about. Pinned to `crude`, it reads **45%**.
 
 ---
 
