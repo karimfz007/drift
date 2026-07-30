@@ -375,7 +375,7 @@ describe('body — death costs loose stacks only, and teaches (Ch.6 part 3)', ()
     it('NEVER takes tools, stored goods, skills, or KnowledgeState (Ch.2 amendment B holds)', () => {
         const s = run();
         s.inventory.wood = 20;
-        s.tools = { axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
+        s.tools = { axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined', fishingLine: false };
         s.storage = { built: true, x: 1, y: 1, durability: 80, stored: { wood: 40, stone: 30, fiber: 20 } };
         s.skills.woodcutting.level = 4;
         s.knowledge.domains.harvestingFabrication.technique = 42;
@@ -383,7 +383,7 @@ describe('body — death costs loose stacks only, and teaches (Ch.6 part 3)', ()
 
         respawn(s, 'the cold');
 
-        expect(s.tools).toEqual({ axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' });
+        expect(s.tools).toEqual({ axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined', fishingLine: false });
         expect(s.storage.stored).toEqual({ wood: 40, stone: 30, fiber: 20 });
         expect(s.skills.woodcutting.level).toBe(4);
         expect(s.knowledge.domains.harvestingFabrication.technique).toBe(42);
@@ -433,7 +433,7 @@ describe('body — save migration v7 → v8 (Ch.6)', () => {
             gameHoursElapsed: 40,
             energy: 30,
             inventory: { wood: 6, stone: 3, fiber: 1, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 },
-            tools: { axe: true, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude' },
+            tools: { axe: true, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude', fishingLine: false },
             trace: { deathLog: [{ cause: 'thirst', gameHoursElapsed: 9 }] }
         };
         return JSON.stringify({ schemaVersion: 7, savedAtMs: 1_700_000_300_000, state });

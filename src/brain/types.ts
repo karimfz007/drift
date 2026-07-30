@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -155,6 +155,11 @@ export interface Tools {
     stoneHammer: boolean;
     /** Rolled once at craft time (Ch.1 v3, D-055); scales fell speed only. */
     axeGrade: ItemGrade;
+    /** A line to fish with (Slice 2). A CAPABILITY, not a consumable — it is what makes the
+     *  pond's circle divide a third time. D-086's six-state ladder will later replace this
+     *  boolean with a position on that ladder; it is a boolean now because the ladder does
+     *  not exist yet and pretending otherwise would be inventing the spec. */
+    fishingLine: boolean;
 }
 
 /**

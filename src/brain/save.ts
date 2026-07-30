@@ -89,6 +89,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 7) current = migrateV7toV8(current);
     if (current.schemaVersion === 8) current = migrateV8toV9(current);
     if (current.schemaVersion === 9) current = migrateV9toV10(current);
+    if (current.schemaVersion === 10) current = migrateV10toV11(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -357,6 +358,22 @@ function migrateV9toV10(envelope: SaveEnvelope): SaveEnvelope {
         schemaVersion: SCHEMA_VERSION
     };
 
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v10 → v11 (Slice 2): the fishing line, a CAPABILITY that divides the pond's circle a third
+ * time. A returning castaway simply has not found one — the same reasoning every tool
+ * migration before this has used. Nothing else moves: the circle is a new way to reach verbs
+ * that already existed, so no save carries stale state about it.
+ */
+function migrateV10toV11(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        tools: { ...old.tools, fishingLine: false },
+        schemaVersion: SCHEMA_VERSION,
+    };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
