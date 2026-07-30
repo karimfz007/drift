@@ -283,6 +283,19 @@ export interface BuildItemView {
     have: Partial<Record<BuildMaterial, number>>;
     /** Already built/crafted — the item shows as done, no button. */
     done: boolean;
+    /**
+     * May this row exist at all (Slice 2B Stage 2b)? Comes straight from `revealedInPanel`;
+     * this layer renders the answer and derives nothing. Before the pivot every row was
+     * unconditionally present and the panel was a CATALOGUE, answering "what can I build?"
+     * before the player had earned the right to ask. After it, the panel is a RECORD.
+     */
+    revealed: boolean;
+}
+
+/** A thought the survivor is having but cannot act on yet — from `panelHints`. */
+export interface PanelHintView {
+    recipeId: string;
+    prompt: string;
 }
 
 export interface BuildCardView {
@@ -292,6 +305,13 @@ export interface BuildCardView {
     storage: BuildItemView;
     /** The stone hammer (Ch.1 v3, D-055) — a fifth, one-time Build-panel entry. */
     stoneHammer: BuildItemView;
+    /**
+     * The teaching half of the pivot, and the reason subtraction is survivable. An empty
+     * panel with no hints is a dead end and a bug report; an empty panel that says *"the dark
+     * is closing in, and you are holding something that burns"* is an invitation. Never names
+     * a product — `discovery.ts` holds that line and its tests guard it.
+     */
+    hints: PanelHintView[];
     /** Mending the shelter, or null when it is whole / out of reach / no wood held.
      *  Lives HERE, on the construction surface, rather than on the secondary button —
      *  the first attempt put it there and it displaced Build itself while the player stood
@@ -340,6 +360,9 @@ function buildItemMarkup(
     buttonLabel: string,
     buttonClass: string
 ): string {
+    //  THE PIVOT (Slice 2B Stage 2b). An unearned thing is not a greyed-out row with a
+    //  teasing cost list — that is still a catalogue, just a rude one. It is ABSENT.
+    if (!item.revealed) return '';
     if (item.done) {
         return `<div class="build-item done"><h2>${title}</h2><p class="subtitle">${doneLabel}</p></div>`;
     }
@@ -397,8 +420,16 @@ export function showBuildCard(
     onSleep: () => void = () => {}
 ): void {
     const el = panel(overlay, 'build');
+    const hintMarkup = view.hints.length
+        ? `<div class="build-item hint-item">
+             <div class="build-head"><strong>Something is nagging at you</strong></div>
+             ${view.hints.map((h) => `<p class="subtitle hint-line" data-hint="${h.recipeId}">${h.prompt}</p>`).join('')}
+             <p class="subtitle hint-how">Open your pack and try putting things together.</p>
+           </div>`
+        : '';
     el.innerHTML = `
         <div class="build-list">
+            ${hintMarkup}
             <!--  F3: what the refuge is doing FOR you, and when it is not, why not and what
                   to do about it. Sits at the top of the construction surface because it is
                   the reason to build or mend anything on the list below it.  -->

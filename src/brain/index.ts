@@ -12,6 +12,7 @@ export * from './ladder';
 export * from './workload';
 export * from './affordance';
 export * from './discovery';
+export * from './reveal';
 export * from './skills';
 export * from './materials';
 export * from './knowledge';

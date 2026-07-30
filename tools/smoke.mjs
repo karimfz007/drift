@@ -74,6 +74,13 @@ const TUNE = new Proxy({
     shelterRadius: 6,
     //  Added for Slice 2 hold detection: a hold is a stationary press past this.
     tapMaxMs: 320,
+    //  Slice 2B Stage 2b — the clock, so the pivot checks can put the survivor in real
+    //  daylight rather than at a raw hour number. The run starts at dusk (hour 18), so
+    //  elapsed-hours zero is ALREADY night and a hardcoded hour means the opposite of what
+    //  it looks like; the unit fixtures had day and night inverted for exactly this reason.
+    gameHoursPerDay: 24,
+    startHourOfDay: 18,
+    warmthLowThreshold: 30,
     //  Collision radii — added when the feel court was restaged and needed to compute whether
     //  two structures leave a passable gap. `tools/check-tune-mirror.mjs` now proves every
     //  live `TUNE.<key>` in this file is present here, so the Proxy can never throw mid-run.
@@ -553,6 +560,25 @@ async function main() {
         }
     };
 
+    /**
+     * THE PIVOT'S HARNESS AFFORDANCE (Slice 2B Stage 2b).
+     *
+     * After the invention pivot the Build panel is a RECORD, not a catalogue — a row exists
+     * only for something the survivor has actually made. That is correct for the game and
+     * inconvenient for a harness whose progression spine runs THROUGH those rows: craft the
+     * axe, fell a tree, open the crash box, find the flask, knap, make a better axe.
+     *
+     * So the spine checks grant the blueprint the same way they already grant wood and stone
+     * — a state edit, stated openly. This is NOT a way of avoiding the player path. The
+     * discovery mechanic itself is driven the player way in the SLICE 2B section below, need
+     * and all; these checks are about felling trees and building storage, and re-testing
+     * discovery inside each of them would prove nothing new while making every failure
+     * ambiguous about which half broke.
+     */
+    const grantBlueprints = (...recipeIds) => recipeIds.map((id) =>
+        `state.blueprints = [...(state.blueprints ?? []), { id: 'bp-harness-${id}', name: 'Granted for the spine', recipeId: '${id}', inputs: ['wood'], version: 1, workmanship: 'crude', author: 'harness', discoveredAtGameHours: 0 }];`
+    ).join(' ');
+
     const editSave = async (mutateSrc) => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
         await page.evaluate(({ key, src }) => {
@@ -905,6 +931,140 @@ async function main() {
     }
 
     // ================================================================
+    // SLICE 2B STAGE 2b — THE INVENTION PIVOT. The Build panel is a RECORD, not a catalogue.
+    // ================================================================
+    console.log('\nSLICE 2B (Stage 2b) — the invention pivot: an empty panel, and the way back in');
+
+    //  THE SENTENCE THIS WHOLE STAGE EXISTS FOR: a castaway who has just washed ashore is
+    //  offered nothing. Warm, midday, empty-handed, nothing built, no blueprints — the state
+    //  a real first-time player is in about four seconds after the crash. Before the pivot
+    //  this panel listed five things they had never seen, made, or thought of.
+    await editSave(`
+        state.blueprints = [];
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.tools = { ...state.tools, axe: false, stoneHammer: false };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+        state.warmth = 100; state.energy = 100; state.thirst = 90; state.hunger = 90;
+        state.gameHoursElapsed = ${((12 - TUNE.startHourOfDay) + TUNE.gameHoursPerDay) % TUNE.gameHoursPerDay};
+    `);
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    await shot('slice2b-01-empty-panel');
+    const emptyPanel = await page.evaluate(() => ({
+        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
+        hints: document.querySelectorAll('.hint-line').length,
+        //  Rest and the refuge line must survive — the pivot removes the CATALOGUE, not the
+        //  panel. A player who can no longer sleep has been handed a different bug.
+        canSleep: Boolean(document.querySelector('.sleep-btn')),
+        hasRefuge: Boolean(document.querySelector('.refuge-item')),
+    }));
+    check('SLICE 2B — THE PIVOT: a fresh castaway is offered NOTHING to build',
+        emptyPanel.craftables.length === 0,
+        `${emptyPanel.craftables.length} row(s): ${emptyPanel.craftables.join(', ') || '(none)'}`);
+    check('SLICE 2B — and is not nagged either, holding nothing on a warm afternoon',
+        emptyPanel.hints === 0, `${emptyPanel.hints} hint(s)`);
+    check('SLICE 2B — the pivot removed the catalogue, NOT the panel (rest and refuge survive)',
+        emptyPanel.canSleep && emptyPanel.hasRefuge,
+        `sleep ${emptyPanel.canSleep}, refuge ${emptyPanel.hasRefuge}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(300);
+
+    //  LAW 113'S SCAFFOLD, END TO END. The need arrives (cold), the makings are in hand
+    //  (wood and fibre — the two commonest things on the island), and the way forward shows
+    //  itself. This is the ONE thing the pivot authors rather than makes you discover, and
+    //  the reason is that a castaway who cannot make fire on night one dies, which is not a
+    //  fair challenge, it is a coin-flip with the run riding on it.
+    await editSave(`
+        state.blueprints = [];
+        state.inventory = { wood: ${TUNE.torchWoodCost + 5}, stone: 0, fiber: ${TUNE.torchFiberCost + 5}, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+        state.warmth = ${Math.max(0, TUNE.warmthLowThreshold - 5)};
+        state.energy = 100;
+    `);
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    await shot('slice2b-02-fire-scaffold');
+    const scaffold = await page.evaluate(() => ({
+        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
+        hasTorchBtn: Boolean(document.querySelector('.torch-btn')),
+        hasShelterBtn: Boolean(document.querySelector('.shelter-btn')),
+    }));
+    check('SLICE 2B — LAW 113: cold, holding wood and fibre, the fire route reveals itself',
+        scaffold.hasTorchBtn, `rows: ${scaffold.craftables.join(', ') || '(none)'}`);
+    check('SLICE 2B — and the scaffold does NOT leak: nothing else is handed over with it',
+        !scaffold.hasShelterBtn && scaffold.craftables.length === 1,
+        `${scaffold.craftables.length} row(s): ${scaffold.craftables.join(', ')}`);
+    const scaffoldCraft = await realTapDom('.torch-btn');
+    await sleep(500);
+    const afterScaffold = await live();
+    check('SLICE 2B — and it is really craftable, not just visible (end-to-end on device)',
+        scaffoldCraft.ok && afterScaffold.torch.owned === true,
+        `tap ${scaffoldCraft.ok}, owned ${afterScaffold.torch.owned}`);
+
+    //  THE TEACHING HALF. Never ship subtraction alone: a suspected-but-unearned thing must
+    //  say something, or an empty panel is a dead end and a bug report. What it says names a
+    //  NEED and a MATERIAL and never the product — tell the player "build a lean-to" and the
+    //  catalogue is back, just retyped one sentence at a time in a nicer font.
+    await editSave(`
+        state.blueprints = [];
+        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.tools = { ...state.tools, stoneHammer: false };
+        state.warmth = ${Math.max(0, TUNE.warmthLowThreshold - 5)};
+        state.energy = 100;
+    `);
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    await shot('slice2b-03-hints');
+    const hinted = await page.evaluate(() => {
+        const lines = Array.from(document.querySelectorAll('.hint-line'));
+        return {
+            count: lines.length,
+            ids: lines.map((n) => n.getAttribute('data-hint')),
+            text: lines.map((n) => n.textContent.trim().toLowerCase()).join(' | '),
+            hasShelterBtn: Boolean(document.querySelector('.shelter-btn')),
+            visible: lines.every((n) => n.getBoundingClientRect().height > 0),
+        };
+    });
+    check('SLICE 2B — a suspected thing NAGS, so an empty panel is an invitation not a dead end',
+        hinted.count > 0 && hinted.visible, `${hinted.count} hint(s): ${hinted.ids.join(', ')}`);
+    check('SLICE 2B — the survivor suspects a shelter without being offered one',
+        hinted.ids.includes('shelter') && !hinted.hasShelterBtn,
+        `hints ${hinted.ids.join(', ')}, shelter button ${hinted.hasShelterBtn}`);
+    check('SLICE 2B — and the hint NEVER names the product it leads to',
+        !hinted.text.includes('shelter') && !hinted.text.includes('storage') && !hinted.text.includes('hammer'),
+        hinted.text);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(300);
+
+    //  THE RECORD. What Try-Combine mints, the panel remembers — this is the earned half of
+    //  the same rule, and the reason the pivot is a pivot rather than a deletion.
+    await editSave(`
+        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.shelter = { ...state.shelter, built: false };
+        state.warmth = 100; state.energy = 100;
+        state.gameHoursElapsed = ${((12 - TUNE.startHourOfDay) + TUNE.gameHoursPerDay) % TUNE.gameHoursPerDay};
+        ${grantBlueprints('shelter')}
+    `);
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    const earned = await page.evaluate(() => ({
+        hasShelterBtn: Boolean(document.querySelector('.shelter-btn')),
+        hints: Array.from(document.querySelectorAll('.hint-line')).map((n) => n.getAttribute('data-hint')),
+        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
+    }));
+    check('SLICE 2B — a minted blueprint puts the row back: the panel is the EARNED record',
+        earned.hasShelterBtn, `rows: ${earned.craftables.join(', ') || '(none)'}`);
+    check('SLICE 2B — warm and by daylight it STAYS: knowledge does not switch off at dawn',
+        earned.hasShelterBtn && !earned.hints.includes('shelter'),
+        `hints: ${earned.hints.join(', ') || '(none)'}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(300);
+
+    // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
     // ================================================================
     console.log('\nPERFECT pass (C05) — FIX 3: tap-to-fell, root-caused fresh (3rd report)');
@@ -974,7 +1134,7 @@ async function main() {
     //  one directly here (the full stone-hammer/knap tier is proven for real elsewhere,
     //  the new "D-055" section below; this section is about the axe DOING something once
     //  owned, same as it always was).
-    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2;`);
+    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2; ${grantBlueprints('axe')}`);
     check('the Build button opens the panel', await clickDom('.secondary-action'));
     await sleep(400);
     await shot('c04-05-craftcard');
@@ -1057,7 +1217,7 @@ async function main() {
     //  Build the shelter through the (now five-item, D-055 adds the stone hammer) Build
     //  panel. The knap action isn't counted here — it only renders once the hammer is
     //  owned, which it isn't yet at this point in the run.
-    await editSave('state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };');
+    await editSave(`state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; ${grantBlueprints('torch', 'axe', 'shelter', 'storage', 'stonehammer')}`);
     await realTapDom('.secondary-action');
     await sleep(400);
     //  The card gained Rest and (conditionally) Mend in D-073, so a bare `.build-item`
@@ -1074,7 +1234,13 @@ async function main() {
         const wanted = ['Torch', 'Crude axe', 'Shelter', 'Storage', 'Stone hammer'];
         return { found: wanted.filter((w) => names.includes(w)), all: names };
     });
-    check('the Build panel lists all five craftables (torch/axe/shelter/storage/stone hammer)', buildItems.found.length === 5, `${buildItems.found.length}/5 — rows: ${buildItems.all.join(', ')}`);
+    //  SUPERSEDED BY THE PIVOT (Slice 2B Stage 2b). This check used to prove the CATALOGUE:
+    //  five rows present unconditionally, from the first second of a run, for a castaway who
+    //  had never made any of them. That claim is now false by design and keeping it would
+    //  have locked the catalogue in place as a regression test — the exact way a retired
+    //  behaviour outlives the decision to retire it. The five blueprints are granted above,
+    //  so what this now proves is the RECORD: everything earned is listed, none of it lost.
+    check('the Build panel lists all five craftables ONCE EARNED (the record, post-pivot)', buildItems.found.length === 5, `${buildItems.found.length}/5 — rows: ${buildItems.all.join(', ')}`);
     const shelterBuildTap = await realTapDom('.shelter-btn');
     check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
     await sleep(400);
@@ -2295,6 +2461,7 @@ async function main() {
         state.inventory.wood = ${TUNE.torchWoodCost + 5};
         state.inventory.fiber = ${TUNE.torchFiberCost + 5};
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+        ${grantBlueprints('torch')}
     `);
     const buildOpenTap = await realTapDom('.secondary-action');
     check('setup — the Build action is reachable to open the panel', buildOpenTap.ok || (await panelOpen()), buildOpenTap.reason ?? '');
@@ -2380,6 +2547,7 @@ async function main() {
         state.inventory.stone = ${TUNE.stoneHammerStoneCost + TUNE.knapStoneCost + 5};
         state.inventory.fiber = ${TUNE.axeFiberCost + 5};
         state.inventory.sharpblade = 0;
+        ${grantBlueprints('stonehammer', 'axe')}
     `);
     await realTapDom('.secondary-action');
     await sleep(300);
@@ -2410,6 +2578,66 @@ async function main() {
     await sleep(400);
     const afterAxe = await live();
     check('D-055 — the crafted axe rolled a real grade', afterAxe.tools.axe === true && ['crude', 'serviceable', 'refined', 'exceptional'].includes(afterAxe.tools.axeGrade), JSON.stringify(afterAxe.tools.axeGrade));
+
+    // ---- SLICE 2B STAGE 2d — the migration, against a REALLY PLAYED save ----------------
+    //
+    //  C1's rail: re-confirm the migration against the director's actual save state, not a
+    //  synthetic fixture. I cannot reach their phone's localStorage from here, and saying
+    //  otherwise would be the kind of claim this project has a law about. What I CAN do is
+    //  stop hand-writing the input. By this point in the run the harness has really played:
+    //  it built the shelter and the storage through the Build panel, crafted the hammer,
+    //  knapped a blade, and made the axe from it, all through real taps. That accumulated
+    //  state is the closest thing to a director's save that exists on this machine.
+    //
+    //  So this rewinds THAT save to v11 — pre-pivot, blueprints stripped, exactly as a save
+    //  written before this stage would look — and reloads it through the real migration.
+    const prePivot = await live();
+    await page.evaluate(({ key }) => {
+        const env = JSON.parse(localStorage.getItem(key));
+        //  Both clocks: `migrate()` dispatches on the ENVELOPE's version, and `hydrate` reads
+        //  the state's. Setting only one produces a save that migrates but does not know it.
+        env.schemaVersion = 11;
+        env.state.schemaVersion = 11;
+        //  The pivot's whole risk in one line: a pre-pivot save has no blueprints, because
+        //  the catalogue handed the rows over and nobody ever had to earn one.
+        env.state.blueprints = [];
+        localStorage.setItem(key, JSON.stringify(env));
+    }, { key: SAVE_KEY });
+    await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+    await sleep(1400);
+    const migrated = await live();
+    const mintedFor = (migrated.blueprints ?? []).map((b) => b.recipeId).sort();
+
+    //  Deliberately "advanced past 11" rather than "equals 12": a hardcoded version number
+    //  here would drift silently from types.ts the next time the schema moves, which is the
+    //  exact failure class check-tune-mirror.mjs exists to prevent for TUNE.
+    check('SLICE 2B/2d — a really-played v11 save migrates rather than being refused',
+        typeof migrated.schemaVersion === 'number' && migrated.schemaVersion > 11,
+        `schemaVersion ${migrated.schemaVersion}`);
+    check('SLICE 2B/2d — every type this run actually crafted enters at Demonstrated',
+        prePivot.tools.axe === migrated.tools.axe && mintedFor.includes('axe') && mintedFor.includes('stonehammer'),
+        `crafted axe=${prePivot.tools.axe} hammer=${prePivot.tools.stoneHammer}; minted [${mintedFor.join(', ')}]`);
+    check('SLICE 2B/2d — STRUCTURES ARE MATTER: the shelter and store still stand, undamaged',
+        migrated.shelter.built === prePivot.shelter.built
+        && migrated.storage.built === prePivot.storage.built
+        && Math.abs(migrated.shelter.durability - prePivot.shelter.durability) < 2,
+        `shelter ${prePivot.shelter.built}->${migrated.shelter.built} (${prePivot.shelter.durability.toFixed(1)}->${migrated.shelter.durability.toFixed(1)}), storage ${prePivot.storage.built}->${migrated.storage.built}`);
+
+    //  ...and the point of all of it: the panel that would have been empty is not.
+    await realTapDom('.secondary-action');
+    await sleep(400);
+    await shot('slice2b-04-migrated-panel');
+    const migratedPanel = await page.evaluate(() => ({
+        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
+    }));
+    check('SLICE 2B/2d — the returning survivor is NOT told they have never heard of an axe',
+        migratedPanel.craftables.length > 0,
+        `rows: ${migratedPanel.craftables.join(', ') || '(none)'}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(300);
+
+
 
     //  The Build button's visibility gate now also covers the stone hammer (extending
     //  D-053's own fix) — force axe/shelter/storage/torch AND the hammer all done, confirm
@@ -3318,6 +3546,19 @@ async function main() {
         check('F3 — the number on screen is the brain\'s number, not a re-derivation',
             typeof brainPct === 'number' && dom.line !== null && dom.line.includes(`${brainPct}%`),
             `brain says ${brainPct}${typeof brainPct === 'number' ? '%' : ''}, screen says "${dom.line ?? 'nothing'}"`);
+
+        //  STAGE 2c — F3'S BAND, RE-VERIFIED ON DEVICE AFTER THE INVENTION PIVOT.
+        //
+        //  Until now the 40-50% first-night exposure band was certified in the brain
+        //  (tests/refuge.test.ts) and the device only proved that the screen showed the
+        //  BRAIN'S number. Two true statements that never met: nothing on device asserted the
+        //  rendered number was inside the band. That gap is exactly where a pivot could move
+        //  the number without any device check noticing, so the band is now witnessed here as
+        //  well, read off the same rendered line a player reads.
+        const shownPct = dom.line ? Number((dom.line.match(/(\d+)%/) ?? [])[1]) : NaN;
+        check('F3 (Stage 2c) — the number a PLAYER sees is inside the certified 40-50% band, post-pivot',
+            Number.isFinite(shownPct) && shownPct >= 40 && shownPct <= 50,
+            `screen reads ${Number.isFinite(shownPct) ? shownPct + '%' : 'no number'} — band 40-50%, line "${dom.line ?? 'none'}"`);
         await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
         await sleep(400);
 

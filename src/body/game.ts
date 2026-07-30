@@ -63,6 +63,8 @@ import {
     type MoveStep,
     refugeReport,
     tryCombine,
+    revealedInPanel,
+    panelHints,
     announcementFor,
     loadSpeedMultiplierOf,
     nodeHoldSeconds,
@@ -1307,10 +1309,14 @@ export class Game {
             {
                 //  F3: rendered, not derived — `refugeReport` is the single source.
                 refuge: refugeReport(session().state),
-                torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned },
-                axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe },
-                shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built },
-                storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built },
+                //  `revealed` is READ from the brain, never decided here — the panel is a
+                //  record of what the survivor has done, and the body does not get a vote on
+                //  what they know.
+                torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned, revealed: revealedInPanel(s, 'torch') },
+                axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe, revealed: revealedInPanel(s, 'axe') },
+                shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built, revealed: revealedInPanel(s, 'shelter') },
+                storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built, revealed: revealedInPanel(s, 'storage') },
+                hints: panelHints(s),
                 //  Mending, on the construction surface where it belongs (Gate 0 Part 1).
                 //  Reachable at ANY durability below full — no threshold, no urgency gate,
                 //  and it displaces nothing, which the secondary-button attempt did not
@@ -1324,7 +1330,7 @@ export class Game {
                 mendShelter: canRepairStructure(s, 'shelter')
                     ? { durability: s.shelter.durability, max: TUNE.structureDurabilityMax, gain: TUNE.repairDurabilityPerWood }
                     : null,
-                stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer }
+                stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer, revealed: revealedInPanel(s, 'stonehammer') }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {

@@ -9,6 +9,8 @@
 
 That last check failed three times first, and the reason belongs on the record because it is a reasoning failure, not a geometry one. **The clamp fix was INERT.** I clamped the hub's inline `left`/`top` — which were being ignored, because no CSS existed for `.verb-hub` or `.verb-seg` at all. The hub was statically positioned and the segments laid out in normal flow. Twice I reasoned harder about geometry that was never being applied. What found it was asking *whether the fix ran at all*, which should have been the first question after the first failed run, not the third. Filed against hazard #2: **a fix that cannot be observed to have executed is indistinguishable from no fix.**
 
+**The lesson, stated (C1, this session): THE ARTIFACT UNDER EDIT MUST BE VERIFIED AS THE ARTIFACT THAT RUNS.** Same witness family as *local is not live* ([[D-082]]) and *a 200 is not your build* ([[D-083]]) — a fix in a file the running system never consults is the same failure as a fix on a branch the server never pulled. **No new law is needed**; the Vacuity Law's clause (a) already governs. What was missing was the habit of asking the question early, so it is written down here rather than left as an instinct one acquires by losing three runs.
+
 Three priority hacks retired, one deliberately kept and **named in code** rather than left implicit: fire is not routed through the circle, because lighting a torch from a fire is not a menu decision.
 
 **Class: OPERATIVE** — the law is shipped, and both halves of it are mechanised: the tap path in `defaultVerb`, the hold path in `holdOpensCircle`. *Witness: `tests/verbs.test.ts` (20, including the frequent-verb sweep — no capability, at any target, may ever change what a tap does), `tools/smoke.mjs` 233/233 at `6e12931`.*

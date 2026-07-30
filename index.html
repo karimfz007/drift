@@ -473,6 +473,12 @@
             border-radius: 10px;
             padding: 12px 16px;
         }
+        /*  THE HINT (Slice 2B Stage 2b). A thought, not an offer — so it reads differently
+            from the rows around it: no border box, dimmer, italic. It must never look like
+            something you can press, because the whole point is that you cannot yet.  */
+        .build-item.hint-item { border-style: dashed; opacity: 0.9; }
+        .build-item.hint-item .hint-line { font-style: italic; font-size: 13px; margin: 0 0 4px; }
+        .build-item.hint-item .hint-how { font-size: 11px; opacity: 0.7; margin: 6px 0 0; }
         .build-item h2 { font-size: 18px; margin: 0 0 2px; }
         .build-item .subtitle { font-size: 12px; margin: 0 0 8px; }
         .build-item .gates { width: 100%; gap: 6px; }
