@@ -3,6 +3,24 @@
 
 ---
 
+**D-086 · 2026-07-29 — Design Bible v2.3 RATIFIED-WITH-SHAPINGS** (⚑ director's identity decree, C1's constitutional pen). **Laws 94–114 ADOPTED as design law**, **DESIGN-BINDING** with mechanism = **Slice 2B**, except components already live (Try-Combine costs, the journal, blueprints). **Three v0.4 repeals confirmed.** The **six-state knowledge ladder** — *physically possible / found intact / conceptually suspected / demonstrated / understood / documented* — **is canon**, superseding binary known/unknown everywhere it appears.
+
+**Moratorium clarification:** Development Burst Mode's "no new governance laws" is a **process-law constraint on routine mid-burst legislation** — it never froze the director's own design pen; this reception was never inside its scope.
+
+**C1 shapings, binding:**
+
+**(a) FIRST-NIGHT AUTHORED DISCOVERY** — fire's opening discovery is **scaffolded** via need + property + affordance within the fair-challenge envelope; **F3's 45% exposure certification re-verifies post-pivot**; **Law 113 governs everything survival-basic.**
+
+**(b) DETERMINISM BY STATE** — at **Understood**, execution is reliable; at **Demonstrated**, grade variance is legal but **arbitrary failure is not.**
+
+**(c) MIGRATION** — existing structures persist as matter; previously-crafted types enter the new system already at **Demonstrated**, not reset to zero.
+
+**SCHEDULING: SLICE 2B, "Invention & the Body," inserted after Slice 2 and before the Castaway Cycle.** Stage A: the invention pivot. Stage B: embodied growth. **Slices 3–5 keep their existing numbers.**
+
+**Class: DESIGN-BINDING** — trigger named: **Slice 2B**, both stages. Laws 94–114 govern design and future builds; the components already live (Try-Combine costs, the journal, blueprints) are the exception and are OPERATIVE today. *(Class is C2's reading; C1 to confirm or correct.)*
+
+---
+
 **D-085 · 2026-07-29 — SLICE 1, "FUN FOUNDATIONS", CLOSED** (C1's Closing Rule: **severity gates a close; volume and novelty never do**). The unified collision fix landed with **both** of its stacked causes found and proven — a circle approached dead-on has zero tangential component, and the body's accelerator and the collision resolver both owned `velX`, so the deflection was computed correctly and then discarded. Fail-then-pass across all three historical symptoms. **F1 and F2 are regression-locked and green on device** (11/11 checks); **F3 delivers 45.00%**, measured through `reconcile` rather than read off the constant, inside its 40–50% band, and legible — the Build card names what the refuge is doing and why when it is not. Carried forward, each measured and owned: **the notch** (two obstacles overlapping at −0.80 m passage width; the castaway shakes rather than stops — closer: **Slice 2, the radial circle**) and **six measured-intermittent checks** under [[D-084]] with real ratios. Two corrections on the record: I promoted a check back to `check()` on one clean run when D-084 requires a full slice, and I shipped `measuredIntermittent` with a dropped argument that crashed a run. **Hazard 6 is closed mechanically** — build identity is confirmed on every run now.
 
 **Class: OPERATIVE** — mechanism named: the shipped collision model (`src/brain/movement.ts` with `tests/movement.test.ts`), the F1/F2/F3 device locks in `tools/smoke.mjs`, and D-084's intermittent register, all live and exercised in the closing run. *(Class is C2's reading; C1 to confirm or correct.)*
