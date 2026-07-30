@@ -9,7 +9,7 @@
 import { TUNE } from '../data/tune';
 import { freshDomainScores } from './knowledge';
 import { freshLoadout } from './loadout';
-import { SCHEMA_VERSION, type GameState } from './types';
+import { SCHEMA_VERSION, type Blueprint, type GameState, type MaterialKind } from './types';
 import { createInitialState } from './state';
 
 /** Keep a loaded vital in [0, max]; fall back to a fresh-run default if it is not a number. */
@@ -90,6 +90,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 8) current = migrateV8toV9(current);
     if (current.schemaVersion === 9) current = migrateV9toV10(current);
     if (current.schemaVersion === 10) current = migrateV10toV11(current);
+    if (current.schemaVersion === 11) current = migrateV11toV12(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -372,6 +373,72 @@ function migrateV10toV11(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         tools: { ...old.tools, fishingLine: false },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v11 → v12 (Slice 2B Stage 2d): THE INVENTION PIVOT'S MIGRATION.
+ *
+ * When the manufacture catalogue empties, "what you can build" stops being a list the game
+ * hands you and becomes a record of what you have actually done. That is the right shape for
+ * a new run — and a theft from an existing one. The director's live save has a shelter
+ * standing, an axe in hand, a hammer that knapped a blade. A pivot that reset those to
+ * `physically-possible` would tell a survivor holding their own axe that they have never
+ * heard of one, and they would have to rediscover it by Try-Combine to get the list back.
+ *
+ * So the migration reads the save for EVIDENCE OF PRIOR CRAFT and mints the blueprint that
+ * evidence implies. Two rules govern what counts:
+ *
+ *   1. **Possession is proof.** A built shelter, an owned axe, a hammer — these are things
+ *      that only exist because the survivor made them. Nothing is granted on a guess.
+ *   2. **Nothing is overwritten.** A survivor who already has a blueprint for a thing keeps
+ *      the one they earned, with its own version and workmanship. This only ever fills gaps.
+ *
+ * The result is `demonstrated` on the ladder — they have done it — and NOT `understood` or
+ * `documented`, which are earned through domain understanding and are not implied by having
+ * once succeeded. `migratedLadderFor` states the same rule from the reading side.
+ *
+ * STRUCTURES ARE MATTER AND ARE NOT TOUCHED. `shelter.built`, `storage.built`, their
+ * durabilities and positions pass through untouched — a standing shelter is a physical fact
+ * about the island, not an entry in a list, and no knowledge pivot may take it down.
+ */
+function migrateV11toV12(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+
+    //  Possession is proof. Each pair is (recipe, the evidence that it was once made).
+    const evidence: Array<[string, boolean, string, MaterialKind[]]> = [
+        ['shelter', old.shelter?.built === true, 'Lean-to, as built', ['wood', 'stone', 'fiber']],
+        ['storage', old.storage?.built === true, 'Store, as built', ['wood', 'stone']],
+        ['axe', old.tools?.axe === true, 'Hafted axe, as made', ['wood', 'sharpblade', 'fiber']],
+        ['stonehammer', old.tools?.stoneHammer === true, 'Stone hammer, as made', ['wood', 'stone']],
+        ['torch', old.torch?.owned === true, 'Torch, as made', ['wood', 'fiber']],
+        ['knap', (old.inventory?.sharpblade ?? 0) > 0, 'Knapped blade', ['stone']],
+    ];
+
+    const known = new Set(old.blueprints?.map((b) => b.recipeId) ?? []);
+    const minted: Blueprint[] = [];
+    for (const [recipeId, proven, name, inputs] of evidence) {
+        if (!proven || known.has(recipeId)) continue;
+        minted.push({
+            id: `bp-migrated-${recipeId}`,
+            name,
+            recipeId,
+            inputs,
+            version: 1,
+            //  Crude, deliberately. The save records that they made one, not how well — and
+            //  inventing a grade they never earned would be the same lie in the other
+            //  direction. Workmanship is evidence, never a gift (§10.6).
+            workmanship: 'crude',
+            author: 'castaway',
+            discoveredAtGameHours: old.gameHoursElapsed ?? 0,
+        });
+    }
+
+    const state: GameState = {
+        ...old,
+        blueprints: [...(old.blueprints ?? []), ...minted],
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

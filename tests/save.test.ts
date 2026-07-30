@@ -7,6 +7,7 @@ import {
     type SaveEnvelope
 } from '../src/brain/save';
 import { freshDomainScores } from '../src/brain/knowledge';
+import { ladderFor } from '../src/brain/ladder';
 import { buildFire, createInitialState, gatherNode } from '../src/brain/state';
 import { SCHEMA_VERSION } from '../src/brain/types';
 import { TUNE } from '../src/data/tune';
@@ -300,5 +301,102 @@ describe('save — a tampered save cannot carry an out-of-band vital (C3 audit, 
         expect(envelope!.state.thirst).toBe(TUNE.thirstMax); // clamped to the ceiling
         expect(envelope!.state.hunger).toBe(0);
         expect(envelope!.state.warmth).toBe(50); // in range, untouched
+    });
+});
+
+describe('save — a v11 save migrates to v12 (Slice 2B Stage 2d, the invention pivot)', () => {
+    /**
+     * The director's live save, in the shape that matters: a shelter standing, an axe in hand,
+     * a hammer that knapped a blade — and, crucially, NO blueprints, because before the pivot
+     * the manufacture catalogue handed those over and nobody had to earn one.
+     *
+     * That is the whole risk of Stage 2b. Empty the catalogue with this save untouched and a
+     * survivor holding their own axe is told they have never heard of one, then has to
+     * rediscover it by Try-Combine to get the list back. The migration reads possession as
+     * proof and mints what the evidence implies.
+     */
+    function v11Save(over: Record<string, unknown> = {}): string {
+        const state = {
+            schemaVersion: 11,
+            startedAtMs: 1_700_000_000_000,
+            lastSeenMs: 1_700_000_300_000,
+            gameHoursElapsed: 40,
+            inventory: { wood: 5, stone: 2, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 1 },
+            tools: { axe: true, flask: true, flaskSips: 2, stoneHammer: true, axeGrade: 'serviceable', fishingLine: false },
+            shelter: { built: true, durability: 70 },
+            storage: { built: true, durability: 55 },
+            torch: { owned: true, lit: false, fuel: 3 },
+            blueprints: [],
+            knowledge: { nullPairs: [], events: [] },
+            trace: { deathLog: [] },
+            ...over,
+        };
+        return JSON.stringify({ schemaVersion: 11, savedAtMs: 1_700_000_300_000, state });
+    }
+
+    it('mints a blueprint for everything possession proves was once made', () => {
+        const loaded = deserialize(v11Save())!.state;
+        expect(loaded).not.toBeNull();
+        const made = loaded.blueprints.map((b) => b.recipeId).sort();
+        expect(made).toEqual(['axe', 'knap', 'shelter', 'stonehammer', 'storage', 'torch']);
+    });
+
+    it('those items read DEMONSTRATED on the ladder — done, not merely suspected', () => {
+        const loaded = deserialize(v11Save())!.state;
+        for (const id of ['axe', 'shelter', 'storage', 'stonehammer', 'torch']) {
+            expect(ladderFor(loaded, id), id).toBe('demonstrated');
+        }
+    });
+
+    it('and NOT understood — having once succeeded is not the same as knowing why', () => {
+        const loaded = deserialize(v11Save())!.state;
+        //  `understood` and `documented` are earned through domain understanding. Granting
+        //  them here would hand over exactly what the pivot exists to make earnable.
+        for (const b of loaded.blueprints) {
+            expect(ladderFor(loaded, b.recipeId)).not.toBe('understood');
+            expect(ladderFor(loaded, b.recipeId)).not.toBe('documented');
+        }
+    });
+
+    it('grants NOTHING it has no evidence for', () => {
+        const bare = deserialize(v11Save({
+            tools: { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude', fishingLine: false },
+            shelter: { built: false, durability: 0 },
+            storage: { built: false, durability: 0 },
+            torch: { owned: false, lit: false, fuel: 0 },
+            inventory: { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 },
+        }))!.state;
+        expect(bare.blueprints).toEqual([]);
+        expect(ladderFor(bare, 'axe')).toBe('physically-possible');
+    });
+
+    it('STRUCTURES ARE MATTER — a standing shelter is not an entry in a list', () => {
+        //  No knowledge pivot may take down something physically standing on the island.
+        const loaded = deserialize(v11Save())!.state;
+        expect(loaded.shelter.built).toBe(true);
+        expect(loaded.shelter.durability).toBe(70);
+        expect(loaded.storage.built).toBe(true);
+        expect(loaded.storage.durability).toBe(55);
+    });
+
+    it('never overwrites a blueprint the survivor actually earned', () => {
+        const earned = {
+            id: 'bp-earned', name: 'My own axe', recipeId: 'axe', inputs: ['wood', 'sharpblade', 'fiber'],
+            version: 3, workmanship: 'exceptional', author: 'castaway', discoveredAtGameHours: 12,
+        };
+        const loaded = deserialize(v11Save({ blueprints: [earned] }))!.state;
+        const axes = loaded.blueprints.filter((b) => b.recipeId === 'axe');
+        expect(axes).toHaveLength(1);
+        expect(axes[0].workmanship, 'the earned grade survives').toBe('exceptional');
+        expect(axes[0].version).toBe(3);
+    });
+
+    it('the migration is idempotent — loading twice mints nothing new', () => {
+        const once = deserialize(v11Save())!.state;
+        const twice = deserialize(JSON.stringify({
+            schemaVersion: 11, savedAtMs: 1_700_000_300_000,
+            state: { ...once, schemaVersion: 11 },
+        }))!.state;
+        expect(twice.blueprints).toHaveLength(once.blueprints.length);
     });
 });
