@@ -67,7 +67,7 @@
 
 ## Next actions
 
-**MASTER PLAN — slice order after [[D-086]]:** Slice 1 *(Fun Foundations, **CLOSED** [[D-085]])* → **Slice 2** *(the radial circle)* → **SLICE 2B, "Invention & the Body"** *(NEW, inserted by [[D-086]]: Stage A the invention pivot, Stage B embodied growth)* → the Castaway Cycle → Slices 3–5, **which keep their existing numbers**. **Design Bible v2.3 is filed pending v3.0 consolidation**; Laws 94–114 are DESIGN-BINDING with Slice 2B as their named trigger, and the **six-state knowledge ladder** (physically possible / found intact / conceptually suspected / demonstrated / understood / documented) is canon, superseding binary known/unknown wherever it appears.
+**MASTER PLAN — slice order after [[D-086]]:** Slice 1 *(Fun Foundations, **CLOSED** [[D-085]])* → Slice 2 *(the radial circle, **CLOSED** [[D-087]] — 233/233 on device, ONE-THUMB REACH green)* → **SLICE 2B, "Invention & the Body"** *(IN PROGRESS: Stage A the invention pivot — **2a discovery routes DONE**, 2b empty the catalogue, 2c re-measure F3's exposure band, 2d migration; Stage B embodied growth)* → the Castaway Cycle → Slices 3–5, **which keep their existing numbers**. **Design Bible v2.3 is filed pending v3.0 consolidation**; Laws 94–114 are DESIGN-BINDING with Slice 2B as their named trigger, and the **six-state knowledge ladder** (physically possible / found intact / conceptually suspected / demonstrated / understood / documented) is canon, superseding binary known/unknown wherever it appears.
 
 **⚑ SLICE 1, "FUN FOUNDATIONS", IS OPEN** ([[D-080]]). Order confirmed, and it is an order, not a menu:
 

@@ -1,6 +1,6 @@
 # THE FIRST NIGHT (DRIFT) — Comparison Sheet
 
-*A living document. Regenerated at every gate close ([[D-078]] amendment E). This edition: **Gate 0 close**, 2026-07-28 ([[D-080]]).*
+*A living document. Regenerated at every gate close ([[D-078]] amendment E). This edition: **Slice 2 close**, 2026-07-30 ([[D-087]]).*
 
 **Vocabulary.** Build artifacts use the **evidence vocabulary** ([[D-081]]): what is claimed, set against what actually witnesses it. Laws use OPERATIVE / DESIGN-BINDING ([[D-076]]); plan sections use RATIFIED / PROVISIONAL ([[D-077]]). Three vocabularies, none overloading.
 
@@ -43,6 +43,41 @@
 | **F3** — one truthful first night at the v0_14 balance target | **OPEN** | NOT MET, substantial work. **Not a defect** — Slice 1's own certification target ([[D-078]] amendment A) |
 
 **F1 and F2 are passing and unlocked.** Neither is regression-locked yet; that is Slice 1 item (3). Until then both are *remembered*, not *guarded* — which is the condition [[D-066]] exists to distrust.
+
+## Slice 2 — the radial circle ([[D-087]])
+
+| Claim | Status | Witness |
+|---|---|---|
+| A tap always fires the context's default verb — capability never changes what a tap does | **VERIFIED** | `tests/verbs.test.ts` frequent-verb sweep, every target × every capability combination; device check *"with a flask, TAPPING the pond still drinks"* (thirst 69.7 → 100.0, circle did not open) |
+| A hold opens the circle wherever more than one verb is available | **VERIFIED** | Device check *"HOLDING the pond opens the circle"* — ready `drink, fill-flask`, blocked `fish` |
+| A blocked verb is **shown**, greyed, carrying its own reason — never hidden | **VERIFIED** | Device check: blocked `fish`, reason *"You have no line to fish with."* |
+| Every segment is reachable by one thumb, on-screen, at phone size | **VERIFIED** | Device check ONE-THUMB REACH — **0 segments off-screen, lowest edge 296 px**. Failed three prior runs; the fix was CSS, not geometry — see below |
+| Hold is never *required* — every verb it reaches is reachable otherwise | **VERIFIED** | The default-verb law itself: `defaultVerb` resolves before the circle is consulted; `tests/verbs.test.ts` asserts the single-option case never opens a menu |
+| Three of four priority hacks retired | **PARTIAL** | Three retired at the call site; **fire is deliberately not routed** — lighting a torch from a fire is not a menu decision. The exception is named in code rather than left implicit |
+| The circle closed the notch | **OPEN** | It did not. [[D-085]] named Slice 2 as the notch's closer and Slice 2 did not close it — 376 heading reversals per 960 frames, unchanged. Carried to Slice 2B rather than quietly dropped |
+
+**The reasoning failure worth keeping.** ONE-THUMB REACH failed three runs before it passed, and the cause was never the geometry I kept re-deriving: **the clamp was inert.** The hub's inline `left`/`top` were being ignored because no CSS existed for `.verb-hub` or `.verb-seg` at all — the hub was statically positioned and the segments laid out in normal flow. Two fixes reasoned harder about a coordinate system that was never applied. What found it was asking *whether the fix ran at all*. Filed against hazard #2: **a fix that cannot be observed to have executed is indistinguishable from no fix**, and that question belongs after the *first* failed run, not the third.
+
+**The design correction worth keeping.** My first cut opened the circle on tap whenever two options existed. C1 ruled that a **defect class**, not a trade-off: a survivor carrying wood tapped their shelter and got a menu instead of sleep, so the most frequent action in the game silently cost two taps. After the law landed, **twelve of the thirteen checks I had listed as needing supersession self-resolved** — the reliable tell that the law was right and the design was wrong.
+
+---
+
+## Slice 2B Stage 2a — discovery routes (in progress)
+
+| Claim | Status | Witness |
+|---|---|---|
+| All five pre-listed items have a working discovery route | **VERIFIED** | `tests/discovery.test.ts` — axe, torch, shelter, storage, stone hammer; the first test is the dependency written down and fails the moment the catalogue is emptied for an unreachable item |
+| A discovery prompt names a need and a material, never the product | **VERIFIED** | Two tests: one borrows `affordance.ts`'s own `namesAFinishedAnswer` detector so the layers cannot drift; one checks the blunt case that no prompt contains its own product's name |
+| A suspicion requires all three legs — need, makings in hand, property | **VERIFIED** | `tests/discovery.test.ts` — need alone, makings alone, and a partial handful each yield no suspicion |
+| Knowledge stays monotonic under the new reader | **VERIFIED** | `ladderFor` consults suspicion *after* the blueprint check; the test fails when the order is inverted, because `conceptually-suspected` sits below `demonstrated` |
+| Fail-then-pass proven per [[D-066]] | **VERIFIED** | With `suspected` widened to `needFelt \|\| complete` and the ladder's suspicion check hoisted, **11 tests fail**, including both guard groups |
+| The manufacture catalogue is emptied | **OPEN** | Not yet — Stage 2b. The routes exist first by design: emptying it is a dependency inversion, not a deletion |
+| F3's 40–50% first-night exposure survives the pivot | **OPEN** | Not yet re-measured post-pivot — Stage 2c. Last measured **45.00%** at [[D-085]], pre-pivot |
+| Migration: structures persist as matter, crafted types enter at Demonstrated | **PARTIAL** | `migratedLadderFor` exists and is tested; not yet wired to the live save path — Stage 2d |
+
+**Interim signal, stated so it is not mistaken for the design.** "Has handled this material" currently reads from what the survivor is carrying, because inspection is not yet persisted. When it is, that one predicate changes and the routes do not.
+
+---
 
 ## Carried debts into Slice 1 ([[D-080]])
 

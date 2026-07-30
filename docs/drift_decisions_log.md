@@ -3,6 +3,18 @@
 
 ---
 
+**D-087 · 2026-07-30 — SLICE 2, "THE RADIAL CIRCLE", CLOSED** — its own verdict, distinct from [[D-085]]'s. The circle ships under **the Default-Verb Law** ([[D-086]] lineage, C1's constitutional pen): *a tap ALWAYS fires the context's default verb; the circle opens on HOLD, or on tap only where no sensible default exists.* My first cut opened it on tap whenever two options existed, and C1 ruled that a **defect class** rather than a trade-off — a survivor carrying wood tapped their shelter and got a menu instead of sleep, so the single most frequent action in the game silently cost two taps. The law restored tap behaviour at every target and **twelve of the thirteen checks I had listed as needing supersession self-resolved**, which is the tell that the law was right and my design was wrong.
+
+**233/233 device checks pass**, zero failures, build identity confirmed, from `6e12931`. The four Slice 2 checks are green on their own terms: tapping a pond with a flask still drinks (thirst 69.7 → 100.0, no menu); holding it opens the circle (ready `drink, fill-flask`, blocked `fish`); a blocked segment is **shown** greyed carrying its own reason (*"You have no line to fish with."*) rather than hidden; and **ONE-THUMB REACH passes — 0 segments off-screen, lowest edge at 296 px.**
+
+That last check failed three times first, and the reason belongs on the record because it is a reasoning failure, not a geometry one. **The clamp fix was INERT.** I clamped the hub's inline `left`/`top` — which were being ignored, because no CSS existed for `.verb-hub` or `.verb-seg` at all. The hub was statically positioned and the segments laid out in normal flow. Twice I reasoned harder about geometry that was never being applied. What found it was asking *whether the fix ran at all*, which should have been the first question after the first failed run, not the third. Filed against hazard #2: **a fix that cannot be observed to have executed is indistinguishable from no fix.**
+
+Three priority hacks retired, one deliberately kept and **named in code** rather than left implicit: fire is not routed through the circle, because lighting a torch from a fire is not a menu decision.
+
+**Class: OPERATIVE** — the law is shipped, and both halves of it are mechanised: the tap path in `defaultVerb`, the hold path in `holdOpensCircle`. *Witness: `tests/verbs.test.ts` (20, including the frequent-verb sweep — no capability, at any target, may ever change what a tap does), `tools/smoke.mjs` 233/233 at `6e12931`.*
+
+**Carried into Slice 2B unchanged:** the notch ([[D-085]]), and the measured-intermittent set under [[D-084]] — the circle did not close the notch, and saying otherwise would make this verdict a lie about a defect that is still there.
+
 **D-086 · 2026-07-29 — Design Bible v2.3 RATIFIED-WITH-SHAPINGS** (⚑ director's identity decree, C1's constitutional pen). **Laws 94–114 ADOPTED as design law**, **DESIGN-BINDING** with mechanism = **Slice 2B**, except components already live (Try-Combine costs, the journal, blueprints). **Three v0.4 repeals confirmed.** The **six-state knowledge ladder** — *physically possible / found intact / conceptually suspected / demonstrated / understood / documented* — **is canon**, superseding binary known/unknown everywhere it appears.
 
 **Moratorium clarification:** Development Burst Mode's "no new governance laws" is a **process-law constraint on routine mid-burst legislation** — it never froze the director's own design pen; this reception was never inside its scope.
