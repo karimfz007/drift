@@ -2638,6 +2638,7 @@ async function main() {
     //  structures-are-matter assertion has already run against the standing one. What this
     //  now proves is the claim that actually matters — a migrated blueprint, carried across
     //  the pivot, still reveals its row when there is something left to build.
+    const shelterBeforeReveal = (await live()).shelter;
     await editSave('state.shelter = { ...state.shelter, built: false };');
     await realTapDom('.secondary-action');
     await sleep(400);
@@ -2650,6 +2651,12 @@ async function main() {
         `rows: ${migratedPanel.craftables.join(', ') || '(none)'}`);
     await realTapDom('.panel.build .close-btn');
     await sleep(300);
+    //  PUT IT BACK. The first attempt at this check took the shelter down and left it down,
+    //  and the run does not end here: the Build button visibility gate then read "visible"
+    //  because something was still buildable, Ch.6's sleep setup found no shelter, and nine
+    //  further checks never ran at all. A late edit to shared run state is a blast radius,
+    //  and mine reached further than I looked. Restored verbatim from what was standing.
+    await editSave(`state.shelter = ${JSON.stringify(shelterBeforeReveal)};`);
 
 
 
