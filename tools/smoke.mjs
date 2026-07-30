@@ -839,7 +839,35 @@ async function main() {
         await tapWorld(POND.x, POND.y, 55);
         await sleep(500);
         const after = await live();
-        check('FIX 2 — tapping the pond fills a non-full flask (not just self-drink)', after.tools.flaskSips > before.tools.flaskSips, `sips ${before.tools.flaskSips} → ${after.tools.flaskSips}, thirst ${before.thirst}→${after.thirst.toFixed(1)}`);
+        //  SLICE 2 SUPERSEDES FIX 2. This asserted the old priority hack: "fill wins over
+        //  drink", which existed because a tap could carry only one verb and drink's gate
+        //  (thirst < max) is satisfied nearly always, so an empty flask was unreachable. The
+        //  circle removes the question instead of answering it better, so the check now
+        //  asserts the REPLACEMENT: with a flask, tapping the pond offers the choice.
+        //
+        //  This check FAILED on the build that retired the hack, which is the fail-then-pass
+        //  the replacement needed — the old behaviour is provably gone, not merely believed
+        //  gone. Its failure is recorded in the run that caught it.
+        const circleUp = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (!el) return null;
+            const segs = Array.from(el.querySelectorAll('.verb-seg'));
+            return {
+                ready: segs.filter((b) => b.classList.contains('ready')).map((b) => b.dataset.verb),
+                blocked: segs.filter((b) => b.classList.contains('blocked')).map((b) => b.dataset.verb),
+                reasons: segs.filter((b) => b.classList.contains('blocked'))
+                    .map((b) => b.querySelector('.verb-reason')?.textContent?.trim() ?? ''),
+            };
+        });
+        check('SLICE 2 — with a flask, tapping the pond OFFERS the choice instead of choosing for you',
+            Boolean(circleUp) && circleUp.ready.includes('drink') && circleUp.ready.includes('fill-flask'),
+            circleUp ? `ready [${circleUp.ready.join(', ')}] blocked [${circleUp.blocked.join(', ')}]` : 'no circle opened');
+        check('SLICE 2 — a blocked segment is SHOWN, greyed, carrying its own reason',
+            Boolean(circleUp) && (circleUp.blocked.length === 0 || circleUp.reasons.every((r) => r.length > 0)),
+            circleUp ? `blocked [${circleUp.blocked.join(', ')}] reasons [${circleUp.reasons.join(' | ')}]` : 'no circle opened');
+        await page.evaluate(() => document.querySelector('.panel.verb-circle')?.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true })));
+        await sleep(400);
     }
 
     // ================================================================
