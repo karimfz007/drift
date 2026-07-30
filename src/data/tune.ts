@@ -95,6 +95,10 @@ export const TUNE = {
      *  reliable by shaping (b); below it, grade variance is legal but arbitrary failure is
      *  never. Not a difficulty dial so much as the line between repeating and explaining. */
     ladderUnderstoodAt: 60,
+    /** [TUNE] Slice 2B Stage A — how many DISTINCT material kinds a survivor must be carrying
+     *  before "somewhere to put this down" becomes a felt need. Kinds rather than mass: the
+     *  annoyance that suggests storage is juggling several things, not carrying one heavy one. */
+    discoveryStorageKinds: 3,
 
     // ---- Bible v2.3 §13 — the workload formula and its channels (Slice 2B Stage B) ----
     //  Every activity declares its own factors; these are the per-unit rates the single

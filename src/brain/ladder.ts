@@ -33,6 +33,7 @@
 import { TUNE } from '../data/tune';
 import type { GameState, KnowledgeDomain } from './types';
 import { allRecipes } from './recipes';
+import { suspicionFor } from './discovery';
 
 /**
  * `recipeDomain` THROWS on an unknown id. The ladder is asked about things the survivor has
@@ -91,6 +92,13 @@ export function ladderFor(state: GameState, recipeId: string): LadderState {
     //  A journaled dead end is real knowledge: the survivor has formed a suspicion strong
     //  enough to test and learned something from its failure. That is rung 3, not rung 1.
     if (suspects(state, recipeId)) return 'conceptually-suspected';
+
+    //  ...and so is a live discovery route firing. Need, makings in hand, and the property
+    //  the material shows when handled: that is a survivor with a reason to wonder, which is
+    //  exactly what `conceptually-suspected` means. It does NOT name the product — see
+    //  `discovery.ts`. The game may tell you that you are cold and holding cordage; telling
+    //  you to build a lean-to would put the catalogue back one sentence at a time.
+    if (suspicionFor(state, recipeId)?.suspected) return 'conceptually-suspected';
 
     return 'physically-possible';
 }
