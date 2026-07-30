@@ -1,6 +1,6 @@
 # THE FIRST NIGHT (DRIFT) — Comparison Sheet
 
-*A living document. Regenerated at every gate close ([[D-078]] amendment E). This edition: **Slice 2B Stage A close**, 2026-07-30 ([[D-088]]).*
+*A living document. Regenerated at every gate close ([[D-078]] amendment E). This edition: **Slice 2B close, both stages**, 2026-07-30 ([[D-088]], [[D-089]]).*
 
 **Vocabulary.** Build artifacts use the **evidence vocabulary** ([[D-081]]): what is claimed, set against what actually witnesses it. Laws use OPERATIVE / DESIGN-BINDING ([[D-076]]); plan sections use RATIFIED / PROVISIONAL ([[D-077]]). Three vocabularies, none overloading.
 
@@ -62,9 +62,39 @@
 
 ---
 
+## Slice 2B Stage B — embodied growth ([[D-089]])
+
+*Brain-layer only. No capacity, crossing or rust note has a player-facing surface yet, and nothing below claims one.*
+
+| Claim | Status | Witness |
+|---|---|---|
+| §12: health is not the price of ordinary work | **VERIFIED** | `tests/capacities.test.ts` — swept across duration × pace × load, `channelsFor(...).health` is exactly 0 at every intensity; `healthMayChangeFrom` admits only the six named causes |
+| §12: the other five corrections hold | **VERIFIED** | Nutrition debt accumulates rather than charging per swing; hydration scales with heat *and* pace; energy ≠ stamina; work produces heat; `staminaCeilingFor` derives the reserve from endurance |
+| §12: **eight** capacities, superseding v0.9's **seven** | **VERIFIED** | `CAPACITIES` (8) and `SUPERSEDED_V09_CAPACITIES` (7) both in code; register row records the evolution so the ledger carries one count, not two |
+| §12: maximum overload is not good training | **VERIFIED** | `trainingStimulus` returns exactly 0 for every capacity when overloaded — not a token amount, which would make grinding optimal |
+| §12: capacities never decay | **VERIFIED** | `developCapacity` cannot lower a score for any input, including negative stimuli |
+| §15: capability needs BOTH legs | **VERIFIED** | `tests/crossdev.test.ts` — swept across the full threshold grid, `safeControl` is true iff both legs clear; a maxed body alone and maxed understanding alone each fail, for all three combinations |
+| §15: the knowledge leg is UNDERSTANDING, not technique | **VERIFIED** | Maxed technique with zero understanding does not cross — having done it does not transfer |
+| §15: reasoning never replaces force | **VERIFIED** | `forceStillRequired` true at every level including `crossed`; the leverage multiplier is a bounded discount, never a bypass |
+| §15: the gate is on safe control, never the attempt | **VERIFIED** | The body-alone note names the risk (*"moves things briefly… instability"*) rather than refusing the verb |
+| **KnowledgeState stays MONOTONIC under the new layer** | **VERIFIED** | 3000 randomised states driven through the *entire* confidence layer across floor-length absences, asserting `state.knowledge` deep-equal — **plus a companion test that plants the forbidden downward write and proves the assertion can fail** |
+| The never-decays-offline property test is untouched | **VERIFIED** | `tests/vitals.test.ts` unmodified and passing — 2000 random domain-score states × long absences, no score falls |
+| Rust costs time and nothing else | **VERIFIED** | `executionTimeMultiplier` bounded and never below 1; no failure, no worse object, no ladder rung, no domain score |
+| The floor is rust, not amnesia | **VERIFIED** | Confidence bottoms at 0.55 for absences up to 1e9 hours; something never practised reads FULL, not floored |
+| Save v12 → v13 fills rather than overwrites | **VERIFIED** | `tests/save.test.ts` — a partial capacity set survives; confidence starts empty so nobody is charged rust for pre-layer time; device run migrates a really-played v11 save through to schema 13 |
+| Migration against the director's real save | **PARTIAL** | Unchanged from [[D-088]] — awaiting his playtest. Confirmed against a really-played save, never against his device |
+| The notch | **OPEN** | Untouched. Carried from [[D-085]] / [[D-087]] / [[D-088]] |
+| A player-facing surface for any of this | **OPEN** | Not built, not claimed |
+
+**Two defects the tests found and reading did not.** The health sweep first used the wrong `WorkloadFactors` field names, so every factor read `undefined` and the assertion **passed against a NaN workload** — a vacuous green, hazard #2 wearing a sweep's clothes. It now asserts the workload is finite before asserting anything about it. And `executionTimeMultiplier` normalised rust across `[0,1]` when confidence can only fall to the floor, **capping the real penalty at 45% of what TUNE declared** — a tunable quietly meaning something other than what it says.
+
+**Why the boundary test is written the way it is.** The instruction was that avoiding a violation is not the same as proving one cannot happen. So the guard is construction first — `practise` and `rehearse` never receive a `GameState`, so they cannot reach `knowledge` even by accident — and then a property test that was verified to **catch a deliberately planted violation** rather than merely to pass.
+
+---
+
 ## Slice 2B Stage A — the invention pivot ([[D-088]])
 
-*Stage B ("Embodied Growth") is **not begun**. Nothing below speaks for it.*
+*Stage B closed separately — see the section above ([[D-089]]). Nothing here speaks for it.*
 
 | Claim | Status | Witness |
 |---|---|---|
