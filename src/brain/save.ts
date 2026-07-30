@@ -10,6 +10,8 @@ import { TUNE } from '../data/tune';
 import { freshDomainScores } from './knowledge';
 import { freshLoadout } from './loadout';
 import { SCHEMA_VERSION, type Blueprint, type GameState, type MaterialKind } from './types';
+import { freshCapacities } from './capacities';
+import { freshConfidence } from './confidence';
 import { createInitialState } from './state';
 
 /** Keep a loaded vital in [0, max]; fall back to a fresh-run default if it is not a number. */
@@ -91,6 +93,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 9) current = migrateV9toV10(current);
     if (current.schemaVersion === 10) current = migrateV10toV11(current);
     if (current.schemaVersion === 11) current = migrateV11toV12(current);
+    if (current.schemaVersion === 12) current = migrateV12toV13(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -444,6 +447,41 @@ function migrateV11toV12(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v12 → v13 (Slice 2B Stage B): §12's eight capacities and the confidence layer.
+ *
+ * Both start FRESH, and the reason is the same honesty D-055's grade migration and Ch.2's
+ * domain migration both settled on: we do not know what they would have been. A returning
+ * survivor has certainly done work that would have built strength and load tolerance, but
+ * nothing in the save records how much, and inventing a number is worse than starting one.
+ *
+ * Confidence starts EMPTY rather than stale, which matters more than it looks. An empty
+ * record reads as "never practised", and `confidenceFor` returns FULL confidence for that —
+ * so nobody is charged rust for time that passed before the layer existed. Seeding it with
+ * the current clock would have had the same effect today and quietly become wrong the moment
+ * a save sat unopened for a week between this migration and the next session.
+ */
+function migrateV12toV13(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    //  FILL, never overwrite — the same rule v11→v12 settled on for blueprints. A v12 save
+    //  should not have these fields at all, but "should not" is not "cannot": a hand-edited
+    //  save, or one written by a newer build and opened by an older one, can carry a partial
+    //  set. Replacing wholesale would silently discard real values, and a migration that
+    //  destroys data it did not understand is worse than one that refuses to run.
+    const state: GameState = {
+        ...old,
+        capacities: { ...freshCapacities(), ...old.capacities },
+        confidence: {
+            lastPractisedGameHours: {
+                ...freshConfidence().lastPractisedGameHours,
+                ...old.confidence?.lastPractisedGameHours,
+            },
+        },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -465,6 +503,19 @@ function hydrate(state: GameState): GameState {
             foraging: { ...base.skills.foraging, ...state.skills?.foraging }
         },
         fire: { ...base.fire, ...state.fire },
+        //  Per-capacity merge, not a whole-object fallback: a hand-edited or partially
+        //  written save that has SOME capacities must keep them and gain only the missing
+        //  ones. `...state` alone would let a save with a truncated capacities object
+        //  silently drop the rest to undefined, which reads as NaN the first time anything
+        //  compares them — the same class of failure the TUNE mirror's Proxy exists to make
+        //  loud rather than quiet.
+        capacities: { ...base.capacities, ...state.capacities },
+        confidence: {
+            lastPractisedGameHours: {
+                ...base.confidence.lastPractisedGameHours,
+                ...state.confidence?.lastPractisedGameHours,
+            },
+        },
         shelter: { ...base.shelter, ...state.shelter },
         storage: { ...base.storage, ...state.storage, stored: { ...base.storage.stored, ...state.storage?.stored } },
         torch: { ...base.torch, ...state.torch },

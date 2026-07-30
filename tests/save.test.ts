@@ -8,6 +8,7 @@ import {
 } from '../src/brain/save';
 import { freshDomainScores } from '../src/brain/knowledge';
 import { ladderFor } from '../src/brain/ladder';
+import { confidenceFor } from '../src/brain/confidence';
 import { buildFire, createInitialState, gatherNode } from '../src/brain/state';
 import { SCHEMA_VERSION } from '../src/brain/types';
 import { TUNE } from '../src/data/tune';
@@ -398,5 +399,84 @@ describe('save — a v11 save migrates to v12 (Slice 2B Stage 2d, the invention 
             state: { ...once, schemaVersion: 11 },
         }))!.state;
         expect(twice.blueprints).toHaveLength(once.blueprints.length);
+    });
+});
+
+describe('save — a v12 save migrates to v13 (Slice 2B Stage B: capacities + confidence)', () => {
+    /**
+     * A v12 save is everything Stage A shipped and nothing Stage B did: blueprints, domains,
+     * structures — but no `capacities` and no `confidence`, because neither field existed.
+     */
+    function v12Save(over: Record<string, unknown> = {}): string {
+        const state = {
+            schemaVersion: 12,
+            startedAtMs: 1_700_000_000_000,
+            lastSeenMs: 1_700_000_300_000,
+            gameHoursElapsed: 400,
+            inventory: { wood: 5, stone: 2, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 1 },
+            tools: { axe: true, flask: true, flaskSips: 2, stoneHammer: true, axeGrade: 'serviceable', fishingLine: false },
+            shelter: { built: true, durability: 70 },
+            storage: { built: true, durability: 55 },
+            torch: { owned: true, lit: false, fuel: 3 },
+            blueprints: [{
+                id: 'bp-axe', name: 'My axe', recipeId: 'axe', inputs: ['wood'],
+                version: 1, workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 12,
+            }],
+            knowledge: {
+                nullPairs: ['axe-blade|wood'],
+                events: [],
+                domains: {
+                    survivalcraft: { technique: 55, understanding: 44, adaptation: 12 },
+                    foragingMedicine: { technique: 20, understanding: 20, adaptation: 12 },
+                    harvestingFabrication: { technique: 60, understanding: 51, adaptation: 12 },
+                    construction: { technique: 41, understanding: 47, adaptation: 12 },
+                    mechanicalSystems: { technique: 12, understanding: 12, adaptation: 12 },
+                    electricalRadio: { technique: 12, understanding: 12, adaptation: 12 },
+                    navigationSeamanship: { technique: 12, understanding: 12, adaptation: 12 },
+                },
+            },
+            trace: { deathLog: [] },
+            ...over,
+        };
+        return JSON.stringify({ schemaVersion: 12, savedAtMs: 1_700_000_300_000, state });
+    }
+
+    it('gains all eight capacities at the innate floor', () => {
+        const s = deserialize(v12Save())!.state;
+        expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+        expect(Object.keys(s.capacities)).toHaveLength(8);
+        for (const v of Object.values(s.capacities)) expect(v).toBe(TUNE.capacityInnateFloor);
+    });
+
+    it('gains an EMPTY confidence record — nobody is charged rust for time before the layer', () => {
+        //  Seeding it with the current clock would read the same today and become wrong the
+        //  moment a save sat unopened between this migration and the next session. Empty
+        //  means "never practised", which `confidenceFor` reads as FULL confidence.
+        const s = deserialize(v12Save())!.state;
+        expect(s.confidence.lastPractisedGameHours).toEqual({});
+        expect(confidenceFor(s, 'axe', s.gameHoursElapsed + 99_999)).toBe(1);
+    });
+
+    it('KNOWLEDGE IS UNTOUCHED by the migration — no domain score moves, in either direction', () => {
+        const before = JSON.parse(v12Save()).state.knowledge;
+        const after = deserialize(v12Save())!.state.knowledge;
+        expect(after.domains).toEqual(before.domains);
+        expect(after.nullPairs).toEqual(before.nullPairs);
+    });
+
+    it('and everything Stage A earned survives — blueprints and structures both', () => {
+        const s = deserialize(v12Save())!.state;
+        expect(s.blueprints.map((b) => b.recipeId)).toEqual(['axe']);
+        expect(s.shelter.built).toBe(true);
+        expect(s.shelter.durability).toBe(70);
+    });
+
+    it('a save with SOME capacities keeps them and gains only the missing ones', () => {
+        //  hydrate merges per-capacity rather than falling back wholesale: a partial object
+        //  must not silently drop the rest to undefined, which reads as NaN on first compare.
+        const s = deserialize(v12Save({ capacities: { strength: 73 } }))!.state;
+        expect(s.capacities.strength).toBe(73);
+        expect(s.capacities.endurance).toBe(TUNE.capacityInnateFloor);
+        expect(Object.keys(s.capacities)).toHaveLength(8);
     });
 });

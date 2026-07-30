@@ -100,6 +100,42 @@ export const TUNE = {
      *  annoyance that suggests storage is juggling several things, not carrying one heavy one. */
     discoveryStorageKinds: 3,
 
+    //  ---- Slice 2B Stage B (§12, §15) --------------------------------------------------
+    /** [TUNE] Where the eight long-term capacities start. Never zero: a castaway who has
+     *  survived a plane crash and swum ashore is not a person with no body. */
+    capacityInnateFloor: 10,
+    /** [TUNE] One recoverable, meaningful bout of work. Small on purpose — capacities are
+     *  the two-months-here difference, and a number that moves fast is a stat, not a body. */
+    capacityGainPerBout: 0.4,
+    /** [TUNE] Stamina's ceiling at zero endurance, and at full. §12: stamina is a current
+     *  RESERVE and endurance is the capacity that shapes it — this is that relationship. */
+    staminaCeilingBase: 60,
+    staminaCeilingMax: 100,
+    /** [TUNE] §15 — the body leg and the knowledge leg of a crossed capability. Both must
+     *  clear, and neither substitutes for the other; that is the whole section. */
+    crossCapacityThreshold: 40,
+    crossUnderstandingThreshold: 40,
+    /** [TUNE] What crossing buys: mechanical advantage, bounded. §15 is explicit that
+     *  reasoning never REPLACES force — it changes where the force is applied — so this is
+     *  a discount on raw effort, never a route around it. */
+    crossLeverageMultiplier: 0.65,
+
+    //  ---- The confidence / recency layer -----------------------------------------------
+    /** [TUNE] How rusty hands can ever get. WELL above zero, deliberately: a survivor who
+     *  once built a shelter is never again someone who has never built one. The worst case
+     *  is slower, never helpless — rust, not amnesia. */
+    confidenceFloor: 0.55,
+    /** [TUNE] Days of not doing a thing before rust starts at all. Taking a week off is not
+     *  a mistake the game should tax. */
+    confidenceGraceGameHours: 72,
+    /** [TUNE] How long past the grace period until confidence reaches the floor. */
+    confidenceHalfLifeGameHours: 240,
+    /** [TUNE] The most a rusty first attempt can cost, as a time multiplier. It costs TIME
+     *  and nothing else — never a failure, never a worse object. */
+    confidenceMaxTimePenalty: 1.6,
+    /** [TUNE] Below this, say so before the player commits. */
+    confidenceRustyBelow: 0.85,
+
     // ---- Bible v2.3 §13 — the workload formula and its channels (Slice 2B Stage B) ----
     //  Every activity declares its own factors; these are the per-unit rates the single
     //  workload number is routed through. §14 forbids authoring an activity as

@@ -5,6 +5,8 @@
 
 import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
+import { freshCapacities } from './capacities';
+import { freshConfidence } from './confidence';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
 import { deathResourceLoss, loadEnergyMultiplierOf, respawnMessageFor } from './body';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, masteryForNodeKind } from './knowledge';
@@ -68,7 +70,11 @@ export function createInitialState(nowMs: number): GameState {
             activeMs: 0,
             deathLog: []
         },
-        lastDeathCause: null
+        lastDeathCause: null,
+        //  §12's eight capacities and the confidence layer (v13). Both start fresh; neither
+        //  is derivable from anything already in the save, so both are seeded here.
+        capacities: freshCapacities(),
+        confidence: freshConfidence()
     };
 }
 

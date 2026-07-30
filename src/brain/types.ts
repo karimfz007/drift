@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -269,6 +269,9 @@ export interface TraceState {
  * knowledge (D-055). Ch.2 (knowledge/experimenting) does not exist yet in this codebase;
  * this is the stub hook for it — recorded, unwired beyond that, ready for Ch.2 to read.
  */
+import type { CapacityScores } from './capacities';
+import type { ConfidenceState } from './confidence';
+
 export interface KnowledgeEvent {
     kind: 'combination-tried';
     /** Plain-language detail — e.g. "wood does not satisfy the axe's blade slot." */
@@ -434,6 +437,19 @@ export interface GameState {
     craftRollCount: number;
     /** Ch.1's knowledge layer, v3 (D-055): the null-outcome combination journal. */
     knowledge: KnowledgeState;
+    /**
+     * §12's eight long-term capacities (v13). The body's own record of work done. Separate
+     * from `knowledge` because they are different things that fail differently, and separate
+     * from the six indicators because no bar shows them.
+     */
+    capacities: CapacityScores;
+    /**
+     * The confidence / recency layer (v13). Timing and confidence, NEVER knowledge — see
+     * `confidence.ts` for the boundary and the property test that enforces it. Stores only
+     * WHEN each technique was last practised; the confidence value itself is derived on
+     * every read, so there is no second source of truth to drift from the clock.
+     */
+    confidence: ConfidenceState;
     /** The six physical access zones (v0_7 §9, D-063). Hands/belt/pockets hold specific
      *  items by position; the backpack is `inventory` and nearby storage is `storage`. */
     loadout: LoadoutState;
