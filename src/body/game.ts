@@ -28,7 +28,6 @@ import {
     canDrinkAtPond,
     canDrinkFlask,
     canFeedFire,
-    canFillFlask,
     canLightTorch,
     canRepairStructure,
     craftAxe,
@@ -57,6 +56,9 @@ import {
     ownedTools,
     stowActiveHand,
     stepMovement,
+    tapOpensCircle,
+    defaultVerb,
+    verbsFor,
     type MoveStep,
     refugeReport,
     tryCombine,
@@ -92,7 +94,8 @@ import {
     showDeath,
     showLoadout,
     showMorningReport,
-    showSettings
+    showSettings,
+    showVerbCircle
 } from './hud';
 import { Island, type Obstacle } from './island';
 import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session, type PressFrame } from './runtime';
@@ -170,6 +173,8 @@ export class Game {
     //  Feel-court instrumentation for the unified collision fix. Not debug scaffolding: the
     //  acceptance gate is that sliding READS as sliding through the player path, and an
     //  on-device check has no other way to witness the deflection branch firing.
+    /** Where the last world tap landed, so a circle opens under the thumb that made it. */
+    private lastTapPoint: { x: number; y: number } | null = null;
     private lastTravelX = 0;
     private lastTravelZ = 0;
     private lastContact = false;
@@ -789,8 +794,33 @@ export class Game {
         this.recordTap(screenX, screenY, 'empty-ground');
     }
 
+    /**
+     * PERFORM ONE VERB. The single place a verb is executed, so a circle pick and a default
+     * tap cannot drift apart — the divergence C3 found twice between `tapTargetAt` and
+     * `onTap` is the same shape of bug waiting to happen here.
+     */
+    private performVerb(id: string): void {
+        switch (id) {
+            case 'drink': this.doDrink(); break;
+            case 'fill-flask': this.doFillFlask(); break;
+            case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
+            case 'sleep': this.trySleep(); break;
+            case 'mend': this.tryRepair('shelter'); break;
+            case 'open-store': this.openLoadout(true); break;
+            case 'mend-store': this.tryRepair('storage'); break;
+            //  Fire is NOT routed through the circle this pass. It carries a fourth
+            //  priority hack of the same family (torch-lighting wins over feeding), and its
+            //  own comment argues the gate is narrow enough not to starve feeding. That may
+            //  well be true — but it is the same shape, and it should be retired by the same
+            //  mechanism rather than left as the one exception. Named, not silently skipped.
+            default: this.explain('Nothing to do there.'); break;
+        }
+        this.lastActivityAt = now();
+    }
+
     /** Keeps the last 20 taps — see the field comment for why. */
     private recordTap(screenX: number, screenY: number, outcome: string): void {
+        this.lastTapPoint = { x: screenX, y: screenY };
         this.tapBreadcrumbs.push({ tMs: Math.round(now()), screenX: Math.round(screenX), screenY: Math.round(screenY), outcome });
         if (this.tapBreadcrumbs.length > 20) this.tapBreadcrumbs.shift();
     }
@@ -871,39 +901,48 @@ export class Game {
             return;
         }
 
-        if (this.pending.kind === 'pond') {
-            //  FIX 2 (2026-07-23 handoff): fill wins over drink at the pond. Drink used to go
-            //  first unconditionally, and it applies whenever thirst < max — nearly always —
-            //  so an empty flask was starved exactly like C03's Craft-axe starved Build-fire:
-            //  the higher-priority branch's gate was satisfied so often that the other verb
-            //  was practically unreachable ("no way to fill it"). Filling is the one thing
-            //  only the pond can do; drinking your own thirst down is also reachable anywhere
-            //  by tapping a full flask chip (D-042 audit fix). So: fill first when it applies
-            //  (tops the flask, a one-shot action), otherwise drink as before.
-            if (canFillFlask(s)) { this.doFillFlask(); this.pending = null; }
-            else if (canDrinkAtPond(s)) { this.doDrink(); }
-            else { this.explain('The flask is full and so are you.'); this.pending = null; }
-            return; // drinking keeps the pending alive to allow repeat sips while held nearby
-        }
-
-        if (this.pending.kind === 'shelter') {
-            //  Sleep is what a shelter is FOR, so a tap on it sleeps. Full stop — no
-            //  durability test, no urgency test, nothing that can shadow it. Mending lives on
-            //  its own control (see `onSecondaryAction`). Two rulings' worth of priority
-            //  hacks were tried here and both produced a starved verb; the hack is deleted
-            //  rather than retuned. See the INTERIM note on `onSecondaryAction`.
-            this.trySleep();
-            this.pending = null;
-            return;
-        }
-
-        if (this.pending.kind === 'storage') {
-            //  Tapping the box opens the box (URGENT FIX, 2026-07-27) — the director's whole
-            //  expectation, and the thing that was never true: the tap used to run a silent
-            //  bulk deposit, and before even that, a repair. Storing, taking and mending are
-            //  now choices you make with the contents in front of you, not lotteries.
-            this.openLoadout(true);
-            this.pending = null;
+        //  SLICE 2 — THE RADIAL CIRCLE REPLACES THREE PRIORITY HACKS.
+        //
+        //  All three existed for one reason: a tap could carry only one verb, so whenever a
+        //  target had two things worth doing, the code had to CHOOSE for the player, and
+        //  every choice starved the other verb.
+        //
+        //    pond     "fill wins over drink" (FIX 2). Drink applies whenever thirst < max,
+        //             which is nearly always, so an empty flask was unreachable — the
+        //             director's report was literally "no way to fill it". The fix inverted
+        //             the priority and starved the other side instead.
+        //    shelter  sleep only, with mend exiled to a separate control, after two rulings'
+        //             worth of priority hacks each produced a starved verb.
+        //    storage  the tap opens the box, so mending it needed the Build-card detour.
+        //
+        //  None of them was a bad fix; each was the best available answer to "one tap, two
+        //  verbs". The circle removes the question. `tapOpensCircle` is FALSE for a survivor
+        //  with one option, so none of this makes the early game slower — a castaway with no
+        //  flask taps the pond and drinks, exactly as before, and never sees a wheel.
+        if (this.pending.kind === 'pond' || this.pending.kind === 'shelter' || this.pending.kind === 'storage') {
+            const target = this.pending.kind;
+            if (tapOpensCircle(s, target)) {
+                const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
+                this.pending = null;
+                this.beginPanel();
+                showVerbCircle(this.overlay, verbsFor(s, target), at.x, at.y,
+                    (id: string) => { this.endPanel(); this.performVerb(id); },
+                    () => this.endPanel());
+                return;
+            }
+            const only = defaultVerb(s, target);
+            if (only) {
+                //  Drinking keeps the pending alive so repeat sips work while held nearby;
+                //  everything else is a one-shot.
+                if (only.id !== 'drink') this.pending = null;
+                this.performVerb(only.id);
+            } else {
+                //  Nothing is possible here, and the player is told the nearest true reason
+                //  rather than left with a silent tap (D-042's fail-loud law).
+                const blocked = verbsFor(s, target).find((v) => v.reason);
+                this.explain(blocked?.reason ?? 'Nothing to do there.');
+                this.pending = null;
+            }
             return;
         }
 

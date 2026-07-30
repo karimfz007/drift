@@ -713,3 +713,70 @@ export function showLoadout(
 
     el.querySelector<HTMLButtonElement>('.close-btn')!.addEventListener('click', () => fade(el, onClose));
 }
+
+/**
+ * THE RADIAL CIRCLE (Slice 2).
+ *
+ * Drawn only when the brain says capability has produced a real choice — `tapOpensCircle`.
+ * One option is never a wheel; it is just the verb, and the tap performs it. This panel does
+ * not decide that, and must not: it renders what `verbsFor` returned and routes the pick.
+ *
+ * ONE-THUMB REACH is the constraint that shapes the geometry. Segments are laid out on an arc
+ * that opens UPWARD AND INWARD from the tap point, never below it and never past the screen
+ * edge, because the thumb that just tapped is the thumb that must reach the answer. A wheel
+ * centred on the tap would put a third of its options under the hand that is covering them.
+ *
+ * BLOCKED SEGMENTS ARE SHOWN, greyed, carrying the one true reason — never hidden. Hiding
+ * teaches nothing: the player never learns the flask exists. The reason text is the brain's,
+ * verbatim, so this layer cannot soften it into a generic apology.
+ */
+export interface CircleOption {
+    id: string;
+    label: string;
+    available: boolean;
+    reason: string | null;
+}
+
+export function showVerbCircle(
+    overlay: HTMLElement,
+    options: CircleOption[],
+    atX: number,
+    atY: number,
+    onPick: (id: string) => void,
+    onCancel: () => void,
+): void {
+    const el = panel(overlay, 'verb-circle');
+
+    //  The arc opens upward and inward. `inward` flips the sweep when the tap is on the right
+    //  half, so segments always fall toward the middle of the screen where a thumb can reach.
+    const inward = atX > window.innerWidth / 2 ? -1 : 1;
+    const radius = Math.min(132, Math.max(96, window.innerHeight * 0.22));
+    const spread = Math.PI * 0.72;
+    const start = -Math.PI / 2 - (spread / 2) * inward;
+
+    const segs = options.map((o, i) => {
+        const t = options.length === 1 ? 0.5 : i / (options.length - 1);
+        const angle = start + spread * t * inward;
+        const dx = Math.cos(angle) * radius;
+        const dy = Math.sin(angle) * radius;
+        return `
+            <button class="verb-seg ${o.available ? 'ready' : 'blocked'}" type="button"
+                    data-verb="${o.id}" ${o.available ? '' : 'disabled'}
+                    style="transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">
+                <span class="verb-label">${o.label}</span>
+                ${o.reason ? `<span class="verb-reason">${o.reason}</span>` : ''}
+            </button>`;
+    }).join('');
+
+    el.innerHTML = `<div class="verb-hub" style="left:${atX}px; top:${atY}px">${segs}</div>`;
+
+    for (const button of Array.from(el.querySelectorAll<HTMLButtonElement>('.verb-seg.ready'))) {
+        button.addEventListener('click', () => {
+            const id = button.dataset.verb;
+            fade(el, () => { if (id) onPick(id); });
+        });
+    }
+    //  A tap anywhere else closes it. Opening a circle must never trap the player — the same
+    //  input-safety rule the loadout panel learned the hard way (D-065).
+    el.addEventListener('pointerdown', () => fade(el, onCancel));
+}
