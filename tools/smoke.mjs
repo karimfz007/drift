@@ -2625,6 +2625,20 @@ async function main() {
         `shelter ${prePivot.shelter.built}->${migrated.shelter.built} (${prePivot.shelter.durability.toFixed(1)}->${migrated.shelter.durability.toFixed(1)}), storage ${prePivot.storage.built}->${migrated.storage.built}`);
 
     //  ...and the point of all of it: the panel that would have been empty is not.
+    //
+    //  CORRECTION, first run (the check was wrong, not the game). This originally opened the
+    //  panel straight after the migration and read zero rows — because by this point in the
+    //  run the harness has built EVERYTHING, so the Build button is correctly hidden by its
+    //  own visibility gate (display:none, asserted two checks below). I tapped a button that
+    //  D-053's fix had deliberately removed and read the resulting empty panel as a migration
+    //  failure. The migration was fine: schemaVersion 12, blueprints minted for every crafted
+    //  type, structures untouched — all three assertions above passed.
+    //
+    //  So the shelter comes down first. That is safe to do HERE and nowhere earlier: the
+    //  structures-are-matter assertion has already run against the standing one. What this
+    //  now proves is the claim that actually matters — a migrated blueprint, carried across
+    //  the pivot, still reveals its row when there is something left to build.
+    await editSave('state.shelter = { ...state.shelter, built: false };');
     await realTapDom('.secondary-action');
     await sleep(400);
     await shot('slice2b-04-migrated-panel');
@@ -3499,7 +3513,12 @@ async function main() {
     const shelterForF3 = (await live()).shelter;
     if (shelterForF3.built) {
         //  Stand at the shelter, dry, so the working case is the one under test.
-        await editSave(`state.player = { x: ${shelterForF3.x}, y: ${shelterForF3.y} }; state.wet = 0;`);
+        //  ...and pinned to CRUDE. F3's claim is about the first shelter a castaway can put
+        //  up on night one, and reductionPct is grade-driven: this run had rolled a better
+        //  grade and the screen read 50%, which passed a 40-50 band check while certifying a
+        //  different shelter than the one F3 is about. Pinning it here makes the device
+        //  witness the SAME claim tests/refuge.test.ts does, rather than a neighbouring one.
+        await editSave(`state.player = { x: ${shelterForF3.x}, y: ${shelterForF3.y} }; state.wet = 0; state.shelter.grade = 'crude';`);
         await sleep(400);
         //  `realTapDom`, not `clickDom` (C3 NOTE). clickDom dispatches straight at the element
         //  regardless of whether it is on-screen or covered — the exact gap that once let a
@@ -3558,7 +3577,7 @@ async function main() {
         const shownPct = dom.line ? Number((dom.line.match(/(\d+)%/) ?? [])[1]) : NaN;
         check('F3 (Stage 2c) — the number a PLAYER sees is inside the certified 40-50% band, post-pivot',
             Number.isFinite(shownPct) && shownPct >= 40 && shownPct <= 50,
-            `screen reads ${Number.isFinite(shownPct) ? shownPct + '%' : 'no number'} — band 40-50%, line "${dom.line ?? 'none'}"`);
+            `crude shelter, screen reads ${Number.isFinite(shownPct) ? shownPct + '%' : 'no number'} — band 40-50%, line "${dom.line ?? 'none'}"`);
         await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
         await sleep(400);
 
