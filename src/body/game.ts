@@ -63,6 +63,8 @@ import {
     type MoveStep,
     refugeReport,
     tryCombine,
+    tryCombineWith,
+    growthReport,
     revealedInPanel,
     panelHints,
     announcementFor,
@@ -93,6 +95,7 @@ import {
     levelToast,
     pickupToast,
     showBuildCard,
+    showGrowthCard,
     showColdOpen,
     showDeath,
     showLoadout,
@@ -547,7 +550,8 @@ export class Game {
             () => this.endPanel(),
             () => this.tryUseStorage(),
             () => this.tryRepair('storage'),
-            (a, b) => this.onTryCombine(a, b)
+            (materials: string[]) => this.onTryCombine(materials),
+            () => this.openGrowth()
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -566,7 +570,7 @@ export class Game {
      * debug hook. Outcome is reported in plain words, because a null result that says nothing
      * is indistinguishable from a broken button — which is how this stayed invisible.
      */
-    private onTryCombine(a: string, b: string): void {
+    private onTryCombine(materials: string[]): void {
         //  C3 finding F2 on D-073: the first cut tested `outcome === 'failed'`, which is not
         //  one of the five real outcomes — so `failed-attempt`, `already-known` AND `refused`
         //  all fell through to the success branch and were announced with the unlock cue,
@@ -578,13 +582,28 @@ export class Game {
         //  proved nothing. The mistranslation was HERE, and this layer cannot be unit-tested
         //  (Babylon; the purity law). So the decision moved to `announcementFor`, where a
         //  test can reach it, and this is now rendering only.
-        const result = tryCombine(session().state, a as 'wood', b as 'wood');
+        const result = tryCombineWith(session().state, materials as 'wood'[]);
         session().persist(now());
         const said = announcementFor(result);
         if (said.presentation === 'float') this.floatText(said.text);
         else this.explain(said.text);
         if (said.triumphant) this.cues.play(CUES.unlock);
         this.lastActivityAt = now();
+    }
+
+    /**
+     * The growth card (FIX 1). Opens from the Carried panel, which is already the panel about
+     * the body — rather than a fifth HUD button competing for a thumb's worth of screen.
+     *
+     * It reads `growthReport` and hands the result straight to the renderer. Nothing about
+     * bands, wording or ordering is decided here: that all lives in `growth.ts` where a unit
+     * test can reach it, because this layer cannot be tested at all under the purity law.
+     */
+    private openGrowth(): void {
+        if (runtime.panelOpen) return;
+        this.beginPanel();
+        const s = session().state;
+        showGrowthCard(this.overlay, growthReport(s, s.capacities), () => this.endPanel());
     }
 
     private openSettings(): void {
@@ -1398,13 +1417,29 @@ export class Game {
         this.hud.showHint(message, TUNE.hintVisibleSeconds);
     }
 
+    /**
+     * THE SHARED FLOAT MESSAGE (director's playtest, FIX 3).
+     *
+     * Every "here is what just happened" line goes through here — the yield from a gather,
+     * the outcome of a combination, the thing that was crafted. It used to hang for a
+     * hardcoded 900 ms against a 900 ms `rise` animation that faded from the moment it
+     * appeared, so it was never fully legible for more than a fraction of a second. Two
+     * separate playtest complaints — the combination result, and the yield at the big stone
+     * node — were the SAME mechanism, which is why this is fixed once, here, rather than
+     * per call site.
+     *
+     * The duration drives the CSS animation too. Setting only one of them is how the text
+     * would come to vanish before its element does, or hang invisible after it: two clocks
+     * for one message, drifting the first time either is tuned.
+     */
     private floatText(label: string): void {
         if (!label) return;
         const el = document.createElement('div');
         el.className = 'float-text';
         el.textContent = label;
+        el.style.animationDuration = `${TUNE.floatTextMs}ms`;
         this.overlay.appendChild(el);
-        window.setTimeout(() => el.remove(), 900);
+        window.setTimeout(() => el.remove(), TUNE.floatTextMs);
     }
 
     private flash(): void {

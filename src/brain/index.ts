@@ -14,6 +14,7 @@ export * from './affordance';
 export * from './discovery';
 export * from './reveal';
 export * from './confidence';
+export * from './growth';
 export * from './crossdev';
 export * from './capacities';
 export * from './skills';

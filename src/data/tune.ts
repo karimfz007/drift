@@ -99,6 +99,19 @@ export const TUNE = {
      *  before "somewhere to put this down" becomes a felt need. Kinds rather than mass: the
      *  annoyance that suggests storage is juggling several things, not carrying one heavy one. */
     discoveryStorageKinds: 3,
+    /** [TUNE] Try-Combine's arity, matching the crafting spec's own "two to four inputs".
+     *  The old hard pair was the discovery PROBE's arity, never the spec's — and it left
+     *  `storage` and `stonehammer` unreachable, because wood+stone always resolved to the
+     *  shelter. See `resolveRecipe`. */
+    /** [TUNE] How long a float-text message stays up, in ms — the SHARED source for every
+     *  one of them: what a gather yielded, what a combination produced, what was crafted.
+     *  Was a hardcoded 900 ms on a 900 ms fade-throughout animation, so nothing was ever
+     *  fully opaque for more than a fraction of it. The director could not read the outcome
+     *  of a combination, and separately could not read the yield at the big stone node —
+     *  one mechanism, one complaint, one fix. */
+    floatTextMs: 2200,
+    combineMinInputs: 2,
+    combineMaxInputs: 4,
 
     //  ---- Slice 2B Stage B (§12, §15) --------------------------------------------------
     /** [TUNE] Where the eight long-term capacities start. Never zero: a castaway who has
@@ -107,6 +120,11 @@ export const TUNE = {
     /** [TUNE] One recoverable, meaningful bout of work. Small on purpose — capacities are
      *  the two-months-here difference, and a number that moves fast is a stat, not a body. */
     capacityGainPerBout: 0.4,
+    /** [TUNE] The two band edges the growth panel reads. FOUR bands, not ten: a player must
+     *  be able to feel the difference between two adjacent ones, and eleven shades of
+     *  "slightly stronger" is a number wearing a word. */
+    standingStrongerAt: 40,
+    standingPractisedAt: 70,
     /** [TUNE] Stamina's ceiling at zero endurance, and at full. §12: stamina is a current
      *  RESERVE and endurance is the capacity that shapes it — this is that relationship. */
     staminaCeilingBase: 60,

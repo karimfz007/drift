@@ -28,7 +28,8 @@
 import { TUNE } from '../data/tune';
 import { applyLearningEvent, tryFactorsFor } from './knowledge';
 import { materialSatisfies } from './materials';
-import { allRecipes, type Recipe } from './recipes';
+import { suspicionFor } from './discovery';
+import { allRecipes, type Recipe, type RecipeSlot } from './recipes';
 import type { Blueprint, GameState, ItemGrade, KnowledgeDomain, MaterialKind } from './types';
 
 export type ExperimentOutcome =
@@ -73,10 +74,109 @@ export function relationshipFor(a: MaterialKind, b: MaterialKind): Recipe | null
     return null;
 }
 
+/**
+ * Every recipe the given materials could be an attempt at — each material satisfying a
+ * DISTINCT slot, because two sticks do not fill a handle slot and a binding slot between them.
+ *
+ * A small backtracking assignment rather than a greedy one: greedy matching gets this wrong
+ * whenever a material satisfies more than one slot, and several of ours do (wood is
+ * `woodwork` for every recipe that has a frame AND a handle).
+ */
+export function recipesMatching(materials: MaterialKind[]): Recipe[] {
+    const out: Recipe[] = [];
+    for (const recipe of allRecipes()) {
+        if (materials.length > recipe.slots.length) continue;
+        if (assignable(materials, recipe.slots, new Set())) out.push(recipe);
+    }
+    return out;
+}
+
+/** "wood and fibre", or "wood, stone and fibre" — plain English at any arity. */
+function describeSet(materials: MaterialKind[]): string {
+    if (materials.length <= 1) return materials[0] ?? 'those';
+    return `${materials.slice(0, -1).join(', ')} and ${materials[materials.length - 1]}`;
+}
+
+function assignable(materials: MaterialKind[], slots: RecipeSlot[], used: Set<string>): boolean {
+    if (materials.length === 0) return true;
+    const [head, ...rest] = materials;
+    for (const slot of slots) {
+        if (used.has(slot.id)) continue;
+        if (!materialSatisfies(head, slot.require)) continue;
+        used.add(slot.id);
+        if (assignable(rest, slots, used)) return true;
+        used.delete(slot.id);
+    }
+    return false;
+}
+
+/**
+ * WHICH recipe an attempt is actually about, when the materials fit more than one.
+ *
+ * THE DEFECT THIS EXISTS FOR, found in the director's playtest and worse than the question
+ * that prompted the look. `relationshipFor` returned the FIRST recipe whose slots two
+ * materials could fill, and wood+stone fits `shelter`, `storage` AND `stonehammer` — so it
+ * always answered "shelter" and the other two were **unreachable by any sequence of
+ * combinations whatsoever**. Four hundred rounds of every pair, with maxed knowledge and full
+ * materials, minted exactly three recipes: axe, shelter, torch.
+ *
+ * Before Stage 2b that was a curiosity, because the catalogue handed those rows over anyway.
+ * After the pivot it is a **broken spine**: no stone hammer means no knapped blade, which
+ * means the axe blueprint mints and can never be built. The harness missed it because the
+ * progression checks grant their blueprints directly — an affordance that is honest for
+ * testing tree-felling and that masked this exactly.
+ *
+ * The resolution order, and why each step is there:
+ *   1. **An exact cover wins.** If the materials fill every slot of one recipe and only part
+ *      of another, the survivor is plainly attempting the first. This alone separates
+ *      shelter (3 slots) from storage (2) once fibre is in the pile.
+ *   2. **Then what they are actually SUSPECTING.** `storage` and `stonehammer` are both
+ *      exactly woodwork+masonry — genuinely indistinguishable by materials, at any arity. So
+ *      the tie breaks on the NEED, which `discovery.ts` already computes: arms full and
+ *      nowhere to put things resolves to the store, stone that will not yield resolves to the
+ *      hammer. That is the discovery routes' "need" leg doing real work rather than decorating
+ *      a hint.
+ *   3. **Otherwise the first**, unchanged, so nothing that worked before behaves differently.
+ */
+export function resolveRecipe(state: GameState, materials: MaterialKind[]): Recipe | null {
+    const candidates = recipesMatching(materials);
+    if (candidates.length <= 1) return candidates[0] ?? null;
+
+    const exact = candidates.filter((r) => r.slots.length === materials.length);
+    let pool = exact.length > 0 ? exact : candidates;
+    if (pool.length === 1) return pool[0];
+
+    //  2. SOMETHING NEW, if there is something new. A survivor who already has the store's
+    //  plan and puts wood and stone together again is not re-deriving the store — they are
+    //  trying the other thing those two make. Without this, the first winner of a tie wins
+    //  it forever and its rival stays unreachable, which is the exact defect above: storage
+    //  and stonehammer are BOTH exactly woodwork+masonry, so no arity separates them.
+    const undiscovered = pool.filter((r) => !state.blueprints.some((bp) => bp.recipeId === r.id));
+    if (undiscovered.length > 0) pool = undiscovered;
+    if (pool.length === 1) return pool[0];
+
+    //  3. Then what they are actually SUSPECTING — the discovery routes' "need" leg doing
+    //  real work rather than decorating a hint.
+    const suspected = pool.filter((r) => suspicionFor(state, r.id)?.suspected === true);
+    if (suspected.length === 1) return suspected[0];
+    const tied = suspected.length > 0 ? suspected : pool;
+
+    //  4. Still tied — two things the survivor needs equally, made of the same two materials.
+    //  Rotate deterministically on the attempt counter rather than picking a permanent winner.
+    //  This is not a coin toss dressed up: trying the same pile again and getting somewhere
+    //  new is what experimenting IS, and `experimentCount` keeps it reproducible.
+    return tied[state.experimentCount % tied.length];
+}
+
 /** The journal key for an attempted pair. Order-independent, because trying wood+fibre and
  *  fibre+wood is the same experiment — sorted so the pair has exactly one identity. */
 export function experimentPairKey(a: MaterialKind, b: MaterialKind): string {
-    return [a, b].sort().join('+');
+    return experimentKeyFor([a, b]);
+}
+
+/** The same identity rule at any arity: sorted, so a set has exactly one key. */
+export function experimentKeyFor(materials: MaterialKind[]): string {
+    return [...materials].sort().join('+');
 }
 
 export function hasTried(state: GameState, a: MaterialKind, b: MaterialKind): boolean {
@@ -119,8 +219,21 @@ function seedFraction(seed: number): number {
 }
 
 export function canExperiment(state: GameState, a: MaterialKind, b: MaterialKind): string | null {
-    if (a === b) return 'Pick two different things to try together.';
-    if (state.inventory[a] <= 0 || state.inventory[b] <= 0) return 'You need both of those in hand to try them.';
+    return canExperimentWith(state, [a, b]);
+}
+
+/**
+ * The N-material gate. Two to four, matching the crafting spec's own stated range — the old
+ * hard pair was never the spec, it was the discovery probe's arity, and it turned out to make
+ * two recipes permanently unreachable (see `resolveRecipe`).
+ */
+export function canExperimentWith(state: GameState, materials: MaterialKind[]): string | null {
+    if (materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
+    if (materials.length > TUNE.combineMaxInputs) return `That is more than you can hold together at once — ${TUNE.combineMaxInputs} at most.`;
+    if (new Set(materials).size !== materials.length) return 'Pick two different things to try together.';
+    for (const m of materials) {
+        if (state.inventory[m] <= 0) return 'You need all of those in hand to try them.';
+    }
     if (state.energy < TUNE.experimentEnergyCost) return 'Too spent to concentrate on that right now.';
     return null;
 }
@@ -131,11 +244,17 @@ export function canExperiment(state: GameState, a: MaterialKind, b: MaterialKind
  * so, because the knowledge is already yours.
  */
 export function tryCombine(state: GameState, a: MaterialKind, b: MaterialKind): ExperimentResult {
-    const blocked = canExperiment(state, a, b);
+    return tryCombineWith(state, [a, b]);
+}
+
+/** Two to four materials. `tryCombine` delegates here, so there is one execution path. */
+export function tryCombineWith(state: GameState, materials: MaterialKind[]): ExperimentResult {
+    const blocked = canExperimentWith(state, materials);
     if (blocked) return refuse(blocked);
 
-    const key = experimentPairKey(a, b);
-    const recipe = relationshipFor(a, b);
+    const [a, b] = materials;
+    const key = experimentKeyFor(materials);
+    const recipe = resolveRecipe(state, materials);
 
     //  A pair already journaled as a dead end short-circuits — D-055's own law, applied to
     //  the experiment verb. Free, because the answer is already known; it is not a discount
@@ -176,7 +295,7 @@ export function tryCombine(state: GameState, a: MaterialKind, b: MaterialKind): 
             state.knowledge.nullPairs.push(key);
             state.knowledge.events.push({
                 kind: 'combination-tried',
-                detail: `${a} and ${b} do not go together`,
+                detail: `${describeSet(materials)} do not go together`,
                 gameHoursElapsed: state.gameHoursElapsed
             });
             applyLearningEvent(state, domain, {
@@ -190,7 +309,7 @@ export function tryCombine(state: GameState, a: MaterialKind, b: MaterialKind): 
         return {
             ok: true,
             outcome: 'no-relationship',
-            reason: `${a} and ${b} do not go together — but now you know that.`,
+            reason: `${describeSet(materials)} do not go together — but now you know that.`,
             blueprint: null,
             recipeId: null,
             spent

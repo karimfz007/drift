@@ -74,6 +74,7 @@ const TUNE = new Proxy({
     shelterRadius: 6,
     //  Added for Slice 2 hold detection: a hold is a stationary press past this.
     tapMaxMs: 320,
+    floatTextMs: 2200,
     //  Slice 2B Stage 2b — the clock, so the pivot checks can put the survivor in real
     //  daylight rather than at a raw hour number. The run starts at dusk (hour 18), so
     //  elapsed-hours zero is ALREADY night and a hardcoded hour means the opposite of what
@@ -1063,6 +1064,120 @@ async function main() {
         `hints: ${earned.hints.join(', ') || '(none)'}`);
     await realTapDom('.panel.build .close-btn');
     await sleep(300);
+
+    // ================================================================
+    // PLAYTEST FIX BATCH — the growth panel, the combine arity, the float timing.
+    // ================================================================
+    console.log('\nPLAYTEST FIXES — growth panel reachable, combine at 3, float text readable');
+
+    //  FIX 1 — THE ENTRY POINT, FIRST. This project has now shipped three whole systems with
+    //  no way for a player to reach them: the Build button (D-053), the loadout panel (D-065)
+    //  and Try-Combining (D-075). Stage B's capacities were the fourth. So the check that
+    //  matters is not "does the card render" — it is "can a thumb get there from the game".
+    await editSave(`
+        state.inventory = { wood: 6, stone: 4, fiber: 6, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2 };
+        state.energy = 100; state.hunger = 90; state.thirst = 90;
+        state.capacities = { strength: 78, endurance: 45, loadTolerance: 12, mobilityBalance: 10,
+            coordinationDexterity: 10, breathWaterConfidence: 10, acclimatization: 10, generalResilience: 10 };
+    `);
+    const packOpen = await realTapDom('.carried-button');
+    await sleep(500);
+    const growthBtn = await isVisible('.growth-btn');
+    check('FIX 1 — the growth panel has a REACHABLE entry point in the pack',
+        packOpen.ok && growthBtn.visible, `pack ${packOpen.ok}, button ${JSON.stringify(growthBtn.reason ?? growthBtn.visible)}`);
+
+    const growthOpen = await realTapDom('.growth-btn');
+    await sleep(500);
+    await shot('fix1-growth-card');
+    const growth = await page.evaluate(() => {
+        const p = document.querySelector('.panel.growth');
+        const rows = Array.from(document.querySelectorAll('.growth-item'));
+        const text = p ? p.textContent : '';
+        return {
+            open: Boolean(p),
+            capacityRows: document.querySelectorAll('.growth-item:not(.cross-item)').length,
+            crossRows: document.querySelectorAll('.growth-item.cross-item').length,
+            standings: Array.from(document.querySelectorAll('.standing-chip')).map((n) => n.textContent.trim()),
+            //  Every row must have a "comes from" line — the INFLUENCE half of the
+            //  depth-dial test. A screen that says where you are and not how to move is
+            //  a readout, not a system.
+            hows: document.querySelectorAll('.growth-how').length,
+            allVisible: rows.every((n) => n.getBoundingClientRect().height > 0),
+            text,
+        };
+    });
+    check('FIX 1 — it opens, and shows all eight capacities plus the three crossings',
+        growth.open && growth.capacityRows === 8 && growth.crossRows === 3,
+        `open ${growth.open}, ${growth.capacityRows} capacities, ${growth.crossRows} crossings`);
+    check('FIX 1 — PERCEIVE: every row carries a plain-language standing, and they are on screen',
+        growth.standings.length >= 8 && growth.allVisible,
+        `standings: ${growth.standings.join(', ')}`);
+    check('FIX 1 — INFLUENCE: every row says what would move it',
+        growth.hows >= 8, `${growth.hows} "comes from" lines`);
+    //  NO NUMBERS. A castaway does not know they are at 78, and the state above deliberately
+    //  sets scores that would be conspicuous if any of them leaked to the screen.
+    check('FIX 1 — and NOT ONE raw score leaks to the player',
+        !/\b(78|45|12|10)\b/.test(growth.text ?? '') && !/\d+\s*%/.test(growth.text ?? ''),
+        (growth.text ?? '').slice(0, 160));
+    await realTapDom('.panel.growth .close-btn');
+    await sleep(400);
+
+    //  FIX 2 — THREE MATERIALS, THROUGH THE REAL UI. The brain-side reachability proof lives
+    //  in tests/combine-reach.test.ts; what no unit test can reach is whether a thumb can
+    //  actually pick a third chip, which is the half that was capped.
+    await editSave(`
+        state.blueprints = [];
+        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.energy = 100; state.hunger = 100; state.thirst = 100;
+        for (const d of Object.keys(state.knowledge.domains)) state.knowledge.domains[d].technique = 100;
+    `);
+    await realTapDom('.carried-button');
+    await sleep(500);
+    const pick3 = await page.evaluate(() => {
+        const chips = Array.from(document.querySelectorAll('.combine-chip'));
+        const want = ['wood', 'stone', 'fiber'];
+        const got = [];
+        for (const w of want) {
+            const chip = chips.find((c) => c.dataset.mat === w);
+            if (chip) { chip.click(); got.push(w); }
+        }
+        const btn = document.querySelector('.try-combine-btn');
+        return {
+            picked: document.querySelectorAll('.combine-chip.picked').length,
+            got,
+            armed: btn ? !btn.disabled : false,
+        };
+    });
+    check('FIX 2 — a THIRD chip can be picked, and the button stays armed',
+        pick3.picked === 3 && pick3.armed, `picked ${pick3.picked} (${pick3.got.join(', ')}), armed ${pick3.armed}`);
+    const fired = await realTapDom('.panel.loadout .try-combine-btn');
+    await sleep(900);
+    check('FIX 2 — and a three-material attempt really fires',
+        fired.ok, fired.reason ?? 'ok');
+
+    //  FIX 3 — THE SHARED FLOAT TIMING. One mechanism behind two playtest complaints (the
+    //  combination outcome, and the yield at the big stone node), so this asserts the shared
+    //  source rather than either symptom: the element lives its full declared span, and is
+    //  still fully opaque well past the point the old 900 ms curve had faded it out.
+    const floatLife = await page.evaluate(async (declaredMs) => {
+        const el = document.createElement('div');
+        el.className = 'float-text';
+        el.textContent = 'readable?';
+        el.style.animationDuration = `${declaredMs}ms`;
+        document.getElementById('ui').appendChild(el);
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        await wait(900);
+        const opacityAtOldDeadline = Number(getComputedStyle(el).opacity);
+        await wait(declaredMs - 900 + 150);
+        const goneByDeclared = Number(getComputedStyle(el).opacity) < 0.15;
+        el.remove();
+        return { opacityAtOldDeadline, goneByDeclared, declaredMs };
+    }, TUNE.floatTextMs);
+    check('FIX 3 — at 900 ms (where the OLD one had vanished) the message is still fully readable',
+        floatLife.opacityAtOldDeadline > 0.9,
+        `opacity ${floatLife.opacityAtOldDeadline.toFixed(2)} at 900 ms, declared span ${floatLife.declaredMs} ms`);
+    check('FIX 3 — and it does leave on time: one clock for the text and its fade',
+        floatLife.goneByDeclared, `faded by ${floatLife.declaredMs} ms`);
 
     // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh

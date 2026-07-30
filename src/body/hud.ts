@@ -279,6 +279,13 @@ export function showDeath(overlay: HTMLElement, cause: string, deaths: number, o
 type BuildMaterial = 'wood' | 'stone' | 'fiber' | 'sharpblade';
 
 /** One buildable's cost and current holdings, for the Build panel. */
+/** Mirrors `GrowthReport` from the brain. This layer renders it and derives nothing. */
+export interface GrowthReportView {
+    capacities: Array<{ label: string; standing: string; where: string; how: string }>;
+    crossings: Array<{ title: string; note: string; achieved: boolean; missing: string | null }>;
+    summary: string;
+}
+
 export interface BuildItemView {
     have: Partial<Record<BuildMaterial, number>>;
     /** Already built/crafted — the item shows as done, no button. */
@@ -662,7 +669,8 @@ export function showLoadout(
     onClose: () => void,
     onUseStorage: () => void = () => {},
     onRepairStorage: () => void = () => {},
-    onTryCombine: (a: string, b: string) => void = () => {}
+    onTryCombine: (materials: string[]) => void = () => {},
+    onGrowth: () => void = () => {}
 ): void {
     const el = panel(overlay, 'loadout');
     const zoneRows = view.zones.map((z) => {
@@ -704,7 +712,7 @@ export function showLoadout(
     //  a thing you do with what you carry. Pick two, and the button appears.
     const combineRow = view.combinable.length >= 2
         ? `<div class="combine-row">
-             <p class="subtitle">Put two things together and see what happens.</p>
+             <p class="subtitle">Put two to four things together and see what happens.</p>
              <div class="combine-chips">${view.combinable.map((m) =>
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
              ).join('')}</div>
@@ -717,6 +725,7 @@ export function showLoadout(
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
         ${storageRow}
         ${equipRow}
+        <button class="quiet growth-btn" type="button">What the island has done to you</button>
         ${combineRow}
         <div class="zones">${zoneRows}</div>
         <button class="primary close-btn" type="button">Close</button>`;
@@ -727,8 +736,11 @@ export function showLoadout(
     el.querySelector<HTMLButtonElement>('.stow-btn')?.addEventListener('click', () => { onStow(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.use-storage-btn')?.addEventListener('click', () => { onUseStorage(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.repair-btn')?.addEventListener('click', () => { onRepairStorage(); fade(el, onClose); });
-    //  Two-slot selection: tap a chip to pick it, tap again to drop it. The button only
-    //  wakes up when exactly two are chosen, so the verb can never fire half-formed.
+    //  Selection: tap a chip to pick it, tap again to drop it. Two to four, per the crafting
+    //  spec's own range — the old hard pair was the discovery probe's arity, not the spec's,
+    //  and it left `storage` and `stonehammer` permanently unreachable because wood+stone
+    //  always resolved to the shelter. The button stays asleep below two, so the verb can
+    //  never fire half-formed.
     const picked: string[] = [];
     const tryBtn = el.querySelector<HTMLButtonElement>('.try-combine-btn');
     el.querySelectorAll<HTMLButtonElement>('.combine-chip').forEach((chip) => {
@@ -736,13 +748,60 @@ export function showLoadout(
             const mat = chip.dataset.mat ?? '';
             const at = picked.indexOf(mat);
             if (at >= 0) { picked.splice(at, 1); chip.classList.remove('picked'); }
-            else if (picked.length < 2) { picked.push(mat); chip.classList.add('picked'); }
-            if (tryBtn) tryBtn.disabled = picked.length !== 2;
+            else if (picked.length < TUNE.combineMaxInputs) { picked.push(mat); chip.classList.add('picked'); }
+            if (tryBtn) tryBtn.disabled = picked.length < TUNE.combineMinInputs;
         });
     });
-    tryBtn?.addEventListener('click', () => { if (picked.length === 2) { onTryCombine(picked[0], picked[1]); fade(el, onClose); } });
+    tryBtn?.addEventListener('click', () => { if (picked.length >= TUNE.combineMinInputs) { onTryCombine([...picked]); fade(el, onClose); } });
 
+    el.querySelector<HTMLButtonElement>('.growth-btn')?.addEventListener('click', () => fade(el, onGrowth));
     el.querySelector<HTMLButtonElement>('.close-btn')!.addEventListener('click', () => fade(el, onClose));
+}
+
+/**
+ * WHAT THE ISLAND HAS DONE TO YOU (director's playtest, FIX 1) — the growth card.
+ *
+ * Stage B shipped eight capacities and three crossings with no way to see any of them. This
+ * is the way. It renders `growthReport` and derives NOTHING: the bands, the sentences and the
+ * ordering are all brain-side, where a test can reach them, because the depth-dial admission
+ * test is a claim about content and content asserted only by markup is asserted by nobody.
+ *
+ * NO NUMBERS. The report carries scores for the harness; this panel shows the band. A
+ * castaway does not know they are at 34%, and a screen that tells them turns a body into a
+ * character sheet — which is the exact thing §12's capacities exist instead of.
+ */
+export function showGrowthCard(
+    overlay: HTMLElement,
+    report: GrowthReportView,
+    onClose: () => void
+): void {
+    const el = panel(overlay, 'growth');
+    const capacityRows = report.capacities.map((c) => `
+        <div class="growth-item standing-${c.standing.replace(/\s+/g, '-')}">
+            <div class="build-head"><strong>${c.label}</strong><span class="standing-chip">${c.standing}</span></div>
+            <p class="subtitle">${c.where}</p>
+            <p class="growth-how">Comes from ${c.how}.</p>
+        </div>`).join('');
+
+    //  The crossings sit BELOW the capacities, because they are about what two things
+    //  together buy — you cannot read them first and have them mean anything.
+    const crossRows = report.crossings.map((x) => `
+        <div class="growth-item cross-item ${x.achieved ? 'crossed' : 'not-yet'}">
+            <div class="build-head"><strong>${x.title}</strong>${x.achieved ? '<span class="standing-chip good">together</span>' : ''}</div>
+            <p class="subtitle">${x.note}</p>
+            ${x.missing ? `<p class="growth-how">${x.missing}</p>` : ''}
+        </div>`).join('');
+
+    el.innerHTML = `
+        <h2>What the island has done to you</h2>
+        <p class="subtitle growth-summary">${report.summary}</p>
+        <div class="build-list">
+            ${capacityRows}
+            <div class="growth-divider">Where two things meet</div>
+            ${crossRows}
+        </div>
+        <button class="primary close-btn" type="button">Close</button>`;
+    el.querySelector('.close-btn')!.addEventListener('click', () => fade(el, onClose));
 }
 
 /**
