@@ -551,7 +551,13 @@ export class Game {
             () => this.tryUseStorage(),
             () => this.tryRepair('storage'),
             (materials: string[]) => this.onTryCombine(materials),
-            () => this.openGrowth()
+            //  Through `endPanel`'s own `then` hook, which exists for exactly this. The
+            //  first cut passed `openGrowth` straight in, and the loadout's fade replaces
+            //  its onClose rather than running alongside it — so the panel lock was never
+            //  released, and openGrowth bailed on its own `panelOpen` guard. The card never
+            //  appeared, the input-safety backstop noticed control was held with no panel
+            //  visible, and recovered. The backstop working is not the same as this working.
+            () => this.endPanel(() => this.openGrowth())
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may

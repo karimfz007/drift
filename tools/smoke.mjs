@@ -1116,9 +1116,18 @@ async function main() {
         growth.hows >= 8, `${growth.hows} "comes from" lines`);
     //  NO NUMBERS. A castaway does not know they are at 78, and the state above deliberately
     //  sets scores that would be conspicuous if any of them leaked to the screen.
+    //  Guarded twice over. It first passed on the run where the panel failed to open, because
+    //  an empty string contains no numbers — a leak check going green on nothing, hazard #2 in
+    //  miniature and in a check written this same session. Then the fix for THAT passed too,
+    //  because two rounds of escape mangling had turned the word boundary into a literal
+    //  backspace and the regex could never match. So: no backslash escapes anywhere, digit
+    //  runs compared as plain strings, and the panel must be open with real text in it.
+    const digitRuns = (growth.text ?? '').match(/[0-9]+/g) ?? [];
     check('FIX 1 — and NOT ONE raw score leaks to the player',
-        !/\b(78|45|12|10)\b/.test(growth.text ?? '') && !/\d+\s*%/.test(growth.text ?? ''),
-        (growth.text ?? '').slice(0, 160));
+        growth.open && (growth.text ?? '').length > 200 && digitRuns.length === 0,
+        growth.open
+            ? `${(growth.text ?? '').length} chars, digit runs [${digitRuns.join(', ')}]`
+            : 'panel never opened');
     await realTapDom('.panel.growth .close-btn');
     await sleep(400);
 
