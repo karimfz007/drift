@@ -651,6 +651,19 @@ export interface LoadoutPanelView {
     /** Materials the player can try putting together (Try-Combining, D-063 item 4).
      *  Empty when there is nothing to experiment with. */
     combinable: string[];
+    /** LAW 126: the Backpack's other two tabs. Both are READ from the brain — this layer
+     *  renders them and derives nothing, exactly as the Inventory tab already does. */
+    vitals: BodyReportView;
+    skills: GrowthReportView;
+}
+
+/** Which of Law 126's three primary tabs is showing. There is no fourth, by law. */
+export type BackpackTab = 'inventory' | 'vitals' | 'skills';
+
+/** Mirrors `BodyReport` from the brain. */
+export interface BodyReportView {
+    lines: Array<{ label: string; standing: string; cause: string | null; pressing: boolean }>;
+    summary: string;
 }
 
 /**
@@ -661,6 +674,46 @@ export interface LoadoutPanelView {
  * Input safety is the caller's (`beginPanel`/`endPanel` in game.ts); this function only
  * draws and reports intent. The close button is the single obvious close action §9 requires.
  */
+/**
+ * THE BACKPACK HUB (Law 126, Slice 2C Boundary 1).
+ *
+ * *"The Backpack contains only Inventory, Vitals and Skills as primary tabs."* Two of the
+ * three already shipped as separate surfaces — the loadout panel and the growth card — so
+ * this unifies them rather than rebuilding them. The Skills tab renders `growthBody`, the
+ * very function the standalone card renders, so there is one markup and not two that drift.
+ *
+ * THE PANEL KEEPS EACH TAB'S OWN CLASS. Showing Inventory it is `panel backpack loadout`;
+ * showing Skills it is `panel backpack growth`. That is not a compatibility hack — the panel
+ * genuinely IS the loadout surface while showing inventory — and it means the forty-odd
+ * existing selectors across the harness and body keep resolving. Renaming them all would
+ * have been a large diff whose only product was risk.
+ */
+const TAB_LABEL: Record<BackpackTab, string> = {
+    inventory: 'Inventory', vitals: 'Vitals', skills: 'Skills',
+};
+
+function tabBar(active: BackpackTab): string {
+    return `<div class="backpack-tabs">${(['inventory', 'vitals', 'skills'] as BackpackTab[])
+        .map((t) => `<button class="backpack-tab${t === active ? ' active' : ''}" data-tab="${t}" type="button">${TAB_LABEL[t]}</button>`)
+        .join('')}</div>`;
+}
+
+/**
+ * The Vitals tab. Reads `bodyReport` and renders it — the bars already carry the summary, so
+ * what this adds is the CAUSE, which is the part a player can act on.
+ */
+function vitalsBody(view: BodyReportView): string {
+    const rows = view.lines.map((l) => `
+        <div class="vital-line${l.pressing ? ' pressing' : ''}">
+            <div class="build-head"><strong>${l.label}</strong><span class="standing-chip">${l.standing}</span></div>
+            ${l.cause ? `<p class="subtitle vital-cause">${l.cause}</p>` : ''}
+        </div>`).join('');
+    return `
+        <h2>How you are</h2>
+        <p class="subtitle vitals-summary">${view.summary}</p>
+        <div class="build-list">${rows}</div>`;
+}
+
 export function showLoadout(
     overlay: HTMLElement,
     view: LoadoutPanelView,
@@ -670,9 +723,15 @@ export function showLoadout(
     onUseStorage: () => void = () => {},
     onRepairStorage: () => void = () => {},
     onTryCombine: (materials: string[]) => void = () => {},
-    onGrowth: () => void = () => {}
+    //  `onGrowth` is gone: the growth card is a TAB now, not a separate surface, so the
+    //  shortcut switches tabs rather than opening one. Retiring the parameter rather than
+    //  leaving it inert — a hook nothing calls is the next reader's false lead.
+    tab: BackpackTab = 'inventory',
+    onTab: (next: BackpackTab) => void = () => {}
 ): void {
-    const el = panel(overlay, 'loadout');
+    //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
+    //  and `.panel.growth` both keep resolving exactly where they always did.
+    const el = panel(overlay, `backpack ${tab === 'skills' ? 'growth' : tab === 'vitals' ? 'vitals' : 'loadout'}`);
     const zoneRows = view.zones.map((z) => {
         const tools = z.tools.map((t) => `<span class="chip tool">${TOOL_LABEL[t] ?? t}</span>`).join('');
         const mats = z.materials.map((m) => `<span class="chip">${MATERIAL_LABEL[m.kind] ?? m.kind} ${m.count}</span>`).join('');
@@ -720,15 +779,33 @@ export function showLoadout(
            </div>`
         : '';
 
-    el.innerHTML = `
+    const inventoryBody = `
         <h2>${view.atStorage ? 'The store box' : 'Carried'}</h2>
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
         ${storageRow}
         ${equipRow}
         <button class="quiet growth-btn" type="button">What the island has done to you</button>
         ${combineRow}
-        <div class="zones">${zoneRows}</div>
+        <div class="zones">${zoneRows}</div>`;
+
+    const activeBody = tab === 'vitals' ? vitalsBody(view.vitals)
+        : tab === 'skills' ? growthBody(view.skills)
+        : inventoryBody;
+
+    el.innerHTML = `${tabBar(tab)}${activeBody}
         <button class="primary close-btn" type="button">Close</button>`;
+
+    //  Switching re-renders in place rather than closing and reopening: the panel lock is
+    //  already held, and releasing it between tabs would let a world tap through the gap —
+    //  the exact class of leak D-063's INPUT SAFETY law exists to prevent.
+    el.querySelectorAll<HTMLButtonElement>('.backpack-tab').forEach((b) => {
+        b.addEventListener('click', () => {
+            const next = (b.dataset.tab ?? 'inventory') as BackpackTab;
+            if (next === tab) return;
+            el.remove();
+            onTab(next);
+        });
+    });
 
     el.querySelectorAll<HTMLButtonElement>('.equip-btn').forEach((b) => {
         b.addEventListener('click', () => { onEquip(b.dataset.tool ?? ''); fade(el, onClose); });
@@ -754,7 +831,12 @@ export function showLoadout(
     });
     tryBtn?.addEventListener('click', () => { if (picked.length >= TUNE.combineMinInputs) { onTryCombine([...picked]); fade(el, onClose); } });
 
-    el.querySelector<HTMLButtonElement>('.growth-btn')?.addEventListener('click', () => fade(el, onGrowth));
+    //  The old standalone entry point, kept as a shortcut INTO the Skills tab. Same
+    //  selector, same destination — it just no longer opens a competing surface.
+    el.querySelector<HTMLButtonElement>('.growth-btn')?.addEventListener('click', () => {
+        el.remove();
+        onTab('skills');
+    });
     el.querySelector<HTMLButtonElement>('.close-btn')!.addEventListener('click', () => fade(el, onClose));
 }
 
@@ -776,6 +858,15 @@ export function showGrowthCard(
     onClose: () => void
 ): void {
     const el = panel(overlay, 'growth');
+    el.innerHTML = growthBody(report) + '<button class="primary close-btn" type="button">Close</button>';
+    el.querySelector('.close-btn')!.addEventListener('click', () => fade(el, onClose));
+}
+
+/**
+ * The Skills tab's body, extracted so the Backpack hub renders exactly what the standalone
+ * card did — the same markup, not a second copy that drifts from it.
+ */
+function growthBody(report: GrowthReportView): string {
     const capacityRows = report.capacities.map((c) => `
         <div class="growth-item standing-${c.standing.replace(/\s+/g, '-')}">
             <div class="build-head"><strong>${c.label}</strong><span class="standing-chip">${c.standing}</span></div>
@@ -792,16 +883,14 @@ export function showGrowthCard(
             ${x.missing ? `<p class="growth-how">${x.missing}</p>` : ''}
         </div>`).join('');
 
-    el.innerHTML = `
+    return `
         <h2>What the island has done to you</h2>
         <p class="subtitle growth-summary">${report.summary}</p>
         <div class="build-list">
             ${capacityRows}
             <div class="growth-divider">Where two things meet</div>
             ${crossRows}
-        </div>
-        <button class="primary close-btn" type="button">Close</button>`;
-    el.querySelector('.close-btn')!.addEventListener('click', () => fade(el, onClose));
+        </div>`;
 }
 
 /**

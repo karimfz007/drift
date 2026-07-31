@@ -479,6 +479,27 @@
         .build-item.hint-item { border-style: dashed; opacity: 0.9; }
         .build-item.hint-item .hint-line { font-style: italic; font-size: 13px; margin: 0 0 4px; }
         .build-item.hint-item .hint-how { font-size: 11px; opacity: 0.7; margin: 6px 0 0; }
+        /*  THE BACKPACK HUB'S TABS (Law 126). Three, by law — Inventory, Vitals, Skills.
+            Big enough for a thumb and legible at phone size, because a tab bar that needs
+            aiming is a tab bar that gets mis-tapped mid-emergency.  */
+        .backpack-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+        .backpack-tab {
+            flex: 1; min-height: 44px; padding: 8px 4px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--edge); border-radius: 9px;
+            color: var(--ink); font-size: 14px; font-weight: 600;
+        }
+        .backpack-tab.active { background: rgba(255, 214, 140, 0.16); border-color: var(--warm); }
+        .backpack-tab:active { transform: scale(0.97); }
+
+        /*  THE VITALS TAB. The bars already say how bad it is; these lines say WHY, which is
+            the part a player can act on.  */
+        .vital-line { border: 1px solid var(--edge); border-radius: 10px; padding: 10px 14px; }
+        .vital-line .build-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+        .vital-line .vital-cause { font-size: 12px; opacity: 0.78; margin: 6px 0 0; }
+        .vital-line.pressing { border-color: var(--warm); }
+        .vitals-summary { font-style: italic; }
+
         /*  THE GROWTH CARD (FIX 1). Deliberately quiet: this is a thing you read, not a
             thing you spend. No bars, no numbers, no allocate button — a body is not a
             character sheet, which is the whole reason §12 has capacities instead of stats.  */

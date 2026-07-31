@@ -67,6 +67,7 @@ import {
     ALL_MATERIAL_KINDS,
     tryCombineWith,
     growthReport,
+    bodyReport,
     revealedInPanel,
     panelHints,
     announcementFor,
@@ -97,7 +98,7 @@ import {
     levelToast,
     pickupToast,
     showBuildCard,
-    showGrowthCard,
+    type BackpackTab,
     showColdOpen,
     showDeath,
     showLoadout,
@@ -511,9 +512,18 @@ export class Game {
      */
 
 
-    private openLoadout(atStorage = false): void {
-        if (runtime.panelOpen) return;
-        this.beginPanel();
+    /**
+     * THE BACKPACK HUB (Law 126). One surface, three tabs.
+     *
+     * `tab` selects which; `reopening` says this is a tab switch rather than a fresh open, so
+     * the `panelOpen` guard is skipped — the lock is deliberately still held. Releasing it
+     * between tabs would open a window for a world tap to land behind the panel, which is the
+     * leak D-063's INPUT SAFETY law exists to stop, and it is also exactly how the growth
+     * card's own handoff failed a session ago.
+     */
+    private openLoadout(atStorage = false, tab: BackpackTab = 'inventory', reopening = false): void {
+        if (runtime.panelOpen && !reopening) return;
+        if (!reopening) this.beginPanel();
         //  The open path runs INSIDE the control transfer, so if any of it throws the game
         //  would be left holding control with nothing on screen to give it back. Hand it
         //  back immediately and let the error surface (D-049) rather than lock the player
@@ -544,7 +554,11 @@ export class Game {
                 //  could not select it, could not attempt the axe, and could not proceed. The
                 //  UI label for it already existed — only the selectable list had drifted
                 //  from the type it was supposed to mirror.
-                combinable: ALL_MATERIAL_KINDS.filter((m) => (s.inventory[m] ?? 0) > 0)
+                combinable: ALL_MATERIAL_KINDS.filter((m) => (s.inventory[m] ?? 0) > 0),
+                //  LAW 126's other two tabs, both READ from the brain. The hub renders
+                //  them; nothing about their content is decided here.
+                vitals: bodyReport(s),
+                skills: growthReport(s, s.capacities)
             },
             (tool) => {
                 const result = equipToActiveHand(session().state, tool as ReturnType<typeof ownedTools>[number]);
@@ -559,13 +573,11 @@ export class Game {
             () => this.tryUseStorage(),
             () => this.tryRepair('storage'),
             (materials: string[]) => this.onTryCombine(materials),
-            //  Through `endPanel`'s own `then` hook, which exists for exactly this. The
-            //  first cut passed `openGrowth` straight in, and the loadout's fade replaces
-            //  its onClose rather than running alongside it — so the panel lock was never
-            //  released, and openGrowth bailed on its own `panelOpen` guard. The card never
-            //  appeared, the input-safety backstop noticed control was held with no panel
-            //  visible, and recovered. The backstop working is not the same as this working.
-            () => this.endPanel(() => this.openGrowth())
+            //  LAW 126: which tab, and how to switch. The lock is NOT released between tabs
+            //  — the panel re-renders in place — because releasing it would let a world tap
+            //  through the gap, which is the leak D-063's INPUT SAFETY law exists to stop.
+            tab,
+            (next) => this.openLoadout(atStorage, next, true)
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -605,20 +617,6 @@ export class Game {
         this.lastActivityAt = now();
     }
 
-    /**
-     * The growth card (FIX 1). Opens from the Carried panel, which is already the panel about
-     * the body — rather than a fifth HUD button competing for a thumb's worth of screen.
-     *
-     * It reads `growthReport` and hands the result straight to the renderer. Nothing about
-     * bands, wording or ordering is decided here: that all lives in `growth.ts` where a unit
-     * test can reach it, because this layer cannot be tested at all under the purity law.
-     */
-    private openGrowth(): void {
-        if (runtime.panelOpen) return;
-        this.beginPanel();
-        const s = session().state;
-        showGrowthCard(this.overlay, growthReport(s, s.capacities), () => this.endPanel());
-    }
 
     private openSettings(): void {
         if (runtime.panelOpen) return;

@@ -1213,6 +1213,120 @@ async function main() {
         floatLife.goneByDeclared, `faded by ${floatLife.declaredMs} ms`);
 
     // ================================================================
+    // SLICE 2C BOUNDARY 1 — THE BACKPACK HUB (Law 126: three primary tabs, and only three).
+    // ================================================================
+    console.log('\nSLICE 2C — the Backpack hub: Inventory / Vitals / Skills, all reachable');
+
+    //  ENTRY POINT FIRST, per the standing corollary. This project has shipped four whole
+    //  systems with no way for a thumb to reach them; the hub is the surface every one of
+    //  those failures would have hidden behind, so it is checked before its contents.
+    await editSave(`
+        state.inventory = { wood: 6, stone: 4, fiber: 6, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2 };
+        state.energy = 100; state.hunger = 90; state.thirst = 90;
+        state.capacities = { strength: 78, endurance: 45, loadTolerance: 12, mobilityBalance: 10,
+            coordinationDexterity: 10, breathWaterConfidence: 10, acclimatization: 10, generalResilience: 10 };
+    `);
+    const hubOpen = await realTapDom('.carried-button');
+    await sleep(500);
+    const hub = await page.evaluate(() => {
+        const tabs = Array.from(document.querySelectorAll('.backpack-tab'));
+        return {
+            open: Boolean(document.querySelector('.panel.backpack')),
+            //  Law 126 says THREE primary tabs. A fourth would be a violation, not a feature.
+            tabCount: tabs.length,
+            labels: tabs.map((t) => t.textContent.trim()),
+            active: tabs.filter((t) => t.classList.contains('active')).map((t) => t.textContent.trim()),
+            allVisible: tabs.every((t) => t.getBoundingClientRect().height > 0),
+            //  The Inventory tab must still BE the loadout surface — forty-odd selectors
+            //  across this harness and the body depend on it.
+            stillLoadout: Boolean(document.querySelector('.panel.loadout')),
+        };
+    });
+    check('SLICE 2C — the Backpack hub opens from its own entry point',
+        hubOpen.ok && hub.open, `tap ${hubOpen.ok}, panel ${hub.open}`);
+    check('SLICE 2C — LAW 126: exactly THREE primary tabs, named Inventory / Vitals / Skills',
+        hub.tabCount === 3 && hub.labels.join(',') === 'Inventory,Vitals,Skills',
+        `${hub.tabCount} tabs: ${hub.labels.join(', ')}`);
+    check('SLICE 2C — every tab is on screen and thumb-sized, and Inventory opens active',
+        hub.allVisible && hub.active.join(',') === 'Inventory',
+        `visible ${hub.allVisible}, active [${hub.active.join(', ')}]`);
+    check('SLICE 2C — the Inventory tab IS still the loadout surface (nothing was subtracted)',
+        hub.stillLoadout, `panel.loadout present ${hub.stillLoadout}`);
+    await shot('slice2c-01-hub-inventory');
+
+    //  VITALS. The bars already say how bad it is; this tab has to say WHY.
+    const toVitals = await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(450);
+    await shot('slice2c-02-hub-vitals');
+    const vitals = await page.evaluate(() => {
+        const lines = Array.from(document.querySelectorAll('.vital-line'));
+        return {
+            reached: Boolean(document.querySelector('.panel.vitals')),
+            lines: lines.length,
+            labels: lines.map((n) => n.querySelector('strong')?.textContent.trim()),
+            causes: document.querySelectorAll('.vital-cause').length,
+            summary: document.querySelector('.vitals-summary')?.textContent.trim() ?? '',
+            visible: lines.every((n) => n.getBoundingClientRect().height > 0),
+            text: document.querySelector('.panel.backpack')?.textContent ?? '',
+        };
+    });
+    check('SLICE 2C — the Vitals tab is REACHABLE by a real tap, and renders',
+        toVitals.ok && vitals.reached && vitals.lines > 0,
+        `tap ${toVitals.ok}, ${vitals.lines} line(s): ${vitals.labels.join(', ')}`);
+    check('SLICE 2C — Vitals says WHY, not just how bad — every line on screen, causes present',
+        vitals.causes > 0 && vitals.visible && vitals.summary.length > 0,
+        `${vitals.causes} cause line(s), summary "${vitals.summary}"`);
+    //  §6.1: "Warmth 52" is a readable summary, not a literal percentage. The bars carry the
+    //  number; this tab must not repeat it as if it meant something clinical.
+    const vitalsDigits = (vitals.text.match(/[0-9]+/g) ?? []).filter((d) => ['78', '45', '12'].includes(d));
+    check('SLICE 2C — and no capacity score leaks into the Vitals tab',
+        vitalsDigits.length === 0, `leaked [${vitalsDigits.join(', ')}]`);
+
+    //  SKILLS. Same content the standalone growth card rendered — one markup, not two.
+    const toSkills = await realTapDom('.backpack-tab[data-tab="skills"]');
+    await sleep(450);
+    await shot('slice2c-03-hub-skills');
+    const skills = await page.evaluate(() => ({
+        reached: Boolean(document.querySelector('.panel.growth')),
+        capacities: document.querySelectorAll('.growth-item:not(.cross-item)').length,
+        crossings: document.querySelectorAll('.growth-item.cross-item').length,
+        hows: document.querySelectorAll('.growth-how').length,
+    }));
+    check('SLICE 2C — the Skills tab is REACHABLE, and is the growth card intact',
+        toSkills.ok && skills.reached && skills.capacities === 8 && skills.crossings === 3,
+        `tap ${toSkills.ok}, ${skills.capacities} capacities, ${skills.crossings} crossings`);
+    check('SLICE 2C — and it kept its INFLUENCE lines through the move into a tab',
+        skills.hows >= 8, `${skills.hows} "comes from" lines`);
+
+    //  BACK to Inventory, because a tab you can leave but not return to is half a hub.
+    const backToInv = await realTapDom('.backpack-tab[data-tab="inventory"]');
+    await sleep(450);
+    const returned = await page.evaluate(() => ({
+        loadout: Boolean(document.querySelector('.panel.loadout')),
+        chips: document.querySelectorAll('.combine-chip').length,
+    }));
+    check('SLICE 2C — tabs switch BOTH ways, and Inventory comes back whole',
+        backToInv.ok && returned.loadout && returned.chips > 0,
+        `loadout ${returned.loadout}, ${returned.chips} combine chip(s)`);
+
+    //  INPUT SAFETY across a tab switch: the lock is deliberately held the whole time, so no
+    //  world tap may land behind the panel. This is D-063's law applied to a new seam.
+    //  `failedInteractionTaps`, read through `live()` — the field the rest of this harness
+    //  uses. My first cut invented `failedTaps` with a `?? 0` fallback, which would have
+    //  compared two zeros forever and passed on nothing: hazard #2 in a check written to
+    //  guard a NEW seam, which is exactly where a vacuous pass does the most damage.
+    const leakedDuringTabs = (await live()).trace.failedInteractionTaps;
+    await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(300);
+    await realTapDom('.backpack-tab[data-tab="inventory"]');
+    await sleep(300);
+    const leakedAfter = (await live()).trace.failedInteractionTaps;
+    check('SLICE 2C — switching tabs never leaks a world tap (the lock is held throughout)',
+        leakedAfter === leakedDuringTabs, `failedTaps ${leakedDuringTabs} -> ${leakedAfter}`);
+    await realTapDom('.panel.backpack .close-btn');
+    await sleep(400);
+
+    // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
     // ================================================================
     console.log('\nPERFECT pass (C05) — FIX 3: tap-to-fell, root-caused fresh (3rd report)');
