@@ -20,6 +20,7 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import {
     axeShortfall,
     buildFire,
+    fireIsKnown,
     buildShelter,
     buildStorage,
     canBuildFire,
@@ -1849,10 +1850,18 @@ export class Game {
     private paintHud(state: ReturnType<typeof session>['state']): void {
         const sheltered = isSheltered(state);
 
-        //  Build fire: its OWN button, gated only on wood (day or night). It no longer
-        //  competes in a priority slot with Craft — the root cause of the C03 fire defect.
+        //  Build fire: its OWN button, never competing in a priority slot with Craft — that
+        //  competition was the root cause of the C03 fire defect, and it stays fixed.
+        //
+        //  LAW 130 (Bible v2.4): and it appears only to a survivor who KNOWS FIRE. This
+        //  button was the residual the invention pivot missed — it is a separate entry point
+        //  from the Build panel, and it read `state.inventory.wood > 0` and nothing else, so
+        //  a castaway four seconds off the beach with three sticks was offered fire-making as
+        //  a known verb. The brain gate alone was not enough: `canBuildFire` said no while
+        //  this said yes, and the device check caught the disagreement. Same shape as the
+        //  growth panel a session ago — a law enforced in one layer is enforced nowhere.
         let action = { label: '', visible: false, ready: false };
-        if (!state.fire.built) {
+        if (!state.fire.built && fireIsKnown(state)) {
             const short = Math.max(0, TUNE.woodPerFire - state.inventory.wood);
             action = { label: short === 0 ? 'Build fire' : `Build fire (${short} short)`, visible: state.inventory.wood > 0, ready: short === 0 };
         }
