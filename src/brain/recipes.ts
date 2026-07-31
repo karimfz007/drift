@@ -14,7 +14,7 @@
 
 import { TUNE } from '../data/tune';
 import { applyLearningEvent, nullOutcomeFactors } from './knowledge';
-import { materialSatisfies, type MaterialRequirement } from './materials';
+import { ALL_MATERIAL_KINDS, materialSatisfies, type MaterialRequirement } from './materials';
 import type { GameState, KnowledgeDomain, MaterialKind } from './types';
 
 export interface RecipeSlot {
@@ -105,7 +105,8 @@ export function recipeDomain(id: string): KnowledgeDomain {
     return recipe.domain;
 }
 
-const MATERIAL_KINDS: MaterialKind[] = ['wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish', 'sharpblade'];
+//  Was a second hardcoded copy; now the canonical one, so it cannot drift.
+const MATERIAL_KINDS: MaterialKind[] = ALL_MATERIAL_KINDS;
 
 function pairKey(slotId: string, kind: MaterialKind): string {
     return `${slotId}|${kind}`;

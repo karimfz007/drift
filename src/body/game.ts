@@ -63,6 +63,7 @@ import {
     type MoveStep,
     refugeReport,
     tryCombine,
+    ALL_MATERIAL_KINDS,
     tryCombineWith,
     growthReport,
     revealedInPanel,
@@ -535,8 +536,14 @@ export class Game {
                     : null,
                 //  Whatever raw material is actually in hand — experimentation works on what
                 //  you carry, so the list is the carried materials, not a fixed menu.
-                combinable: (['wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish'] as const)
-                    .filter((m) => (s.inventory[m] ?? 0) > 0)
+                //
+                //  DERIVED, never listed here again. This was a hardcoded six that omitted
+                //  `sharpblade`, and that single missing string gated the soul loop: the axe
+                //  needs wood + sharpblade + fibre, so a survivor holding a knapped blade
+                //  could not select it, could not attempt the axe, and could not proceed. The
+                //  UI label for it already existed — only the selectable list had drifted
+                //  from the type it was supposed to mirror.
+                combinable: ALL_MATERIAL_KINDS.filter((m) => (s.inventory[m] ?? 0) > 0)
             },
             (tool) => {
                 const result = equipToActiveHand(session().state, tool as ReturnType<typeof ownedTools>[number]);

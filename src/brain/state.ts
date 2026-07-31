@@ -5,6 +5,7 @@
 
 import { gameHoursFromRealSeconds } from './clock';
 import { TUNE } from '../data/tune';
+import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
@@ -664,12 +665,56 @@ export function fireBurnHoursRemaining(state: GameState): number {
     return Math.max(0, state.fire.fuel) * TUNE.fireBurnGameHoursPerWood;
 }
 
-export function canBuildFire(state: GameState): boolean {
+/**
+ * LAW 130 (Bible v2.4): **no survivor begins with "Build Fire" in a menu, anywhere, ever.**
+ *
+ * THE RESIDUAL THIS CLOSES. Slice 2B emptied the Build panel's catalogue, and the primary
+ * HUD fire button was never in that catalogue — it is a separate entry point with its own
+ * gate, and that gate asked only whether you were holding enough wood. So a castaway four
+ * seconds off the beach with three sticks was offered fire-making as a known verb, which is
+ * precisely the pre-known affordance the invention pivot exists to remove. The pivot swept
+ * the room it was standing in and missed the door.
+ *
+ * Fire is SURVIVAL-BASIC, so it is scaffolded rather than gated behind blind experiment
+ * (Law 113): the knowledge arrives when the need is real and the makings are in hand, which
+ * is `discovery.ts`'s torch route — the dark closing in, and something that burns in your
+ * hands. It is not arbitrary knowledge to be stumbled on; it is knowledge that arrives when
+ * a person in that situation would arrive at it.
+ *
+ * And once you have made fire, you know how. That half is monotonic on purpose.
+ */
+export function fireIsKnown(state: GameState): boolean {
+    //  Demonstrated — you have done it. A torch is fire-craft by another name.
+    if (state.blueprints?.some((bp) => bp.recipeId === 'torch')) return true;
+    if (state.torch?.owned) return true;
+    if (state.fire.built) return true;
+    //  Law 113's scaffold: need plus makings, from the shipped discovery route.
+    return suspicionFor(state, 'torch')?.suspected === true;
+}
+
+/** Does the MATTER allow it — wood in hand, no fire already standing? Physical only. */
+export function fireMatterSuffices(state: GameState): boolean {
     return !state.fire.built && state.inventory.wood >= TUNE.woodPerFire;
 }
 
+/**
+ * May this be OFFERED to the player? Knowledge and matter both.
+ *
+ * The split is deliberate and it is where Law 130 actually lives. The law is about what a
+ * survivor is offered — "no survivor begins with Build Fire in a menu" — so knowledge gates
+ * the AFFORDANCE. `buildFire` below still validates the matter, because a verb that fires
+ * without the wood is a different bug. `onBuildFire` in the body routes through here, so the
+ * button cannot appear to someone who has no idea how.
+ */
+export function canBuildFire(state: GameState): boolean {
+    return fireIsKnown(state) && fireMatterSuffices(state);
+}
+
 export function buildFire(state: GameState, x: number, y: number): boolean {
-    if (!canBuildFire(state)) return false;
+    //  Matter, not knowledge. The knowledge gate belongs on the affordance (`canBuildFire`),
+    //  which is what the player actually touches; this is the execution, and it validates
+    //  that there is wood and no fire already there.
+    if (!fireMatterSuffices(state)) return false;
     state.inventory.wood -= TUNE.woodPerFire;
     state.fire = { built: true, fuel: TUNE.woodPerFire, x, y };
     recordTrying(state, 'survivalcraft');

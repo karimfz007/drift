@@ -44,3 +44,19 @@ export function materialSatisfies(kind: MaterialKind, requirement: MaterialRequi
     if (requirement.tag && profile.tags.includes(requirement.tag)) return true;
     return false;
 }
+
+/**
+ * EVERY material kind, in one place (Law 129 / playtest FIX).
+ *
+ * This exists because a hardcoded copy of it in the body layer omitted `sharpblade`, and that
+ * one missing string blocked the whole discovery loop: the axe needs wood + sharpblade +
+ * fibre, so a survivor holding a knapped blade could not select it, could not attempt the
+ * axe, and could not proceed. The label for it already existed in the UI — only the
+ * selectable list had drifted from the type.
+ *
+ * Anything offering materials to the player derives from HERE. A second list is a second
+ * source of truth, and the first time they disagree the player loses a verb with no message.
+ */
+export const ALL_MATERIAL_KINDS: MaterialKind[] = [
+    'wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish', 'sharpblade',
+];
