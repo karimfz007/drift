@@ -1323,8 +1323,24 @@ async function main() {
     const leakedAfter = (await live()).trace.failedInteractionTaps;
     check('SLICE 2C — switching tabs never leaks a world tap (the lock is held throughout)',
         leakedAfter === leakedDuringTabs, `failedTaps ${leakedDuringTabs} -> ${leakedAfter}`);
-    await realTapDom('.panel.backpack .close-btn');
-    await sleep(400);
+
+    //  AND HAND CONTROL BACK, VERIFIED. This section holds the panel lock across every tab
+    //  switch by design, so if its final close silently misses, the lock stays held and every
+    //  later panel-opening check fails — six hundred lines away, as "panel ABSENT", with
+    //  nothing pointing back here. That is exactly how un-building the shelter cost nine
+    //  checks two sessions ago: a late edit to shared run state whose blast radius I did not
+    //  look at. So the cleanup is asserted at its source rather than assumed.
+    const hubClose = await realTapDom('.panel.backpack .close-btn');
+    await sleep(500);
+    const afterHub = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel')),
+        //  CALLED, not read: the hook is a function, so testing it for truthiness
+        //  would be true forever and this check would fail unconditionally.
+        locked: window.__drift?.panelOpen?.() === true,
+    }));
+    check('SLICE 2C — the hub closes and hands control back, so nothing downstream inherits the lock',
+        hubClose.ok && !afterHub.panel && !afterHub.locked,
+        `close ${hubClose.ok}, panel ${afterHub.panel}, locked ${afterHub.locked}`);
 
     // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
