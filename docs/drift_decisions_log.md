@@ -3,6 +3,45 @@
 
 ---
 
+**D-093 · 2026-07-31 — Design Bible v2.5 RECEIVED: SPINE ADOPTED, SNAPSHOT CORRECTED** (⚑ director's attachment, C1's constitutional pen). A **split verdict**, because the document's integration argument and its as-built record are of very different quality.
+
+**ADOPTED, without reservation.** §3's **System Contract** (eleven fields, and a feature missing one is not ready for production) · §3.1's **orphan rule** · §3.2's **five independent axes** (Canon / Build / Automated evidence / Human evidence / Release) and its ruling that **no single word such as "SHIPPED" may replace that record** · §4's **fifteen-phase playable spine** as the first proof route · §5's twenty-six weak points as the standing audit list · §6's **quantitative constitution** · §11's automatic failure conditions.
+
+**§6 IS THE ACTIVITY STANDARD FROM SLICE 3 FORWARD.** Every activity submits one declaration (duration, intensity band, posture and force, load and hand occupation, terrain, ambient and wetness, tool fit and condition, demonstrated technique, fatigue and impairment, novelty and feedback, hazard exposure, objective and tolerance) and the resolver returns one set of changes. **No subsystem independently charges the same work again.** §6.3's seed relations feed `tune.ts` **under the existing tune law, unchanged: the model proposes, the ledger disposes, and `tune.ts` remains the single source.** A workbook cell is never a shipped constant.
+
+**THE ONE BODY RESOLVER is confirmed as Slice 3's architecture item** (§5 G02): one causal function unifying `reconcile`, [[D-089]]'s workload formula and the exposure chain, through which every activity declaration flows. G02's named failure — *"independent multipliers create sudden death spirals, double-charge the same cause, or allow sleep/fire/shelter to fabricate recovery"* — is the same defect [[D-092]] closed for sleep specifically. The resolver generalises that fix rather than repeating it per system.
+
+**PRODUCTION ORDER 1–10 (§9's gates I0–I10) is CONFIRMATION of Ch.10, not a resequencing.** No slice moves.
+
+---
+
+**SNAPSHOT CORRECTED. §8 "Exact as-built truth" does not describe this repository**, and the correction is made against **this session's own ledger**, not against memory.
+
+**It names the wrong project.** §8 inspects *"the v0.1.1 baseline at commit `5580d377…`"*, a **Godot** project. THE FIRST NIGHT as built here is **Babylon.js / TypeScript**, with a CI-enforced brain/body split (`tools/check-purity.mjs`). No commit in this repository's history is `5580d377`.
+
+**Six Registry rows and two §8 claims are stale.** Each correction cites the entry that closed it:
+
+| v2.5 row | v2.5 says | Repository truth | Evidence |
+|---|---|---|---|
+| **S05** Thermal, wetness & exposure | "Legacy prototype", "simplified warmth" | **Continuous heat balance shipped.** Warmth's rate IS net heat flow; ground, bedding, wind, fire, wetness, clothing, activity and nutrition are all live TUNE inputs | [[D-092]] — 5000-interval invariant, five source scenarios |
+| **S06** Hunger, thirst, energy & stamina | "Stamina only" | **All five vitals shipped**, plus fatigue and carry-load bands | [[D-058]] |
+| **S07** Rest, sleep & recovery — *risk: "Sleep must not create warmth"* | "Absent" | **Sleep shipped as a rate** (the instant refill is gone), and the named risk is **closed and property-tested**: sleep's direct positive warmth term is deleted | [[D-058]], [[D-092]] |
+| **S13** Experimentation & invention | "Contradictory static recipes" | **The catalogue is empty.** Try-Combine, blueprints, the null-outcome journal and the six-state ladder ship; the resolver reaches every recipe | [[D-088]], [[D-090]] |
+| **S14** Patterns, journal & knowledge carrier | "Absent" | **Blueprints + journal + six-state ladder shipped** (physically-possible → documented) | [[D-086]], [[D-088]] |
+| **S17** Fire discovery & mastery — *risk: "Current kit contradicts discovery law"* | "Known kit prototype" | **Closed.** Law 130 enforced in both layers; a survivor who does not know fire is not offered it, device-checked | [[D-092]] |
+| **§8** "Implemented but contrary to canon: a visible global **Craft** surface; known recipe catalogue from the beginning; campfire available as a default recipe" | present | **All three retired** | [[D-088]], [[D-092]] |
+| **G08** "grants a **72%** shelter reduction through proximity" | 72% | **45%**, measured through `reconcile` and read off the rendered line on device | [[D-085]], [[D-087]], [[D-092]] |
+
+**G08's own target is therefore already met, not pending:** it asks for *"roughly 40–50% starter-refuge reduction"* and *"a continuous thermal balance."* Both ship.
+
+**THE RULE THIS ESTABLISHES.** A whole-game audit layer is authoritative about **integration**; it is not authoritative about **as-built state**, which only the repository and its ledger can witness. Where the two disagree, **the ledger wins and the snapshot is corrected** — the same discipline that governs a fetch failure never proving a repository private ([[D-088]]). §3.2's five axes are adopted precisely because they make this kind of drift visible instead of arguable.
+
+**MODEL EXPORTS ARE NOW REPO-READABLE.** `tools/export-model.py` extracts **System Registry** (41 rows), **Gap Backlog** (29) and **Dependencies** (90) to CSV and markdown at `docs/reference/model/`. **The workbook stays the editing surface; the exports are what the repository reads**, so production truth is diffable in review rather than sealed in a binary. Stdlib only — an export tool that needs an install step is one a fresh clone cannot run.
+
+**Class: DESIGN-BINDING**
+
+*Trigger: §6's activity-declaration format and the One Body Resolver bind from **Slice 3** forward. **Slice 3 remains HELD** on the director's Playtest 2B verdict; nothing in v2.5 changes that, and no permadeath, Journal, Death Review or requalification code exists.*
+
 **D-092 · 2026-07-31 — LAW 118 + THE v2.4 FIX BATCH: sleep stops being a heater, and two residuals the pivot missed.** **259/259 device checks**, zero failures, **628 unit tests**, from `2bfa1fd`. This is [[D-091]]'s IMMEDIATE mechanism for Laws 118 and 130. **Slice 2C (Laws 126–129) is NOT STARTED** — see the pre-scan below.
 
 **LAW 118 — THE DIRECT POSITIVE WARMTH TERM IS DELETED.** What stood in `reconcile` was `Math.max(awakeWarmthRate, warmthRecoveryPerGameHourResting × sleepRecoveryMultiplier × restScale)` — a floor under warmth that the physical situation could never pull below, so wind, wet, bare ground and no fire were all outranked by the act of lying down. **That is the director's 2am reading exactly**: very low warmth, a rough night, waking above 60. The `Math.max` was written to make sleep *"strictly non-harmful"*, and **that intent was the bug** — sleeping unprotected on a wet night IS harmful, and a model that refuses to say so teaches the player something false about the world.

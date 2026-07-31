@@ -1,0 +1,90 @@
+System Dependency Edges
+Machine-readable links. Required edges must be represented by implemented data before the dependent system can be accepted.
+From ID,To ID,Relationship,Required?,Campaign stage,Authority
+S01,S02,arrival grants layered control,Required,0,v2.4
+S01,S03,arrival creates localized condition,Required,0,v2.4
+S03,S05,injury and wetness alter exposure,Required,0–2,v2.4
+S03,S22,injury creates treatment operation,Required,0–2,v2.4
+S02,S06,movement creates workload,Required,all,v2.3
+S02,S08,load changes movement route,Required,all,v2.3
+S04,S05,weather/light drive exposure,Required,all,v0.14
+S04,S11,sea/weather drive wreck states,Required,6+,v2.4
+S04,S27,forecast shapes expedition,Required,5+,v0.15
+S05,S06,thermal state alters performance,Required,all,v2.4
+S05,S07,sleep quality depends on thermal safety,Required,2+,v2.4
+S06,S07,energy debt creates recovery need,Required,2+,v2.4
+S06,S22,dehydration/energy alter healing,Required,all,v2.4
+S07,S13,sleep affects learning consolidation,Required,4+,v2.4
+S08,S12,load/bulk define salvage logistics,Required,6+,v2.4
+S08,S24,cargo affects boat state,Required,9+,v2.4
+S09,S10,inspection reveals material properties,Required,1+,v2.3
+S09,S13,evidence forms hypotheses,Required,2+,v2.3
+S09,S34,anomaly evidence updates models,Required,6+,v2.2
+S10,S13,matter enables experiment,Required,2+,v2.3
+S10,S18,materials become structure,Required,3+,v0.14
+S10,S20,ecology supplies food/material,Required,8+,v0.12
+S11,S12,wreck opportunity becomes operation,Required,6+,v2.4
+S11,S27,wreck window competes for expedition time,Required,6+,v2.4
+S12,S13,salvage parts create hypotheses,Required,6+,v2.4
+S12,S15,salvage recovers tools/parts,Required,6+,v2.4
+S12,S24,salvage enables boat restoration,Required,8+,v2.4
+S12,S29,salvage enables signal/return route,Required,10+,v2.2
+S13,S14,tested relations become patterns,Required,3+,v2.3
+S13,S15,invention creates tools,Required,2+,v2.3
+S13,S17,fire must be discovered,Required,2+,v2.4
+S13,S18,construction patterns must be proven,Required,3+,v2.4
+S14,S16,documented knowledge improves workspace use,Required,4+,v2.3
+S14,S31,physical carrier supports successor,Required,14,v2.4
+S14,S33,carrier enables teaching/trade,Required,9+,v2.4
+S15,S10,tools change reachable sources,Required,2+,v2.3
+S15,S16,tools enable fixtures/workstations,Required,4+,v2.3
+S15,S19,tools enable containers/treatment,Required,5+,v2.2
+S15,S20,tools enable hunting/fishing,Required,8+,v0.12
+S16,S15,stations improve repeatable tool quality,Required,4+,v2.3
+S16,S24,boatyard supports restoration,Required,8+,v2.4
+S16,S29,electrical/radio work requires fixtures,Required,10+,v2.2
+S17,S05,fire changes heat balance,Required,2+,v2.4
+S17,S19,fire enables water treatment,Required,5+,v0.14
+S17,S20,fire enables cooking/preservation,Required,8+,v0.12
+S17,S15,heat expands material processing,Required,7+,v2.3
+S18,S05,shelter alters specific exposure paths,Required,3+,v0.14
+S18,S07,refuge alters sleep quality,Required,4+,v2.4
+S18,S26,refuge begins home attachment,Required,4+,v0.13
+S19,S06,water supports hydration,Required,5+,v0.14
+S19,S21,water supports cultivation,Required,8+,v0.13
+S19,S26,water becomes home operation,Required,5+,v0.14
+S20,S06,food affects reserves/recovery,Required,8+,v2.4
+S20,S21,hunting/pests/crops share ecology,Required,8+,v0.12–13
+S21,S26,cultivation creates home obligation,Required,8+,v0.13
+S22,S06,injury changes workload efficiency,Required,all,v2.4
+S22,S31,arrival station can support successor health,Optional,14,v2.4
+S23,S05,immersion changes thermal/wetness,Required,0/9+,v2.4
+S23,S24,swimming/reboarding supports boat use,Required,9+,v2.2
+S23,S25,surface-water competence precedes diving,Required,10+,v0.10
+S24,S25,boat anchors/supports dive expedition,Required,10+,v0.10
+S24,S29,vessel enables crossing/return route,Required,11+,v0.15
+S25,S12,diving extends salvage reach,Required,10+,v0.10
+S25,S34,underwater evidence informs anomaly model,Optional,10+,v0.10
+S26,S27,home need anchors expedition,Required,5+,v2.2
+S26,S30,home state survives death,Required,14,v2.4
+S27,S26,expedition integrates change at home,Required,5+,v2.2
+S27,S29,expeditions advance return hypothesis,Required,10+,v0.15
+S28,S29,Human Thread motivates and resolves return,Required,10–14,v0.15
+S28,S30,death may leave thread unresolved,Required,all,v0.15
+S29,S38,complete return requires acceptance evidence,Required,13–14,v2.2
+S30,S31,closed life creates successor state,Required,14,v2.4
+S30,S35,death requires atomic persistence,Required,14,v2.2
+S31,S26,successor interprets inherited home,Required,0/14,v2.4
+S31,S28,new person has distinct Human Thread,Required,0/14,v0.15
+S32,S33,society enables teaching/trade,Required,9+,v0.11
+S32,S29,community can support return choices,Optional,10+,v0.15
+S33,S14,teaching depends on proof/carrier,Required,9+,v2.4
+S34,S29,boundary model constrains return,Required,10+,v2.2
+S35,S11,absence advances wreck state safely,Required,6+,v2.4
+S35,S26,home persists across absence,Required,4+,v0.13
+S35,S38,persistence requires evidence,Required,all,repo
+S36,S02,accessibility shapes all control,Required,all,v0.15
+S36,S13,touch constraints shape Maker Lab,Required,4+,v2.4
+S36,S38,device evidence validates accessibility,Required,all,repo
+S37,S09,presentation makes evidence readable,Required,all,v0.15
+S37,S27,sound/light telegraph expeditions,Required,5+,v0.15
