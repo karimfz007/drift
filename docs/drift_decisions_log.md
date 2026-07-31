@@ -3,6 +3,28 @@
 
 ---
 
+**D-096 · 2026-07-31 — SLICE 2C BOUNDARY 1: THE BACKPACK HUB, BUILT AND DEVICE-VERIFIED.** **12/12 of its own device checks pass**; **640 unit tests** green. Boundaries 2 and 3 **NOT STARTED**, per the brief's own stop instruction. One pre-existing check regressed alongside it and is carried **OPEN**, cause undetermined — named rather than explained away.
+
+**LAW 126'S THREE TABS, UNIFIED RATHER THAN REBUILT.** *"The Backpack contains only Inventory, Vitals and Skills as primary tabs."* Two of the three already shipped as separate surfaces, so the hub adopts them: the Skills tab renders `growthBody` — **the very function the standalone growth card rendered** — so there is one markup and not two that drift. Device-confirmed: **exactly three tabs**, named Inventory / Vitals / Skills, all on screen and thumb-sized, Inventory active on open, and switching works **both ways** with the Inventory tab coming back whole (4 combine chips).
+
+**VITALS WAS THE TAB WITH NOWHERE TO LIVE.** It has only ever been HUD bars, which answer *how bad is it* and never *why*. `bodyReport` is a brain module for the same reason `growth.ts` is: the depth-dial test is a claim about **content**, and content asserted only by markup is asserted by nobody. **It derives and never re-derives** — reading Law 118's balance, Ch.6's fatigue and load bands, and Law 128's wear. A vitals panel with its own arithmetic would be a second source of truth about the body, and the first disagreement with `reconcile` would be a confident lie told while the real bar moved the other way. On device it renders four lines with causes and **leaks no capacity score**.
+
+**THE PANEL KEEPS EACH TAB'S OWN CLASS** — `panel backpack loadout` showing Inventory, `panel backpack growth` showing Skills. Not a compatibility hack: the panel genuinely IS the loadout surface while showing inventory, and it keeps **forty-odd selectors** across the harness and body resolving where they always did. Renaming them all would have been a large diff whose only product was risk.
+
+**TABS NEVER RELEASE THE PANEL LOCK.** Switching re-renders in place, because releasing between tabs opens a window for a world tap to land behind the panel — D-063's INPUT SAFETY law applied to a new seam, and exactly how the growth card's own handoff failed in [[D-090]]. Device-checked: `failedInteractionTaps` unchanged across a full switch cycle.
+
+**AND THE HUB ASSERTS ITS OWN CLEANUP**, because it holds that lock by design: if its final close silently missed, every later panel check would fail six hundred lines away with nothing pointing back. That is precisely how un-building the shelter cost nine checks in [[D-090]]. The assertion passes — `close true, panel false, locked false`.
+
+**THREE ERRORS CAUGHT BEFORE THE RUN, all by reading rather than running.** I invented a four-band load union when the shipped one has three. My input-safety check read a `failedTaps` field that does not exist, behind a `?? 0` fallback — it would have compared two zeros forever and passed on nothing, in a check written to guard a **brand-new seam**, where a vacuous pass does the most damage. And the lock probe read `__drift.panelOpen` as a value when it is a **function**, so truthiness would have been true forever and the check would have failed unconditionally.
+
+**Class: OPERATIVE** — `src/brain/bodyReport.ts`, rendered by the hub in `hud.ts`, opened through `openLoadout`.
+
+*Witness: `tools/smoke.mjs` SLICE 2C block, 12/12 at `2fb1e58`.*
+
+**CARRIED OPEN — one regressed check, cause undetermined.** *"fail-loud — an EMPTY box still opens and says so"* fails with **panel ABSENT** in both completed hub runs, having passed at [[D-094]]'s `3c0e667`. **Two hypotheses were disproven by evidence, not argument:** the panel lock is released (the hub asserts that at its own source, and it passes), and nothing threw (the console-error check passes). A third run added a diagnostic to capture the tap's actual state and **crashed before reaching it** — a **90-second navigation timeout inside `editSave`**, the same infrastructure family as this session's earlier CDP touch-dispatch timeout. The diagnostic is left in place so the next run answers this rather than inviting a fourth guess. **Not closed, not excused, and not attributed to the machine without proof.**
+
+**NOT STARTED:** Boundary 2 (contextual construction + Law 126's retirement of the global Build entry point) and Boundary 3 (the work-mat entity, Law 127 position 3, known-multiple-results). The brief's own instruction was to stop at Boundary 1 if context is tight and not to begin Law 126 without the hub confirmed — the hub is now confirmed, and that is where this stops.
+
 **D-095 · 2026-07-31 — THE GHOST-QUARANTINE RULE** (C1, formalizing three occurrences: **Bible v2.2**, **v2.5's System Registry**, and **the 72% figure**).
 
 **External documents' BUILD-STATE and INSPECTION claims are QUARANTINED BY DEFAULT.** They enter canon only after a ledger cross-check. Their **design content continues through normal reception, unaffected** — the quarantine is on claims about what exists, never on proposals about what should.

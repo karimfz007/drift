@@ -1804,8 +1804,23 @@ async function main() {
     //  so with its contents in front of you, which is the same fail-loud duty discharged
     //  earlier and more plainly. So the assertion moves rather than being dropped: the box
     //  must open, and it must name the empty state instead of showing a dead panel.
-    await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
+    //  DIAGNOSTIC (added after two hub runs failed here with "panel ABSENT", and two
+    //  hypotheses were disproven by evidence rather than by argument: the panel lock is
+    //  released — the hub asserts that at its own source — and nothing threw, since the
+    //  console-error check passed. So this reports the state the tap was actually made in
+    //  instead of inviting a third guess.
+    const boxNow = await live();
+    const distToBox = Math.hypot(boxNow.player.x - afterStorage.storage.x, boxNow.player.y - afterStorage.storage.y);
+    const boxTap = await tapWorld(afterStorage.storage.x, afterStorage.storage.y, 55);
     await sleep(600);
+    const boxDiag = await page.evaluate(() => ({
+        panelOpen: window.__drift?.panelOpen?.() === true,
+        pending: window.__drift?.live?.().pending ?? null,
+        anyPanel: document.querySelector('.panel')?.className ?? 'none',
+    }));
+    check('DIAGNOSTIC — the state the empty-box tap was made in',
+        true,
+        `dist ${distToBox.toFixed(1)}m, tap ${JSON.stringify(boxTap)}, stored ${JSON.stringify(boxNow.storage.stored)}, carrying wood ${boxNow.inventory.wood}, ${JSON.stringify(boxDiag)}`);
     const emptyBox = await page.evaluate(() => {
         const el = document.querySelector('.panel.loadout');
         if (!el) return null;
