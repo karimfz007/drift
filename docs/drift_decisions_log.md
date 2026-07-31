@@ -3,6 +3,30 @@
 
 ---
 
+**D-092 · 2026-07-31 — LAW 118 + THE v2.4 FIX BATCH: sleep stops being a heater, and two residuals the pivot missed.** **259/259 device checks**, zero failures, **628 unit tests**, from `2bfa1fd`. This is [[D-091]]'s IMMEDIATE mechanism for Laws 118 and 130. **Slice 2C (Laws 126–129) is NOT STARTED** — see the pre-scan below.
+
+**LAW 118 — THE DIRECT POSITIVE WARMTH TERM IS DELETED.** What stood in `reconcile` was `Math.max(awakeWarmthRate, warmthRecoveryPerGameHourResting × sleepRecoveryMultiplier × restScale)` — a floor under warmth that the physical situation could never pull below, so wind, wet, bare ground and no fire were all outranked by the act of lying down. **That is the director's 2am reading exactly**: very low warmth, a rough night, waking above 60. The `Math.max` was written to make sleep *"strictly non-harmful"*, and **that intent was the bug** — sleeping unprotected on a wet night IS harmful, and a model that refuses to say so teaches the player something false about the world.
+
+Warmth's rate now simply IS the net heat flow, so the binding invariant — *"if average net heat flow during the sleep interval is non-positive, core thermal state cannot improve"* — holds **by construction** rather than by a clamp bolted on afterwards. **5000 randomised sleep intervals** assert it; a companion test proves **the old floor would have failed it**; and the 2am case runs end to end through `reconcile`. **All five source scenarios pass in the text's own order**, including the fifth — a sealed shelter with a fire drives warmth into **heat strain**, because more warmth is not automatically better (§12).
+
+**Calibrated to reproduce the shipped AWAKE rates exactly**, so the only behaviour this law changes is the one it is about: mild day nets zero, night outdoors −12, crude roof −6.6, beside a fire +30. **F3's certified 45% is intact and re-verified on device.**
+
+**THREE ERRORS OF MINE, each caught by a test rather than by reading.** I charged ground conduction to a survivor **standing up**, so a calm afternoon cooled you through your boots. I applied wind **outside** the roof factor, so an unsheltered night cost 15 instead of 12 and **pushed F3 from 45% to 56%** — a certified band broken by a term nobody asked to change. And I fed `hunger` into warmth's rate, which **broke reconcile's composition law**: segment-stepping holds hunger flat while frame-stepping moves it, so one-call and frame-by-frame diverged. Determinism is what makes offline and online agree at all, so nutrition is fixed there, **named as deliberate**, with the real fix (a hunger-crossing boundary in the segment stepper) handed over in the comment rather than left as a silent simplification.
+
+**TRY-COMBINE COULD NOT SELECT FROM THE BACKPACK — one missing string.** `combinable` was a hardcoded six in the body layer that omitted **`sharpblade`**. The UI label for it already existed; only the selectable list had drifted from the type it mirrored. The axe needs wood + sharpblade + fibre, so a survivor holding a knapped blade **could not select it, could not attempt the axe, and could not proceed.** Fixed by **deriving** the list from one canonical export rather than adding the string — `recipes.ts` held a second copy too, and both now read the same one.
+
+**LAW 130 — FIRE WAS PRE-KNOWN, and it took two layers to close.** The HUD fire button is a **separate entry point** from the Build panel with its own gate, and that gate asked only whether you held wood — so a castaway four seconds off the beach with three sticks was offered fire-making as a known verb. **Slice 2B swept the room it was standing in and missed the door.** It is now gated on knowing how: Law 113's scaffold opens it when the need is real and the makings are in hand, and having made fire once keeps it, monotonically. The gate sits on the **affordance**, not the execution — Law 130 is about what a survivor is OFFERED — while `buildFire` still validates matter.
+
+**And the brain gate alone was not enough.** `canBuildFire` said no while `paintHud` still read `inventory.wood > 0` and printed "Build fire". **A law enforced in one layer is enforced nowhere** — the same shape as the growth panel one session earlier, and the device check is what caught the disagreement the unit tests could not see.
+
+**A superseded check, named.** *"REGRESSION #3/#4 — building the fire works in daylight, pre-axe"* relied on fire being pre-known. What D-040/D-042 actually guaranteed is that fire is never gated on **time of day** or on owning an axe, and that is untouched; the survivor now knows fire and the check asserts what it always meant. Keeping the old form would have locked pre-known fire in place as a regression test.
+
+**Class: OPERATIVE**
+
+*Witness: `tests/thermal.test.ts` (16), `tests/fire-law130.test.ts` (8), `tools/smoke.mjs` 259/259 at `2bfa1fd`.*
+
+**SLICE 2C PRE-SCAN, delivered rather than begun.** Retiring the global Build entry point (Law 126) touches **21 harness references to `.secondary-action`** plus 2 in the body and 2 in `index.html` — the same dependency-inversion shape as Stage 2b, and it must not ship before its replacement exists. **Law 128 audited: the current failure path does NOT delete inputs — it does not touch them at all.** Materials are consumed only on success, so a failed attempt costs the body and leaves matter pristine. That is not the "never delete" violation the law guards against; it is the *positive* half unbuilt — nothing loosens, bends, blunts, chars or misaligns. **A real fix, in the opposite direction from what the law's phrasing implies.**
+
 **D-091 · 2026-07-31 — Design Bible v2.4 RATIFIED-WITH-RAILS** (⚑ director's decrees, C1's constitutional pen). **Laws 115–137 ADOPTED as design law.**
 
 **Rails, absolute.** [[D-011]] holds — **no wreck window or crash profile may ever create offline harm or an unanswerable state**. Fair-challenge governs the arrival profile. Performance rails govern island growth and large debris. Social/trade fragments (**Law 134**) are **Ch.8-gated, not built now**.
