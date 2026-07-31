@@ -3,6 +3,22 @@
 
 ---
 
+**D-091 · 2026-07-31 — Design Bible v2.4 RATIFIED-WITH-RAILS** (⚑ director's decrees, C1's constitutional pen). **Laws 115–137 ADOPTED as design law.**
+
+**Rails, absolute.** [[D-011]] holds — **no wreck window or crash profile may ever create offline harm or an unanswerable state**. Fair-challenge governs the arrival profile. Performance rails govern island growth and large debris. Social/trade fragments (**Law 134**) are **Ch.8-gated, not built now**.
+
+**IMMEDIATE mechanism** (this session): **Laws 118, 126–129, 130** — the FIX/TUNE batch and Slice 2C.
+
+**DESIGN-BINDING, future slices.** **Laws 115–117** → Slice 3, **HELD pending the director's Playtest 2B verdict**; no permadeath, Journal, Death Review or requalification content exists in this session, and none was written. **Laws 119–125, 131–132** → wreckfall / salvage / boat, the maritime slices. **Laws 133, 135–137** → knowledge-carrier / legacy, the Cycle and Community slices. Registered per the shelf-reopen precedent.
+
+**Ch.10 amendment at next close:** wreck trajectories and windows, the staged fishing boat, island growth, and legacy-civilization eras slot into the maritime/wreck slices as DESIGN-BINDING with v2.4 as source.
+
+**Quality-by-experience (Law 132) EXTENDS the shipped grade system ([[D-055]]) — it does not duplicate it.** Recorded here because a second grade axis arriving beside the first is exactly how two systems come to disagree about the same object.
+
+**Class: DESIGN-BINDING**
+
+*Trigger for the held portion: the director's Playtest 2B verdict (Laws 115–117). The immediate portion's mechanism ships in this same session and carries its own entry.*
+
 **D-090 · 2026-07-31 — PLAYTEST FIX BATCH: the growth card, a broken spine, and one clock for messages.** **258/258 device checks**, zero failures, from `e2d488a`. Three items; the second was asked as a question and answered as a defect.
 
 **FIX 1 — the capacities are visible.** Stage B ([[D-089]]) shipped eight capacities and three crossings with no way to see any of them: the **fourth** system this project has built with no entry point, after the Build button ([[D-053]]), the loadout panel ([[D-065]]) and Try-Combining ([[D-075]]). The reading layer is a BRAIN module (`growth.ts`) because the depth-dial admission test is a claim about **content**, and content asserted only by markup is asserted by nobody. **PERCEIVE** is a four-band standing in plain language — *"as you landed" / "finding it easier" / "noticeably stronger" / "practised"* — and **never a number**; the device check plants conspicuous scores and confirms not one reaches the screen. **INFLUENCE** is §12's own *"developed by"* column, unparaphrased, because rewriting it in the UI is how the screen and the spec drift apart. **NARRATE** is §15's own sentences, and an unachieved crossing **names which half is missing** rather than saying "requirements not met". It opens from the pack, already the panel about the body, rather than a fifth HUD button competing for a thumb.
