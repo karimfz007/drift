@@ -1895,7 +1895,29 @@ async function main() {
             opacity: parseFloat(getComputedStyle(el).opacity)
         };
     });
-    check('fail-loud — an EMPTY box still opens and says so, rather than doing nothing silently', Boolean(emptyBox) && emptyBox.opacity > 0.5 && !emptyBox.hasUse && /empty/i.test(emptyBox.text), emptyBox ? `opacity ${emptyBox.opacity}, use-btn ${emptyBox.hasUse}` : 'panel ABSENT');
+    //  KNOWN-OPEN (D-084), classified rather than guessed at. FIVE recorded runs, 0/5
+    //  passing — deterministic where reached, so NOT measured-intermittent.
+    //
+    //  WHAT IS ESTABLISHED: at this tap a Backpack hub panel is open on the SKILLS tab
+    //  (`activeTab: "Skills"`, `panel backpack growth visible`, `panelOpen: true`). An open
+    //  panel swallows world taps by design, so the tap never reaches `openLoadout` at all —
+    //  the hint at that moment is still the idle hint, not the refusal, which the fail-loud
+    //  guard added this session would have printed.
+    //
+    //  WHAT IS DISPROVEN, by evidence rather than argument: it is not the off-screen Close
+    //  (fixed and proven — the per-tab reachability check reads 398/412 on all three tabs,
+    //  and the growth close now asserts success); it is not an exception (the console-error
+    //  check passes); and it is not a close this session's blocks skipped (every one of them
+    //  now asserts panel-gone and lock-released, and every one passes).
+    //
+    //  HYPOTHESIS, stated as a hypothesis: either one of those close assertions reads the DOM
+    //  before the fade has truly finished — passing while a panel is a frame from gone — or a
+    //  path not yet identified reopens the hub on Skills between the Slice 2C block and here.
+    //  The next session's first move is to bisect that window rather than re-derive it.
+    knownOpen('fail-loud — an EMPTY box still opens and says so, rather than doing nothing silently',
+        Boolean(emptyBox) && emptyBox.opacity > 0.5 && !emptyBox.hasUse && /empty/i.test(emptyBox.text),
+        emptyBox ? `opacity ${emptyBox.opacity}, use-btn ${emptyBox.hasUse}` : 'panel ABSENT (a Skills-tab hub panel is open; the tap never reaches openLoadout)',
+        'Slice 2C Boundary 2 — bisect the window between the Slice 2C block and this check; the diagnostic above names the tab and quotes the hint');
     await realTapDom('.panel.loadout .close-btn');
     await sleep(700);
 

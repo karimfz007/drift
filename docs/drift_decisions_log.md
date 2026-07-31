@@ -3,6 +3,22 @@
 
 ---
 
+**D-098 · 2026-08-01 — THE LOADOUT-PANEL REGRESSION: ONE CAUSE FOUND AND FIXED, ONE CLASSIFIED KNOWN-OPEN.** The isolation run C1 ordered, held alone under the bench mutex. **274/275 device checks**, **640 unit tests**. Outcome is **(a) for one mechanism and (b) for a second** — the investigation found a real cause, fixed it with proof, and did not pretend the residual was solved.
+
+**FOUND AND FIXED: the tallest tab could not be left.** The diagnostic was decisive — `anyPanel: "panel backpack growth visible"`, `activeTab: "Skills"`. Adding the Backpack's tab bar pushed the **Skills** tab's Close button below a 412 px landscape fold; `realTapDom` correctly refused an off-screen target, **and the harness fired that close without reading the answer**. The panel stayed open, the lock stayed held, and a storage tap six hundred checks later became a silent no-op reported as *"panel ABSENT"*.
+
+**This is the same defect FIX 1 fixed on 2026-07-23** for the morning report — whose own comment in `index.html` claims *flex-start plus overflow-y:auto guarantees the button is always reachable*. That guarantee **depended on the content fitting**, which is not a guarantee at all; a tab bar was enough to break it. Both controls are now **pinned**, which does not depend on how much a tab has to say.
+
+**Proven, not asserted:** a per-tab **REACHABILITY** check now requires the tab bar and Close to be inside the viewport on **all three** tabs — reading **398/412 on every one** — and the close that previously fired into the void is now an assertion that passes. My earlier *"the hub closes cleanly"* check had passed honestly and missed this, because it ends on the **Inventory** tab, which is short. Different tab, different height.
+
+**FIXED ON ITS OWN MERITS: the silence that hid it.** `openLoadout` returned **without a word** when a panel was already open. That is a genuine player-facing defect — a survivor who taps their store box and gets nothing has been told nothing — and **D-046(d) says silence is never a legal outcome**. It now explains itself, which turns this whole class of bug from mysterious into self-reporting.
+
+**CLASSIFIED KNOWN-OPEN (D-084), deterministic: 0/5 over five recorded runs.** Not measured-intermittent — it fails every time it is reached, so calling it intermittent would be a comfortable lie. **What is established:** a hub panel is open on Skills at that tap, and an open panel swallows world taps by design, so the tap never reaches `openLoadout` — the hint at that moment is still the **idle** hint, not the refusal the new fail-loud guard would print. **What is disproven by evidence rather than argument:** not the off-screen Close (fixed, proven), not an exception (console-error check passes), and not a close this session skipped (every one now asserts panel-gone and lock-released, and every one passes). **Hypothesis, stated as one:** either a close assertion reads the DOM a frame before the fade truly finishes, or an unidentified path reopens the hub on Skills in that window. **Owner: Slice 2C Boundary 2 — bisect the window, do not re-derive it.**
+
+**Class: OPERATIVE** — the reachability fix and the fail-loud guard are shipped and device-witnessed; the residual is recorded as `knownOpen()` with its ratio, its disproven hypotheses and its next move, so it can never be mistaken for a regression or for a pass.
+
+**PART 2 (Boundary 2) DID NOT FIRE.** C1's gate was that Part 1 must resolve first; it has now resolved, and the session's remaining room went into resolving it honestly rather than into starting a dependency inversion that must not ship half-built.
+
 **D-097 · 2026-07-31 — VACUITY CLAUSE (e): "AN EDIT MUST WITNESS ITS LANDING"** (C1, formalizing this session's own `drift_state.md` failure).
 
 **Any targeted doc or state edit must verify POST-APPLY that the intended change exists in the written file** — grep-assert the new content **present** AND the superseded content **absent** — failing loudly on a missed anchor. **Never inferred from the edit command's own exit code.** Applies to `drift_state.md`, ledger appends, and any anchor-targeted patch. `check-docs-integrity` gains the post-edit assert as a standing step.
