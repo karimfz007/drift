@@ -3,6 +3,22 @@
 
 ---
 
+**D-095 · 2026-07-31 — THE GHOST-QUARANTINE RULE** (C1, formalizing three occurrences: **Bible v2.2**, **v2.5's System Registry**, and **the 72% figure**).
+
+**External documents' BUILD-STATE and INSPECTION claims are QUARANTINED BY DEFAULT.** They enter canon only after a ledger cross-check. Their **design content continues through normal reception, unaffected** — the quarantine is on claims about what exists, never on proposals about what should.
+
+The three occurrences share one shape: an authoritative document described a build that was not this one, and each time the description was more confident than the evidence behind it. v2.5 inspected a **Godot** project at a commit this repository has never held; its Registry marked six systems absent or contradictory that had shipped and been device-verified; and a **72%** shelter figure persisted against a **45%** that was measured through `reconcile` and read off the rendered line ([[D-093]]).
+
+**Why the default inverts.** A design document is authoritative about intent because intent is what it contains. It is not authoritative about as-built state, because as-built state is not in it — only the repository and its ledger can witness that. Treating the two the same is how a stale row becomes a work order.
+
+**THE SPLIT VERDICT IS NOW THE STANDING DEFAULT** for every external document, not a ruling made per document: **design content received normally; build-state claims quarantined until cross-checked.** [[D-071]] and [[D-093]] are its precedents rather than its exceptions.
+
+This is the same discipline as the visibility clarification ([[D-088]]) — *a fetch failure never proves a repository private; existence is witnessed by metadata* — applied one level up. **An absence of evidence in a document is not evidence of absence in the build.**
+
+**REGISTER CREDIT.** Law 128's **stressed-material implementation** ([[D-094]]) is **ratified as the canonical reading of the law going forward**: a failed attempt wears the one material the operation actually stressed — the cord that slipped, not the timber it was tied around — each material failing its own way and always the same way, with loss earned across several attempts and announced before it happens.
+
+**Class: OPERATIVE** — the rule governs reception immediately, and its mechanism is the cross-check itself.
+
 **D-094 · 2026-07-31 — SLICE 2C, "THE MAKER'S HANDS": LAW 128 SHIPPED, LAWS 126/127 NOT STARTED.** **259/259 device checks**, **640 unit tests**, zero failures, from `8400ceb`. Slice 2C is **PARTIAL and named as such** — one of its four items is done, and the reason the other three are not is in the sequencing, not in the effort.
 
 **LAW 128 — THE POSITIVE HALF, SHIPPED.** [[D-092]]'s pre-scan found this law's phrasing points the wrong way for us: it reads as a prohibition — *"must NEVER simply delete intact inputs on failure"* — and we were not violating it. **We were doing nothing at all.** Inputs came out of a failed attempt untouched, because materials are consumed only on success. That absence was quietly teaching that the world is indifferent to what you do to it, and that the same stone may be hammered forever while staying perfect.
