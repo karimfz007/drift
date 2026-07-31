@@ -730,12 +730,30 @@ async function main() {
     // ================================================================
     console.log('\nD-040 — the five director defects, root-caused and locked');
 
-    //  #3/#4 THE FIRE: fresh run, broad DAYLIGHT, no axe, exactly the wood for a fire and
-    //  nothing else. In C03 this hid Build-fire behind Craft-axe. It must not, ever again.
-    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
+    //  #3/#4 THE FIRE: broad DAYLIGHT, no axe, exactly the wood for a fire. In C03 this hid
+    //  Build-fire behind Craft-axe, and it must not, ever again.
+    //
+    //  AMENDED FOR LAW 130 (Bible v2.4). This setup used to hold NO fibre and rely on fire
+    //  being pre-known, which is the very thing Law 130 forbids — and the check duly failed
+    //  the moment the law landed, reporting `built false, wood 5`. What D-040/D-042 actually
+    //  guaranteed was that fire is never gated on the TIME OF DAY or on owning an axe, and
+    //  that guarantee is untouched. So the survivor now KNOWS fire (a torch already made,
+    //  which is fire-craft demonstrated) and the check asserts the same thing it always
+    //  meant: knowing how, in daylight, without an axe, the fire goes up.
+    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
     const clockNow = await page.evaluate(() => document.querySelector('.clock')?.textContent ?? '');
     const isDaytime = /^(0[6-9]|1[0-7]):/.test(clockNow);
     check('REGRESSION #3/#4 setup — it is broad daylight, no axe, 5 wood', isDaytime, `clock ${clockNow}`);
+    //  LAW 130, on the player path: the same daylight, the same wood, and NO knowledge —
+    //  the primary action must not be "Build fire". This is the entry-point check the
+    //  standing corollary requires for anything new-player-facing.
+    await editSave('state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 }; state.blueprints = []; state.warmth = 100; state.gameHoursElapsed = 18;');
+    const unknownFire = await actionText();
+    check('LAW 130 — a survivor who does not know fire is NOT offered it, holding the wood for one',
+        !unknownFire || !/build fire/i.test(unknownFire.text),
+        unknownFire ? `primary action reads "${unknownFire.text}"` : 'no primary action offered');
+
+    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
     const fireAction = await actionText();
     check('REGRESSION #3/#4 — "Build fire" IS the primary action (not hidden by Craft)', !!fireAction && /build fire/i.test(fireAction.text) && fireAction.shown && fireAction.ready, fireAction ? `"${fireAction.text}" ready=${fireAction.ready}` : 'no action');
     await shot('c04-04-buildfire-daylight');
