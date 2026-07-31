@@ -110,6 +110,62 @@ export const TUNE = {
      *  of a combination, and separately could not read the yield at the big stone node —
      *  one mechanism, one complaint, one fix. */
     floatTextMs: 2200,
+
+    //  ---- LAW 118: THE HEAT BALANCE (Bible v2.4) ---------------------------------------
+    //  Sleep has NO direct positive warmth term. These are the live inputs that replaced it.
+    //
+    //  CALIBRATED TO REPRODUCE THE SHIPPED AWAKE RATES EXACTLY, so the only behaviour this
+    //  law changes is the one it is about. A fed, dry, awake survivor in daylight nets ZERO
+    //  (metabolic exactly offsets the baseline loss); at night outdoors, -12; under a crude
+    //  roof, -6.6; beside a fire at night, +30. Those are the shipped numbers, and the first
+    //  night's pacing rests on them. What changes is sleep, which now runs this balance like
+    //  everything else instead of setting a floor under it.
+    /** [TUNE] Heat a fed, working body makes per game hour. */
+    thermalMetabolicBase: 5.0,
+    /** [TUNE] A sleeping body's effort multiplier — the LOWEST of any state. This is the
+     *  honest replacement for the deleted sleep bonus, and it points DOWNWARD: an
+     *  unprotected night is worse asleep than awake, which is the physical truth the old
+     *  `Math.max` refused to say. */
+    thermalRestingActivity: 0.55,
+    /** [TUNE] What a starving body can still generate, as a fraction. Cold and hunger
+     *  compound rather than merely coexisting. */
+    thermalStarvedMetabolicFloor: 0.35,
+    /** [TUNE] Baseline body-to-air loss, which a fed awake body exactly cancels — this is
+     *  what makes a mild day net zero without giving metabolism a free ride. */
+    thermalBaselineLoss: 5.0,
+    /** [TUNE] What a clear night takes, before any roof. With wind (3) this sums to the
+     *  shipped 12 outdoors, and a crude roof reduces BOTH — which is what keeps F3's
+     *  certified 45% intact. */
+    thermalNightLoss: 9,
+    /** [TUNE] A fire you are beside. 42 rather than 30 because it is now ADDITIVE against the
+     *  night loss it has to overcome: 42 - 12 = the shipped +30 at night, and a fire in mild
+     *  air is worth more, which is physically right and was not expressible before. */
+    thermalFireGain: 42,
+    /** [TUNE] ...and the same fire in a sealed space. Scenario five: warmth can rise past
+     *  comfortable into heat strain, because more warmth is not automatically better. */
+    thermalEnclosedFireMultiplier: 1.9,
+    /** [TUNE] Wind, at night and unsheltered. There is no wind model yet, so it applies where
+     *  it actually bites: an open night. A roof is not a windbreak, and the two stay separate
+     *  because a lean-to open to the weather is the case being slept through. */
+    thermalWindLoss: 3.0,
+    /** [TUNE] Conduction into what you are lying on — ONLY while lying on it. Applying this
+     *  to someone standing up was my own first error here: a walking survivor is not losing
+     *  heat through their whole back. Bare ground takes more than the wind does. */
+    thermalGroundLossBare: 4.0,
+    thermalGroundLossCover: 2.0,
+    thermalGroundLossBedding: 0.6,
+    /** [TUNE] Evaporative loss at maximum wetness, as its OWN additive term. The shipped
+     *  model multiplied the outdoor night drain, so being wet cost nothing under a roof or
+     *  beside a fire — Law 118 wants the real thing, and wet costs you everywhere. */
+    thermalWetLoss: 6.0,
+    /** [TUNE] How much clothing blunts passive loss, and wind specifically. Never wetness. */
+    thermalClothingInsulation: 0.45,
+    thermalClothingWindShield: 0.6,
+    /** [TUNE] The comfort band and its two costly ends (§12: overheating matters too). */
+    thermalHypothermicAt: 12,
+    thermalComfortLow: 45,
+    thermalComfortHigh: 82,
+    thermalHeatStrainAt: 95,
     combineMinInputs: 2,
     combineMaxInputs: 4,
 

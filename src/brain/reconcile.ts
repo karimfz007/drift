@@ -20,6 +20,7 @@
 import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
 import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
+import { netHeatFlowPerGameHour } from './thermal';
 import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
@@ -30,7 +31,6 @@ import {
     isPlayerInFireRadius,
     regrowGameHoursFor,
     salvageIntervalGameHours,
-    shelterWarmthMultiplierFor,
     spawnSalvageNode
 } from './state';
 import { deathCauseFrom, healthRatePerGameHour, vitalLowerBound } from './vitals';
@@ -124,22 +124,63 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         //  Wetness at THIS segment's start — wet's own rate is fixed for the whole span
         //  (position doesn't change offline), so this is exact, not an approximation, even
         //  though it is recomputed per segment to feed warmth's rate below.
+        //  Wetness now feeds the heat balance as its own evaporative term rather than as a
+        //  multiplier on a night-drain constant — being wet costs you under a roof too, which
+        //  a multiplier on the outdoor drain could never express.
         const wetNow = clampBand(wet + wetRate * (clock - startClock), 0, TUNE.wetMax);
-        const wetWarmthMultiplier = 1 + (TUNE.wetWarmthDrainMultiplierAtMaxWet - 1) * (wetNow / TUNE.wetMax);
 
         // Rates for this segment (per game hour). They stay constant until a boundary.
-        const awakeWarmthRate = lit && sheltered
-            ? TUNE.warmthRegenPerGameHourAtFire
-            : nightNow
-                ? -TUNE.warmthDrainPerGameHourNight * (shelterActive ? shelterWarmthMultiplierFor(state.shelter.grade) : 1) * wetWarmthMultiplier
-                : 0;
-        //  Ch.6: asleep, warmth recovers at its own rate — but never SLOWER than being
-        //  awake in the same spot would have been, so sleeping beside a roaring fire still
-        //  gets the fire's much better rate. `Math.max` is what makes sleep strictly
-        //  non-harmful rather than merely usually-better.
-        const warmthRate = restingNow
-            ? Math.max(awakeWarmthRate, TUNE.warmthRecoveryPerGameHourResting * TUNE.sleepRecoveryMultiplier * restScale)
-            : awakeWarmthRate;
+        //
+        //  LAW 118 (Bible v2.4). Warmth's rate IS the net heat flow — there is no sleep term
+        //  here any more, and its absence is the fix. What stood here was:
+        //
+        //      Math.max(awakeWarmthRate, warmthRecoveryPerGameHourResting × sleepRecoveryMultiplier × restScale)
+        //
+        //  ...a positive floor under warmth that the physical situation could never pull
+        //  below, so wind, wet, bare ground and no fire were all outranked by the act of
+        //  lying down. That produced the director's 2am reading: very low warmth, a rough
+        //  night in the open, and waking above 60. The `Math.max` was written to make sleep
+        //  "strictly non-harmful", and that intent was the bug — sleeping unprotected on a
+        //  wet night IS harmful, and a model that refuses to say so teaches something false.
+        //
+        //  Sleep still does everything else it did: energy recovers, fatigue sheds. What it
+        //  changes THERMALLY is real and points downward — a sleeping body makes less
+        //  metabolic heat than a working one, which `thermalRestingActivity` carries.
+        const warmthRate = netHeatFlowPerGameHour({
+            isNight: nightNow,
+            sheltered: shelterActive,
+            shelterGrade: shelterActive ? state.shelter.grade : null,
+            //  Wind is AMBIENT — it is blowing whether or not you have a roof, and the roof
+            //  reduces your exposure to it rather than deleting it. Wiring this as
+            //  `!shelterActive` was my second error here: it removed wind entirely under a
+            //  roof, so an unsheltered night cost 12 and a sheltered one 4.95, and F3's
+            //  certified 45% reduction read 58.6%. The model already scales wind by the
+            //  grade multiplier; the caller just has to stop pre-deciding it.
+            windExposed: true,
+            fireLit: lit,
+            atFire: sheltered,
+            wet: wetNow,
+            //  Bedding is the term the shelter buys you. On open ground you are on the ground.
+            bedding: shelterActive ? 'dry-bedding' : restingNow ? 'ground-cover' : 'bare-ground',
+            clothing: 0,
+            resting: restingNow,
+            activity: 1,
+            //  NOT `hunger`. The starvation term is real and tested in `thermal.ts`, but
+            //  feeding a CONTINUOUSLY VARYING vital into warmth's rate breaks reconcile's
+            //  composition law: segment-stepping holds hunger flat across a segment while
+            //  frame-stepping moves it every frame, so "away in one call == ticked frame by
+            //  frame" diverged by 0.17 warmth over a long absence. That law is what makes
+            //  offline and online agree at all, and it outranks a second-order term.
+            //
+            //  Fixed nutrition here is therefore deliberate and NAMED, not an oversight. To
+            //  couple them honestly the segment stepper needs hunger-crossing boundaries the
+            //  way it already has day/night and fuel boundaries — a real piece of work, and
+            //  the follow-up this note exists to hand over.
+            nutrition: 100,
+            //  Nothing shipped is a sealed space yet; the term exists so scenario five is
+            //  reachable the moment one does, rather than being retrofitted later.
+            enclosed: false,
+        }).net;
         const thirstRate = -TUNE.thirstDrainPerGameHour;
         const hungerRate = -TUNE.hungerDrainPerGameHour;
         const healthRate = healthRatePerGameHour(thirst, hunger, warmth, health, online);

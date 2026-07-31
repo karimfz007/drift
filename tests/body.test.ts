@@ -170,7 +170,24 @@ describe('body — the rest redesign: a rate, never a jump (Ch.6 part 2)', () =>
         expect(session.state.resting).toBe(false);
     });
 
-    it('sleeping beside a roaring fire is never WORSE for warmth than sitting beside it', () => {
+    /**
+     * SUPERSEDED BY LAW 118 (Bible v2.4, [[D-091]]). The original read:
+     *
+     *     "sleeping beside a roaring fire is never WORSE for warmth than sitting beside it"
+     *
+     * ...and it was the Ch.6 expression of exactly the mechanism Law 118 retires. It passed
+     * because `reconcile` gave sleep a positive warmth floor via `Math.max`, which is what
+     * produced the director's 2am reading. Keeping it would have locked the retired behaviour
+     * in place as a regression test — the way a decision to retire something gets quietly
+     * overruled by its own suite.
+     *
+     * What replaces it is the honest version of the same concern. Sleeping IS slightly worse
+     * thermally than sitting, because a resting body makes less metabolic heat — but beside a
+     * fire the balance is still strongly positive, so lying down never turns a warm night
+     * cold. That is the real guarantee worth holding: sleep costs you a little heat, and
+     * never costs you the fire.
+     */
+    it('sleeping beside a roaring fire still WARMS you — sleep costs a little heat, never the fire', () => {
         const oneHour = realSecondsPerGameHour;
         const awake = shelteredAt(run());
         awake.warmth = 40;
@@ -179,7 +196,11 @@ describe('body — the rest redesign: a rate, never a jump (Ch.6 part 2)', () =>
 
         const awakeAfter = reconcile(awake, oneHour).state.warmth;
         const asleepAfter = reconcile(asleep as GameState, oneHour).state.warmth;
-        expect(asleepAfter).toBeGreaterThanOrEqual(awakeAfter - 1e-9);
+        expect(asleepAfter, 'still gaining beside the fire').toBeGreaterThan(40);
+        //  ...and Law 118's direction: the sleeping body is the cooler one, because it is
+        //  making less heat. A model where lying down warms you for free is the defect.
+        expect(asleepAfter, 'a resting body makes less heat than a working one')
+            .toBeLessThan(awakeAfter);
     });
 });
 
