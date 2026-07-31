@@ -3,6 +3,32 @@
 
 ---
 
+**D-094 · 2026-07-31 — SLICE 2C, "THE MAKER'S HANDS": LAW 128 SHIPPED, LAWS 126/127 NOT STARTED.** **259/259 device checks**, **640 unit tests**, zero failures, from `8400ceb`. Slice 2C is **PARTIAL and named as such** — one of its four items is done, and the reason the other three are not is in the sequencing, not in the effort.
+
+**LAW 128 — THE POSITIVE HALF, SHIPPED.** [[D-092]]'s pre-scan found this law's phrasing points the wrong way for us: it reads as a prohibition — *"must NEVER simply delete intact inputs on failure"* — and we were not violating it. **We were doing nothing at all.** Inputs came out of a failed attempt untouched, because materials are consumed only on success. That absence was quietly teaching that the world is indifferent to what you do to it, and that the same stone may be hammered forever while staying perfect.
+
+A failed attempt now puts wear on **the one material the operation actually stressed** — the cord that slipped, not the timber it was tied around; a blade takes the edge damage before anything else. Each material fails **its own way and always the same way**, so a player who has cracked one stone recognises the next: wood splits along the grain, fibre frays where it was pulled, a blade loses its edge.
+
+**LOSS IS EARNED AND ANNOUNCED.** A unit goes only after wear crosses a threshold — never on the first attempt — and the survivor is **warned plainly before it does**, with breaking reported as breaking rather than folded into the same message. §11 names *"a rare critical part deleted by a hidden failed-craft roll"* as an automatic whole-game failure condition, so matter can only wear out **in front of you**. Success still consumes and does not wear; the two paths stay separate and are tested apart.
+
+Save **v13 → v14**, filling rather than overwriting, starting empty — nothing wore a returning survivor's materials out while the game was closed.
+
+**Class: OPERATIVE** — `src/brain/matter.ts`, read by the failure path in `experiment.ts` and carried to the player through `announcementFor`.
+
+*Witness: `tests/matter.test.ts` (12), fail-then-pass against the pre-law behaviour, `tools/smoke.mjs` 259/259 at `8400ceb`.*
+
+---
+
+**NOT STARTED, and why — this is a sequencing verdict, not a shortfall.**
+
+**LAW 126 (retire the global Build entry point) is BLOCKED BY ITS OWN RAIL.** The instruction is explicit: *do not ship the removal before the Backpack's three tabs and the contextual construction flow can replace every one of those 25 references.* Those replacements do not exist, so removing the entry point would be **subtraction alone** — the precise failure Stage 2B was resequenced to avoid ([[D-088]]). The pre-scan's count stands: **21 harness references plus 2 body plus 2 `index.html`.**
+
+**LAW 127 (position 3) needs an enabler that is not in the world.** The law gates the third staged position on a **physical** enabler — a work mat or ground notch — *"not just accumulated experience."* No such object exists: there is no work-surface entity, no placement for one, and no acquisition path. Building the gate without the enabler would make position 3 unreachable and would fail the **REACHABILITY-PROOF law** ([[D-090]]) at the first harness check. The gate and its enabler are one piece of work and must ship together.
+
+**KNOWN-MULTIPLE-RESULTS is downstream of Law 126's staging surface.** The choice has to be offered somewhere, and the surface it belongs on is the contextual construction flow that Law 126 introduces. Bolting it onto the retiring Build panel would build it twice.
+
+**Position 4+** is named as the next slice's work, per the brief, and is not begun.
+
 **D-093 · 2026-07-31 — Design Bible v2.5 RECEIVED: SPINE ADOPTED, SNAPSHOT CORRECTED** (⚑ director's attachment, C1's constitutional pen). A **split verdict**, because the document's integration argument and its as-built record are of very different quality.
 
 **ADOPTED, without reservation.** §3's **System Contract** (eleven fields, and a feature missing one is not ready for production) · §3.1's **orphan rule** · §3.2's **five independent axes** (Canon / Build / Automated evidence / Human evidence / Release) and its ruling that **no single word such as "SHIPPED" may replace that record** · §4's **fifteen-phase playable spine** as the first proof route · §5's twenty-six weak points as the standing audit list · §6's **quantitative constitution** · §11's automatic failure conditions.
