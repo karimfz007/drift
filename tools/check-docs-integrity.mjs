@@ -139,6 +139,56 @@ function main() {
     }
 
     const governed = [...defined].filter((d) => Number(d) >= FIRST_GOVERNED).length;
+    //  ---- VACUITY CLAUSE (e), D-097: an edit must witness its landing ----------------
+    //
+    //  This check has always verified that every D-reference RESOLVES. It never verified that
+    //  the prose around a reference was CURRENT — so drift_state.md's Slice 2C line sat two
+    //  sessions stale, still reading "NOT STARTED" while the ledger had moved through D-094
+    //  and D-096, and this check stayed green throughout. A green check said the document was
+    //  fine; the document was two sessions out of date.
+    //
+    //  "Is this prose true?" is not machine-decidable. THIS is: the MASTER PLAN line must cite
+    //  every SLICE-BEARING decision. If a slice closes, or a boundary within one lands, and
+    //  the plan never mentions it, the plan is behind by construction.
+    //
+    //  A NUMERIC TOLERANCE WAS TRIED FIRST AND REJECTED. "No more than five decisions behind"
+    //  passed a deliberate rollback of the exact failure it was written for — the real drift
+    //  was four entries, inside the slack. A check calibrated loosely enough to miss its own
+    //  founding case is decoration, so the signal is now the thing itself rather than a
+    //  proxy for it.
+    const stateBody = readFileSync(join(DOCS_DIR, 'drift_state.md'), 'utf8');
+    const planLine = stateBody.split(String.fromCharCode(10))
+        .find((l) => l.trimStart().startsWith('**MASTER PLAN')) || '';
+    const citedInPlan = new Set(Array.from(planLine.matchAll(/D-(\d+)/g)).map((m) => m[1]));
+
+    //  A slice-bearing entry: its headline names a SLICE and reports movement on it. Docs,
+    //  law and fix entries legitimately never touch the plan and are not required to.
+    const sliceBearing = [];
+    for (const line of decisionsLogText.split(String.fromCharCode(10))) {
+        const m = DEFINITION_RE.exec(line);
+        if (!m) continue;
+        const head = line.slice(0, 400);
+        const namesSlice = /SLICE\s+\d/i.test(head);
+        const reportsMovement = /CLOSED|PARTIAL|BOUNDARY|NOT STARTED/i.test(head);
+        if (namesSlice && reportsMovement) sliceBearing.push(m[1]);
+    }
+    //  Only the NEWEST slice-bearing entry must appear. Requiring all of them cried wolf on
+    //  D-080, which opened Slice 1 — long since superseded by D-085 closing it, and the plan
+    //  is right not to still be citing it. The crisp rule is: whatever most recently MOVED a
+    //  slice has to be in the plan. That is exactly the drift that went unnoticed, and it
+    //  leaves the historical record alone.
+    const newestSliceBearing = sliceBearing.length ? sliceBearing[0] : null;
+    const uncited = newestSliceBearing && !citedInPlan.has(newestSliceBearing)
+        ? [newestSliceBearing] : [];
+    if (uncited.length > 0) {
+        console.error('Docs-integrity check FAILED: the MASTER PLAN line is stale.');
+        console.error('  slice-bearing decisions it never mentions: '
+            + uncited.map((id) => 'D-' + id).join(', '));
+        console.error('  Update drift_state.md, then re-run. Per D-097, verify the edit landed:');
+        console.error('  grep the new text PRESENT and the superseded text ABSENT.');
+        process.exit(1);
+    }
+
     console.log(`Docs-integrity check passed: ${defined.size} decisions defined, every D-reference across ${files.length} living docs resolves, and all ${governed} decision(s) under build law 12 declare an effectivity class.`);
 }
 

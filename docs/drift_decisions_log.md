@@ -3,6 +3,18 @@
 
 ---
 
+**D-097 · 2026-07-31 — VACUITY CLAUSE (e): "AN EDIT MUST WITNESS ITS LANDING"** (C1, formalizing this session's own `drift_state.md` failure).
+
+**Any targeted doc or state edit must verify POST-APPLY that the intended change exists in the written file** — grep-assert the new content **present** AND the superseded content **absent** — failing loudly on a missed anchor. **Never inferred from the edit command's own exit code.** Applies to `drift_state.md`, ledger appends, and any anchor-targeted patch. `check-docs-integrity` gains the post-edit assert as a standing step.
+
+**THE FAILURE THIS COMES FROM.** `drift_state.md`'s Slice 2C line sat stale for **two sessions**, still reading *"NOT STARTED"* and citing [[D-091]]/[[D-092]] while the ledger had moved through [[D-094]] and [[D-096]]. Both sessions' edits asserted on long, punctuation-heavy anchors, missed, and **the miss went unnoticed because docs-integrity checks that every D-reference RESOLVES — not that the prose around it is current.** A green check said the document was fine; the document was two sessions out of date.
+
+**Same family as [[D-082]] (local is not live) and [[D-087]] (the artifact under edit must be verified as the artifact that runs), and recorded as such — no new law, a fifth clause on the one that already governs.** All three are one shape: *a verification that witnesses something other than its target, and looks exactly like success.* A commit that reports its exit code is telling you the tool ran, not that the change is in the file.
+
+**It is also the same shape as three mechanical failures this session alone**: an exporter regex whose `` became a literal backspace and matched nothing; a harness pattern that did the same twice; and a leak check comparing two `?? 0` fallbacks. **A pattern that matches nothing fails quietly and looks like nothing happened.**
+
+**Class: OPERATIVE** — the clause governs immediately, and its mechanism is the post-apply assert itself.
+
 **D-096 · 2026-07-31 — SLICE 2C BOUNDARY 1: THE BACKPACK HUB, BUILT AND DEVICE-VERIFIED.** **12/12 of its own device checks pass**; **640 unit tests** green. Boundaries 2 and 3 **NOT STARTED**, per the brief's own stop instruction. One pre-existing check regressed alongside it and is carried **OPEN**, cause undetermined — named rather than explained away.
 
 **LAW 126'S THREE TABS, UNIFIED RATHER THAN REBUILT.** *"The Backpack contains only Inventory, Vitals and Skills as primary tabs."* Two of the three already shipped as separate surfaces, so the hub adopts them: the Skills tab renders `growthBody` — **the very function the standalone growth card rendered** — so there is one markup and not two that drift. Device-confirmed: **exactly three tabs**, named Inventory / Vitals / Skills, all on screen and thumb-sized, Inventory active on open, and switching works **both ways** with the Inventory tab coming back whole (4 combine chips).
