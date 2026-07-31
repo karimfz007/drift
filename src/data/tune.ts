@@ -166,6 +166,15 @@ export const TUNE = {
     thermalComfortLow: 45,
     thermalComfortHigh: 82,
     thermalHeatStrainAt: 95,
+    //  ---- LAW 128: a failed attempt transforms matter (Slice 2C) ----------------------
+    /** [TUNE] Wear one failed attempt puts on the material it actually stressed. */
+    matterWearPerFailure: 1,
+    /** [TUNE] Wear a unit will take before it finally goes. THREE failures, not one: loss
+     *  must be earned and announced, never a hidden roll deleting a rare part (§11 names
+     *  that as an automatic whole-game failure condition). */
+    matterWearPerUnit: 3,
+    /** [TUNE] Fraction of the threshold at which the survivor is warned plainly. */
+    matterNearlySpentAt: 0.66,
     combineMinInputs: 2,
     combineMaxInputs: 4,
 

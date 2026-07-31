@@ -12,6 +12,7 @@ import { freshLoadout } from './loadout';
 import { SCHEMA_VERSION, type Blueprint, type GameState, type MaterialKind } from './types';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
+import { freshMatterWear } from './matter';
 import { createInitialState } from './state';
 
 /** Keep a loaded vital in [0, max]; fall back to a fresh-run default if it is not a number. */
@@ -94,6 +95,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 10) current = migrateV10toV11(current);
     if (current.schemaVersion === 11) current = migrateV11toV12(current);
     if (current.schemaVersion === 12) current = migrateV12toV13(current);
+    if (current.schemaVersion === 13) current = migrateV13toV14(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -482,6 +484,23 @@ function migrateV12toV13(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v13 → v14 (Slice 2C, Law 128): accumulated matter wear.
+ *
+ * Starts EMPTY, and fills rather than overwrites — a returning survivor's materials are as
+ * good as they left them, which is the honest reading: nothing wore them out while the game
+ * was closed. Wear is a record of attempts, and no attempts happened.
+ */
+function migrateV13toV14(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        matterWear: { ...freshMatterWear(), ...old.matterWear },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -510,6 +529,7 @@ function hydrate(state: GameState): GameState {
         //  compares them — the same class of failure the TUNE mirror's Proxy exists to make
         //  loud rather than quiet.
         capacities: { ...base.capacities, ...state.capacities },
+        matterWear: { ...base.matterWear, ...state.matterWear },
         confidence: {
             lastPractisedGameHours: {
                 ...base.confidence.lastPractisedGameHours,

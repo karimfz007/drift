@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -271,6 +271,7 @@ export interface TraceState {
  */
 import type { CapacityScores } from './capacities';
 import type { ConfidenceState } from './confidence';
+import type { MatterWear } from './matter';
 
 export interface KnowledgeEvent {
     kind: 'combination-tried';
@@ -450,6 +451,12 @@ export interface GameState {
      * every read, so there is no second source of truth to drift from the clock.
      */
     confidence: ConfidenceState;
+    /**
+     * Law 128 (v14): accumulated wear per material kind, put there by failed attempts. Matter
+     * comes out of a failure CHANGED — and a unit is only ever lost after wear the player was
+     * told about, never to a hidden roll.
+     */
+    matterWear: MatterWear;
     /** The six physical access zones (v0_7 §9, D-063). Hands/belt/pockets hold specific
      *  items by position; the backpack is `inventory` and nearby storage is `storage`. */
     loadout: LoadoutState;

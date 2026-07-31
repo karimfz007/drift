@@ -29,6 +29,7 @@ import { TUNE } from '../data/tune';
 import { applyLearningEvent, tryFactorsFor } from './knowledge';
 import { materialSatisfies } from './materials';
 import { suspicionFor } from './discovery';
+import { transformOnFailure, type MatterOutcome } from './matter';
 import { allRecipes, type Recipe, type RecipeSlot } from './recipes';
 import type { Blueprint, GameState, ItemGrade, KnowledgeDomain, MaterialKind } from './types';
 
@@ -47,6 +48,8 @@ export interface ExperimentResult {
     blueprint: Blueprint | null;
     /** The recipe the pair belongs to, when they belong to one at all. */
     recipeId: string | null;
+    /** Law 128: what the failed attempt did to the matter. Null on any non-failure path. */
+    matter?: MatterOutcome | null;
     /** What the attempt actually cost — surfaced so the cost is never invisible. */
     spent: { energy: number; gameHours: number; hunger: number; thirst: number } | null;
 }
@@ -325,10 +328,18 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[]): Exp
     const succeeded = seedFraction(seed) < successChanceFor(state, domain);
 
     if (!succeeded) {
+        //  LAW 128's POSITIVE HALF (Slice 2C). The attempt was real and it happened to real
+        //  matter, so the matter comes out changed. Before this, a failure cost the body and
+        //  left the inputs pristine — which quietly taught that the world is indifferent to
+        //  what you do to it, and that you may hammer the same stone forever.
+        const matter = transformOnFailure(state, materials);
         return {
             ok: true,
             outcome: 'failed-attempt',
-            reason: 'Close — it did not hold together this time. Your hands learned something anyway.',
+            reason: matter
+                ? `Close — it did not hold together this time. ${matter.note}`
+                : 'Close — it did not hold together this time. Your hands learned something anyway.',
+            matter,
             blueprint: null,
             recipeId: recipe.id,
             spent
@@ -441,7 +452,12 @@ export function announcementFor(result: ExperimentResult): ExperimentAnnouncemen
                 presentation: 'float',
             };
         case 'failed-attempt':
-            return { text: 'It does not hold. Not this time.', triumphant: false, presentation: 'explain' };
+            return {
+                //  Law 128: name what the matter did, so a failure leaves evidence the
+                //  player can see rather than only a body cost they infer.
+                text: result.matter ? `It does not hold. ${result.matter.note}` : 'It does not hold. Not this time.',
+                triumphant: false, presentation: 'explain',
+            };
         case 'no-relationship':
             return { text: 'Nothing comes of it. You note that down.', triumphant: false, presentation: 'explain' };
         case 'already-known':
