@@ -522,7 +522,18 @@ export class Game {
      * card's own handoff failed a session ago.
      */
     private openLoadout(atStorage = false, tab: BackpackTab = 'inventory', reopening = false): void {
-        if (runtime.panelOpen && !reopening) return;
+        //  FAIL-LOUD (D-046(d)): silence is never a legal outcome. This used to `return`
+        //  without a word when a panel was already open, and that silence cost this session
+        //  four device runs — a storage tap became a no-op, and the failure surfaced six
+        //  hundred checks later as an unrelated "panel ABSENT" with nothing pointing back.
+        //
+        //  It is a real player-facing defect too, not only a debugging one: a survivor who
+        //  taps their store box and gets nothing has been told nothing about why. Now the
+        //  refusal explains itself and leaves the same breadcrumb every other dead tap does.
+        if (runtime.panelOpen && !reopening) {
+            this.explain('Something else is open. Close it first.');
+            return;
+        }
         if (!reopening) this.beginPanel();
         //  The open path runs INSIDE the control transfer, so if any of it throws the game
         //  would be left holding control with nothing on screen to give it back. Hand it

@@ -1152,8 +1152,21 @@ async function main() {
         growth.open
             ? `${(growth.text ?? '').length} chars, digit runs [${digitRuns.join(', ')}], leaked [${leaked.join(', ')}]`
             : 'panel never opened');
-    await realTapDom('.panel.growth .close-btn');
-    await sleep(400);
+    const growthClose = await realTapDom('.panel.growth .close-btn');
+    await sleep(450);
+    const afterGrowthClose = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel')),
+        locked: window.__drift?.panelOpen?.() === true,
+    }));
+    //  ROOT CAUSE, ISOLATION RUN. This close fired into the void: the Skills tab is the
+    //  tallest, and adding the Backpack's tab bar pushed its Close button below a 412px
+    //  landscape fold, so `realTapDom` correctly refused an off-screen target — and nothing
+    //  looked at the answer. The panel stayed open, the lock stayed held, and a storage tap
+    //  six hundred lines later became a silent no-op reported as "panel ABSENT". Firing a
+    //  close and not reading its result is how a local miss becomes a distant mystery.
+    check('FIX 1 — the growth/Skills tab closes, and hands the lock back',
+        growthClose.ok && !afterGrowthClose.panel && !afterGrowthClose.locked,
+        `close ${growthClose.ok} ${growthClose.reason ?? ''}, panel ${afterGrowthClose.panel}, locked ${afterGrowthClose.locked}`);
 
     //  FIX 2 — THREE MATERIALS, THROUGH THE REAL UI. The brain-side reachability proof lives
     //  in tests/combine-reach.test.ts; what no unit test can reach is whether a thumb can
@@ -1341,6 +1354,53 @@ async function main() {
     check('SLICE 2C — the hub closes and hands control back, so nothing downstream inherits the lock',
         hubClose.ok && !afterHub.panel && !afterHub.locked,
         `close ${hubClose.ok}, panel ${afterHub.panel}, locked ${afterHub.locked}`);
+
+    //  REACHABILITY PROOF, EVERY TAB. The regression this closes was not "a tab renders
+    //  wrong" — every tab rendered perfectly. It was that the TALLEST tab's Close button sat
+    //  below the fold, so the panel could be opened and not closed, and a held lock travelled
+    //  six hundred lines before surfacing as an unrelated failure.
+    //
+    //  So the proof is per-tab and it is about REACH, not content: on every one of Law 126's
+    //  three tabs, the tab bar and the Close button must both be inside the viewport. This is
+    //  the same guarantee ONE-THUMB REACH makes for the radial circle, and the same one FIX 1
+    //  made for the morning report in 2026-07-23 — a control you cannot reach is a control
+    //  that does not exist, however correct the thing behind it.
+    await realTapDom('.carried-button');
+    await sleep(450);
+    const reach = [];
+    for (const t of ['inventory', 'vitals', 'skills']) {
+        const switched = await realTapDom(`.backpack-tab[data-tab="${t}"]`);
+        await sleep(400);
+        const box = await page.evaluate(() => {
+            const close = document.querySelector('.panel.backpack .close-btn');
+            const tabs = document.querySelector('.backpack-tabs');
+            const vh = window.innerHeight;
+            const c = close ? close.getBoundingClientRect() : null;
+            const b = tabs ? tabs.getBoundingClientRect() : null;
+            return {
+                closeOnScreen: Boolean(c) && c.top >= 0 && c.bottom <= vh + 0.5 && c.height > 0,
+                tabsOnScreen: Boolean(b) && b.top >= 0 && b.bottom <= vh + 0.5 && b.height > 0,
+                closeBottom: c ? Math.round(c.bottom) : -1,
+                viewport: vh,
+            };
+        });
+        reach.push({ tab: t, switched: switched.ok, ...box });
+    }
+    const unreachable = reach.filter((r) => !r.closeOnScreen || !r.tabsOnScreen);
+    check('SLICE 2C — REACHABILITY: on EVERY tab, the tab bar and Close are both on screen',
+        unreachable.length === 0,
+        reach.map((r) => `${r.tab}: close ${r.closeBottom}/${r.viewport}${r.closeOnScreen ? '' : ' OFF-SCREEN'}${r.tabsOnScreen ? '' : ' TABS-OFF'}`).join(' | '));
+
+    const reachClose = await realTapDom('.panel.backpack .close-btn');
+    await sleep(450);
+    const afterReach = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel')),
+        locked: window.__drift?.panelOpen?.() === true,
+    }));
+    check('SLICE 2C — and the tallest tab can actually be LEFT (the regression, directly)',
+        reachClose.ok && !afterReach.panel && !afterReach.locked,
+        `close ${reachClose.ok} ${reachClose.reason ?? ''}, panel ${afterReach.panel}, locked ${afterReach.locked}`);
+
 
     // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
@@ -1817,10 +1877,15 @@ async function main() {
         panelOpen: window.__drift?.panelOpen?.() === true,
         pending: window.__drift?.live?.().pending ?? null,
         anyPanel: document.querySelector('.panel')?.className ?? 'none',
+        //  Which tab, and what the refusal said — the two facts that name the leftover panel
+        //  instead of merely proving one exists. The fail-loud guard now speaks, so a tap
+        //  that finds a panel already open reports WHY rather than vanishing.
+        activeTab: document.querySelector('.backpack-tab.active')?.textContent?.trim() ?? 'none',
+        hint: document.querySelector('.hint')?.textContent?.trim() ?? '',
     }));
     check('DIAGNOSTIC — the state the empty-box tap was made in',
         true,
-        `dist ${distToBox.toFixed(1)}m, tap ${JSON.stringify(boxTap)}, stored ${JSON.stringify(boxNow.storage.stored)}, carrying wood ${boxNow.inventory.wood}, ${JSON.stringify(boxDiag)}`);
+        `dist ${distToBox.toFixed(1)}m, tap ${JSON.stringify(boxTap)}, stored ${JSON.stringify(boxNow.storage.stored)}, carrying wood ${boxNow.inventory.wood}, ${JSON.stringify(boxDiag)}, hint "${boxDiag.hint}"`);
     const emptyBox = await page.evaluate(() => {
         const el = document.querySelector('.panel.loadout');
         if (!el) return null;

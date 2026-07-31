@@ -482,7 +482,24 @@
         /*  THE BACKPACK HUB'S TABS (Law 126). Three, by law — Inventory, Vitals, Skills.
             Big enough for a thumb and legible at phone size, because a tab bar that needs
             aiming is a tab bar that gets mis-tapped mid-emergency.  */
-        .backpack-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+        /*  STICKY, both ends. The panel has scrolled since FIX 1 (2026-07-23), which fixed
+            exactly this for the morning report: a panel taller than a 412px landscape
+            viewport put its dismiss button below the fold with no way to reach it. Adding a
+            tab bar re-created that on the tallest tab — eight capacities plus three crossings
+            plus the bar pushed Close off-screen, the harness's close silently missed, the
+            panel lock stayed held, and a storage tap six hundred lines later did nothing.
+            Relying on "the content happens to fit" is what failed twice; pinning both
+            controls is a guarantee that does not depend on how much a tab has to say.  */
+        .backpack-tabs {
+            display: flex; gap: 6px; margin: 0 0 10px;
+            position: sticky; top: 0; z-index: 2;
+            background: var(--panel-bg, rgba(18, 16, 14, 0.96));
+            padding: 4px 0;
+        }
+        .panel.backpack .close-btn {
+            position: sticky; bottom: 0; z-index: 2;
+            width: 100%;
+        }
         .backpack-tab {
             flex: 1; min-height: 44px; padding: 8px 4px;
             background: rgba(255, 255, 255, 0.04);
