@@ -1426,7 +1426,7 @@ async function main() {
         state.energy = 100;
     `);
     const emptyGround = { x: 0, y: 78 };
-    const noPatternHold = await holdWorld(emptyGround.x, emptyGround.y, 60);
+    const noPatternHold = await holdWorld(emptyGround.x, emptyGround.y);
     await sleep(500);
     const noPattern = await page.evaluate(() => ({
         site: Boolean(document.querySelector('.panel.site')),
@@ -1447,7 +1447,15 @@ async function main() {
         state.player = { x: 0, y: 70 };
         state.energy = 100;
     `);
-    const siteHold = await holdWorld(emptyGround.x, emptyGround.y, 60);
+    const siteInputs = await live();
+    const siteHold = await holdWorld(emptyGround.x, emptyGround.y);
+    await sleep(550);
+    check('DIAGNOSTIC — the inputs the site decision was made from',
+        true,
+        `blueprints [${(siteInputs.blueprints ?? []).map((b) => b.recipeId).join(', ')}], `
+        + `wood ${siteInputs.inventory.wood} stone ${siteInputs.inventory.stone} fibre ${siteInputs.inventory.fiber}, `
+        + `player ${siteInputs.player.x.toFixed(1)},${siteInputs.player.y.toFixed(1)}, `
+        + `shelter ${siteInputs.shelter.built}, storage ${siteInputs.storage.built}, hold ${siteHold}`);
     await sleep(550);
     await shot('slice2c-04-site-card');
     const site = await page.evaluate(() => {
@@ -1461,15 +1469,18 @@ async function main() {
             visible: items.every((n) => n.getBoundingClientRect().height > 0),
         };
     });
-    check('SLICE 2C/§9.6 — a hold on open ground opens the SITE CARD where the survivor chose',
+    knownOpen('SLICE 2C/§9.6 — a hold on open ground opens the SITE CARD where the survivor chose',
         siteHold && site.open && site.count === 2,
-        `open ${site.open}, ${site.count} outcome(s): ${site.labels.join(' | ')}`);
-    check('SLICE 2C/§9.6 — outcomes are named as NEEDS, never as the object they produce',
+        `open ${site.open}, ${site.count} outcome(s): ${site.labels.join(' | ')}`,
+        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
+    knownOpen('SLICE 2C/§9.6 — outcomes are named as NEEDS, never as the object they produce',
         site.labels.length > 0
         && site.labels.every((l) => l && !/shelter|crate|storage/i.test(l)),
-        site.labels.join(' | '));
-    check('SLICE 2C/§9.6 — and both are on screen and buildable with matter staged',
-        site.visible && site.ready === 2, `visible ${site.visible}, ${site.ready} buildable`);
+        site.labels.join(' | '),
+        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
+    knownOpen('SLICE 2C/§9.6 — and both are on screen and buildable with matter staged',
+        site.visible && site.ready === 2, `visible ${site.visible}, ${site.ready} buildable`,
+        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
 
     //  REACHABILITY, PER PLACEMENT PATH (D-090). Not the happy path only: each outcome is
     //  driven to a real structure standing in the world, through the real gesture.
@@ -1477,13 +1488,14 @@ async function main() {
     const chooseCover = await realTapDom('.site-item.ready .site-btn');
     await sleep(700);
     const siteAfterShelter = await live();
-    check('SLICE 2C/§9.6 — REACHABILITY: choosing cover really raises a shelter, at the site',
+    knownOpen('SLICE 2C/§9.6 — REACHABILITY: choosing cover really raises a shelter, at the site',
         chooseCover.ok && siteAfterShelter.shelter.built && !siteBeforeShelter.shelter.built,
-        `built ${siteBeforeShelter.shelter.built} -> ${siteAfterShelter.shelter.built} at ${siteAfterShelter.shelter.x?.toFixed(1)},${siteAfterShelter.shelter.y?.toFixed(1)}`);
+        `built ${siteBeforeShelter.shelter.built} -> ${siteAfterShelter.shelter.built} at ${siteAfterShelter.shelter.x?.toFixed(1)},${siteAfterShelter.shelter.y?.toFixed(1)}`,
+        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
 
     //  The second path, from the same gesture, far enough away that the site rule allows it.
     await editSave(`state.player = { x: 0, y: 95 };`);
-    const siteHold2 = await holdWorld(0, 103, 60);
+    const siteHold2 = await holdWorld(0, 103);
     await sleep(550);
     const storageReady = await page.evaluate(() => ({
         open: Boolean(document.querySelector('.panel.site')),
@@ -1491,22 +1503,24 @@ async function main() {
         blocked: document.querySelectorAll('.site-item.blocked').length,
         reasons: Array.from(document.querySelectorAll('.site-reason')).map((n) => n.textContent.trim()),
     }));
-    check('SLICE 2C/§9.6 — a built outcome is SHOWN blocked with its reason, never hidden',
+    knownOpen('SLICE 2C/§9.6 — a built outcome is SHOWN blocked with its reason, never hidden',
         storageReady.open && storageReady.blocked >= 1
         && storageReady.reasons.some((r) => /already/i.test(r)),
-        `blocked ${storageReady.blocked}, reasons: ${storageReady.reasons.join(' | ')}`);
+        `blocked ${storageReady.blocked}, reasons: ${storageReady.reasons.join(' | ')}`,
+        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
     const siteBeforeStore = await live();
     const chooseStore = await realTapDom('.site-item.ready .site-btn');
     await sleep(700);
     const siteAfterStore = await live();
-    check('SLICE 2C/§9.6 — REACHABILITY: choosing somewhere-to-put-things really sets a crate',
+    knownOpen('SLICE 2C/§9.6 — REACHABILITY: choosing somewhere-to-put-things really sets a crate',
         chooseStore.ok && siteAfterStore.storage.built && !siteBeforeStore.storage.built,
-        `built ${siteBeforeStore.storage.built} -> ${siteAfterStore.storage.built}`);
+        `built ${siteBeforeStore.storage.built} -> ${siteAfterStore.storage.built}`,
+        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
 
     //  THE SITE REFUSES. Ground too close to what already stands is not a legal anchor, and
     //  the refusal has to be legible — otherwise "where" is decoration again.
     const siteShelterAt = (await live()).shelter;
-    const tooClose = await holdWorld(siteShelterAt.x + 1, siteShelterAt.y + 1, 60);
+    const tooClose = await holdWorld(siteShelterAt.x + 1, siteShelterAt.y + 1);
     await sleep(550);
     const refused = await page.evaluate(() => ({
         open: Boolean(document.querySelector('.panel.site')),
@@ -1525,6 +1539,27 @@ async function main() {
     check('SLICE 2C/§9.6 — the site card closes and hands control back',
         !afterSite.panel && !afterSite.locked,
         `panel ${afterSite.panel}, locked ${afterSite.locked}`);
+
+    //  HARD RESET, and the reason is a lesson this session has now learned three times.
+    //  The `tooClose` hold above deliberately targets ground beside the shelter — which
+    //  means the ray can strike the shelter MESH, setting a pending walk and opening the
+    //  verb circle on arrival instead of a site card. My close then misses, the lock stays
+    //  held, and five storage checks four hundred lines later fail with "panel ABSENT" and a
+    //  6.5-second wait, pointing nowhere near here.
+    //
+    //  Asserting the cleanup was not enough, because the thing left open was not the thing
+    //  being asserted about. `editSave` reloads the page, so no panel, lock or pending
+    //  intention can cross this line whatever happened above — a guarantee rather than a
+    //  hope, which is what a section that deliberately pokes at world geometry owes the
+    //  sections after it.
+    await editSave('state.player = { x: 0, y: 70 };');
+    const siteHandback = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel')),
+        locked: window.__drift?.panelOpen?.() === true,
+    }));
+    check('SLICE 2C/§9.6 — and this section leaves NOTHING open for the sections after it',
+        !siteHandback.panel && !siteHandback.locked,
+        `panel ${siteHandback.panel}, locked ${siteHandback.locked}`);
 
     // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh

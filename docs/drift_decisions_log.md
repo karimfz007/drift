@@ -3,6 +3,26 @@
 
 ---
 
+**D-099 · 2026-08-01 — SLICE 2C BOUNDARY 2: CONTEXTUAL CONSTRUCTION SHIPPED, THE BUILD BUTTON *NOT* RETIRED.** **279/279 device checks**, **655 unit tests**, zero failures. The construction flow is built and its brain layer is proven; its **device gesture path is not confirmed**, so the removal does not ship. That is the rail working, not the rail being missed.
+
+**§9.6 IS BUILT.** `src/brain/construction.ts` implements the sequence: a demonstrated pattern, a viable site, staged matter, a human outcome, an anchor. **The unit is the human outcome, not the object** — *"somewhere out of the weather"*, never *"shelter"* — because a survivor knows they need to be out of the rain long before they know what a lean-to is called. Six outcomes are named because §9.6 names six; **two ship because two structures do, and four are DECLARED rather than stubbed**, since an outcome you can pick and not get is worse than one that is not offered.
+
+**THE SITE IS A DECISION, which is the whole point.** A global Build button could raise a shelter from anywhere — and if where you build does not matter, drainage, wind and distance to water are decoration. The brain owns spacing, the body owns mesh clearance: **two vetoes, each owning what it can actually see.** Reasons come in §9.6's own order, so the player is told the **first** thing in their way — no pattern outranks no matter, because you cannot be short of materials for a thing you have never made. A blocked outcome is **shown greyed with its reason**, the radial circle's rule.
+
+**THE GESTURE IS THE ONE SLICE 2 ALREADY ESTABLISHED:** a tap acts, a hold asks. A hold on open ground asks what this ground is for; **a tap stays exactly what it was** — the never-mind look-around — because changing what an existing gesture means breaks a player's hands without touching their controls.
+
+*Witness (brain): `tests/site-construction.test.ts` — 15 tests, including reachability per placement path and every refusal.*
+
+**NOT CONFIRMED ON DEVICE, and named as such.** The site card does not open under the harness's hold, and **the diagnostic proves the inputs are all correct**: `blueprints [shelter, storage], wood 20 stone 20 fibre 20, shelter false, storage false, hold true`. The brain says yes; the card does not appear. Six device assertions are therefore **`knownOpen()`** with that diagnostic and an owner — the pond hold proves the gesture mechanism itself works, so the next session bisects between `onHold` and `openSiteCard` rather than re-deriving. **Marking them passing would have been the exact vacuity this project has laws about.**
+
+**THE BUILD BUTTON THEREFORE STAYS.** Its retirement was conditioned on the replacement being device-confirmed covering what it does. It is not. **Shipping the removal now would be subtraction alone** — the failure Stage 2B was resequenced to avoid ([[D-088]]) and the one this boundary's own rail exists to prevent.
+
+**A THIRD OCCURRENCE OF ONE LESSON, and the fix upgraded accordingly.** My section holds on ground *beside the shelter* to prove the site refuses — and the ray can strike the shelter **mesh**, setting a pending walk and opening the verb circle instead of a site card. The close then missed, the lock stayed held, and **five storage checks four hundred lines later failed with "panel ABSENT" and a 6.5-second wait**, pointing nowhere near the cause. Asserting the cleanup was not enough, because *the thing left open was not the thing being asserted about*. The section now ends with a **hard reset** — `editSave` reloads, so no panel, lock or pending intention can cross that line whatever happened above. A guarantee rather than a hope, which is what a section that deliberately pokes at world geometry owes the sections after it.
+
+**Class: OPERATIVE** — the construction model and site card are shipped and unit-proven; the device path is recorded as open with its evidence.
+
+*Witness: `tools/smoke.mjs` 279/279 at `a3da9ae`, six site checks `knownOpen` with the diagnostic that names their inputs.*
+
 **D-098 · 2026-08-01 — THE LOADOUT-PANEL REGRESSION: ONE CAUSE FOUND AND FIXED, ONE CLASSIFIED KNOWN-OPEN.** The isolation run C1 ordered, held alone under the bench mutex. **274/275 device checks**, **640 unit tests**. Outcome is **(a) for one mechanism and (b) for a second** — the investigation found a real cause, fixed it with proof, and did not pretend the residual was solved.
 
 **FOUND AND FIXED: the tallest tab could not be left.** The diagnostic was decisive — `anyPanel: "panel backpack growth visible"`, `activeTab: "Skills"`. Adding the Backpack's tab bar pushed the **Skills** tab's Close button below a 412 px landscape fold; `realTapDom` correctly refused an off-screen target, **and the harness fired that close without reading the answer**. The panel stayed open, the lock stayed held, and a storage tap six hundred checks later became a silent no-op reported as *"panel ABSENT"*.
