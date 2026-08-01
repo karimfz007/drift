@@ -28,12 +28,12 @@ describe('session — death and respawn (C03)', () => {
         expect(session.state.trace.deaths).toBe(1);
         expect(session.state.lastDeathCause).toBeTruthy();
         expect(session.state.player.x).toBe(0); // washed back to spawn
-        //  FIX-2: a death wakes the castaway diminished, not fully refilled.
-        expect(session.state.health).toBe(TUNE.healthMax * TUNE.respawnHealthFraction);
-        expect(session.state.thirst).toBe(TUNE.thirstMax * TUNE.respawnVitalFraction);
-        //  Ch.6 (D-058): the death costs a floored quarter of the carried stack —
-        //  5 wood × 0.25 = 1 lost, 4 kept. Tools and knowledge are never touched.
-        expect(session.state.inventory.wood).toBe(5 - Math.floor(5 * TUNE.deathResourceLossFraction));
+        //  Slice 3: nobody wakes. A NEW survivor washes ashore on the arrival profile, and
+        //  the 5 wood the last one was carrying went into the sea with them.
+        expect(session.state.health).toBe(TUNE.healthMax * TUNE.arrivalHealthFraction);
+        expect(session.state.thirst).toBe(TUNE.thirstMax * TUNE.arrivalThirstFraction);
+        expect(session.state.inventory.wood).toBe(0);
+        expect(session.state.memorial).toHaveLength(1);
 
         //  The death is persisted immediately — a crash right after loses nothing.
         expect(deserialize(repo.read())!.state.trace.deaths).toBe(1);

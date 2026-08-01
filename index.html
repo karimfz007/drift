@@ -465,6 +465,29 @@
         .gate-hint { font-size: 12px; color: var(--dim); text-align: left; margin: -3px 4px 3px; }
         .death-count { color: var(--dim); font-size: 14px; }
 
+        /* THE DEATH REVIEW (Slice 3). The panel is now long enough to need scrolling on a
+           phone, and the same REACHABILITY rule the Backpack learned the hard way applies:
+           the button at the bottom must stay on screen, or the player can read their own
+           death and not be able to leave it. So the sections scroll INSIDE a bounded box
+           while the button sits outside it. */
+        .panel.death { max-height: 88vh; }
+        .panel.death .death-section {
+            text-align: left; width: min(380px, 88vw); margin: 0 auto 10px;
+            border-top: 1px solid var(--edge); padding-top: 8px;
+        }
+        .panel.death .death-section h3 {
+            font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--dim); margin: 0 0 6px;
+        }
+        .panel.death ul { margin: 0; padding-left: 18px; }
+        .panel.death li { font-size: 14px; line-height: 1.45; margin-bottom: 5px; }
+        .death-couldhave li { color: var(--warn, #d8b26a); }
+        .death-legacy li { color: var(--good); }
+        .arrival-line {
+            font-size: 16px; line-height: 1.5; max-width: min(380px, 88vw);
+            margin: 0 auto 10px; text-align: left;
+        }
+
         /* The Build panel (C05): axe / shelter / storage, each its own gated card — never a
            shared priority slot (D-040/D-042's lesson, applied up front this time). */
         .build-list { display: flex; flex-direction: column; gap: 12px; width: min(360px, 85vw); text-align: left; }

@@ -20,7 +20,8 @@
  */
 import { TUNE } from '../data/tune';
 import type { GameState } from './types';
-import { canRepairStructure, isAtPond, isInDisrepair } from './state';
+import { canMakeJournal, canRepairStructure, isAtPond, isInDisrepair, journalShortfall } from './state';
+import { readWrite } from './journal';
 
 /** A single segment of the circle — or, when it is the only one, simply what a tap does. */
 export interface VerbOption {
@@ -204,6 +205,22 @@ function shelterVerbs(state: GameState): VerbOption[] {
  * never the way in. Opening it is the ordinary act and stays the default; mending is the
  * second segment, and appears only when it is actually needed.
  */
+/**
+ * THE STORAGE DECISION, made into two verbs. This is where D-068's actual choice lives: a
+ * carried journal is useful to YOU and burns with you; a stored one is useful to WHOEVER
+ * COMES NEXT and you cannot write in it from across the island. The game never advises which
+ * — it only makes both possible and lets the consequence arrive at the death review.
+ */
+function journalStorageVerbs(state: GameState, atBox: boolean, notThere: string | null): VerbOption[] {
+    if (!state.journal.exists) return [];
+    return [{
+        id: state.journal.carried ? 'store-journal' : 'take-journal',
+        label: state.journal.carried ? 'Leave the journal here' : 'Take the journal',
+        available: atBox,
+        reason: notThere,
+    }];
+}
+
 function storageVerbs(state: GameState): VerbOption[] {
     const built = state.storage.built;
     const notBuilt = built ? null : 'There is no store here yet.';
@@ -225,10 +242,18 @@ function storageVerbs(state: GameState): VerbOption[] {
                         ? 'You need wood to mend it.'
                         : null),
         },
+        ...journalStorageVerbs(state, built, notBuilt),
     ];
 }
 
-/** Fire. Feeding it is the ordinary act; lighting a torch needs one in hand. */
+/** "You need 2 more fibre and 1 more wood." Named amounts, never "requirements not met". */
+function shortfallReason(missing: Record<string, number>): string | null {
+    const parts = Object.entries(missing)
+        .filter(([, n]) => n > 0)
+        .map(([k, n]) => `${n} more ${k === 'fiber' ? 'fibre' : k}`);
+    return parts.length === 0 ? null : `You need ${parts.join(' and ')}.`;
+}
+
 function fireVerbs(state: GameState): VerbOption[] {
     const built = state.fire.built;
     const notBuilt = built ? null : 'There is no fire here yet.';
@@ -249,6 +274,33 @@ function fireVerbs(state: GameState): VerbOption[] {
                     ? 'You have no torch to light.'
                     : !lit ? 'The fire is out.'
                         : state.torch.lit ? 'Your torch is already lit.' : null),
+        },
+        {
+            //  MAKING one is a fire act too: the charcoal to write with comes out of it.
+            //  Putting it here rather than in the Build card also means the journal is
+            //  discovered where it is used, which is how every other object in this game is
+            //  meant to be met.
+            id: 'make-journal',
+            label: 'Make a journal',
+            available: built && lit && canMakeJournal(state),
+            reason: notBuilt ?? (!lit ? 'The fire is out — no charcoal to write with.'
+                : state.journal.exists ? 'You already have one.'
+                    : shortfallReason(journalShortfall(state))),
+        },
+        //  THE JOURNAL ([[D-068]]) LIVES ON THE FIRE, and nowhere else.
+        //
+        //  It could have been a Backpack action — it is an object you carry, after all — and
+        //  that would have been the easy place to put it. It is on the fire because D-068's
+        //  own words are "written by fire": the act needs a PLACE, and putting it in a menu
+        //  would have quietly deleted the cost that makes the whole mechanic honest. You have
+        //  to have built a fire, be standing at it, and spend the hour there.
+        {
+            id: 'write-journal',
+            label: 'Write',
+            available: built && lit && readWrite(state).canWrite,
+            //  The journal's own reader already computes the ONE truest obstacle in D-068's
+            //  order; re-deriving it here would be a second opinion that eventually disagrees.
+            reason: notBuilt ?? (!lit ? 'The fire is out. You cannot write in the dark.' : readWrite(state).reason),
         },
     ];
 }

@@ -398,21 +398,88 @@ export const TUNE = {
     /** [TUNE] C03 — D-011 offline floor for health. Offline death is IMPOSSIBLE (property-tested). */
     healthOfflineFloor: 25,
 
-    // ---- Death and respawn (FIX-1 pkg item 2, Living Island Track A; interim only — the
-    // full death design is a later dossier chapter) ---------------------------------------
-    /** [TUNE] FIX-2 — thirst/hunger/energy wake at this fraction of max on respawn, not
-     *  full. Root cause closed: respawn used to refill every vital to full, an exploitable
-     *  free-refill loop indistinguishable from genuinely eating/drinking/sleeping. Warmth
-     *  is deliberately NOT scaled by this (kept at max, see `respawn()` in state.ts) — it
-     *  is the acute killer (Rule of Threes, charter §I.6), and stacking a second cold-death
-     *  on the heels of the first is a design tradeoff for the full death chapter, not this
-     *  interim fix. */
-    respawnVitalFraction: 0.5,
-    /** [TUNE] FIX-2 — health wakes at this fraction of max — lower than the other vitals on
-     *  purpose (the task's own bracket): a death should read as a real setback, not a
-     *  reset with a coat of paint. Comfortably above 0 so a respawn cannot immediately
-     *  re-trigger the online death path on the very next tick. */
-    respawnHealthFraction: 0.3,
+    // ---- THE CRASH-ARRIVAL PROFILE (Slice 3, Laws 115-117) -------------------------------
+    //
+    //  Every arrival — the first life and every successor — lands here. NEVER six full bars,
+    //  never a random roll. The six fractions below are DERIVED from the shipped drain rates
+    //  and the length of the first night, and the derivation is checked by measurement rather
+    //  than trusted: `tests/arrival.test.ts` runs a real 12-hour night through `reconcile`
+    //  from this profile and asserts the envelope both ways (no fire -> critical but alive;
+    //  fire -> comfortable). If a drain rate above ever changes, that test fails here, which
+    //  is the entire point of deriving instead of picking.
+    //
+    //  A note on why full bars were always wrong: a castaway who washes ashore at 100% has
+    //  not survived anything, and the first night has to be a night you SURVIVED. The profile
+    //  is where the story and the simulation say the same thing.
+    /** [TUNE] Slice 3 — warmth on arrival. Basis: at `warmthDrainPerGameHourNight` (12/h)
+     *  this empties ~3.75h into a 12h night, leaving ~8h of `warmthEmptyHealthDrainPerGameHour`
+     *  to eat into the arrival injury. That is what makes fire the first night's real task
+     *  rather than a nicety — from full warmth, doing nothing at all is survivable. */
+    arrivalWarmthFraction: 0.45,
+    /** [TUNE] Slice 3 — soaked from the water. Drives the wet-multiplied warmth loss above,
+     *  and is the one condition the player can act on immediately (get out of the wind, get
+     *  dry by a fire) — which is why arrival is wet rather than merely cold. */
+    arrivalWetFraction: 0.6,
+    /** [TUNE] Slice 3 — thirst on arrival. Basis: `thirstLowHintAt` (35) plus ~8h of
+     *  `thirstDrainPerGameHour` (1.4) = 46.2. So thirst crosses into the visible "low" state
+     *  during the night — legible and actionable, the pond being reachable — and reaches dawn
+     *  near 28: a first job for the morning, never a first-night death. */
+    arrivalThirstFraction: 0.45,
+    /** [TUNE] Slice 3 — hunger on arrival. Basis: comfortably above `hungerLowHintAt` (30)
+     *  plus a night's `hungerDrainPerGameHour` (7.2), so the first night carries NO hunger
+     *  pressure. Hunger is the slow one (~7 game-days) and the first night has enough to say
+     *  without it; arriving visibly not-full is the whole of its job here. */
+    arrivalHungerFraction: 0.6,
+    /** [TUNE] Slice 3 — energy on arrival. Basis: one night's passive drain is 24
+     *  (`energyDrainPerGameHour` x 12), leaving ~36 for the night's necessary work — a fire
+     *  and the wood for it. Winded, in other words: able to work, not able to work carelessly. */
+    arrivalEnergyFraction: 0.6,
+    /** [TUNE] Slice 3 — the arrival injury. The most load-bearing of the six. Basis: it is
+     *  the buffer the warmth-empty health drain eats through on a failed night. High enough
+     *  to stay clear of `healthLowHintAt` (30) on arrival — a permanent alarm state is
+     *  cruelty, not authorship — and low enough that a night with no fire ends in the danger
+     *  zone rather than mildly inconvenienced. It heals at `healthRegenPerGameHour` once the
+     *  crisis is past, so it shapes the first night and then lets go. */
+    arrivalHealthFraction: 0.65,
+
+    // ---- THE SURVIVOR'S JOURNAL (Slice 3, D-068) -----------------------------------------
+    /** [TUNE] D-068 — below this condition the ink has run and entries cannot be read. Not a
+     *  cliff by accident: a journal degrades visibly for a long while before it stops working,
+     *  so the decision to store it rather than carry it arrives with warning. */
+    journalLegibilityFloor: 0.35,
+    /** [TUNE] D-068 — how close to a lit fire you must be to write by it. Inherits
+     *  `fireWarmthRadius` (7) deliberately: the light you can write by and the warmth you can
+     *  feel are the same fire, and two radii would eventually disagree on screen. */
+    journalFireRadiusM: 7,
+    /** [TUNE] D-068 — energy spent writing one entry. Basis: `experimentEnergyCost` (6) is
+     *  what a deliberate, careful act costs in this game; writing is one of those, at the end
+     *  of a day, and is priced the same. */
+    journalEnergyCost: 6,
+    /** [TUNE] D-068 — game hours one entry takes. Real time, at night, not spent on the other
+     *  things the night needed. The cost is the point: an entry has to be worth an hour. */
+    journalWriteGameHours: 1,
+    /** [TUNE] D-068 — condition lost per game hour at full exposure (soaked, carried). Basis:
+     *  ~14 game-hours of being carried while soaked takes a fresh journal to the legibility
+     *  floor — about one bad day. Paper in a wet pocket does not last a week. */
+    journalDampLossPerGameHour: 0.045,
+    /** [TUNE] D-068 — fibre to make the pages. Basis: `torchFiberCost` (2) is what a small
+     *  made object costs in this game; a journal is one. Cheap to MAKE, expensive to fill —
+     *  the cost that matters is the hour and the light, not the materials. */
+    journalFiberCost: 2,
+    /** [TUNE] D-068 — wood, burnt down for the charcoal to write with. Same basis, and the
+     *  reason a fire is required to make one at all. */
+    journalWoodCost: 1,
+    /** [TUNE] D-068 — a stored journal still takes this share of the damp a carried one would.
+     *  Not zero: a box is protection, not a seal. This is what makes storing it a good decision
+     *  rather than a free one. */
+    journalStoredExposureShare: 0.15,
+
+    // ---- Death and respawn — RETIRED (Slice 3) -------------------------------------------
+    //  `respawnVitalFraction` / `respawnHealthFraction` are GONE, with the function they fed.
+    //  They described a survivor waking up from death with 50% vitals; there is no such
+    //  survivor now. Death is final, and what washes ashore afterwards is a different person
+    //  landing on the arrival profile above. Deliberately not left as unused constants: a
+    //  tunable with no caller is an invitation to resurrect the mechanic by accident.
 
     // ---- Food and water (C03) ----------------------------------------------
     /** [TUNE] C03 — thirst restored per drink, at the pond or from a full flask. */

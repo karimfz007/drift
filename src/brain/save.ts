@@ -12,6 +12,7 @@ import { freshLoadout } from './loadout';
 import { SCHEMA_VERSION, type Blueprint, type GameState, type MaterialKind } from './types';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
+import { freshJournal } from './state';
 import { freshMatterWear } from './matter';
 import { createInitialState } from './state';
 
@@ -96,6 +97,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 11) current = migrateV11toV12(current);
     if (current.schemaVersion === 12) current = migrateV12toV13(current);
     if (current.schemaVersion === 13) current = migrateV13toV14(current);
+    if (current.schemaVersion === 14) current = migrateV14toV15(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -496,6 +498,35 @@ function migrateV13toV14(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         matterWear: { ...freshMatterWear(), ...old.matterWear },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v14 → v15 (Slice 3, the castaway cycle). Adds the memorial, the survivor's own clock, and
+ * the journal.
+ *
+ * THE ONLY INTERESTING QUESTION HERE is what `survivorStartedAtGameHours` should be for a
+ * save written before survivors had a start time — and the answer is 0, meaning "this person
+ * has been here since the beginning". That is TRUE for every existing save: nobody had ever
+ * been succeeded, because succession did not exist. A returning player is still themselves,
+ * their whole life so far counts as their life so far, and the island's graveyard is empty
+ * because nobody has yet died a death that stuck. Any other value would invent a history
+ * that never happened.
+ *
+ * Note what is NOT done: old `deathLog` entries are left exactly as they are, including the
+ * `lost` amounts recorded under the retired resource-loss rule. Those deaths really did cost
+ * that, at the time. Rewriting the record to match today's rules would be falsifying history
+ * to make the schema tidy, which is the one thing a migration must never do.
+ */
+function migrateV14toV15(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        memorial: Array.isArray(old.memorial) ? old.memorial : [],
+        survivorStartedAtGameHours: num((old as Partial<GameState>).survivorStartedAtGameHours, 0),
+        journal: old.journal ?? freshJournal(),
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

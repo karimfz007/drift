@@ -10,7 +10,7 @@ import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshMatterWear } from './matter';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
-import { deathResourceLoss, loadEnergyMultiplierOf, respawnMessageFor } from './body';
+import { loadEnergyMultiplierOf } from './body';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, masteryForNodeKind } from './knowledge';
 import { cloneLoadout, freshLoadout } from './loadout';
 import { recipeDomain } from './recipes';
@@ -21,6 +21,7 @@ import {
     type GameState,
     type Inventory,
     type ItemGrade,
+    type JournalState,
     type NodeKind,
     type SalvageLoot,
     type Skills,
@@ -77,8 +78,20 @@ export function createInitialState(nowMs: number): GameState {
         //  is derivable from anything already in the save, so both are seeded here.
         capacities: freshCapacities(),
         confidence: freshConfidence(),
-        matterWear: freshMatterWear()
+        matterWear: freshMatterWear(),
+        //  Slice 3. The first castaway arrives to an empty island and an empty graveyard;
+        //  everything here is about the PLACE, so it is seeded once and then only ever added
+        //  to. `survivorStartedAtGameHours` is 0 because the world clock and this survivor's
+        //  clock start together exactly once — for the first life, and never again.
+        memorial: [],
+        survivorStartedAtGameHours: 0,
+        journal: freshJournal()
     };
+}
+
+/** No journal until someone makes one. See `journal.ts` — this is the absent state. */
+export function freshJournal(): JournalState {
+    return { exists: false, x: 0, y: 0, carried: false, condition: 1, entries: [], lastWrittenAtGameHours: null };
 }
 
 export function emptyInventory(): Inventory {
@@ -932,6 +945,56 @@ export function craftTorch(state: GameState): boolean {
 }
 
 /**
+ * MAKE A JOURNAL ([[D-068]]). Bark or beaten fibre to write on, charcoal to write with.
+ *
+ * It is made like anything else, from matter the island actually has, because a journal that
+ * simply appeared would say that recording knowledge is free — and the entire weight of the
+ * castaway cycle rests on it not being free. The recipe is deliberately cheap in materials
+ * and expensive in everything after: making one is easy, filling it is not.
+ *
+ * Requires a fire, and not for warmth — the charcoal comes from it. That is also why a
+ * survivor cannot make one on their first evening before doing anything else: the fire comes
+ * first, which is the correct order for both the fiction and the difficulty curve.
+ */
+export function canMakeJournal(state: GameState): boolean {
+    return !state.journal.exists
+        && isFireLit(state)
+        && state.inventory.fiber >= TUNE.journalFiberCost
+        && state.inventory.wood >= TUNE.journalWoodCost;
+}
+
+export function journalShortfall(state: GameState): { fiber: number; wood: number } {
+    return {
+        fiber: Math.max(0, TUNE.journalFiberCost - state.inventory.fiber),
+        wood: Math.max(0, TUNE.journalWoodCost - state.inventory.wood)
+    };
+}
+
+/** Spend the recipe and make an empty journal, in hand. Returns false if it can't be paid for. */
+export function makeJournal(state: GameState): boolean {
+    if (!canMakeJournal(state)) return false;
+    state.inventory.fiber -= TUNE.journalFiberCost;
+    state.inventory.wood -= TUNE.journalWoodCost;
+    //  Born CARRIED, at the survivor's feet. Carrying it is the natural state and the
+    //  dangerous one; putting it down is the deliberate act, and that asymmetry is the
+    //  decision D-068 wants — a player who never thinks about it loses the book when they die.
+    state.journal = {
+        exists: true, x: state.player.x, y: state.player.y, carried: true,
+        condition: 1, entries: [], lastWrittenAtGameHours: null
+    };
+    return true;
+}
+
+/** Put the journal down here, or pick it up again. The whole of the storage decision. */
+export function setJournalCarried(state: GameState, carried: boolean): boolean {
+    if (!state.journal.exists) return false;
+    state.journal = carried
+        ? { ...state.journal, carried: true }
+        : { ...state.journal, carried: false, x: state.player.x, y: state.player.y };
+    return true;
+}
+
+/**
  * True once an owned, unlit, unspent torch is at a fire that is actually burning. This is
  * checked (and called) only once the player is already within `interactRadiusM` of the
  * fire, the same reach every other direct-world interaction uses (D-042) — no separate
@@ -1130,70 +1193,19 @@ export function isShelteredSleep(state: GameState): boolean {
     return isNearShelter(state);
 }
 
-// ---- Death and respawn --------------------------------------------------
+// ---- Death — RETIRED HERE, OWNED BY succession.ts (Slice 3) ---------------
 
-/**
- * Wake washed ashore after a death. Inventory, tools, skills, fire, and the island are
- * kept (v1 mercy, charter §14); the cause is recorded for the overlay. Called by the
- * session when reconcile reports a death.
- *
- * FIX-2 (Living Island Track A; interim only — the full death design is a later dossier
- * chapter, not built here): a death used to refill every vital to full — a free-refill
- * loop indistinguishable from genuinely eating, drinking, and sleeping. Respawn now wakes
- * the castaway diminished: thirst/hunger/energy at `respawnVitalFraction` (~50%), health
- * lower still at `respawnHealthFraction` (~30%). Warmth is the one deliberate exception,
- * kept at max — it is the acute killer (Rule of Threes, charter §I.6), and stacking a
- * second cold-death on the heels of the first is a tradeoff for the full death chapter to
- * make, not this interim fix. Wet resets to 0 regardless — a dry wake-up was never part of
- * the exploit (0 is the already-desired state, not a refill).
- *
- * Cycle 05 (§2): once a shelter is built, it — not the original beach — is home.
- *
- * Ch.6 (D-058) adds the death COST and the lesson. A death now takes a small, floored
- * fraction of each CARRIED loose resource stack (`deathResourceLoss` in body.ts) — and
- * nothing else. **Tools survive, stored goods survive, skills survive, and KnowledgeState
- * survives**: that last one is Ch.2's amendment B, a standing law, which this second
- * system respects rather than re-litigates. Storage is deliberately untouched too — what
- * you were carrying scatters where you fell; what you took the trouble to store at home is
- * exactly the investment a built crate is supposed to protect. The lesson is a
- * cause-specific respawn message (`respawnMessageFor`), recorded in the death log alongside
- * what the death actually cost, so "what did that one take from me" is answerable from the
- * record instead of from memory.
- */
-export function respawn(state: GameState, cause: string): void {
-    state.player = state.shelter.built ? { x: state.shelter.x, y: state.shelter.y } : { x: SPAWN.x, y: SPAWN.y };
-    state.warmth = TUNE.warmthMax;
-    state.thirst = TUNE.thirstMax * TUNE.respawnVitalFraction;
-    state.hunger = TUNE.hungerMax * TUNE.respawnVitalFraction;
-    state.energy = TUNE.energyMax * TUNE.respawnVitalFraction;
-    state.health = TUNE.healthMax * TUNE.respawnHealthFraction;
-    state.wet = 0;
-    //  Ch.6: waking is a genuine rest — a death clears accumulated fatigue rather than
-    //  compounding it. The setback is the lost resources and the lost vitals, never a body
-    //  that starts the next attempt already worn out.
-    state.fatigue = 0;
-    state.resting = false;
-    //  Ch.6: the cost. Computed first (pure), then applied, so the log records exactly what
-    //  was taken. Tools/storage/skills/knowledge are not touched by this loop at all.
-    const lost = deathResourceLoss(state);
-    for (const [kind, amount] of Object.entries(lost)) {
-        state.inventory[kind as keyof typeof state.inventory] -= amount;
-    }
-    const message = respawnMessageFor(cause);
-    state.lastDeathCause = cause;
-    state.trace.deaths += 1;
-    //  FIX-2: log every death (cause + the game-clock moment) to the trace, surfaced in
-    //  the debug export (D-050's tool) — a death-loop report should never depend on the
-    //  player's memory of what killed them and when. Ch.6 extends the entry with the
-    //  lesson the player was actually shown and what the death cost.
-    state.trace.deathLog = [...state.trace.deathLog, { cause, gameHoursElapsed: state.gameHoursElapsed, message, lost }];
-}
-
-/** The lesson line for the most recent death, for the death overlay. Null when nothing has
- *  killed the castaway yet, or once the overlay has been acknowledged. */
-export function lastRespawnMessage(state: GameState): string | null {
-    return state.lastDeathCause === null ? null : respawnMessageFor(state.lastDeathCause);
-}
+//  `respawn()` and `lastRespawnMessage()` are GONE, not deprecated.
+//
+//  They implemented the interim mercy: the same survivor woke on the sand with half their
+//  vitals, a small resource loss and a one-line scolding. Slice 3 replaces the entire idea.
+//  Death is final; what follows is a DIFFERENT PERSON arriving on the crash profile, into an
+//  island that kept everything physical. That lives in `succession.ts` (the persists table
+//  and the atomic commit) and `deathReview.ts` (the causal chain and the arrival narration).
+//
+//  Deleted rather than left unused on purpose: a resurrection function sitting in the file
+//  with no callers is one careless import away from being alive again, and it would be alive
+//  in exactly the code path where nobody looks — after a death, once, on a real device.
 
 /**
  * WHY THE SHELTER IS OR IS NOT WORKING — F3, refuge quality (Slice 1 item 2).

@@ -279,16 +279,74 @@ export function showMorningReport(overlay: HTMLElement, report: MorningReport, o
     el.querySelector('button')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onDismiss); });
 }
 
-/** The death overlay: a plain, one-line cause, and a way back (charter §I.18 rule 3). */
-export function showDeath(overlay: HTMLElement, cause: string, deaths: number, onWake: () => void): void {
+/** Mirrors `DeathReview` from the brain. This layer renders it and derives nothing. */
+export interface DeathReviewView {
+    cause: string;
+    chain: string[];
+    warnings: string[];
+    couldHave: string[];
+    lifetime: string;
+    legacy: string[];
+}
+
+/**
+ * THE DEATH OVERLAY — Slice 3. Two beats, in order, on one surface.
+ *
+ * It used to be one line and a "Wake ashore" button, which was right for a game where you
+ * woke up. You do not wake up. So the overlay now does what permadeath obliges it to do:
+ * explain the death completely, then hand the player to a different person.
+ *
+ * THE TWO-BEAT STRUCTURE IS THE DESIGN. The review is read first and dismissed deliberately;
+ * only then does the arrival play. Showing them together would blur the one thing this whole
+ * slice is about — that the person reading the review and the person on the beach are not the
+ * same person. The button between them is the boundary, and it is worth a tap.
+ *
+ * Every line comes from the brain. This function chooses no words of its own, because a
+ * sentence written here would be a claim about game state made by the layer least able to
+ * check it — which is how a review starts telling comfortable lies.
+ */
+export function showDeath(
+    overlay: HTMLElement,
+    review: DeathReviewView,
+    arrival: string[],
+    deaths: number,
+    onWake: () => void,
+): void {
     const el = panel(overlay, 'death');
-    el.innerHTML = `
-        <h2>You died of ${cause}.</h2>
-        <p class="subtitle">You wash ashore again — everything you made is still yours.</p>
-        <p class="death-count">${deaths === 1 ? 'First death.' : `Death #${deaths}.`}</p>
-        <button class="primary" type="button">Wake ashore</button>`;
-    let done = false;
-    el.querySelector('button')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onWake); });
+    const list = (items: string[], cls: string) =>
+        items.length === 0 ? '' : `<ul class="${cls}">${items.map((t) => `<li>${t}</li>`).join('')}</ul>`;
+
+    const renderReview = () => {
+        el.innerHTML = `
+            <h2>${review.cause}</h2>
+            <p class="subtitle">${review.lifetime}</p>
+            <div class="death-section"><h3>What happened</h3>${list(review.chain, 'death-chain')}</div>
+            ${review.warnings.length ? `<div class="death-section"><h3>What you were shown</h3>${list(review.warnings, 'death-warnings')}</div>` : ''}
+            ${review.couldHave.length ? `<div class="death-section"><h3>What was in reach</h3>${list(review.couldHave, 'death-couldhave')}</div>` : ''}
+            ${review.legacy.length ? `<div class="death-section"><h3>What you leave</h3>${list(review.legacy, 'death-legacy')}</div>` : ''}
+            <p class="death-count">${deaths === 1 ? 'The first to die here.' : `The ${ordinal(deaths)} to die here.`}</p>
+            <button class="primary" type="button">Go on</button>`;
+        el.querySelector('button')!.addEventListener('click', renderArrival, { once: true });
+    };
+
+    const renderArrival = () => {
+        el.innerHTML = `
+            <h2>Someone else</h2>
+            ${arrival.map((line) => `<p class="arrival-line">${line}</p>`).join('')}
+            <button class="primary" type="button">Get up</button>`;
+        let done = false;
+        el.querySelector('button')!.addEventListener('click', () => {
+            if (done) return; done = true; fade(el, onWake);
+        });
+    };
+
+    renderReview();
+}
+
+function ordinal(n: number): string {
+    const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th'
+        : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
+    return `${n}${suffix}`;
 }
 
 /** A material key the Build panel can gate a recipe on (Ch.1 v3, D-055 adds sharpblade). */

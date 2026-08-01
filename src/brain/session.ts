@@ -11,7 +11,9 @@ import { realSecondsFromGameHours } from './clock';
 import { recordTrying } from './knowledge';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
-import { canSleep, createInitialState, respawn } from './state';
+import { canSleep, createInitialState } from './state';
+import { closeSurvivor } from './succession';
+import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
 import type { ControlMode, GameState } from './types';
 
@@ -28,6 +30,16 @@ export class Session {
         private readonly repo: SaveRepository,
         public state: GameState
     ) {}
+
+    /**
+     * The review of the death just suffered, and the arrival that follows it. Held here
+     * rather than in `GameState` on purpose: this is a thing the player is SHOWN once, not a
+     * fact about the world, and putting it in the save would mean a returning player is
+     * greeted by a death they already read. `lastDeathCause` in the state is what survives a
+     * reload, and it is deliberately only enough to know an overlay is owed.
+     */
+    private pendingReview: DeathReview | null = null;
+    private pendingArrival: string[] = [];
 
     /**
      * Load the save (or start a fresh run) and fold in the absence.
@@ -143,18 +155,74 @@ export class Session {
     }
 
     /**
-     * If the span killed the castaway, wake them ashore and persist immediately so the
-     * death is never lost to a crash. Returns true if a death was actioned this tick.
+     * DEATH, COMMITTED (Slice 3). The survivor ends; a different person washes ashore into
+     * everything they built.
+     *
+     * LAW 29 — TECHNICAL UNCERTAINTY SUSPENDS DEATH, and the ORDER below is how that law is
+     * kept rather than merely cited:
+     *
+     *   1. The review is built FIRST, from the body as it was. Afterwards that body is gone,
+     *      and a review assembled later would describe the wrong person.
+     *   2. `closeSurvivor` computes the ENTIRE next state in one pure pass. Nothing is
+     *      mutated while it runs, so there is no moment where the survivor is dead and the
+     *      island is half-rewritten.
+     *   3. The swap is one assignment, then the write. A crash before the assignment loses
+     *      the death — the survivor lives, which is the safe direction and the one the law
+     *      demands. A crash after it has already persisted the whole thing.
+     *
+     *   **Fault recovery, never rollback**: what a fault may cost is the commit, not the
+     *   truth. There is no path here that resurrects a survivor whose death has landed.
      */
     private handleDeath(outcome: ReconcileOutcome, nowMs: number): boolean {
         if (!outcome.result.diedDuringSpan) return false;
-        respawn(this.state, outcome.result.deathCause ?? 'your wounds');
+        const cause = outcome.result.deathCause ?? 'your wounds';
+
+        //  (1) Read the dying body while it still exists.
+        this.pendingReview = reviewDeath(this.state, cause);
+
+        //  (2) Compute everything. Pure — `this.state` is untouched until the next line.
+        const { next, record } = closeSurvivor(this.state, cause);
+
+        //  (3) One assignment, then the write.
+        this.state = next;
+        this.pendingArrival = narrateArrival(this.state, record);
         this.persist(nowMs);
         return true;
     }
 
+    /** The review of the death just suffered, then the arrival that follows it. */
+    takeDeathReview(): { review: DeathReview; arrival: string[] } | null {
+        if (this.pendingReview === null) return null;
+        const out = { review: this.pendingReview, arrival: this.pendingArrival };
+        return out;
+    }
+
+    /**
+     * SPEND GAME HOURS ON AN ACT THAT TAKES TIME. The world moves while you do it.
+     *
+     * Runs the SAME `reconcile` path everything else does, for the equivalent real seconds —
+     * no parallel time-skip, so an hour spent writing costs exactly what an hour of standing
+     * still costs, and cannot become a loophole that advances the clock for free. It is
+     * deliberately NOT the sleep path: `resting` stays false, because writing is not rest.
+     *
+     * A death during the span is handled, so an act that takes time can genuinely kill you if
+     * you begin it in a state that could not afford it. That is the honest behaviour: the
+     * game must not quietly protect a player from a decision it let them make.
+     */
+    spendGameHours(gameHours: number, nowMs: number): void {
+        if (!(gameHours > 0)) return;
+        const outcome = reconcile(this.state, realSecondsFromGameHours(gameHours));
+        outcome.state.trace = this.state.trace;
+        outcome.state.lastSeenMs = nowMs;
+        this.state = outcome.state;
+        this.handleDeath(outcome, nowMs);
+        this.persist(nowMs);
+    }
+
     /** Clear the death overlay once the player has read it. */
     acknowledgeDeath(nowMs: number): void {
+        this.pendingReview = null;
+        this.pendingArrival = [];
         if (this.state.lastDeathCause === null) return;
         this.state.lastDeathCause = null;
         this.persist(nowMs);

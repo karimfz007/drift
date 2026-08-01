@@ -100,7 +100,56 @@ export function ladderFor(state: GameState, recipeId: string): LadderState {
     //  you to build a lean-to would put the catalogue back one sentence at a time.
     if (suspicionFor(state, recipeId)?.suspected) return 'conceptually-suspected';
 
+    //  THE JOURNAL ([[D-068]]) — the one channel by which knowledge outlives its knower, and
+    //  the reason it stops HERE rather than one rung higher. Someone who was actually there
+    //  wrote down what they did: that is a far stronger hint than a hunch, so it earns
+    //  `conceptually-suspected`. It is not `demonstrated`, because reading is not doing —
+    //  a successor who could read their way into a working technique would make the previous
+    //  survivor's hands irrelevant, which is exactly the inheritance Slice 3 forbids.
+    //
+    //  Read inline rather than through `journal.ts` on purpose: that module reads the ladder
+    //  to decide what may be written, and an import back would close a cycle.
+    if (journalSpeaksTo(state, recipeId)) return 'conceptually-suspected';
+
+    //  REQUALIFICATION — Slice 3, [[D-069]]: MATTER, NOT MEMORY.
+    //
+    //  A successor washes ashore into a developed island. The shelter is standing; they did
+    //  not build it and do not know how. `found-intact` is precisely that state — rung 2,
+    //  "encountered as an object already made" — and until Slice 3 nothing in the game could
+    //  reach it, because until Slice 3 nobody ever inherited anything.
+    //
+    //  This is the whole of what the previous life passes on through matter, and it is
+    //  deliberately NOT much: two rungs below `demonstrated`, so the successor still has to
+    //  work the thing out themselves. What they get is the certainty that it is possible and
+    //  a physical example to study, which is exactly what a real person would get from
+    //  finding a hut. What they do not get is the technique.
+    if (standingExampleOf(state, recipeId)) return 'found-intact';
+
     return 'physically-possible';
+}
+
+/**
+ * Is there a made example of this recipe standing on the island right now? Read from the
+ * world, so it goes away if the thing does — an inherited rung must not outlive the evidence
+ * that granted it, or "found-intact" becomes stored knowledge wearing a reading's clothes.
+ */
+export function standingExampleOf(state: GameState, recipeId: string): boolean {
+    if (recipeId === 'shelter') return state.shelter.built;
+    if (recipeId === 'storage') return state.storage.built;
+    return false;
+}
+
+/**
+ * Does a legible journal, written by SOMEONE ELSE, describe this recipe? The three conditions
+ * are all load-bearing: it must exist (the carrier can be lost), it must be legible (the
+ * carrier can be ruined), and it must not be your own handwriting (reading yourself teaches
+ * nothing). Any one of them failing takes the rung away again.
+ */
+function journalSpeaksTo(state: GameState, recipeId: string): boolean {
+    const j = state.journal;
+    if (!j.exists || j.condition < TUNE.journalLegibilityFloor) return false;
+    const me = state.memorial.length + 1;
+    return j.entries.some((e) => e.topic === recipeId && e.author !== me);
 }
 
 /** Has the survivor tried anything that bears on this recipe and journaled the outcome? */

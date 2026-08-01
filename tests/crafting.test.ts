@@ -14,12 +14,12 @@ import {
     fillFlask,
     isAtPond,
     knapSharpblade,
-    respawn,
     stoneHammerShortfall
 } from '../src/brain/state';
 import { grantXp, newSkill, skillMultiplier, xpToNextLevel } from '../src/brain/skills';
 import { TUNE } from '../src/data/tune';
-import { POND } from '../src/data/world';
+import { POND, SPAWN } from '../src/data/world';
+import { closeSurvivor } from '../src/brain/succession';
 
 function run() {
     return createInitialState(0);
@@ -204,43 +204,50 @@ describe('skills — XP and levels', () => {
     });
 });
 
-describe('death — respawn keeps what you made', () => {
-    it('washes you ashore, wakes you diminished (FIX-2, not a full refill), keeps inventory/tools/skills, counts and logs the death', () => {
+describe('death — the survivor ends, the island does not (Slice 3)', () => {
+    it('takes the body and everything on it, and leaves everything built exactly as it stood', () => {
+        //  This test replaces the FIX-2 respawn test outright. That one asserted the interim
+        //  mercy — half vitals, a quarter of your stacks, same person back on their feet. The
+        //  behaviour it described is gone, so an updated version of it would be a lie kept
+        //  green. What is asserted here is the law that replaced it.
         const s = run();
         s.player = { x: 40, y: -30 };
         s.inventory.wood = 12;
         s.tools.axe = true;
         s.skills.woodcutting.level = 3;
+        s.shelter = { built: true, x: 5, y: 5, durability: 71, grade: 'crude' };
+        s.storage = { built: true, x: 8, y: 8, durability: 62, stored: { wood: 40, stone: 30, fiber: 20 } };
         s.warmth = 0;
         s.thirst = 0;
         s.health = 0;
         s.gameHoursElapsed = 12.5;
 
-        respawn(s, 'thirst');
+        const { next, record } = closeSurvivor(s, 'thirst');
 
-        expect(s.player.x).toBe(0); // back at spawn
-        //  FIX-2: a death is no longer a free refill. Health and the fast-drainable vitals
-        //  wake diminished; warmth is the one deliberate exception (kept at max — the acute
-        //  killer, a second cold-death right away is out of scope for this interim fix).
-        expect(s.health).toBe(TUNE.healthMax * TUNE.respawnHealthFraction);
-        expect(s.thirst).toBe(TUNE.thirstMax * TUNE.respawnVitalFraction);
-        expect(s.hunger).toBe(TUNE.hungerMax * TUNE.respawnVitalFraction);
-        expect(s.energy).toBe(TUNE.energyMax * TUNE.respawnVitalFraction);
-        expect(s.warmth).toBe(TUNE.warmthMax);
-        expect(s.wet).toBe(0);
-        expect(s.health).toBeLessThan(TUNE.healthMax);
-        expect(s.thirst).toBeLessThan(TUNE.thirstMax);
-        //  Ch.6 (D-058): a death now COSTS a floored fraction of each carried loose stack.
-        //  12 wood × 0.25 = 3 lost, 9 kept — a real sting, not a wipe.
-        expect(s.inventory.wood).toBe(12 - Math.floor(12 * TUNE.deathResourceLossFraction));
-        expect(s.tools.axe).toBe(true); // kept — tools are NEVER taken
-        expect(s.skills.woodcutting.level).toBe(3); // kept
-        expect(s.lastDeathCause).toBe('thirst');
-        expect(s.trace.deaths).toBe(1);
-        //  FIX-2: every death is logged with its cause and the game-clock moment. Ch.6 adds
-        //  the lesson shown and exactly what the death cost.
-        expect(s.trace.deathLog).toHaveLength(1);
-        expect(s.trace.deathLog[0]).toMatchObject({ cause: 'thirst', gameHoursElapsed: 12.5, lost: { wood: 3 } });
-        expect(s.trace.deathLog[0].message).toMatch(/thirst/i);
+        //  THE PERSON IS GONE. Not diminished — gone. Nothing carried survives the body.
+        expect(next.inventory.wood).toBe(0);
+        expect(next.tools.axe).toBe(false);
+        expect(next.skills.woodcutting.level).toBe(1);
+
+        //  THE ISLAND IS UNTOUCHED, down to the durability the last survivor wore into it.
+        expect(next.shelter).toEqual({ built: true, x: 5, y: 5, durability: 71, grade: 'crude' });
+        expect(next.storage.stored).toEqual({ wood: 40, stone: 30, fiber: 20 });
+        expect(next.storage.durability).toBe(62);
+        //  The world clock never resets. A successor arrives into a night already in progress.
+        expect(next.gameHoursElapsed).toBe(12.5);
+
+        //  ...and the successor is a NEW ARRIVAL, on the crash profile, at the shore.
+        expect(next.player).toEqual({ x: SPAWN.x, y: SPAWN.y });
+        expect(next.health).toBe(TUNE.healthMax * TUNE.arrivalHealthFraction);
+        expect(next.survivorStartedAtGameHours).toBe(12.5);
+
+        //  The dead are recorded, and the record is history — not a save slot to return to.
+        expect(record.ordinal).toBe(1);
+        expect(record.cause).toBe('thirst');
+        expect(record.diedAtGameHours).toBe(12.5);
+        expect(next.memorial).toHaveLength(1);
+        expect(next.trace.deaths).toBe(1);
+        expect(next.trace.deathLog).toHaveLength(1);
+        expect(next.trace.deathLog[0]).toMatchObject({ cause: 'thirst', gameHoursElapsed: 12.5 });
     });
 });

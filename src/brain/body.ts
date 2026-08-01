@@ -176,36 +176,14 @@ export function isRestfulSpot(state: GameState, nearShelter: boolean, shelterInD
     return nearShelter && !shelterInDisrepair && state.warmth > TUNE.warmthLowThreshold && state.wet < TUNE.wetMax * 0.5;
 }
 
-// ---- Death cost + lesson ------------------------------------------------
+// ---- Death cost + lesson — RETIRED (Slice 3) -----------------------------
 
-/**
- * The cause-specific line shown on waking. Every one of these names what actually killed
- * the castaway and what would have prevented it — a lesson, not a scold, and never a claim
- * about game state that isn't true. Falls through to a generic line for any cause string a
- * future chapter introduces, so a new death cause can never produce an empty message.
- */
-export function respawnMessageFor(cause: string): string {
-    const c = cause.toLowerCase();
-    if (c.includes('thirst') && c.includes('hunger')) return 'You went without water and food too long. The pond is inland, west of the trees — and the flask carries a drink with you.';
-    if (c.includes('thirst')) return 'Thirst took you. Water is the fastest need to come round again — keep the flask full before heading inland.';
-    if (c.includes('hunger')) return 'Hunger took you. Berries, coconuts, and shellfish are all within a short walk of the shore.';
-    if (c.includes('cold')) return 'The cold took you. A lit fire — or a roof over your head — is what stands between you and a night like that one.';
-    return 'You woke on the sand, weaker but whole. The island keeps what you built.';
-}
-
-/**
- * What a death costs: a floored fraction of each CARRIED loose resource stack, and nothing
- * else. Returns the amounts removed (for the death log) without mutating — the caller
- * applies it, so this stays a pure calculation that a test can check in isolation.
- *
- * `Math.floor` means a stack of 1–3 loses nothing at all: rounding never wipes a small
- * stack, and the poorest castaway is never the one punished hardest.
- */
-export function deathResourceLoss(state: GameState): Partial<Record<MaterialKind, number>> {
-    const lost: Partial<Record<MaterialKind, number>> = {};
-    for (const kind of MASS_KINDS) {
-        const take = Math.floor(state.inventory[kind] * TUNE.deathResourceLossFraction);
-        if (take > 0) lost[kind] = take;
-    }
-    return lost;
-}
+//  `respawnMessageFor` and `deathResourceLoss` are GONE with the mechanic they served.
+//
+//  They belonged to the interim mercy: a death took a floored quarter of each carried stack
+//  and printed one cause-specific line. Both assumptions are now false. A death takes
+//  EVERYTHING carried, because the body that was carrying it is dead — there is no fraction
+//  to compute. And one line is nowhere near enough: `deathReview.ts` gives the whole causal
+//  chain, the warnings the bars actually showed, and what was in reach at the time.
+//
+//  `MASS_KINDS` above stays — carry weight still uses it.

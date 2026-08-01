@@ -61,6 +61,10 @@ import {
     holdOpensCircle,
     defaultVerb,
     verbsFor,
+    readWrite,
+    writeEntry,
+    makeJournal,
+    setJournalCarried,
     type MoveStep,
     refugeReport,
     tryCombine,
@@ -963,11 +967,12 @@ export class Game {
             case 'mend': this.tryRepair('shelter'); break;
             case 'open-store': this.openLoadout(true); break;
             case 'mend-store': this.tryRepair('storage'); break;
-            //  Fire is NOT routed through the circle this pass. It carries a fourth
-            //  priority hack of the same family (torch-lighting wins over feeding), and its
-            //  own comment argues the gate is narrow enough not to starve feeding. That may
-            //  well be true — but it is the same shape, and it should be retired by the same
-            //  mechanism rather than left as the one exception. Named, not silently skipped.
+            case 'feed-fire': this.doFeedFire(); break;
+            case 'light-torch': this.doLightTorch(); break;
+            case 'write-journal': this.doWriteJournal(); break;
+            case 'make-journal': this.doMakeJournal(); break;
+            case 'store-journal': this.doSetJournalCarried(false); break;
+            case 'take-journal': this.doSetJournalCarried(true); break;
             default: this.explain('Nothing to do there.'); break;
         }
         this.lastActivityAt = now();
@@ -1051,12 +1056,6 @@ export class Game {
         if (!this.pending) return;
         const s = session().state;
 
-        if (this.pending.kind === 'fire') {
-            this.tryFeedFire();
-            this.pending = null;
-            return;
-        }
-
         //  SLICE 2 — THE RADIAL CIRCLE REPLACES THREE PRIORITY HACKS.
         //
         //  All three existed for one reason: a tap could carry only one verb, so whenever a
@@ -1075,7 +1074,15 @@ export class Game {
         //  verbs". The circle removes the question. `tapOpensCircle` is FALSE for a survivor
         //  with one option, so none of this makes the early game slower — a castaway with no
         //  flask taps the pond and drinks, exactly as before, and never sees a wheel.
-        if (this.pending.kind === 'pond' || this.pending.kind === 'shelter' || this.pending.kind === 'storage') {
+        //  SLICE 3 RETIRES THE FOURTH. The fire was left out of the circle in Slice 2 with
+        //  its exception written down rather than hidden: it carried a torch-lighting-wins
+        //  priority hack of exactly the same family, and the note said it "should be retired
+        //  by the same mechanism rather than left as the one exception". The journal is the
+        //  third fire verb, which is what finally forces the issue — three verbs cannot be
+        //  arbitrated by a priority order without starving one of them. So the fire joins the
+        //  other three here, and `tryFeedFire`'s internal priority goes with it.
+        if (this.pending.kind === 'pond' || this.pending.kind === 'shelter'
+            || this.pending.kind === 'storage' || this.pending.kind === 'fire') {
             const target = this.pending.kind;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
             //  which gesture set this intention, so arriving after a hold opens the circle and
@@ -1359,26 +1366,85 @@ export class Game {
         this.showHint('Carrying materials? Tap the crate to store them.');
     }
 
-    private tryFeedFire(): void {
+    /**
+     * FEED THE FIRE. The declared default verb for the fire, and now only that — the
+     * torch-lighting priority that used to sit at the top of this function is gone, because
+     * the circle asks instead of guessing. That priority was never wrong on its own terms
+     * (`canLightTorch` really is rarely true), but it was the last of the four, and leaving
+     * one exception standing is how a retired pattern comes back.
+     */
+    private doFeedFire(): void {
         const s = session().state;
-        //  FIX-5 (Living Island Track A): lighting an owned, unlit torch takes priority at
-        //  an active fire. This never starves feed-fire the way an ill-considered priority
-        //  once did (D-042's lesson) — `canLightTorch` is only true in the rare, transient
-        //  window right after crafting an unlit torch, never "almost always true" the way
-        //  the C03 bug's gating condition was.
-        if (canLightTorch(s)) {
-            lightTorch(s);
-            this.cues.play(CUES.ignition);
-            this.floatText('torch lit');
-            session().persist(now());
-            this.lastActivityAt = now();
-            return;
-        }
         if (!canFeedFire(s)) { this.deniedFire(); return; }
         feedFire(s);
         this.fire.flare();
         this.cues.play(CUES.collected);
         this.floatText(`+${TUNE.fireBurnGameHoursPerWood} hours`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    private doLightTorch(): void {
+        const s = session().state;
+        if (!canLightTorch(s)) { this.explain('There is nothing to light.'); return; }
+        lightTorch(s);
+        this.cues.play(CUES.ignition);
+        this.floatText('torch lit');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * WRITE IN THE JOURNAL ([[D-068]]) — by the fire, at real cost.
+     *
+     * The costs are applied TOGETHER with the entry, from the single object `writeEntry`
+     * returns, so there is no arrangement of failures where the player pays the hour and the
+     * energy and gets no page. The hour is spent by advancing the session's own clock the way
+     * sleeping does, which means the world moves while you write: the fire burns down, the
+     * night gets colder, and choosing to write is choosing not to do something else.
+     */
+    private doMakeJournal(): void {
+        const s = session().state;
+        if (!makeJournal(s)) { this.explain('You cannot make one here.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('a journal');
+        this.explain('Beaten fibre for pages, charcoal from the fire. It is yours to fill.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * THE DECISION, in one tap. Carrying it means you can write tonight; leaving it means
+     * whoever comes next can read it. The game says what happened and nothing about which
+     * was wise — the death review will make that point far better than a hint could.
+     */
+    private doSetJournalCarried(carried: boolean): void {
+        const s = session().state;
+        if (!setJournalCarried(s, carried)) { this.explain('There is no journal.'); return; }
+        this.cues.play(CUES.pickup);
+        this.floatText(carried ? 'journal in hand' : 'journal left here');
+        this.explain(carried
+            ? 'You pick the book up. It goes where you go — including under.'
+            : 'You leave the book in the box. It will still be here when you are not.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    private doWriteJournal(): void {
+        const s = session().state;
+        const reading = readWrite(s);
+        if (!reading.canWrite) { this.explain(reading.reason ?? 'You cannot write now.'); return; }
+        //  One topic per sitting, and it is the first thing they have not yet set down.
+        //  Choosing WHICH would be a menu; a survivor with one hour writes the thing most on
+        //  their mind, and the list is already ordered.
+        const written = writeEntry(s, reading.topics[0]);
+        if (!written) { this.explain('Nothing you have done yet is worth setting down.'); return; }
+        s.journal = written.journal;
+        s.energy = Math.max(0, s.energy - written.energyCost);
+        session().spendGameHours(written.gameHours, now());
+        this.cues.play(CUES.craft);
+        this.floatText('written down');
+        this.explain(written.text);
         session().persist(now());
         this.lastActivityAt = now();
     }
@@ -2074,12 +2140,24 @@ export class Game {
         //  C3 finding A1 on D-063: this panel was the one that never joined the pair — it
         //  inlined `panelOpen = true` and skipped `cancelHold()`, so a gather hold running
         //  at the moment of death survived under the death overlay. Fixed here because it
-        //  is the same input-safety class as the freeze. No death-MODEL change: what dying
-        //  costs and how respawn works are untouched.
+        //  is the same input-safety class as the freeze.
         this.beginPanel();
         this.cues.stopAllBeds();
         const s = session().state;
-        showDeath(this.overlay, s.lastDeathCause ?? 'your wounds', s.trace.deaths, () => {
+        //  Slice 3: the session built the review from the DYING body before it replaced it,
+        //  so by the time this runs `session().state` is already the successor. The review is
+        //  taken from the session, never re-derived here — re-deriving it now would describe
+        //  the person who just washed ashore, which is the wrong person entirely.
+        const taken = session().takeDeathReview();
+        const review = taken?.review ?? {
+            //  A death with no held review can only happen if the overlay is opened by
+            //  something other than the death path. Say so plainly rather than invent a chain.
+            cause: `You died of ${s.lastDeathCause ?? 'your wounds'}.`,
+            chain: ['The record does not show what led to it.'],
+            warnings: [], couldHave: [], legacy: [],
+            lifetime: 'That life is over.',
+        };
+        showDeath(this.overlay, review, taken?.arrival ?? ['You wake up on the sand.'], s.trace.deaths, () => {
             this.endPanel();
             this.deathShown = false;
             session().acknowledgeDeath(now());

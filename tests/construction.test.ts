@@ -15,7 +15,6 @@ import {
     isNearShelter,
     isNearStorage,
     repairStructure,
-    respawn,
     shelterShortfall,
     storageShortfall,
     useStorage,
@@ -24,6 +23,8 @@ import { Session } from '../src/brain/session';
 import { MemorySaveRepository } from '../src/brain/save';
 import { realSecondsFromGameHours } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
+import { closeSurvivor } from '../src/brain/succession';
+import { SPAWN } from '../src/data/world';
 import { POND } from '../src/data/world';
 
 function run() {
@@ -503,30 +504,42 @@ describe('sleep — reuses the reconcile spine, never lethal', () => {
     });
 });
 
-describe('respawn — the shelter becomes home once built', () => {
-    it('without a shelter, respawn still washes you ashore at the original spawn', () => {
+describe('succession — you arrive at the SEA, never at the shelter (Slice 3)', () => {
+    //  This describe used to be "respawn — the shelter becomes home once built", and Slice 3
+    //  INVERTS it rather than adjusting it. Under the interim mercy, waking at your own
+    //  shelter was right: it was still you, and the shelter was still home. It is not you
+    //  now. A successor who materialised inside a stranger's shelter would skip the entire
+    //  discovery — the walk up the beach IS how they find out someone lived here, and
+    //  "Someone lived here" has to be something they SEE, not something they start inside.
+
+    it('with no shelter, the successor washes ashore at the spawn point', () => {
         const s = run();
         s.player = { x: 40, y: -30 };
-        respawn(s, 'thirst');
-        expect(s.player.x).toBe(0);
+        const { next } = closeSurvivor(s, 'thirst');
+        expect(next.player).toEqual({ x: SPAWN.x, y: SPAWN.y });
     });
 
-    it('with a built shelter, respawn wakes you there instead', () => {
+    it('...and with a shelter standing, they STILL wash ashore at the sea', () => {
         const s = run();
         s.inventory.wood = 99; s.inventory.stone = 99; s.inventory.fiber = 99;
         buildShelter(s, 22, -14);
         s.player = { x: 40, y: -30 };
-        respawn(s, 'thirst');
-        expect(s.player).toEqual({ x: 22, y: -14 });
+        const { next } = closeSurvivor(s, 'thirst');
+        expect(next.shelter.built, 'the shelter itself persists').toBe(true);
+        expect(next.player).toEqual({ x: SPAWN.x, y: SPAWN.y });
+        expect(next.player).not.toEqual({ x: 22, y: -14 });
     });
 
-    it('FIX-2: energy wakes at respawnVitalFraction (not full), wet always resets to 0', () => {
+    it('Slice 3: a death does not wake anyone — the arrival profile is what lands', () => {
+        //  Was: "energy wakes at respawnVitalFraction". Nobody wakes now. What this checks is
+        //  that the successor lands on the authored profile rather than on leftovers of the
+        //  body that died — the wet, spent, half-dead numbers must not leak through.
         const s = run();
         s.energy = 5;
         s.wet = 90;
-        respawn(s, 'thirst');
-        expect(s.energy).toBe(TUNE.energyMax * TUNE.respawnVitalFraction);
-        expect(s.wet).toBe(0);
+        const { next } = closeSurvivor(s, 'thirst');
+        expect(next.energy).toBe(TUNE.energyMax * TUNE.arrivalEnergyFraction);
+        expect(next.wet).toBe(TUNE.wetMax * TUNE.arrivalWetFraction);
     });
 });
 

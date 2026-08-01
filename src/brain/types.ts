@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -474,6 +474,78 @@ export interface GameState {
      * player acknowledges it. Not part of the survival sim — a message, not a state.
      */
     lastDeathCause: string | null;
+
+    /**
+     * SLICE 3 — the castaway cycle. Everyone who has died on this island, oldest first. This
+     * is a property of the PLACE, not a save slot: it survives every death, and it is the
+     * only thing a dead survivor leaves behind that a successor can be certain of.
+     *
+     * Recorded as HISTORY and never read back as knowledge — see `succession.ts` for the
+     * matter-not-memory line ([[D-069]]) and the property test that enforces it.
+     */
+    memorial: SurvivorRecord[];
+    /**
+     * The island-clock reading when the CURRENT survivor washed ashore. Zero for the first.
+     * Every "how long have I lasted" question is this subtracted from `gameHoursElapsed` —
+     * the world clock never resets, so a successor's age has to be measured, not stored.
+     */
+    survivorStartedAtGameHours: number;
+    /**
+     * THE SURVIVOR'S JOURNAL ([[D-068]]) — the one channel by which anything a survivor
+     * knew can outlive them, and only because they spent real time and real light writing
+     * it down. Absent until one is made. The carrier is mortal.
+     */
+    journal: JournalState;
+}
+
+/** One life, closed. See `succession.ts`. Declared here because `GameState` carries it. */
+export interface SurvivorRecord {
+    /** Which castaway this was, counting from the first. */
+    ordinal: number;
+    cause: string;
+    /** The island-clock reading when they died. */
+    diedAtGameHours: number;
+    /** How long they lasted, in game hours. */
+    livedGameHours: number;
+    /** What they had demonstrated. HISTORY — never read back as knowledge. */
+    knewRecipes: string[];
+    /** What they left standing. */
+    leftBehind: string[];
+}
+
+/**
+ * One entry, written by hand, by firelight. `topic` is the recipe the entry is ABOUT, and it
+ * is the whole reason the journal is not just flavour text: a legible entry about `shelter`
+ * is the evidence that lifts a successor's ladder for shelter. `text` is what the survivor
+ * would have written — never a recipe listing, because a survivor writing at night writes
+ * what they did, not a specification.
+ */
+export interface JournalEntry {
+    /** Which survivor wrote it. */
+    author: number;
+    writtenAtGameHours: number;
+    /** The recipe this entry is about, or null for a plain observation. */
+    topic: string | null;
+    text: string;
+}
+
+/**
+ * The journal as an OBJECT, subject to everything objects are subject to. `condition` runs
+ * 0..1; damp and fire take it down; below the legibility floor the ink has run and the entry
+ * is there but cannot be read. `carried` decides whether it burns with you or waits in the
+ * store box — which is the actual decision D-068 wants the player to have to make.
+ */
+export interface JournalState {
+    exists: boolean;
+    /** Where it is when not carried. Meaningless while `carried`. */
+    x: number;
+    y: number;
+    carried: boolean;
+    /** 0..1. Damp, fire and time take it down. Never rises on its own. */
+    condition: number;
+    entries: JournalEntry[];
+    /** Island-clock reading of the last write, so a session can rate-limit honestly. */
+    lastWrittenAtGameHours: number | null;
 }
 
 export interface TimeOfDay {

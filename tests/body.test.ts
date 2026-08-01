@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
     carriedWeightKg,
-    deathResourceLoss,
     fatigueStage,
     fatigueStatusText,
     loadBandForKg,
@@ -11,12 +10,11 @@ import {
     overloadStepsForKg,
     loadEnergyMultiplierFor,
     loadSpeedMultiplierFor,
-    respawnMessageFor
 } from '../src/brain/body';
 import { reconcile } from '../src/brain/reconcile';
 import { MemorySaveRepository, deserialize } from '../src/brain/save';
 import { Session } from '../src/brain/session';
-import { buildShelter, createInitialState, respawn } from '../src/brain/state';
+import { buildShelter, createInitialState } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
 import { SCHEMA_VERSION, type GameState } from '../src/brain/types';
@@ -371,78 +369,13 @@ describe('body — THE LAW: absence never makes the body worse (Ch.6, mirroring 
     });
 });
 
-describe('body — death costs loose stacks only, and teaches (Ch.6 part 3)', () => {
-    it('takes a floored fraction of each carried stack', () => {
-        const s = run();
-        s.inventory.wood = 12;
-        s.inventory.stone = 8;
-        const lost = deathResourceLoss(s);
-        expect(lost.wood).toBe(Math.floor(12 * TUNE.deathResourceLossFraction));
-        expect(lost.stone).toBe(Math.floor(8 * TUNE.deathResourceLossFraction));
-    });
-
-    it('rounding never wipes a small stack — 1 to 3 units lose nothing at all', () => {
-        const s = run();
-        s.inventory.wood = 3;
-        s.inventory.fiber = 1;
-        const lost = deathResourceLoss(s);
-        expect(lost.wood).toBeUndefined();
-        expect(lost.fiber).toBeUndefined();
-        respawn(s, 'thirst');
-        expect(s.inventory.wood).toBe(3);
-        expect(s.inventory.fiber).toBe(1);
-    });
-
-    it('NEVER takes tools, stored goods, skills, or KnowledgeState (Ch.2 amendment B holds)', () => {
-        const s = run();
-        s.inventory.wood = 20;
-        s.tools = { axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined', fishingLine: false };
-        s.storage = { built: true, x: 1, y: 1, durability: 80, stored: { wood: 40, stone: 30, fiber: 20 } };
-        s.skills.woodcutting.level = 4;
-        s.knowledge.domains.harvestingFabrication.technique = 42;
-        s.knowledge.nullPairs = ['axe-blade|wood'];
-
-        respawn(s, 'the cold');
-
-        expect(s.tools).toEqual({ axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined', fishingLine: false });
-        expect(s.storage.stored).toEqual({ wood: 40, stone: 30, fiber: 20 });
-        expect(s.skills.woodcutting.level).toBe(4);
-        expect(s.knowledge.domains.harvestingFabrication.technique).toBe(42);
-        expect(s.knowledge.nullPairs).toEqual(['axe-blade|wood']);
-        expect(s.inventory.wood).toBe(20 - Math.floor(20 * TUNE.deathResourceLossFraction)); // only this moved
-    });
-
-    it('clears fatigue — waking is a rest, never a compounding setback', () => {
-        const s = run();
-        s.fatigue = TUNE.fatigueMax;
-        respawn(s, 'thirst');
-        expect(s.fatigue).toBe(0);
-        expect(s.resting).toBe(false);
-    });
-
-    it('records the lesson and the exact cost in the death log', () => {
-        const s = run();
-        s.inventory.wood = 8;
-        s.gameHoursElapsed = 30;
-        respawn(s, 'thirst');
-        const entry = s.trace.deathLog[s.trace.deathLog.length - 1];
-        expect(entry.cause).toBe('thirst');
-        expect(entry.gameHoursElapsed).toBe(30);
-        expect(entry.lost).toEqual({ wood: 2 });
-        expect(entry.message).toMatch(/thirst/i);
-    });
-
-    it('every cause gets a specific lesson, and an unknown cause still gets a real one', () => {
-        expect(respawnMessageFor('thirst')).toMatch(/water|flask|thirst/i);
-        expect(respawnMessageFor('hunger')).toMatch(/berries|coconut|shellfish|hunger/i);
-        expect(respawnMessageFor('the cold')).toMatch(/fire|roof|cold/i);
-        expect(respawnMessageFor('the cold, thirst, and hunger')).toBeTruthy();
-        //  A cause a future chapter invents must never produce an empty message.
-        const unknown = respawnMessageFor('a falling coconut');
-        expect(unknown).toBeTruthy();
-        expect(unknown.length).toBeGreaterThan(0);
-    });
-});
+//  THE CH.6 DEATH-COST SUITE IS RETIRED (Slice 3). It tested `deathResourceLoss` and
+//  `respawnMessageFor`, both of which are gone with the interim respawn they served: a death
+//  no longer takes a floored quarter of your stacks — it takes everything, because the body
+//  carrying it is dead — and one cause-specific line has been replaced by the full causal
+//  review. Deleted rather than adapted: there is no version of "rounding never wipes a small
+//  stack" that means anything once nothing is kept. The law that replaced it is proved in
+//  `tests/succession.test.ts`, and the review's own text in `tests/death-review.test.ts`.
 
 describe('body — save migration v7 → v8 (Ch.6)', () => {
     /** A realistic v7 save: mid-run, with a death already logged under the old shape. */
