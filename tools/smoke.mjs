@@ -402,6 +402,11 @@ async function main() {
 
     const tapAt = async (x, y, hold = 55) => { await page.touchscreen.touchStart(x, y); await sleep(hold); await page.touchscreen.touchEnd(); await sleep(140); };
     const tapWorld = async (wx, wz, hold = 55) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
+    //  A HOLD on world coordinates: the same gesture as a tap, held past `tapMaxMs`. Under
+    //  the Default-Verb Law a tap acts and a hold asks, and §9.6's site card is what a hold on
+    //  open ground asks. Derived from the TUNE value rather than a literal so a retuned tap
+    //  window moves this with it instead of silently turning every hold back into a tap.
+    const holdWorld = async (wx, wz) => tapWorld(wx, wz, TUNE.tapMaxMs + 260);
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
 
     //  A REAL, coordinate-based, viewport-and-occlusion-respecting tap on a DOM element — as
@@ -1401,6 +1406,125 @@ async function main() {
         reachClose.ok && !afterReach.panel && !afterReach.locked,
         `close ${reachClose.ok} ${reachClose.reason ?? ''}, panel ${afterReach.panel}, locked ${afterReach.locked}`);
 
+
+    // ================================================================
+    // SLICE 2C BOUNDARY 2 — CONTEXTUAL CONSTRUCTION (§9.6). The site is a decision.
+    // ================================================================
+    console.log('\nSLICE 2C — contextual construction: hold open ground, choose the outcome, build there');
+
+    //  ENTRY POINT FIRST. A hold on open ground is the new construction surface; a TAP must
+    //  stay exactly what it was — the player's "never mind" look-around — because changing
+    //  what an existing gesture means is how you break a player's hands without touching
+    //  their controls.
+    await editSave(`
+        state.blueprints = [];
+        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.player = { x: 0, y: 70 };
+        state.energy = 100;
+    `);
+    const emptyGround = { x: 0, y: 78 };
+    const noPatternHold = await holdWorld(emptyGround.x, emptyGround.y, 60);
+    await sleep(500);
+    const noPattern = await page.evaluate(() => ({
+        site: Boolean(document.querySelector('.panel.site')),
+        anyPanel: document.querySelector('.panel')?.className ?? 'none',
+    }));
+    check('SLICE 2C/§9.6 — with NO demonstrated pattern, a hold on open ground offers nothing',
+        !noPattern.site,
+        `hold ${noPatternHold}, panel ${noPattern.anyPanel}`);
+
+    //  ...and now with a pattern. §9.6's own sequence: a demonstrated pattern, matter staged,
+    //  a viable site, then the choice.
+    await editSave(`
+        ${grantBlueprints('shelter', 'storage')}
+        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.player = { x: 0, y: 70 };
+        state.energy = 100;
+    `);
+    const siteHold = await holdWorld(emptyGround.x, emptyGround.y, 60);
+    await sleep(550);
+    await shot('slice2c-04-site-card');
+    const site = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('.site-item'));
+        return {
+            open: Boolean(document.querySelector('.panel.site')),
+            count: items.length,
+            //  Human outcomes, never object names — that is the whole of §9.6's vocabulary.
+            labels: items.map((n) => n.querySelector('strong')?.textContent?.trim() ?? ''),
+            ready: document.querySelectorAll('.site-item.ready .site-btn').length,
+            visible: items.every((n) => n.getBoundingClientRect().height > 0),
+        };
+    });
+    check('SLICE 2C/§9.6 — a hold on open ground opens the SITE CARD where the survivor chose',
+        siteHold && site.open && site.count === 2,
+        `open ${site.open}, ${site.count} outcome(s): ${site.labels.join(' | ')}`);
+    check('SLICE 2C/§9.6 — outcomes are named as NEEDS, never as the object they produce',
+        site.labels.length > 0
+        && site.labels.every((l) => l && !/shelter|crate|storage/i.test(l)),
+        site.labels.join(' | '));
+    check('SLICE 2C/§9.6 — and both are on screen and buildable with matter staged',
+        site.visible && site.ready === 2, `visible ${site.visible}, ${site.ready} buildable`);
+
+    //  REACHABILITY, PER PLACEMENT PATH (D-090). Not the happy path only: each outcome is
+    //  driven to a real structure standing in the world, through the real gesture.
+    const siteBeforeShelter = await live();
+    const chooseCover = await realTapDom('.site-item.ready .site-btn');
+    await sleep(700);
+    const siteAfterShelter = await live();
+    check('SLICE 2C/§9.6 — REACHABILITY: choosing cover really raises a shelter, at the site',
+        chooseCover.ok && siteAfterShelter.shelter.built && !siteBeforeShelter.shelter.built,
+        `built ${siteBeforeShelter.shelter.built} -> ${siteAfterShelter.shelter.built} at ${siteAfterShelter.shelter.x?.toFixed(1)},${siteAfterShelter.shelter.y?.toFixed(1)}`);
+
+    //  The second path, from the same gesture, far enough away that the site rule allows it.
+    await editSave(`state.player = { x: 0, y: 95 };`);
+    const siteHold2 = await holdWorld(0, 103, 60);
+    await sleep(550);
+    const storageReady = await page.evaluate(() => ({
+        open: Boolean(document.querySelector('.panel.site')),
+        ready: document.querySelectorAll('.site-item.ready .site-btn').length,
+        blocked: document.querySelectorAll('.site-item.blocked').length,
+        reasons: Array.from(document.querySelectorAll('.site-reason')).map((n) => n.textContent.trim()),
+    }));
+    check('SLICE 2C/§9.6 — a built outcome is SHOWN blocked with its reason, never hidden',
+        storageReady.open && storageReady.blocked >= 1
+        && storageReady.reasons.some((r) => /already/i.test(r)),
+        `blocked ${storageReady.blocked}, reasons: ${storageReady.reasons.join(' | ')}`);
+    const siteBeforeStore = await live();
+    const chooseStore = await realTapDom('.site-item.ready .site-btn');
+    await sleep(700);
+    const siteAfterStore = await live();
+    check('SLICE 2C/§9.6 — REACHABILITY: choosing somewhere-to-put-things really sets a crate',
+        chooseStore.ok && siteAfterStore.storage.built && !siteBeforeStore.storage.built,
+        `built ${siteBeforeStore.storage.built} -> ${siteAfterStore.storage.built}`);
+
+    //  THE SITE REFUSES. Ground too close to what already stands is not a legal anchor, and
+    //  the refusal has to be legible — otherwise "where" is decoration again.
+    const siteShelterAt = (await live()).shelter;
+    const tooClose = await holdWorld(siteShelterAt.x + 1, siteShelterAt.y + 1, 60);
+    await sleep(550);
+    const refused = await page.evaluate(() => ({
+        open: Boolean(document.querySelector('.panel.site')),
+        ready: document.querySelectorAll('.site-item.ready .site-btn').length,
+        reasons: Array.from(document.querySelectorAll('.site-reason')).map((n) => n.textContent.trim()),
+    }));
+    check('SLICE 2C/§9.6 — ground beside what already stands REFUSES, and says which way to move',
+        !refused.ready || refused.reasons.some((r) => /step away|already/i.test(r)),
+        `open ${refused.open}, ready ${refused.ready}, reasons: ${refused.reasons.join(' | ')}`);
+    await realTapDom('.panel.site .close-btn');
+    await sleep(450);
+    const afterSite = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel')),
+        locked: window.__drift?.panelOpen?.() === true,
+    }));
+    check('SLICE 2C/§9.6 — the site card closes and hands control back',
+        !afterSite.panel && !afterSite.locked,
+        `panel ${afterSite.panel}, locked ${afterSite.locked}`);
 
     // ================================================================
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh

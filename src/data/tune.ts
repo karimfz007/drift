@@ -168,6 +168,10 @@ export const TUNE = {
     thermalHeatStrainAt: 95,
     //  ---- LAW 128: a failed attempt transforms matter (Slice 2C) ----------------------
     /** [TUNE] Wear one failed attempt puts on the material it actually stressed. */
+    /** [TUNE] §9.6 — how far a new anchor must sit from anything already standing. The site
+     *  IS the decision, so the world has to be able to refuse a site; without a spacing rule
+     *  every placement is legal and "where" stops meaning anything. */
+    constructionMinSpacingM: 4,
     matterWearPerFailure: 1,
     /** [TUNE] Wear a unit will take before it finally goes. THREE failures, not one: loss
      *  must be earned and announced, never a hidden roll deleting a rare part (§11 names

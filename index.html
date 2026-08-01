@@ -479,6 +479,16 @@
         .build-item.hint-item { border-style: dashed; opacity: 0.9; }
         .build-item.hint-item .hint-line { font-style: italic; font-size: 13px; margin: 0 0 4px; }
         .build-item.hint-item .hint-how { font-size: 11px; opacity: 0.7; margin: 6px 0 0; }
+        /*  THE SITE CARD (§9.6). Opens where the survivor chose. A blocked outcome is SHOWN
+            greyed with its reason — the radial circle's rule, for the same reason: hiding a
+            thing you nearly have teaches nothing.  */
+        .site-item { border: 1px solid var(--edge); border-radius: 10px; padding: 10px 14px; }
+        .site-item.ready { border-color: var(--good); }
+        .site-item.blocked { opacity: 0.62; }
+        .site-item .site-reason { font-size: 12px; margin: 6px 0 0; }
+        .site-item .site-btn { width: 100%; margin-top: 8px; min-height: 44px; }
+        .site-lead { font-style: italic; }
+
         /*  THE BACKPACK HUB'S TABS (Law 126). Three, by law — Inventory, Vitals, Skills.
             Big enough for a thumb and legible at phone size, because a tab bar that needs
             aiming is a tab bar that gets mis-tapped mid-emergency.  */

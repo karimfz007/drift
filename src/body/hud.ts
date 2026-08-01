@@ -893,6 +893,62 @@ function growthBody(report: GrowthReportView): string {
         </div>`;
 }
 
+/** One human outcome offered at a site, mirroring `SiteReading` from the brain. */
+export interface SiteOutcomeView {
+    outcome: string;
+    label: string;
+    buildable: boolean;
+    reason: string | null;
+}
+
+/**
+ * THE SITE CARD (§9.6, Law 126) — contextual construction's surface.
+ *
+ * This is what replaces the global Build button for anything that goes IN A PLACE. It opens
+ * where the survivor chose, it names what they get in human terms rather than by object, and
+ * a blocked outcome is SHOWN greyed with the one true reason — the same rule the radial
+ * circle's blocked segments follow, for the same reason: hiding a thing you nearly have
+ * teaches nothing, while showing it with its reason teaches exactly what to fix.
+ *
+ * It renders `availableOutcomes` and decides nothing. The site's viability, the ordering of
+ * the reasons and the wording all live in `construction.ts`, where a unit test can reach
+ * them; this layer draws the answer.
+ */
+export function showSiteCard(
+    overlay: HTMLElement,
+    outcomes: SiteOutcomeView[],
+    onChoose: (outcome: string) => void,
+    onClose: () => void
+): void {
+    const el = panel(overlay, 'site');
+    const rows = outcomes.map((o) => `
+        <div class="build-item site-item ${o.buildable ? 'ready' : 'blocked'}">
+            <div class="build-head"><strong>${o.label}</strong></div>
+            ${o.reason ? `<p class="subtitle site-reason">${o.reason}</p>` : ''}
+            ${o.buildable
+                ? `<button class="primary site-btn" data-outcome="${o.outcome}" type="button">Build it here</button>`
+                : ''}
+        </div>`).join('');
+    el.innerHTML = `
+        <h2>Here</h2>
+        <p class="subtitle site-lead">What do you need this ground for?</p>
+        <div class="build-list">${rows}</div>
+        <button class="primary close-btn" type="button">Not here</button>`;
+    let done = false;
+    el.querySelectorAll<HTMLButtonElement>('.site-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+            if (done) return;
+            done = true;
+            fade(el, () => onChoose(b.dataset.outcome ?? ''));
+        });
+    });
+    el.querySelector('.close-btn')!.addEventListener('click', () => {
+        if (done) return;
+        done = true;
+        fade(el, onClose);
+    });
+}
+
 /**
  * THE RADIAL CIRCLE (Slice 2).
  *

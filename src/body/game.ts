@@ -67,6 +67,8 @@ import {
     ALL_MATERIAL_KINDS,
     tryCombineWith,
     growthReport,
+    availableOutcomes,
+    siteHasAnything,
     bodyReport,
     revealedInPanel,
     panelHints,
@@ -98,6 +100,7 @@ import {
     levelToast,
     pickupToast,
     showBuildCard,
+    showSiteCard,
     type BackpackTab,
     showColdOpen,
     showDeath,
@@ -800,7 +803,65 @@ export class Game {
      */
     private onHold(screenX: number, screenY: number): void {
         this.onTap(screenX, screenY);
-        if (this.pending) this.pendingWasHold = true;
+        if (this.pending) { this.pendingWasHold = true; return; }
+
+        //  §9.6 (Law 126): a HOLD on open ground asks what this ground is FOR. A TAP stays
+        //  exactly what it was — the player's "never mind" look-around — so nothing anyone
+        //  already does changes meaning, and the gesture vocabulary is the one Slice 2's
+        //  Default-Verb Law already established: a tap acts, a hold asks.
+        //
+        //  This is what makes the site a decision. A global Build button could raise a
+        //  shelter from anywhere, which told the player that WHERE they build does not
+        //  matter — and if it does not matter, drainage, wind and distance to water are all
+        //  decoration.
+        if (runtime.panelOpen) return;
+        const point = this.pickHitPoint(screenX, screenY);
+        if (!point || point.unexpectedMesh) return;
+        const s = session().state;
+        //  Silent when there is genuinely nothing to say: a survivor with no demonstrated
+        //  pattern has no construction to be offered, and inventing a message for that would
+        //  be teaching them about a menu they do not have.
+        if (!siteHasAnything(s, point.x, point.z)) return;
+        this.openSiteCard(point.x, point.z);
+    }
+
+    /**
+     * THE SITE CARD. Opens where the survivor chose, offers §9.6's human outcomes, and hands
+     * the chosen one to the SAME `buildShelter`/`buildStorage` the Build panel used — one
+     * path that spends materials, one that decides a grade, however the player got there.
+     */
+    private openSiteCard(x: number, z: number): void {
+        if (runtime.panelOpen) { this.explain('Something else is open. Close it first.'); return; }
+        this.beginPanel();
+        const s = session().state;
+        showSiteCard(
+            this.overlay,
+            availableOutcomes(s, x, z).map((o) => ({
+                outcome: o.outcome, label: o.label, buildable: o.buildable, reason: o.reason,
+            })),
+            (outcome) => { this.endPanel(() => this.placeAtSite(outcome, x, z)); },
+            () => this.endPanel(),
+        );
+    }
+
+    /** Place the anchor and build. Refuses loudly if the world's own geometry says no. */
+    private placeAtSite(outcome: string, x: number, z: number): void {
+        const s = session().state;
+        //  The world gets its own veto, separate from the brain's spacing rule: the brain
+        //  knows what stands where, the body knows what the mesh is actually on top of.
+        const radius = outcome === 'storage' ? TUNE.storageCollisionRadius : TUNE.shelterCollisionRadius;
+        const clear = this.island.resolveCollision(x, z, radius, this.dynamicObstacles());
+        const built = outcome === 'storage'
+            ? buildStorage(s, clear.x, clear.z)
+            : buildShelter(s, clear.x, clear.z);
+        if (!built) { this.explain('That will not go up here.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText(outcome === 'storage' ? 'the crate is set' : 'the shelter stands');
+        session().persist(now());
+        this.lastActivityAt = now();
+        this.showHint(outcome === 'storage'
+            ? 'Tap the crate to store what you are carrying.'
+            : 'Tap the shelter to sleep — it is home now.');
     }
 
     private onTap(screenX: number, screenY: number): void {

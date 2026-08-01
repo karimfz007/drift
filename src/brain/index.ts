@@ -17,6 +17,7 @@ export * from './confidence';
 export * from './growth';
 export * from './matter';
 export * from './bodyReport';
+export * from './construction';
 export * from './crossdev';
 export * from './capacities';
 export * from './skills';
