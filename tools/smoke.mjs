@@ -1422,10 +1422,11 @@ async function main() {
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
-        state.player = { x: 0, y: 70 };
+        state.player = { x: -10, y: 68 };
         state.energy = 100;
     `);
-    const emptyGround = { x: 0, y: 78 };
+    //  14.4 m clear of every node and the pond — measured, not assumed.
+    const emptyGround = { x: -10, y: 74 };
     const noPatternHold = await holdWorld(emptyGround.x, emptyGround.y);
     await sleep(500);
     const noPattern = await page.evaluate(() => ({
@@ -1444,7 +1445,7 @@ async function main() {
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
-        state.player = { x: 0, y: 70 };
+        state.player = { x: -10, y: 68 };
         state.energy = 100;
     `);
     const siteInputs = await live();
@@ -1496,8 +1497,8 @@ async function main() {
         'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
 
     //  The second path, from the same gesture, far enough away that the site rule allows it.
-    await editSave(`state.player = { x: 0, y: 95 };`);
-    const siteHold2 = await holdWorld(0, 103);
+    await editSave(`state.player = { x: -30, y: 78 };`);
+    const siteHold2 = await holdWorld(-30, 84);   //  14.6 m clear
     await sleep(550);
     const storageReady = await page.evaluate(() => ({
         open: Boolean(document.querySelector('.panel.site')),
@@ -1522,7 +1523,7 @@ async function main() {
     //  THE SITE REFUSES. Ground too close to what already stands is not a legal anchor, and
     //  the refusal has to be legible — otherwise "where" is decoration again.
     const siteShelterAt = (await live()).shelter;
-    const tooClose = await holdWorld(siteShelterAt.x + 1, siteShelterAt.y + 1);
+    const tooClose = await holdWorld(siteShelterAt.x + 3, siteShelterAt.y + 3);   //  beside it, not ON it
     await sleep(550);
     const refused = await page.evaluate(() => ({
         open: Boolean(document.querySelector('.panel.site')),

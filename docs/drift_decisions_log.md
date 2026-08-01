@@ -3,6 +3,27 @@
 
 ---
 
+**D-101 · 2026-08-01 — BOUNDARY 2 STILL OPEN: the live hypothesis is DISPROVEN, and the search space is now small and named.** Reported as a negative result with evidence, because a disproven hypothesis honestly recorded is worth more than a plausible one asserted.
+
+**THE HYPOTHESIS, tested cheaply and killed.** The harness's "empty ground" coordinate `(0,78)` had **`dw5/driftwood` 4.5 m away** — well inside `pickNode`'s deliberately forgiving radius — so `onTap` claimed it, `pending` was set, and `onHold` returned early. That was measured in seconds with a throwaway probe rather than a twenty-minute run. The coordinate moved to **`(-10,74)`, 14.4 m clear of every node and the pond** — computed as the emptiest reachable ground on the island, not guessed.
+
+**AND THE SIGNATURE DID NOT CHANGE.** With genuinely empty ground and the corrected probe — which now writes on `onHold`'s FIRST line and records which branch it took — the trace still reads **`(onHold never ran)`**. That is now unambiguous: the gesture does not reach the game layer at all.
+
+**WHAT IS ELIMINATED, each by reading the shipped code rather than by argument:**
+- `onPressWorld` returns `false` unconditionally, so the `worldPointer` branch never claims the press.
+- `onUp`'s look-pointer branch computes `wasStationaryHold` and calls `onHold` correctly.
+- The cold-open overlay is dismissed by a real touch long before this section.
+- The panel lock is not held — the section's own hand-back check passes.
+- **The gesture mechanism itself works**: `SLICE 2 — HOLDING the pond opens the circle` passes in the same run, and that check can ONLY pass if `pendingWasHold` was set, which requires `onHold` to have run. Same helper, same durations, same touchscreen API.
+
+**SO THE FACT TO EXPLAIN IS NARROW:** `onHold` fires at harness line ~925 and does not fire at ~1216, with the same call. **The strongest remaining lead is a mid-hold `controls.releaseAll()`** — it nulls `lookPointer`, and a null `lookPointer` at release matches no branch in `onUp`, so no handler runs and the trace stays empty. That is consistent with every observation including the empty trace. **It is a lead, not a finding**, and the next session's first move is pointer-level instrumentation in `controls.ts` — record `pointerdown`, `pointerup` and every `releaseAll` — rather than a sixth guess.
+
+**LAW 126 DOES NOT RETIRE.** Unchanged condition, unmet. The ~25 references stand.
+
+**SLICE 3 DOES NOT OPEN.** Its gate is a resolved Boundary 2, and Boundary 2 is unresolved. No permadeath, Journal, Death Review or requalification code exists or was written.
+
+**Class: OPERATIVE** — the coordinate correction and the corrected probe are shipped; the residual stays `knownOpen` with this evidence attached.
+
 **D-100 · 2026-08-01 — STANDING PRACTICE NOTED (D-045 lineage, NOT a new law): a twice-failed assertion gets a STRUCTURAL fix, not a sharper claim.** Logged as what actually happened this slice rather than as a prediction.
 
 **Three occurrences, and the third is the one that names the pattern.**
