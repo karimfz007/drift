@@ -571,6 +571,9 @@ export class Game {
                 combinable: ALL_MATERIAL_KINDS.filter((m) => (s.inventory[m] ?? 0) > 0),
                 //  LAW 126's other two tabs, both READ from the brain. The hub renders
                 //  them; nothing about their content is decided here.
+                //  LAW 126: the maker's gate, read from the HUD's own computation so the
+                //  Backpack shows exactly what the retired button would have.
+                maker: this.hud.makerEntry(),
                 vitals: bodyReport(s),
                 skills: growthReport(s, s.capacities)
             },
@@ -591,7 +594,8 @@ export class Game {
             //  — the panel re-renders in place — because releasing it would let a world tap
             //  through the gap, which is the leak D-063's INPUT SAFETY law exists to stop.
             tab,
-            (next) => this.openLoadout(atStorage, next, true)
+            (next) => this.openLoadout(atStorage, next, true),
+            () => this.endPanel(() => this.openBuildCard())
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may

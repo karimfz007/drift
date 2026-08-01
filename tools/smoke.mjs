@@ -465,6 +465,32 @@ async function main() {
         return best;
     }, { minClear });
 
+    /**
+     * LAW 126's MIGRATION. The global Build button is gone — the element does not exist —
+     * so every path that used to start there now goes through the Backpack, which is where
+     * making things lives. One helper rather than nineteen edits, so the route can change
+     * again without touching nineteen call sites.
+     */
+    const openBuild = async () => {
+        const pack = await realTapDom('.carried-button');
+        if (!pack.ok) return { ok: false, reason: `pack: ${pack.reason ?? 'unreachable'}` };
+        await sleep(420);
+        const make = await realTapDom('.make-btn');
+        if (!make.ok) return { ok: false, reason: `make: ${make.reason ?? 'unreachable'}` };
+        await sleep(450);
+        return { ok: true, reason: null };
+    };
+    /** Is the maker route offered at all? The visibility gate the retired button carried. */
+    const makerVisible = async () => {
+        const pack = await realTapDom('.carried-button');
+        if (!pack.ok) return { visible: false, reason: 'pack unreachable' };
+        await sleep(420);
+        const v = await isVisible('.make-btn');
+        await realTapDom('.panel.backpack .close-btn');
+        await sleep(400);
+        return v;
+    };
+
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
 
     //  A REAL, coordinate-based, viewport-and-occlusion-respecting tap on a DOM element — as
@@ -1038,7 +1064,7 @@ async function main() {
         state.warmth = 100; state.energy = 100; state.thirst = 90; state.hunger = 90;
         state.gameHoursElapsed = ${((12 - TUNE.startHourOfDay) + TUNE.gameHoursPerDay) % TUNE.gameHoursPerDay};
     `);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     await shot('slice2b-01-empty-panel');
     const emptyPanel = await page.evaluate(() => ({
@@ -1072,7 +1098,7 @@ async function main() {
         state.warmth = ${Math.max(0, TUNE.warmthLowThreshold - 5)};
         state.energy = 100;
     `);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     await shot('slice2b-02-fire-scaffold');
     const scaffold = await page.evaluate(() => ({
@@ -1105,7 +1131,7 @@ async function main() {
         state.warmth = ${Math.max(0, TUNE.warmthLowThreshold - 5)};
         state.energy = 100;
     `);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     await shot('slice2b-03-hints');
     const hinted = await page.evaluate(() => {
@@ -1138,7 +1164,7 @@ async function main() {
         state.gameHoursElapsed = ${((12 - TUNE.startHourOfDay) + TUNE.gameHoursPerDay) % TUNE.gameHoursPerDay};
         ${grantBlueprints('shelter')}
     `);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     const earned = await page.evaluate(() => ({
         hasShelterBtn: Boolean(document.querySelector('.shelter-btn')),
@@ -1472,6 +1498,21 @@ async function main() {
         `close ${reachClose.ok} ${reachClose.reason ?? ''}, panel ${afterReach.panel}, locked ${afterReach.locked}`);
 
 
+    //  LAW 126, THE RETIREMENT ITSELF. Proven by ABSENCE, which is the only proof that
+    //  distinguishes "retired" from "superseded in intent": the element must not be in the
+    //  document at all. Hidden, disabled or conditional would all still be a global build
+    //  menu one CSS change away from returning — and every interim hack this project has
+    //  replaced was replaced, not layered over.
+    const globalBuild = await page.evaluate(() => ({
+        present: Boolean(document.querySelector('.secondary-action')),
+        //  ...and the route it carried still exists, in the Backpack where it belongs.
+        packEntry: Boolean(document.querySelector('.carried-button')),
+    }));
+    check('LAW 126 — the global Build button is GONE from the document, not merely hidden',
+        !globalBuild.present, `.secondary-action present: ${globalBuild.present}`);
+    check('LAW 126 — and the Backpack, which now carries the maker route, is still reachable',
+        globalBuild.packEntry, `.carried-button present: ${globalBuild.packEntry}`);
+
     // ================================================================
     // SLICE 2C BOUNDARY 2 — CONTEXTUAL CONSTRUCTION (§9.6). The site is a decision.
     // ================================================================
@@ -1649,7 +1690,19 @@ async function main() {
     //  intention can cross this line whatever happened above — a guarantee rather than a
     //  hope, which is what a section that deliberately pokes at world geometry owes the
     //  sections after it.
-    await editSave('state.player = { x: 0, y: 70 };');
+    //  AND PUT THE WORLD BACK. This section now genuinely raises a shelter and sets a crate
+    //  — it used to skip — and both persist into every later section. FIX 5 taps the pack on
+    //  the survivor's back and started reading `ground` at every offset, because the ray was
+    //  meeting a structure this section had left standing near the start area.
+    //
+    //  Third time for this exact lesson (the un-built shelter, the verb circle, now this): a
+    //  section that changes the world owes the sections after it the world it was given. The
+    //  reset restores what was found, not merely the panel state.
+    await editSave(`
+        state.player = { x: 0, y: 70 };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false, stored: { wood: 0, stone: 0, fiber: 0 } };
+    `);
     const siteHandback = await page.evaluate(() => ({
         panel: Boolean(document.querySelector('.panel')),
         locked: window.__drift?.panelOpen?.() === true,
@@ -1731,7 +1784,7 @@ async function main() {
     //  the new "D-055" section below; this section is about the axe DOING something once
     //  owned, same as it always was).
     await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2; ${grantBlueprints('axe')}`);
-    check('the Build button opens the panel', await clickDom('.secondary-action'));
+    check('the Build button opens the panel', (await openBuild()).ok);
     await sleep(400);
     await shot('c04-05-craftcard');
     check('the Build panel shows the axe item with gated source hints', await page.$('.build-item .gates') !== null);
@@ -1814,7 +1867,7 @@ async function main() {
     //  panel. The knap action isn't counted here — it only renders once the hammer is
     //  owned, which it isn't yet at this point in the run.
     await editSave(`state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; ${grantBlueprints('torch', 'axe', 'shelter', 'storage', 'stonehammer')}`);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     //  The card gained Rest and (conditionally) Mend in D-073, so a bare `.build-item`
     //  count is no longer five. Assert the five CRAFTABLES by their own buttons instead,
@@ -1846,7 +1899,7 @@ async function main() {
     check('the shelter is built, full durability', afterShelter.shelter.built && afterShelter.shelter.durability > 99.9, `durability ${afterShelter.shelter.durability}`);
 
     //  Build storage next — must NOT land on the shelter (the same-offset collision fix).
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     const storageBuildTap = await realTapDom('.storage-btn');
     check('storage builds via a real, reachable tap', storageBuildTap.ok, storageBuildTap.reason ?? '');
@@ -1889,7 +1942,7 @@ async function main() {
     await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
     await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
     const beforeMend = await live();
-    const buildForMend = await realTapDom('.secondary-action');
+    const buildForMend = await openBuild();
     await sleep(500);
     const mendTap = await realTapDom('.panel.build .mend-shelter-btn');
     await sleep(700);
@@ -3101,7 +3154,7 @@ async function main() {
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
         ${grantBlueprints('torch')}
     `);
-    const buildOpenTap = await realTapDom('.secondary-action');
+    const buildOpenTap = await openBuild();
     check('setup — the Build action is reachable to open the panel', buildOpenTap.ok || (await panelOpen()), buildOpenTap.reason ?? '');
     await sleep(300);
     const torchCraftTap = await realTapDom('.torch-btn');
@@ -3152,14 +3205,14 @@ async function main() {
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
     `);
     const buildRowRect = await page.evaluate(() => { const r = document.querySelector('.action-row')?.getBoundingClientRect(); return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null; });
-    const withTorchOwedInfo = await isVisible('.secondary-action');
+    const withTorchOwedInfo = await makerVisible();
     check('REGRESSION — the Build button stays visible with axe/shelter/storage all done, while the torch is still uncrafted', withTorchOwedInfo.visible, JSON.stringify(withTorchOwedInfo));
     const withTorchOwedShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
 
     //  The other half: once EVERYTHING (including the torch) is done, the button should
     //  correctly disappear — proving this isn't just "always show it" overcorrection.
     await editSave("state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4, grade: 'serviceable' };");
-    const allDoneInfo = await isVisible('.secondary-action');
+    const allDoneInfo = await makerVisible();
     check('the Build button correctly hides once axe/shelter/storage/torch are ALL done', !allDoneInfo.visible, JSON.stringify(allDoneInfo));
     const allDoneShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
 
@@ -3187,7 +3240,7 @@ async function main() {
         state.inventory.sharpblade = 0;
         ${grantBlueprints('stonehammer', 'axe')}
     `);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(300);
     const hammerCraftTap = await realTapDom('.stonehammer-btn');
     check('D-055 — the stone hammer can be made via a real, reachable tap on the Build panel', hammerCraftTap.ok, hammerCraftTap.reason ?? '');
@@ -3195,7 +3248,7 @@ async function main() {
     const afterHammer = await live();
     check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.tools.stoneHammer === true, JSON.stringify(afterHammer.tools.stoneHammer));
 
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(300);
     const stoneBeforeKnap = (await live()).inventory.stone;
     const knapTap = await realTapDom('.knap-btn');
@@ -3209,7 +3262,7 @@ async function main() {
     //  reaching this exact point with the axe still unowned, then closing the loop for
     //  real once the blade exists.
     check('REGRESSION — the axe is not craftable on raw stone alone (it needs the knapped blade)', afterHammer.tools.axe === false && afterKnap.inventory.sharpblade > 0);
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(300);
     const axeCraftTap = await realTapDom('.axe-btn');
     check('D-055 — with a knapped blade in hand, the axe crafts via a real tap', axeCraftTap.ok, axeCraftTap.reason ?? '');
@@ -3278,7 +3331,7 @@ async function main() {
     //  the pivot, still reveals its row when there is something left to build.
     const shelterBeforeReveal = (await live()).shelter;
     await editSave('state.shelter = { ...state.shelter, built: false };');
-    await realTapDom('.secondary-action');
+    await openBuild();
     await sleep(400);
     await shot('slice2b-04-migrated-panel');
     const migratedPanel = await page.evaluate(() => ({
@@ -3302,7 +3355,7 @@ async function main() {
     //  D-053's own fix) — force axe/shelter/storage/torch AND the hammer all done, confirm
     //  the button correctly disappears; this run's shelter/storage/torch were already
     //  built earlier in the suite, so the hammer (just crafted above) is the last gate.
-    const finalVisible = await isVisible('.secondary-action');
+    const finalVisible = await makerVisible();
     check('the Build button correctly hides once EVERYTHING, including the stone hammer, is done', !finalVisible.visible, JSON.stringify(finalVisible));
 
     //  The null-outcome journal: holding a material that satisfies nothing (berries) and
@@ -3323,7 +3376,7 @@ async function main() {
     `);
     const beforeJournal = (await live()).knowledge;
     check('setup — the null-outcome journal is empty (forced, not assumed)', beforeJournal.nullPairs.length === 0, `${beforeJournal.nullPairs.length} pairs`);
-    const journalOpenTap = await realTapDom('.secondary-action');
+    const journalOpenTap = await openBuild();
     check('setup — the Build panel is reachable to exercise the journal', journalOpenTap.ok, journalOpenTap.reason ?? '');
     await sleep(300);
     await clickDom('.close-btn');
@@ -4169,7 +4222,7 @@ async function main() {
         //  regardless of whether it is on-screen or covered — the exact gap that once let a
         //  real bug past 57/57 checks — so it cannot tell "the card did not open" from "the
         //  row is missing". This settles which, by reporting BOTH separately.
-        const opened = await realTapDom('.secondary-action');
+        const opened = await openBuild();
         await sleep(500);
         const dom = await page.evaluate(() => {
             const panel = document.querySelector('.panel');
@@ -4238,7 +4291,7 @@ async function main() {
         check('F3 setup — the player is genuinely out of the shelter radius before we look',
             awayDist > TUNE.shelterRadius,
             `${awayDist.toFixed(2)} m from the shelter (radius ${TUNE.shelterRadius} m)`);
-        await realTapDom('.secondary-action');
+        await openBuild();
         await sleep(500);
         const off = await page.evaluate(() => {
             const el = document.querySelector('.panel .refuge-item .refuge-line');

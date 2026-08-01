@@ -3,6 +3,22 @@
 
 ---
 
+**D-104 · 2026-08-01 — LAW 126 RETIRED. BOUNDARY 2 CLOSES, AND SLICE 2C WITH IT.** The global Build button is **gone from the document** — not hidden, not disabled, not conditional. Proven by absence, which is the only proof that separates *retired* from *superseded in intent*.
+
+**THE RETIREMENT.** `.secondary-action` no longer exists in the HUD markup, and the device check asserts its absence: **`.secondary-action present: false`**, green in two independent runs. Everything the panel could do survives — the door moved, the lock did not change: **structures** go through §9.6's site card where the survivor stands ([[D-103]]), and **making things** lives in the Backpack, which is the surface about what you carry and what you can do with it. The maker entry inherits the retired button's own visibility gate rather than a re-derived one.
+
+**ALL 19 HARNESS REFERENCES MIGRATED** through a single `openBuild()` helper — one route, not nineteen call sites, so the path can change again without nineteen edits. `isVisible('.secondary-action')` became `makerVisible()`, which opens the pack and reads the same gate.
+
+**THE THIRD OCCURRENCE OF ONE LESSON, and it was mine again.** This section used to SKIP; it now genuinely raises a shelter and sets a crate — and both persisted into every later section, so `FIX 5 — the pack on the survivor is tappable` began reading `ground` at every offset, because the ray was meeting a structure left standing near the start area. **A section that changes the world owes the sections after it the world it was given.** The reset now restores what it found, not merely the panel state. The un-built shelter, the leaked verb circle, and now this: same shape, third time, and the fix is structural each time.
+
+**REPORTED HONESTLY: the confirmation is fragmented across runs, not fabricated.** The recurring 90-second `editSave` navigation timeout crashed three runs at three different points (24, 69 and 260 checks). Everything that ran was green — **zero failures** in the final run's 69 checks, and the previous run reached 260 with only the FIX 5 regression that is now fixed. Law 126's absence proof and all eight §9.6 site checks passed in separate complete passes over those sections. **No single run has yet carried the whole suite end to end**, and that is stated rather than smoothed over: the evidence is real and its assembly is not one continuous witness.
+
+**Class: OPERATIVE**
+
+*Witness: `LAW 126 — the global Build button is GONE from the document` and `LAW 126 — the Backpack ... is still reachable`, both green; the eight §9.6 site checks green including both reachability proofs; 655 unit tests; purity, typecheck, tune-mirror, docs-integrity all green.*
+
+**SLICE 3 IS NOT STARTED.** It is the identity slice and needs a session of its own — the retirement consumed this one's remaining runway, which is precisely the outcome C1's gear-change addendum exists to prevent happening again. The next session leads with it and nothing else.
+
 **D-103 · 2026-08-01 — CONTEXTUAL CONSTRUCTION IS DEVICE-WITNESSED END TO END.** The three-session gesture gap is closed. **Law 126's retirement does NOT ship this session**, and Slice 3 does not open — the confirmation is real, the removal is a separate piece of work that must not be half-done.
 
 **THE TRACE, complete:** `onHold -> no-target -> point:-11.2,60.9 -> opening -> opened`. Every site assertion flipped **OPEN→PASS**:

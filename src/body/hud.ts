@@ -56,7 +56,10 @@ export class Hud {
     private hintTimer = 0;
     private lastInv = '';
 
-    private secondaryButton!: HTMLButtonElement;
+    /** Opens the maker surface, now reached from the Backpack rather than the world HUD. */
+    private openMaker: () => void = () => {};
+    private makerVisible = false;
+    private makerLabel = '';
 
     constructor(
         overlay: HTMLElement,
@@ -82,7 +85,6 @@ export class Hud {
             <div class="hud-bottom">
                 <div class="goal"></div>
                 <div class="action-row">
-                    <button class="secondary-action" type="button"></button>
                     <button class="action" type="button"></button>
                 </div>
             </div>`;
@@ -101,9 +103,16 @@ export class Hud {
         this.actionButton.addEventListener('click', (e) => { e.stopPropagation(); onAction(); });
         this.actionButton.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-        this.secondaryButton = this.root.querySelector('.secondary-action') as HTMLButtonElement;
-        this.secondaryButton.addEventListener('click', (e) => { e.stopPropagation(); onSecondary(); });
-        this.secondaryButton.addEventListener('pointerdown', (e) => e.stopPropagation());
+        //  LAW 126: THE GLOBAL BUILD BUTTON IS RETIRED. It is not hidden, not disabled and
+        //  not conditional — the element no longer exists. A menu that can raise a shelter
+        //  from anywhere says the site does not matter; construction now happens where the
+        //  survivor stands (§9.6's site card), and making things happens in the Backpack,
+        //  which is the surface about what you carry and what you can do with it.
+        //
+        //  `onSecondary` survives as the Backpack's own "make something" route, so nothing
+        //  the panel could do has been lost — only the door that could be opened from
+        //  nowhere in particular.
+        this.openMaker = onSecondary;
 
         //  Food chips eat directly — eating is not a world object, so it stays out of the
         //  world-tap model and off the button stack (D-042). One tap on the chip, one bite.
@@ -138,8 +147,10 @@ export class Hud {
         this.actionButton.textContent = v.action.label;
         this.actionButton.classList.toggle('ready', v.action.ready);
 
-        this.secondaryButton.style.display = v.secondary.visible ? 'block' : 'none';
-        this.secondaryButton.textContent = v.secondary.label;
+        //  The maker's gate is carried on the view and read by the Backpack, not painted
+        //  onto a world-space button that no longer exists.
+        this.makerVisible = v.secondary.visible;
+        this.makerLabel = v.secondary.label;
     }
 
     private paintBar(k: 'warmth' | 'thirst' | 'hunger' | 'health' | 'energy', value: number, max: number, ok: string, low: number, trend: string): void {
@@ -197,6 +208,11 @@ export class Hud {
             }
         }
         this.invRow.innerHTML = chips.join('');
+    }
+
+    /** What the maker entry should look like right now — same gate the retired button used. */
+    makerEntry(): { visible: boolean; label: string; open: () => void } {
+        return { visible: this.makerVisible, label: this.makerLabel, open: this.openMaker };
     }
 
     showHint(message: string, seconds: number): void {
@@ -654,6 +670,9 @@ export interface LoadoutPanelView {
     /** LAW 126: the Backpack's other two tabs. Both are READ from the brain — this layer
      *  renders them and derives nothing, exactly as the Inventory tab already does. */
     vitals: BodyReportView;
+    /** LAW 126: the maker route, now living in the Backpack. Same gate the retired global
+     *  button used — the door moved, the lock did not change. */
+    maker: { visible: boolean; label: string };
     skills: GrowthReportView;
 }
 
@@ -727,7 +746,8 @@ export function showLoadout(
     //  shortcut switches tabs rather than opening one. Retiring the parameter rather than
     //  leaving it inert — a hook nothing calls is the next reader's false lead.
     tab: BackpackTab = 'inventory',
-    onTab: (next: BackpackTab) => void = () => {}
+    onTab: (next: BackpackTab) => void = () => {},
+    onMake: () => void = () => {}
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -784,6 +804,7 @@ export function showLoadout(
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
         ${storageRow}
         ${equipRow}
+        ${view.maker.visible ? `<button class="primary make-btn" type="button">${view.maker.label}</button>` : ''}
         <button class="quiet growth-btn" type="button">What the island has done to you</button>
         ${combineRow}
         <div class="zones">${zoneRows}</div>`;
@@ -798,6 +819,11 @@ export function showLoadout(
     //  Switching re-renders in place rather than closing and reopening: the panel lock is
     //  already held, and releasing it between tabs would let a world tap through the gap —
     //  the exact class of leak D-063's INPUT SAFETY law exists to prevent.
+    el.querySelector<HTMLButtonElement>('.make-btn')?.addEventListener('click', () => {
+        el.remove();
+        onMake();
+    });
+
     el.querySelectorAll<HTMLButtonElement>('.backpack-tab').forEach((b) => {
         b.addEventListener('click', () => {
             const next = (b.dataset.tab ?? 'inventory') as BackpackTab;
