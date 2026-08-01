@@ -3,6 +3,25 @@
 
 ---
 
+**D-103 · 2026-08-01 — CONTEXTUAL CONSTRUCTION IS DEVICE-WITNESSED END TO END.** The three-session gesture gap is closed. **Law 126's retirement does NOT ship this session**, and Slice 3 does not open — the confirmation is real, the removal is a separate piece of work that must not be half-done.
+
+**THE TRACE, complete:** `onHold -> no-target -> point:-11.2,60.9 -> opening -> opened`. Every site assertion flipped **OPEN→PASS**:
+
+- the hold opens the site card where the survivor chose — **2 outcomes**: *"Somewhere out of the weather"*, *"Somewhere to put things down"*;
+- both named as **needs, never as the object** they produce;
+- both on screen and buildable with matter staged;
+- **REACHABILITY: choosing cover really raises a shelter** — `built false -> true at -11.2,60.9`;
+- **REACHABILITY: choosing somewhere-to-put-things really sets a crate** — `built false -> true`;
+- a built outcome is **shown blocked carrying its reason** — *"You have one of these already."*
+
+**THE LAST BLOCKER WAS MY OWN INVENTED NUMBER.** After the camera-relative sweep still found nothing, the failing constraint turned out to be a **7 m clearance threshold I had made up** — not measured, not derived from `pickNode`'s actual radius, just a round number that felt safe. On a deliberately dense island it was unsatisfiable everywhere, and it reported *"no site"* when the truth was *"not that much room, but enough"*. Relaxed progressively, it succeeded at **5 m**, finding ground **6 m ahead, 6.5 m clear, at screen 529,97**. **A guessed threshold is a hypothesis wearing a constant's clothes**, and this one blocked the run for a whole session while every layer it gated was working.
+
+**THE THREE-SESSION ARC, honestly.** The cause was never in the game. It was: a helper that returned `true` for a touch dispatched off-screen ([[D-102]]); then a sweep over **world** bearings rather than the camera's; then a **made-up clearance constant**. Three harness defects in a row, each hidden by the previous one, while the brain-side diagnostics kept truthfully reporting that the inputs were perfect — because they were. **Every one of those diagnostics was correct and none of them was informative**, which is the signature of instrumenting the wrong side of a gap.
+
+**WHAT DOES NOT SHIP.** Law 126's retirement needs ~25 harness references migrated or proven obsolete, fail-then-pass on the removal, and a clean confirming run. That is a full piece of work, not a follow-on edit, and there is not enough runway left in this session to do it and verify it. **Shipping the removal without completing the migration is precisely the subtraction-alone failure this boundary's rail exists to prevent** — the confirmation being green does not change what a half-finished dependency inversion costs.
+
+**Class: OPERATIVE** — the construction flow and its device proofs are shipped and green; the eight site checks are promoted from `knownOpen` to `check`, so a future regression fails loudly instead of hiding behind an owned exception.
+
 **D-102 · 2026-08-01 — THE GESTURE GAP IS ROOT-CAUSED: THE TOUCH WAS NEVER LANDING.** Three sessions, and the cause was in the harness, not the game. **Boundary 2 still does not close** — the placement path is real but not yet exercised — and Slice 3 does not open.
 
 **THE POINTER LOG SETTLED IT, by comparison rather than by argument.** Both holds were logged in the same format, the working one as a control:

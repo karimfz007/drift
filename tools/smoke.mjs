@@ -423,6 +423,48 @@ async function main() {
         await tapAt(p.x, p.y, TUNE.tapMaxMs + 260);
         return { ok: true, why: `${Math.round(p.x)},${Math.round(p.y)}` };
     };
+    /**
+     * Find ground that is BOTH clear of nodes AND actually on screen — the two constraints
+     * that must hold together for a hold to reach the game at all, and which cost three
+     * sessions by being checked separately.
+     *
+     * Swept relative to the CAMERA'S OWN YAW, not world bearings. A point behind the survivor
+     * is still a valid world coordinate and still projects to a number; that number is simply
+     * off-screen, so a compass sweep can be geometrically perfect and land nothing. The game's
+     * own placement code uses sin/cos of facing for exactly this reason.
+     */
+    const findHoldableSite = async (minClear = 7) => page.evaluate(({ minClear: mc }) => {
+        const live = window.__drift.state();
+        const yaw = window.__drift.camera().yaw;
+        const nodes = live.nodes ?? [];
+        const clearanceOf = (x, y) => {
+            let d = Infinity;
+            for (const n of nodes) d = Math.min(d, Math.hypot(n.x - x, n.y - y));
+            d = Math.min(d, Math.hypot(x - 0, y - 104));
+            if (live.shelter && live.shelter.built) d = Math.min(d, Math.hypot(live.shelter.x - x, live.shelter.y - y));
+            if (live.storage && live.storage.built) d = Math.min(d, Math.hypot(live.storage.x - x, live.storage.y - y));
+            if (live.fire && live.fire.built) d = Math.min(d, Math.hypot(live.fire.x - x, live.fire.y - y));
+            return d;
+        };
+        let best = null;
+        for (let dist = 6; dist <= 30; dist += 1) {
+            for (const off of [0, 10, -10, 20, -20, 30, -30, 40, -40]) {
+                const rad = yaw + (off * Math.PI) / 180;
+                const x = live.player.x + Math.sin(rad) * dist;
+                const y = live.player.y + Math.cos(rad) * dist;
+                const clear = clearanceOf(x, y);
+                if (clear < mc) continue;
+                const p = window.__drift.screenOf(x, y);
+                if (!p) continue;
+                const inset = 50;
+                if (p.x < inset || p.y < inset) continue;
+                if (p.x > window.innerWidth - inset || p.y > window.innerHeight - inset) continue;
+                if (!best || clear > best.clear) best = { x, y, clear, sx: Math.round(p.x), sy: Math.round(p.y), dist };
+            }
+        }
+        return best;
+    }, { minClear });
+
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
 
     //  A REAL, coordinate-based, viewport-and-occlusion-respecting tap on a DOM element — as
@@ -1453,59 +1495,31 @@ async function main() {
     //  below. The touch then goes nowhere: no pointerdown, empty pointer log, `onHold` never
     //  runs. Clear of nodes AND inside the viewport are two different requirements, and only
     //  the first was being checked.
-    //  A RING SCAN, in the browser, because two constraints have to hold at once and only
-    //  one was ever being checked: the ground must be CLEAR of nodes (so `pickNode` does not
-    //  claim the press) AND its projection must land INSIDE the viewport (so the touch
-    //  happens at all). Hand-picked candidates satisfied the first and failed the second in
-    //  both directions — 6 m out projected to y=3871 on a 412 px screen, 16 m out to y=-588
-    //  — because they were chosen by distance from nodes rather than by where the survivor
-    //  is actually looking. The camera knows; ask it.
-    const emptyGround = await page.evaluate(() => {
-        const live = window.__drift.state();
-        const nodes = live.nodes ?? [];
-        const clearanceOf = (x, y) => {
-            let d = Infinity;
-            for (const n of nodes) d = Math.min(d, Math.hypot(n.x - x, n.y - y));
-            return Math.min(d, Math.hypot(x - 0, y - 104));   // the pond counts as occupied
-        };
-        let best = null;
-        for (let dist = 8; dist <= 26; dist += 2) {
-            for (let deg = 0; deg < 360; deg += 15) {
-                const rad = (deg * Math.PI) / 180;
-                const x = live.player.x + Math.sin(rad) * dist;
-                const y = live.player.y + Math.cos(rad) * dist;
-                const clear = clearanceOf(x, y);
-                if (clear < 7) continue;
-                const p = window.__drift.screenOf(x, y);
-                if (!p) continue;
-                //  Inset from the edges: a point exactly on the boundary is not a place a
-                //  thumb can reliably land, and the stick zone owns the bottom-left corner.
-                const inset = 60;
-                if (p.x < inset || p.y < inset || p.x > window.innerWidth - inset || p.y > window.innerHeight - inset) continue;
-                if (!best || clear > best.clear) best = { x, y, clear, sx: Math.round(p.x), sy: Math.round(p.y) };
-            }
-        }
-        return best;
-    });
-    //  Part of the SAME open item as the section it gates, so it is classified the same way.
-    //  Leaving it as a hard FAIL would report one defect twice and keep the suite red on a
-    //  thing already owned and explained.
-    knownOpen('SLICE 2C/§9.6 setup — a clear site exists that is actually ON SCREEN to hold',
+    //  PROGRESSIVE. The 7 m clearance was my own guess, and it is stricter than the thing
+    //  that actually matters — `pickNode`'s radius, which is what decides whether the press
+    //  is claimed by a node instead of the ground. On a deliberately dense island a guess
+    //  that strict can be unsatisfiable everywhere, which reports "no site" when the real
+    //  answer is "not that much room, but enough". Relax in steps and say which one held.
+    let emptyGround = null;
+    let siteClearUsed = 0;
+    for (const c of [7, 5, 4, 3]) {
+        emptyGround = await findHoldableSite(c);
+        if (emptyGround) { siteClearUsed = c; break; }
+    }
+    check('SLICE 2C/§9.6 setup — a clear site exists that is actually ON SCREEN to hold',
         emptyGround !== null,
         emptyGround
-            ? `(${emptyGround.x.toFixed(1)},${emptyGround.y.toFixed(1)}) clear ${emptyGround.clear.toFixed(1)}m at screen ${emptyGround.sx},${emptyGround.sy}`
-            : 'no ground is both clear of nodes and inside the viewport',
-        'Slice 2C Boundary 2 — the ring scan sweeps WORLD bearings; a point behind the camera still projects to a number, and that number is off-screen. It needs the camera facing.');
+            ? `(${emptyGround.x.toFixed(1)},${emptyGround.y.toFixed(1)}) ${emptyGround.dist}m ahead, clear ${emptyGround.clear.toFixed(1)}m (threshold ${siteClearUsed}) at screen ${emptyGround.sx},${emptyGround.sy}`
+            : 'no ground is both clear of nodes and inside the viewport');
 
     //  GUARDED. Without a site there is nothing to hold, and reaching into a null one takes
     //  the whole run down — which is strictly worse than an honest skip: a crash loses every
     //  check after it, an open check loses only itself. The section reports the skip rather
     //  than pretending it ran.
     if (!emptyGround) {
-        knownOpen('SLICE 2C/§9.6 — contextual construction, device path',
+        check('SLICE 2C/§9.6 — contextual construction, device path',
             false,
-            'skipped: no ground is both clear of nodes and inside the viewport at this point in the run',
-            'Slice 2C Boundary 2 — the ring scan needs the camera facing, not just world bearings; a ground point behind the camera still projects to a number, and that number is off-screen');
+            'skipped: no ground is both clear of nodes and inside the viewport at this point in the run');
     } else {
 
     const noPatternHold = await holdWorld(emptyGround.x, emptyGround.y);
@@ -1556,18 +1570,15 @@ async function main() {
             visible: items.every((n) => n.getBoundingClientRect().height > 0),
         };
     });
-    knownOpen('SLICE 2C/§9.6 — a hold on open ground opens the SITE CARD where the survivor chose',
+    check('SLICE 2C/§9.6 — a hold on open ground opens the SITE CARD where the survivor chose',
         siteHold.ok && site.open && site.count === 2,
-        `open ${site.open}, ${site.count} outcome(s): ${site.labels.join(' | ')}`,
-        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
-    knownOpen('SLICE 2C/§9.6 — outcomes are named as NEEDS, never as the object they produce',
+        `open ${site.open}, ${site.count} outcome(s): ${site.labels.join(' | ')}`);
+    check('SLICE 2C/§9.6 — outcomes are named as NEEDS, never as the object they produce',
         site.labels.length > 0
         && site.labels.every((l) => l && !/shelter|crate|storage/i.test(l)),
-        site.labels.join(' | '),
-        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
-    knownOpen('SLICE 2C/§9.6 — and both are on screen and buildable with matter staged',
-        site.visible && site.ready === 2, `visible ${site.visible}, ${site.ready} buildable`,
-        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
+        site.labels.join(' | '));
+    check('SLICE 2C/§9.6 — and both are on screen and buildable with matter staged',
+        site.visible && site.ready === 2, `visible ${site.visible}, ${site.ready} buildable`);
 
     //  REACHABILITY, PER PLACEMENT PATH (D-090). Not the happy path only: each outcome is
     //  driven to a real structure standing in the world, through the real gesture.
@@ -1575,37 +1586,14 @@ async function main() {
     const chooseCover = await realTapDom('.site-item.ready .site-btn');
     await sleep(700);
     const siteAfterShelter = await live();
-    knownOpen('SLICE 2C/§9.6 — REACHABILITY: choosing cover really raises a shelter, at the site',
+    check('SLICE 2C/§9.6 — REACHABILITY: choosing cover really raises a shelter, at the site',
         chooseCover.ok && siteAfterShelter.shelter.built && !siteBeforeShelter.shelter.built,
-        `built ${siteBeforeShelter.shelter.built} -> ${siteAfterShelter.shelter.built} at ${siteAfterShelter.shelter.x?.toFixed(1)},${siteAfterShelter.shelter.y?.toFixed(1)}`,
-        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
+        `built ${siteBeforeShelter.shelter.built} -> ${siteAfterShelter.shelter.built} at ${siteAfterShelter.shelter.x?.toFixed(1)},${siteAfterShelter.shelter.y?.toFixed(1)}`);
 
     //  The second path, from the same gesture, far enough away that the site rule allows it.
     await editSave(`state.player = { x: -30, y: 78 };`);
-    const secondSite = await page.evaluate(() => {
-        const live = window.__drift.state();
-        const nodes = live.nodes ?? [];
-        let best = null;
-        for (let dist = 8; dist <= 26; dist += 2) {
-            for (let deg = 0; deg < 360; deg += 15) {
-                const rad = (deg * Math.PI) / 180;
-                const x = live.player.x + Math.sin(rad) * dist;
-                const y = live.player.y + Math.cos(rad) * dist;
-                let clear = Infinity;
-                for (const n of nodes) clear = Math.min(clear, Math.hypot(n.x - x, n.y - y));
-                clear = Math.min(clear, Math.hypot(x - 0, y - 104));
-                //  ...and clear of the shelter that now stands, by more than the spacing rule.
-                if (live.shelter.built) clear = Math.min(clear, Math.hypot(live.shelter.x - x, live.shelter.y - y));
-                if (clear < 7) continue;
-                const p = window.__drift.screenOf(x, y);
-                if (!p) continue;
-                const inset = 60;
-                if (p.x < inset || p.y < inset || p.x > window.innerWidth - inset || p.y > window.innerHeight - inset) continue;
-                if (!best || clear > best.clear) best = { x, y, clear };
-            }
-        }
-        return best;
-    });
+    let secondSite = null;
+    for (const c of [7, 5, 4, 3]) { secondSite = await findHoldableSite(c); if (secondSite) break; }
     const siteHold2 = secondSite ? await holdWorld(secondSite.x, secondSite.y) : { ok: false, why: 'no second site' };
     await sleep(550);
     const storageReady = await page.evaluate(() => ({
@@ -1614,19 +1602,17 @@ async function main() {
         blocked: document.querySelectorAll('.site-item.blocked').length,
         reasons: Array.from(document.querySelectorAll('.site-reason')).map((n) => n.textContent.trim()),
     }));
-    knownOpen('SLICE 2C/§9.6 — a built outcome is SHOWN blocked with its reason, never hidden',
+    check('SLICE 2C/§9.6 — a built outcome is SHOWN blocked with its reason, never hidden',
         storageReady.open && storageReady.blocked >= 1
         && storageReady.reasons.some((r) => /already/i.test(r)),
-        `blocked ${storageReady.blocked}, reasons: ${storageReady.reasons.join(' | ')}`,
-        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
+        `blocked ${storageReady.blocked}, reasons: ${storageReady.reasons.join(' | ')}`);
     const siteBeforeStore = await live();
     const chooseStore = await realTapDom('.site-item.ready .site-btn');
     await sleep(700);
     const siteAfterStore = await live();
-    knownOpen('SLICE 2C/§9.6 — REACHABILITY: choosing somewhere-to-put-things really sets a crate',
+    check('SLICE 2C/§9.6 — REACHABILITY: choosing somewhere-to-put-things really sets a crate',
         chooseStore.ok && siteAfterStore.storage.built && !siteBeforeStore.storage.built,
-        `built ${siteBeforeStore.storage.built} -> ${siteAfterStore.storage.built}`,
-        'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
+        `built ${siteBeforeStore.storage.built} -> ${siteAfterStore.storage.built}`);
 
     //  THE SITE REFUSES. Ground too close to what already stands is not a legal anchor, and
     //  the refusal has to be legible — otherwise "where" is decoration again.
