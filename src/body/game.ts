@@ -802,8 +802,20 @@ export class Game {
      * the bug C3 found twice between `tapTargetAt` and `onTap`.
      */
     private onHold(screenX: number, screenY: number): void {
+        //  THE TRACE STARTS HERE, before any early return. It was first written AFTER the
+        //  pending check, so a hold that legitimately found a target left the trace empty and
+        //  read as "onHold never ran" — a probe that cannot tell "did not run" from "ran and
+        //  took the other branch" is the vacuity law applied to instrumentation, and it cost
+        //  a run. The rule the checks live by applies to the diagnostics too: witness the
+        //  target, not the absence of an alternative.
+        runtime.holdTrace = ['onHold'];
         this.onTap(screenX, screenY);
-        if (this.pending) { this.pendingWasHold = true; return; }
+        if (this.pending) {
+            this.pendingWasHold = true;
+            runtime.holdTrace.push(`target:${this.pending.kind}`);
+            return;
+        }
+        runtime.holdTrace.push('no-target');
 
         //  §9.6 (Law 126): a HOLD on open ground asks what this ground is FOR. A TAP stays
         //  exactly what it was — the player's "never mind" look-around — so nothing anyone
@@ -814,15 +826,25 @@ export class Game {
         //  shelter from anywhere, which told the player that WHERE they build does not
         //  matter — and if it does not matter, drainage, wind and distance to water are all
         //  decoration.
-        if (runtime.panelOpen) return;
+        //  PER-EVENT TRACE (the feel-court playbook, D-085 lineage). Four runs disagreed with
+        //  four brain-side diagnostics that all read correct, which means the divergence is
+        //  somewhere along this path and not at either end of it. So the path records where
+        //  it actually stops, and the harness reads the signature instead of anyone guessing
+        //  a fifth time. Cheap, and it stays: a gesture that silently declines is exactly the
+        //  thing this project keeps paying for.
+        if (runtime.panelOpen) { runtime.holdTrace.push('panel-open'); return; }
         const point = this.pickHitPoint(screenX, screenY);
-        if (!point || point.unexpectedMesh) return;
+        if (!point) { runtime.holdTrace.push('no-point'); return; }
+        if (point.unexpectedMesh) { runtime.holdTrace.push(`unexpected:${point.unexpectedMesh}`); return; }
+        runtime.holdTrace.push(`point:${point.x.toFixed(1)},${point.z.toFixed(1)}`);
         const s = session().state;
         //  Silent when there is genuinely nothing to say: a survivor with no demonstrated
         //  pattern has no construction to be offered, and inventing a message for that would
         //  be teaching them about a menu they do not have.
-        if (!siteHasAnything(s, point.x, point.z)) return;
+        if (!siteHasAnything(s, point.x, point.z)) { runtime.holdTrace.push('nothing-here'); return; }
+        runtime.holdTrace.push('opening');
         this.openSiteCard(point.x, point.z);
+        runtime.holdTrace.push(runtime.panelOpen ? 'opened' : 'open-failed');
     }
 
     /**

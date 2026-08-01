@@ -3,6 +3,20 @@
 
 ---
 
+**D-100 · 2026-08-01 — STANDING PRACTICE NOTED (D-045 lineage, NOT a new law): a twice-failed assertion gets a STRUCTURAL fix, not a sharper claim.** Logged as what actually happened this slice rather than as a prediction.
+
+**Three occurrences, and the third is the one that names the pattern.**
+
+**(1) The panel-lock hard reset.** A section that deliberately holds the panel lock across tab switches closed at the end and asserted the close. The assertion passed — and five checks four hundred lines later still failed, because *the thing left open was not the thing being asserted about*: a hold beside the shelter struck the shelter mesh and opened the verb circle instead of a site card. A sharper assertion would have kept missing it. The structural fix was a **hard reset** (`editSave` reloads, so no panel, lock or pending intention can cross the line whatever happened above) — a guarantee rather than a hope.
+
+**(2) The off-screen Close.** Two sessions asserted "the hub closes cleanly" and both passed honestly, while the tallest tab's Close sat below the fold. The structural fix was **pinning** the controls, which does not depend on how much a tab has to say — not a better assertion about height.
+
+**(3) THE GESTURE-GAP INVESTIGATION, this session — and it followed the same shape one level up.** After four runs disagreed with four brain-side diagnostics that all read correct, the path was instrumented with a per-event trace, which returned **`(onHold never ran)`**. That signature was then found to be **AMBIGUOUS BY CONSTRUCTION**: the trace was written *after* `onHold`'s early return, so a hold that legitimately found a target left the trace empty and read identically to a hold that never happened. **A probe that cannot tell "did not run" from "ran and took the other branch" is the Vacuity Law applied to instrumentation** — and the structural fix is the same one the checks live by: the trace now starts on `onHold`'s first line and records which branch it took, so the next signature can only mean one thing.
+
+**The practice, stated:** when an assertion has failed twice, the answer is not a third, more precise assertion. It is a change to the thing being asserted about — a reset that cannot leak, a control that cannot be off-screen, a probe that cannot be ambiguous. **This is [[D-045]]'s own lineage** (a spent node's mesh made unpickable rather than the tap made cleverer), recorded here because it has now recurred three times in one slice and is clearly a habit worth naming rather than a coincidence.
+
+**Class: OPERATIVE** — a practice, not a law; its mechanism is the three structural fixes it describes, all shipped.
+
 **D-099 · 2026-08-01 — SLICE 2C BOUNDARY 2: CONTEXTUAL CONSTRUCTION SHIPPED, THE BUILD BUTTON *NOT* RETIRED.** **279/279 device checks**, **655 unit tests**, zero failures. The construction flow is built and its brain layer is proven; its **device gesture path is not confirmed**, so the removal does not ship. That is the rail working, not the rail being missed.
 
 **§9.6 IS BUILT.** `src/brain/construction.ts` implements the sequence: a demonstrated pattern, a viable site, staged matter, a human outcome, an anchor. **The unit is the human outcome, not the object** — *"somewhere out of the weather"*, never *"shelter"* — because a survivor knows they need to be out of the rain long before they know what a lean-to is called. Six outcomes are named because §9.6 names six; **two ship because two structures do, and four are DECLARED rather than stubbed**, since an outcome you can pick and not get is worse than one that is not offered.

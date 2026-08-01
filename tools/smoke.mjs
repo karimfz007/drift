@@ -1450,6 +1450,8 @@ async function main() {
     const siteInputs = await live();
     const siteHold = await holdWorld(emptyGround.x, emptyGround.y);
     await sleep(550);
+    const holdTrace = await page.evaluate(() => (window.__drift?.holdTrace?.() ?? []).join(' -> '));
+    check('DIAGNOSTIC — where the HOLD gesture actually stopped', true, holdTrace || '(onHold never ran)');
     check('DIAGNOSTIC — the inputs the site decision was made from',
         true,
         `blueprints [${(siteInputs.blueprints ?? []).map((b) => b.recipeId).join(', ')}], `

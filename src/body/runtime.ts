@@ -63,6 +63,9 @@ export const runtime = {
     isNewRun: true,
     /** True while a blocking overlay owns the screen. Read by the debug hook. */
     panelOpen: false,
+    /** Where the last HOLD gesture actually stopped, step by step. Read by the harness so a
+     *  gesture that silently declines names its own decision point instead of costing a run. */
+    holdTrace: [] as string[],
     //  How many times the freeze backstop had to take control back because a panel held it
     //  without ever showing itself (URGENT FIX, 2026-07-27). Above zero is always a defect:
     //  the recovery keeps the player playing, the count is what makes the bug impossible to
@@ -255,6 +258,7 @@ function installDebugHook(): void {
     (window as unknown as Record<string, unknown>).__drift = {
         state: () => runtime.session?.state ?? null,
         panelOpen: () => runtime.panelOpen,
+        holdTrace: () => runtime.holdTrace,
         panelRecoveries: () => runtime.panelRecoveries,
         hints: () => ({ shown: runtime.hintsShown, last: runtime.lastHint }),
         sceneReady: () => runtime.sceneReady,
