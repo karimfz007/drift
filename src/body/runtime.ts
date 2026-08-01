@@ -66,6 +66,14 @@ export const runtime = {
     /** Where the last HOLD gesture actually stopped, step by step. Read by the harness so a
      *  gesture that silently declines names its own decision point instead of costing a run. */
     holdTrace: [] as string[],
+    /**
+     * POINTER-LEVEL EVENT LOG (D-101's named lead). Every pointerdown, pointerup and
+     * releaseAll, in order, with the branch each took. Two sessions of reasoning about this
+     * path produced real eliminations and no cause; the instruction was to confirm or kill
+     * the releaseAll hypothesis with the ACTUAL event log rather than more argument, so this
+     * is that log. Bounded so it can never grow without limit in a long session.
+     */
+    pointerLog: [] as string[],
     //  How many times the freeze backstop had to take control back because a panel held it
     //  without ever showing itself (URGENT FIX, 2026-07-27). Above zero is always a defect:
     //  the recovery keeps the player playing, the count is what makes the bug impossible to
@@ -259,6 +267,8 @@ function installDebugHook(): void {
         state: () => runtime.session?.state ?? null,
         panelOpen: () => runtime.panelOpen,
         holdTrace: () => runtime.holdTrace,
+        pointerLog: () => runtime.pointerLog,
+        clearPointerLog: () => { runtime.pointerLog = []; },
         panelRecoveries: () => runtime.panelRecoveries,
         hints: () => ({ shown: runtime.hintsShown, last: runtime.lastHint }),
         sceneReady: () => runtime.sceneReady,

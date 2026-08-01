@@ -406,7 +406,23 @@ async function main() {
     //  the Default-Verb Law a tap acts and a hold asks, and §9.6's site card is what a hold on
     //  open ground asks. Derived from the TUNE value rather than a literal so a retuned tap
     //  window moves this with it instead of silently turning every hold back into a tap.
-    const holdWorld = async (wx, wz) => tapWorld(wx, wz, TUNE.tapMaxMs + 260);
+    //  BOUND-CHECKED. `tapWorld` returns true whenever `screenOf` returns any point at all,
+    //  including one outside the viewport — and a touch dispatched off-screen produces NO
+    //  pointer event, so the gesture silently does not happen while the helper reports
+    //  success. That is a vacuous true, and it cost three sessions: the pointer log for the
+    //  failing hold was completely EMPTY — no down, no up, no releaseAll — which is only
+    //  possible if the touch never landed. Returns the point (or the reason) instead of a
+    //  bare boolean so a caller can never again mistake "dispatched" for "landed".
+    const holdWorld = async (wx, wz) => {
+        const p = await screenOf(wx, wz);
+        if (!p) return { ok: false, why: 'no projection' };
+        const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+        if (!(p.x >= 0 && p.y >= 0 && p.x <= view.w && p.y <= view.h)) {
+            return { ok: false, why: `off-screen ${Math.round(p.x)},${Math.round(p.y)} of ${view.w}x${view.h}` };
+        }
+        await tapAt(p.x, p.y, TUNE.tapMaxMs + 260);
+        return { ok: true, why: `${Math.round(p.x)},${Math.round(p.y)}` };
+    };
     const clickDom = async (sel) => { const h = await page.$(sel); if (!h) return false; await h.click(); await sleep(340); return true; };
 
     //  A REAL, coordinate-based, viewport-and-occlusion-respecting tap on a DOM element — as
@@ -918,8 +934,15 @@ async function main() {
             !circleUp && after.thirst > before.thirst,
             `circle ${circleUp ? 'OPENED (wrong)' : 'did not open'}, thirst ${before.thirst} -> ${after.thirst}`);
         //  Now the HOLD: same pixel, longer press, and the circle divides.
+        await page.evaluate(() => window.__drift?.clearPointerLog?.());
         const holdPoint = await screenOf(POND.x, POND.y);
         if (holdPoint) await tapAt(holdPoint.x, holdPoint.y, TUNE.tapMaxMs + 260);
+        //  THE CONTROL SAMPLE (D-101's lead). This hold demonstrably works — the circle
+        //  opens, which requires `pendingWasHold`, which requires `onHold`. Logging it gives
+        //  the failing hold six hundred lines later something to be compared AGAINST, rather
+        //  than being reasoned about in isolation for a third session.
+        const pondPointerLog = await page.evaluate(() => (window.__drift?.pointerLog?.() ?? []).join(' | '));
+        check('DIAGNOSTIC — pointer events during the WORKING (pond) hold', true, pondPointerLog || '(empty)');
         await sleep(500);
         const held = await page.evaluate(() => {
             const el = document.querySelector('.panel.verb-circle');
@@ -1425,8 +1448,66 @@ async function main() {
         state.player = { x: -10, y: 68 };
         state.energy = 100;
     `);
-    //  14.4 m clear of every node and the pond — measured, not assumed.
-    const emptyGround = { x: -10, y: 74 };
+    //  CHOSEN BY WHAT LANDS ON SCREEN, not by distance from nodes alone. Ground 6 m from the
+    //  player is nearly underfoot, and projects to y=3871 on a 412 px viewport — nine screens
+    //  below. The touch then goes nowhere: no pointerdown, empty pointer log, `onHold` never
+    //  runs. Clear of nodes AND inside the viewport are two different requirements, and only
+    //  the first was being checked.
+    //  A RING SCAN, in the browser, because two constraints have to hold at once and only
+    //  one was ever being checked: the ground must be CLEAR of nodes (so `pickNode` does not
+    //  claim the press) AND its projection must land INSIDE the viewport (so the touch
+    //  happens at all). Hand-picked candidates satisfied the first and failed the second in
+    //  both directions — 6 m out projected to y=3871 on a 412 px screen, 16 m out to y=-588
+    //  — because they were chosen by distance from nodes rather than by where the survivor
+    //  is actually looking. The camera knows; ask it.
+    const emptyGround = await page.evaluate(() => {
+        const live = window.__drift.state();
+        const nodes = live.nodes ?? [];
+        const clearanceOf = (x, y) => {
+            let d = Infinity;
+            for (const n of nodes) d = Math.min(d, Math.hypot(n.x - x, n.y - y));
+            return Math.min(d, Math.hypot(x - 0, y - 104));   // the pond counts as occupied
+        };
+        let best = null;
+        for (let dist = 8; dist <= 26; dist += 2) {
+            for (let deg = 0; deg < 360; deg += 15) {
+                const rad = (deg * Math.PI) / 180;
+                const x = live.player.x + Math.sin(rad) * dist;
+                const y = live.player.y + Math.cos(rad) * dist;
+                const clear = clearanceOf(x, y);
+                if (clear < 7) continue;
+                const p = window.__drift.screenOf(x, y);
+                if (!p) continue;
+                //  Inset from the edges: a point exactly on the boundary is not a place a
+                //  thumb can reliably land, and the stick zone owns the bottom-left corner.
+                const inset = 60;
+                if (p.x < inset || p.y < inset || p.x > window.innerWidth - inset || p.y > window.innerHeight - inset) continue;
+                if (!best || clear > best.clear) best = { x, y, clear, sx: Math.round(p.x), sy: Math.round(p.y) };
+            }
+        }
+        return best;
+    });
+    //  Part of the SAME open item as the section it gates, so it is classified the same way.
+    //  Leaving it as a hard FAIL would report one defect twice and keep the suite red on a
+    //  thing already owned and explained.
+    knownOpen('SLICE 2C/§9.6 setup — a clear site exists that is actually ON SCREEN to hold',
+        emptyGround !== null,
+        emptyGround
+            ? `(${emptyGround.x.toFixed(1)},${emptyGround.y.toFixed(1)}) clear ${emptyGround.clear.toFixed(1)}m at screen ${emptyGround.sx},${emptyGround.sy}`
+            : 'no ground is both clear of nodes and inside the viewport',
+        'Slice 2C Boundary 2 — the ring scan sweeps WORLD bearings; a point behind the camera still projects to a number, and that number is off-screen. It needs the camera facing.');
+
+    //  GUARDED. Without a site there is nothing to hold, and reaching into a null one takes
+    //  the whole run down — which is strictly worse than an honest skip: a crash loses every
+    //  check after it, an open check loses only itself. The section reports the skip rather
+    //  than pretending it ran.
+    if (!emptyGround) {
+        knownOpen('SLICE 2C/§9.6 — contextual construction, device path',
+            false,
+            'skipped: no ground is both clear of nodes and inside the viewport at this point in the run',
+            'Slice 2C Boundary 2 — the ring scan needs the camera facing, not just world bearings; a ground point behind the camera still projects to a number, and that number is off-screen');
+    } else {
+
     const noPatternHold = await holdWorld(emptyGround.x, emptyGround.y);
     await sleep(500);
     const noPattern = await page.evaluate(() => ({
@@ -1435,7 +1516,7 @@ async function main() {
     }));
     check('SLICE 2C/§9.6 — with NO demonstrated pattern, a hold on open ground offers nothing',
         !noPattern.site,
-        `hold ${noPatternHold}, panel ${noPattern.anyPanel}`);
+        `hold ${JSON.stringify(noPatternHold)}, panel ${noPattern.anyPanel}`);
 
     //  ...and now with a pattern. §9.6's own sequence: a demonstrated pattern, matter staged,
     //  a viable site, then the choice.
@@ -1449,8 +1530,11 @@ async function main() {
         state.energy = 100;
     `);
     const siteInputs = await live();
+    await page.evaluate(() => window.__drift?.clearPointerLog?.());
     const siteHold = await holdWorld(emptyGround.x, emptyGround.y);
     await sleep(550);
+    const sitePointerLog = await page.evaluate(() => (window.__drift?.pointerLog?.() ?? []).join(' | '));
+    check('DIAGNOSTIC — pointer events during the FAILING (site) hold', true, sitePointerLog || '(empty)');
     const holdTrace = await page.evaluate(() => (window.__drift?.holdTrace?.() ?? []).join(' -> '));
     check('DIAGNOSTIC — where the HOLD gesture actually stopped', true, holdTrace || '(onHold never ran)');
     check('DIAGNOSTIC — the inputs the site decision was made from',
@@ -1458,7 +1542,7 @@ async function main() {
         `blueprints [${(siteInputs.blueprints ?? []).map((b) => b.recipeId).join(', ')}], `
         + `wood ${siteInputs.inventory.wood} stone ${siteInputs.inventory.stone} fibre ${siteInputs.inventory.fiber}, `
         + `player ${siteInputs.player.x.toFixed(1)},${siteInputs.player.y.toFixed(1)}, `
-        + `shelter ${siteInputs.shelter.built}, storage ${siteInputs.storage.built}, hold ${siteHold}`);
+        + `shelter ${siteInputs.shelter.built}, storage ${siteInputs.storage.built}`);
     await sleep(550);
     await shot('slice2c-04-site-card');
     const site = await page.evaluate(() => {
@@ -1473,7 +1557,7 @@ async function main() {
         };
     });
     knownOpen('SLICE 2C/§9.6 — a hold on open ground opens the SITE CARD where the survivor chose',
-        siteHold && site.open && site.count === 2,
+        siteHold.ok && site.open && site.count === 2,
         `open ${site.open}, ${site.count} outcome(s): ${site.labels.join(' | ')}`,
         'Slice 2C Boundary 2 (next session) — the DIAGNOSTIC above reports the inputs this decision was made from; the pond hold proves the gesture mechanism works, so bisect between onHold and openSiteCard rather than re-deriving');
     knownOpen('SLICE 2C/§9.6 — outcomes are named as NEEDS, never as the object they produce',
@@ -1498,7 +1582,31 @@ async function main() {
 
     //  The second path, from the same gesture, far enough away that the site rule allows it.
     await editSave(`state.player = { x: -30, y: 78 };`);
-    const siteHold2 = await holdWorld(-30, 84);   //  14.6 m clear
+    const secondSite = await page.evaluate(() => {
+        const live = window.__drift.state();
+        const nodes = live.nodes ?? [];
+        let best = null;
+        for (let dist = 8; dist <= 26; dist += 2) {
+            for (let deg = 0; deg < 360; deg += 15) {
+                const rad = (deg * Math.PI) / 180;
+                const x = live.player.x + Math.sin(rad) * dist;
+                const y = live.player.y + Math.cos(rad) * dist;
+                let clear = Infinity;
+                for (const n of nodes) clear = Math.min(clear, Math.hypot(n.x - x, n.y - y));
+                clear = Math.min(clear, Math.hypot(x - 0, y - 104));
+                //  ...and clear of the shelter that now stands, by more than the spacing rule.
+                if (live.shelter.built) clear = Math.min(clear, Math.hypot(live.shelter.x - x, live.shelter.y - y));
+                if (clear < 7) continue;
+                const p = window.__drift.screenOf(x, y);
+                if (!p) continue;
+                const inset = 60;
+                if (p.x < inset || p.y < inset || p.x > window.innerWidth - inset || p.y > window.innerHeight - inset) continue;
+                if (!best || clear > best.clear) best = { x, y, clear };
+            }
+        }
+        return best;
+    });
+    const siteHold2 = secondSite ? await holdWorld(secondSite.x, secondSite.y) : { ok: false, why: 'no second site' };
     await sleep(550);
     const storageReady = await page.evaluate(() => ({
         open: Boolean(document.querySelector('.panel.site')),
@@ -1565,6 +1673,8 @@ async function main() {
         `panel ${siteHandback.panel}, locked ${siteHandback.locked}`);
 
     // ================================================================
+    }
+
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
     // ================================================================
     console.log('\nPERFECT pass (C05) — FIX 3: tap-to-fell, root-caused fresh (3rd report)');

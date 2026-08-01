@@ -3,6 +3,27 @@
 
 ---
 
+**D-102 · 2026-08-01 — THE GESTURE GAP IS ROOT-CAUSED: THE TOUCH WAS NEVER LANDING.** Three sessions, and the cause was in the harness, not the game. **Boundary 2 still does not close** — the placement path is real but not yet exercised — and Slice 3 does not open.
+
+**THE POINTER LOG SETTLED IT, by comparison rather than by argument.** Both holds were logged in the same format, the working one as a control:
+
+- **Working (the pond):** `down#14:stick | up#14 held636 moved0 look=null stick=14 | releaseAll (look was null)` — claimed by the **stick zone**, whose branch fires `onHold`.
+- **Failing (the site):** **`(empty)`** — no `down`, no `up`, no `releaseAll`. **Nothing at all.**
+
+An empty log cannot mean "the handler declined"; it can only mean the event never happened. **That kills the `releaseAll` lead outright** and every other in-game explanation with it.
+
+**THE NUMBER.** Bound-checking the helper produced it immediately: **`off-screen 457,3871 of 915x412`**. The projected point sat **3871 px down a 412 px viewport** — nine screens below — because the chosen ground was 6 m from the survivor, nearly underfoot. Moving further out overshot the other way: `458,-588`, above the screen.
+
+**THE ACTUAL DEFECT, and it is a test-harness one.** `tapWorld` returned **`true` whenever `screenOf` returned any point at all**, including points outside the viewport. A touch dispatched off-screen produces no pointer event, so **the gesture silently did not happen while the helper reported success** — a vacuous `true`, the same family as every other vacuity this project has laws about, and it cost three sessions and roughly a dozen device runs. It is now bound-checked and returns *where the touch landed, or why it did not*, so "dispatched" can never again be mistaken for "landed".
+
+**WHY THIS TOOK THREE SESSIONS, stated plainly.** Every layer I could reason about was innocent, and each session's elimination was real: the node-claim hypothesis (disproven with measured clearance), `onPressWorld` (returns false), `onUp`'s branch logic (correct), the cold-open (dismissed earlier), the panel lock (hand-back asserted). **The one thing never questioned was whether the input arrived** — and the brain-side diagnostics kept confirming the inputs were perfect, which is exactly what they would do when the gesture never reached the game. **A correct diagnostic on the wrong side of the gap reads as reassurance.**
+
+**STILL OPEN, and owned.** The ring scan sweeps **world** bearings; a point behind the camera still projects to a number, and that number is off-screen. It needs the **camera facing**, not compass directions. Until it has one, no ground is both clear of nodes and inside the viewport, so the section reports an honest **skip** rather than crashing the run — a crash loses every check after it, an open check loses only itself.
+
+**LAW 126 DOES NOT RETIRE.** Unchanged condition, unmet. **SLICE 3 DOES NOT OPEN** — no permadeath, Journal, Death Review or requalification code exists or was written.
+
+**Class: OPERATIVE** — the bound-check, the pointer log and the guard are shipped; the residual is `knownOpen` with the camera-facing fix named.
+
 **D-101 · 2026-08-01 — BOUNDARY 2 STILL OPEN: the live hypothesis is DISPROVEN, and the search space is now small and named.** Reported as a negative result with evidence, because a disproven hypothesis honestly recorded is worth more than a plausible one asserted.
 
 **THE HYPOTHESIS, tested cheaply and killed.** The harness's "empty ground" coordinate `(0,78)` had **`dw5/driftwood` 4.5 m away** — well inside `pickNode`'s deliberately forgiving radius — so `onTap` claimed it, `pending` was set, and `onHold` returned early. That was measured in seconds with a throwaway probe rather than a twenty-minute run. The coordinate moved to **`(-10,74)`, 14.4 m clear of every node and the pond** — computed as the emptiest reachable ground on the island, not guessed.

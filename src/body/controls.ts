@@ -19,6 +19,13 @@
  */
 
 import { TUNE } from '../data/tune';
+import { runtime } from './runtime';
+
+/** Append one pointer-level event, bounded. See `runtime.pointerLog`. */
+function note(entry: string): void {
+    runtime.pointerLog.push(entry);
+    if (runtime.pointerLog.length > 40) runtime.pointerLog.shift();
+}
 
 export interface StickVector {
     x: number;
@@ -115,6 +122,7 @@ export class Controls {
 
         //  2. The steering thumb.
         if (this.stickPointer === null && this.inStickZone(event.clientX, event.clientY)) {
+            note(`down#${event.pointerId}:stick`);
             this.stickPointer = event.pointerId;
             this.stickOriginX = event.clientX;
             this.stickOriginY = event.clientY;
@@ -125,6 +133,7 @@ export class Controls {
 
         //  3. The look drag (which may still turn out to be a tap).
         if (this.lookPointer === null) {
+            note(`down#${event.pointerId}:look`);
             this.lookPointer = event.pointerId;
             this.lookLastX = event.clientX;
             this.lookLastY = event.clientY;
@@ -172,6 +181,8 @@ export class Controls {
 
     private onUp = (event: PointerEvent): void => {
         const heldMs = performance.now() - this.pressStartedAt;
+        note(`up#${event.pointerId} held${Math.round(heldMs)} moved${Math.round(this.pressMoved)}`
+            + ` look=${this.lookPointer} stick=${this.stickPointer} world=${this.worldPointer}`);
         const wasTap = heldMs <= TUNE.tapMaxMs && this.pressMoved <= TUNE.tapMaxMovePx;
         //  A HOLD is the same gesture held longer: stationary, but past the tap window. The
         //  movement bound is what separates it from a look-drag, which also exceeds the time.
@@ -251,6 +262,7 @@ export class Controls {
 
     /** Cancel every in-flight gesture — used when a panel takes the screen. */
     releaseAll(): void {
+        note(`releaseAll (look was ${this.lookPointer})`);
         this.stickPointer = null;
         this.lookPointer = null;
         if (this.worldPointer !== null) {
