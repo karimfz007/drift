@@ -1002,6 +1002,12 @@ export class Game {
             if (n.available) c.available += 1;
         }
         const lines: string[] = [];
+        //  THE FIRST LINE IS WHICH EDITION THIS IS (C1 item 0b), and it is first because of
+        //  what happened without it: four defects were reported against a build nobody could
+        //  identify, and three of them are expected to be ghosts of code already replaced.
+        //  Every line below this one describes a game whose identity was, until now, a guess.
+        //  A paste that opens with the SHA answers "which edition?" in ten seconds, forever.
+        lines.push(`build: ${__BUILD_SHA__} (built ${__BUILT_AT__})`);
         lines.push(`DRIFT debug info — ${new Date().toISOString()}`);
         lines.push(`player: ${s.player.x.toFixed(1)}, ${s.player.y.toFixed(1)} · clock: ${s.gameHoursElapsed.toFixed(2)}h · axe: ${s.tools.axe}`);
         lines.push('nodes remaining, by kind (available/total):');

@@ -61,3 +61,31 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      # DEPLOY-WITNESS (C1 item 0c). The deploy step reporting success means the artifact was
+      # handed to Pages — not that Pages is serving it. Between the two sit a publish and a
+      # CDN, and a green workflow above a stale site is exactly the state that cost a session:
+      # four defects reported against a build nobody could identify.
+      #
+      # So the run does not go green until the SERVED page returns the sha this run built.
+      # It retries, because propagation is genuinely not instant and a single early read
+      # would fail honest deploys — but it retries a bounded number of times and then FAILS,
+      # rather than warning. A warning here would be a green tick over an unproven claim.
+      - name: Witness the served build
+        run: |
+          EXPECTED="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          URL="${{ steps.deployment.outputs.page_url }}"
+          echo "expecting ${EXPECTED} at ${URL}"
+          for i in $(seq 1 10); do
+            SERVED="$(curl -fsSL --max-time 20 "${URL}?witness=$(date +%s)" \
+              | grep -o 'name="drift-build" content="[^"]*"' \
+              | sed 's/.*content="//;s/"//' || true)"
+            echo "attempt ${i}: served='${SERVED:-<none>}'"
+            if [ "${SERVED}" = "${EXPECTED}" ]; then
+              echo "WITNESSED: ${URL} is serving ${SERVED}"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "FAILED SHIP: expected ${EXPECTED}, served '${SERVED:-<none>}' after 10 attempts"
+          exit 1

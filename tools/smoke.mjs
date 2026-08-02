@@ -2354,6 +2354,34 @@ async function main() {
     const copiedVisible = await page.evaluate(() => { const el = document.querySelector('.debug-copied'); return el ? !el.hasAttribute('hidden') : false; });
     measuredIntermittent('tapping it confirms the copy (clipboard write succeeded or a fallback message shows)',
         copiedVisible, '', PANEL_CLUSTER_RECORD);
+
+    //  THE BUILD STAMP (C1 item 0b), guarded at both ends.
+    //
+    //  This is a `check`, not a `measuredIntermittent`, because it has no timing component
+    //  and no excuse: either the page names its edition or it does not. It is worth locking
+    //  because of how the stamp fails — silently. A dropped define or a removed plugin leaves
+    //  a page that looks perfectly correct and simply cannot say which code it is running,
+    //  and the whole point is that the NEXT four-defect report arrives already identified.
+    const stamp = await page.evaluate(() => ({
+        meta: document.querySelector('meta[name="drift-build"]')?.getAttribute('content') ?? null,
+        builtAt: document.querySelector('meta[name="drift-built-at"]')?.getAttribute('content') ?? null,
+        firstLine: (window.__drift?.debugInfo?.() ?? '').split('\n')[0] ?? '',
+    }));
+    check('BUILD STAMP — the served page names its own edition in a meta tag',
+        Boolean(stamp.meta) && Boolean(stamp.builtAt),
+        `drift-build "${stamp.meta ?? 'ABSENT'}", built "${stamp.builtAt ?? 'ABSENT'}"`);
+    //  FIRST line, not merely present: the director pastes the top of a long export, and a
+    //  build id buried on line forty is a build id nobody reads.
+    check('BUILD STAMP — and it is the FIRST line of Copy debug info, where a paste starts',
+        /^build: \S+ \(built /.test(stamp.firstLine),
+        `first line: "${stamp.firstLine.slice(0, 80)}"`);
+    //  The two sources must AGREE. If the meta tag and the bundle could disagree, the paste
+    //  would identify one edition while the page identified another — a diagnostic that
+    //  makes things worse, which is the failure mode this whole item exists to end.
+    check('BUILD STAMP — the page and the bundle report the SAME edition',
+        Boolean(stamp.meta) && stamp.firstLine.includes(stamp.meta ?? ' '),
+        `meta "${stamp.meta}" vs debug "${stamp.firstLine.slice(0, 40)}"`);
+
     await clickDom('.panel .done');
     await sleep(300);
 
