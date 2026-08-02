@@ -3,6 +3,18 @@
 
 ---
 
+**D-110 · 2026-08-02 — TWO ANOMALIES RESOLVED BY MEASUREMENT: the slide regression is CONFIRMED as the Resolver's, and the absence-clock check is MEASURED-INTERMITTENT ([[D-084]]).**
+
+**THE SLIDE — CAUSATION ESTABLISHED, 4 runs, perfect correlation.** Pre-Resolver `2.29 m/s`; with the Resolver `1.55` and `1.57`; after the revert `2.27`. Free walk was bit-identical at `5.77 m/s` throughout, which had already ruled out an energy/exhaustion cause. **The One Body Resolver caused it and the revert cleared it** — established by the revert itself rather than by investigation, which is the cheapest proof available and one that only existed because [[D-108]] sequenced the revert before the diagnosis. The root-cause remains unknown and is Drop 2's opening item, now with a known-good baseline (`slide >= 2.29`) and a known-bad build (`764e640` on `resolver/one-body`) to bisect between.
+
+**THE ABSENCE-CLOCK CHECK — MEASURED-INTERMITTENT, 3 failures in 6 runs (50%).** Values across those six: 1.64, 1.79, 1.97, 2.02, 2.09, 1.68 — a **continuum, not a binary**, which is the finding. The check asserts a game-hour count derived from a REAL-time absence, so it is measuring wall-clock behaviour on a machine that also runs a browser and a harness; the spread tracks load rather than anything in the game. Classified per [[D-084]] with its ratio and evidence rather than called a bug or dismissed as noise. **Closed by:** widening the assertion to a band derived from the tolerance the measurement can actually support, at Drop 2. It is an instrument-tolerance defect, and the honest reading is that the check was always too tight and only started failing when the machine got busier.
+
+**WHY BOTH ENTRIES EXIST AT ALL.** One data point is not a ratio, and it took holding both open across six runs to tell them apart: they looked identical at first sight — a number that moved, once, with a plausible story attached. One turned out to be a real product regression with a single cause; the other turned out to be a test that was never tight enough to be trusted. **The discipline that separated them was refusing to classify either on its first observation.**
+
+**Class: OPERATIVE**
+
+*Witness: 305/307 on device in one continuous run at Drop 1, no crash. Slide `2.27 m/s` post-revert against `2.29` pre-Resolver.*
+
 **D-109 · 2026-08-02 — DROP 1: THE BOAR. The island's first predator, and the fair-challenge contract's first real test.**
 
 **THE FIVE-STAGE GRAMMAR IS THE DESIGN, not decoration.** unaware → alert → warning → charge → aftermath, and **no attack without its precursor**: the ladder is property-swept over every stage × sense × timing × deterrence combination and may never climb more than ONE rung per step. An unaware boar with the survivor standing on it still only reaches `alert`. That sweep is the contract made executable — the skip is exactly the bug that ships when a transition table is "obviously" correct and nobody tests it.
