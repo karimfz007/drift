@@ -11,7 +11,8 @@ import { realSecondsFromGameHours } from './clock';
 import { recordTrying } from './knowledge';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
-import { canSleep, createInitialState } from './state';
+import { canSleep, createInitialState, isFireLit } from './state';
+import { chargeConnects, chargeHarm, senseSurvivor, stepBoar } from './fauna';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -106,6 +107,11 @@ export class Session {
         outcome.state.trace.activeMs += elapsedRealSeconds * 1000;
         outcome.state.lastSeenMs = nowMs;
         this.state = outcome.state;
+        //  DROP 1 — the boars live on the ONLINE tick and nowhere else. Their ladder is
+        //  advanced here, never in the absence path, which is D-011's enforcement stated as
+        //  structure rather than as a check: there is no code path by which a boar escalates
+        //  while the game is closed.
+        this.advanceBoars(nowMs);
         return this.handleDeath(outcome, nowMs);
     }
 
@@ -217,6 +223,43 @@ export class Session {
         this.state = outcome.state;
         this.handleDeath(outcome, nowMs);
         this.persist(nowMs);
+    }
+
+    /**
+     * ADVANCE EVERY BOAR ONE STEP, and resolve any charge that has run its course.
+     *
+     * Coarse-grained on purpose: this is a rhythm read once per tick, not per-frame AI. The
+     * body renders what this decides; it never decides anything itself.
+     */
+    private advanceBoars(nowMs: number): void {
+        const s = this.state;
+        if (s.boars.length === 0) return;
+        const deterred = isFireLit(s)
+            && Math.hypot(s.fire.x - s.player.x, s.fire.y - s.player.y) <= TUNE.boarFireDeterRadiusM
+            || (s.torch.owned && s.torch.lit);
+
+        let harmed = 0;
+        const next = s.boars.map((boar) => {
+            if (!boar.alive) return boar;
+            const wasCharging = boar.stage === 'charge';
+            const stepped = stepBoar(boar, {
+                senses: senseSurvivor(boar, s),
+                gameHoursElapsed: s.gameHoursElapsed,
+                deterred,
+            });
+            //  THE CHARGE RESOLVES AT ITS END, once, against where the survivor ACTUALLY is —
+            //  so a player who read the wind-up and stepped off the committed bearing is
+            //  genuinely missed. Resolving continuously would make the sidestep pointless.
+            if (wasCharging && stepped.stage === 'aftermath' && chargeConnects(boar, s)) {
+                harmed += chargeHarm().health;
+            }
+            return stepped;
+        });
+        s.boars = next;
+        if (harmed > 0) {
+            s.health = Math.max(0, s.health - harmed);
+            this.persist(nowMs);
+        }
     }
 
     /** Clear the death overlay once the player has read it. */

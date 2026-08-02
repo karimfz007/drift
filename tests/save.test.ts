@@ -174,7 +174,7 @@ describe('save — a v5 (D-052) save migrates to v6 (Ch.1 v3, D-055)', () => {
             lastSeenMs: 1_700_000_300_000,
             gameHoursElapsed: 20,
             inventory: { wood: 4, stone: 6, fiber: 2, berries: 0, coconut: 0, shellfish: 0 },
-            tools: { axe: true, flask: true, flaskSips: 1 },
+            tools: { axe: true, spear: false, flask: true, flaskSips: 1 },
             shelter: { built: true, x: 10, y: -5, durability: 88 },
             torch: { owned: true, lit: false, fuelGameHoursRemaining: 3 },
             trace: { deathLog: [{ cause: 'thirst', gameHoursElapsed: 5 }] }
@@ -237,8 +237,8 @@ describe('save — a v6 (Ch.1 v3, D-055) save migrates to v7 (Ch.2, "The Knowled
             startedAtMs: 1_700_000_000_000,
             lastSeenMs: 1_700_000_300_000,
             gameHoursElapsed: 30,
-            inventory: { wood: 2, stone: 1, fiber: 0, berries: 3, coconut: 0, shellfish: 0, sharpblade: 1 },
-            tools: { axe: true, flask: false, flaskSips: 0, stoneHammer: true, axeGrade: 'refined' },
+            inventory: { wood: 2, stone: 1, fiber: 0, berries: 3, coconut: 0, shellfish: 0, sharpblade: 1, meat: 0 },
+            tools: { axe: true, spear: false, flask: false, flaskSips: 0, stoneHammer: true, axeGrade: 'refined' },
             craftRollCount: 4,
             knowledge: {
                 nullPairs: ['axe-blade|wood', 'shelter-walls|fiber'],
@@ -322,8 +322,8 @@ describe('save — a v11 save migrates to v12 (Slice 2B Stage 2d, the invention 
             startedAtMs: 1_700_000_000_000,
             lastSeenMs: 1_700_000_300_000,
             gameHoursElapsed: 40,
-            inventory: { wood: 5, stone: 2, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 1 },
-            tools: { axe: true, flask: true, flaskSips: 2, stoneHammer: true, axeGrade: 'serviceable', fishingLine: false },
+            inventory: { wood: 5, stone: 2, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 1, meat: 0 },
+            tools: { axe: true, spear: false, flask: true, flaskSips: 2, stoneHammer: true, axeGrade: 'serviceable', fishingLine: false },
             shelter: { built: true, durability: 70 },
             storage: { built: true, durability: 55 },
             torch: { owned: true, lit: false, fuel: 3 },
@@ -361,11 +361,11 @@ describe('save — a v11 save migrates to v12 (Slice 2B Stage 2d, the invention 
 
     it('grants NOTHING it has no evidence for', () => {
         const bare = deserialize(v11Save({
-            tools: { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude', fishingLine: false },
+            tools: { axe: false, spear: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude', fishingLine: false },
             shelter: { built: false, durability: 0 },
             storage: { built: false, durability: 0 },
             torch: { owned: false, lit: false, fuel: 0 },
-            inventory: { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 },
+            inventory: { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 },
         }))!.state;
         expect(bare.blueprints).toEqual([]);
         expect(ladderFor(bare, 'axe')).toBe('physically-possible');
@@ -413,8 +413,8 @@ describe('save — a v12 save migrates to v13 (Slice 2B Stage B: capacities + co
             startedAtMs: 1_700_000_000_000,
             lastSeenMs: 1_700_000_300_000,
             gameHoursElapsed: 400,
-            inventory: { wood: 5, stone: 2, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 1 },
-            tools: { axe: true, flask: true, flaskSips: 2, stoneHammer: true, axeGrade: 'serviceable', fishingLine: false },
+            inventory: { wood: 5, stone: 2, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 1, meat: 0 },
+            tools: { axe: true, spear: false, flask: true, flaskSips: 2, stoneHammer: true, axeGrade: 'serviceable', fishingLine: false },
             shelter: { built: true, durability: 70 },
             storage: { built: true, durability: 55 },
             torch: { owned: true, lit: false, fuel: 3 },

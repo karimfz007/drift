@@ -21,6 +21,7 @@ import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
 import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
 import { netHeatFlowPerGameHour } from './thermal';
+import { settleOffline } from './fauna';
 import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
@@ -407,6 +408,18 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         driftOf('hunger', state.hunger, next.hunger, hungerBound),
         driftOf('health', state.health, next.health, healthBound)
     ];
+
+    //  D-011, ENFORCED AT THE ABSENCE BOUNDARY. A span long enough to count as an absence
+    //  settles every boar: back to `unaware`, back to its own ground, charge bearing dropped.
+    //  Not "de-escalated one rung" — all the way down, however long the player was gone.
+    //
+    //  This is the one place the ladder is allowed to move without the player present, and it
+    //  only ever moves DOWNWARD. A predator that hunts an absent survivor is the single most
+    //  obviously unfair thing this game could contain, and `fauna.ts` deliberately exposes no
+    //  other function reconcile's absence path may call.
+    if (qualifiesForReport) {
+        next.boars = settleOffline(next.boars, next.gameHoursElapsed);
+    }
 
     return {
         state: next,

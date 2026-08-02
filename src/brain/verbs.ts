@@ -20,7 +20,8 @@
  */
 import { TUNE } from '../data/tune';
 import type { GameState } from './types';
-import { canMakeJournal, canRepairStructure, isAtPond, isInDisrepair, journalShortfall } from './state';
+import { canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall } from './state';
+import { nearestBoar } from './fauna';
 import { readWrite } from './journal';
 
 /** A single segment of the circle — or, when it is the only one, simply what a tap does. */
@@ -38,7 +39,7 @@ export interface VerbOption {
     reason: string | null;
 }
 
-export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire';
+export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar';
 
 /**
  * Does the survivor know how to fish? A capability, not an inventory item — Slice 2's
@@ -62,6 +63,7 @@ export function verbsFor(state: GameState, target: VerbTarget): VerbOption[] {
         case 'shelter': return shelterVerbs(state);
         case 'storage': return storageVerbs(state);
         case 'fire': return fireVerbs(state);
+        case 'boar': return boarVerbs(state);
     }
 }
 
@@ -98,6 +100,9 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     storage: 'open-store',
     //  A fire is fed. Lighting a torch from it is occasional and only ever briefly possible.
     fire: 'feed-fire',
+    //  A boar is not a thing you idly interact with. The default verb is the only verb
+    //  that makes sense while one is in front of you, and it needs a spear in your hands.
+    boar: 'thrust',
 };
 
 /**
@@ -243,6 +248,26 @@ function storageVerbs(state: GameState): VerbOption[] {
                         : null),
         },
         ...journalStorageVerbs(state, built, notBuilt),
+    ];
+}
+
+/**
+ * THE BOAR'S OWN VERB. One entry, deliberately: there is no "inspect", no "wait", no menu of
+ * ways to relate to a charging animal. You have a spear and you use it, or you do not have
+ * one and the circle says so in the one sentence that matters.
+ */
+function boarVerbs(state: GameState): VerbOption[] {
+    const nearest = nearestBoar(state.boars, state.player.x, state.player.y);
+    const inReach = nearest !== null && canThrustAt(state, nearest.id);
+    return [
+        {
+            id: 'thrust',
+            label: 'Thrust',
+            available: state.tools.spear && inReach,
+            reason: !state.tools.spear
+                ? 'You have nothing to fight it with.'
+                : !inReach ? 'Too far. You would have to close.' : null,
+        },
     ];
 }
 

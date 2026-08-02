@@ -28,7 +28,10 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     coconut: { primary: 'organic', tags: ['food'] },
     shellfish: { primary: 'organic', tags: ['food'] },
     /** Knapped from raw stone (Ch.1 v3) — a refined material, not gathered directly. */
-    sharpblade: { primary: 'mineral', tags: ['blade'] }
+    sharpblade: { primary: 'mineral', tags: ['blade'] },
+    //  DROP 1 — meat is food and nothing else: no tag lets it be built with, so it can
+    //  never be lashed into a shelter by a Try-Combining accident.
+    meat: { primary: 'organic', tags: ['food'] }
 };
 
 /** What a recipe slot requires: a family, a tag, or both (either one satisfies it). */
@@ -57,6 +60,12 @@ export function materialSatisfies(kind: MaterialKind, requirement: MaterialRequi
  * Anything offering materials to the player derives from HERE. A second list is a second
  * source of truth, and the first time they disagree the player loses a verb with no message.
  */
-export const ALL_MATERIAL_KINDS: MaterialKind[] = [
-    'wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish', 'sharpblade',
-];
+/**
+ * GENUINELY DERIVED, at last. This was a hand-written list sitting under a test named "the
+ * combinable list is DERIVED, so it cannot drift again" — it did not derive anything, it
+ * merely happened to match, and it took adding `meat` for the gap to show. `MATERIAL_PROFILE` is
+ * typed `Record<MaterialKind, MaterialProfile>`, so reading its keys means a new material
+ * cannot be added without becoming combinable, which is the drift the original defect
+ * (a missing `sharpblade`, which silently broke the whole axe route) actually was.
+ */
+export const ALL_MATERIAL_KINDS: MaterialKind[] = Object.keys(MATERIAL_PROFILE) as MaterialKind[];

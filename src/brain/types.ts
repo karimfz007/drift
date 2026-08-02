@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -126,6 +126,8 @@ export interface Inventory {
     coconut: number;
     shellfish: number;
     sharpblade: number;
+    /** DROP 1 — raw meat from a killed boar. Spoils fast; cooking is the NEXT discovery. */
+    meat: number;
 }
 
 /** Every kind of carried material — the key set `Inventory` actually holds. Ch.1 v3's
@@ -146,6 +148,8 @@ export type ItemGrade = 'crude' | 'serviceable' | 'refined' | 'exceptional';
 export interface Tools {
     /** The crude axe: fells trees, opens the crash box. */
     axe: boolean;
+    /** DROP 1 — the spear. The only made thing that answers a boar. */
+    spear: boolean;
     /** The water flask: found in the crash box; carries drinks inland. */
     flask: boolean;
     /** Drinks currently in the flask (0..flaskCapacitySips). */
@@ -496,6 +500,48 @@ export interface GameState {
      * it down. Absent until one is made. The carrier is mortal.
      */
     journal: JournalState;
+    /**
+     * DROP 1 — the island's first predator. A FIXED population of individuals, created once
+     * at world birth and never added to; there is deliberately no spawner. Persists through
+     * death like everything else physical: the boars were here before you and stay after.
+     */
+    boars: Boar[];
+    /**
+     * DROP 1 — the island-clock reading after which raw meat is spoiled. Null when carrying
+     * none. Raw meat is an EVENT, not a stockpile: it goes off before it can solve hunger,
+     * which is precisely what makes cooking — the NEXT discovery, deliberately not built in
+     * this drop — worth wanting.
+     */
+    meatFreshUntilGameHours: number | null;
+}
+
+/** The five-stage grammar of the fair-challenge contract. See `fauna.ts`. */
+export type BoarStage = 'unaware' | 'alert' | 'warning' | 'charge' | 'aftermath';
+
+/**
+ * One boar. A FIXED individual with a territory and a rhythm — never a spawn-wave unit.
+ * `homeX`/`homeY` are its anchor: it wanders from there and D-011 returns it there.
+ */
+export interface Boar {
+    id: string;
+    x: number;
+    y: number;
+    /** Where it lives. Its own ground, and where an absence puts it back. */
+    homeX: number;
+    homeY: number;
+    /** Radians. Decides the sight cone, and is frozen into `chargeBearing` at commitment. */
+    facing: number;
+    stage: BoarStage;
+    /** Island-clock reading when it entered the current stage. The ladder's own timer. */
+    stageSinceGameHours: number;
+    /**
+     * The bearing a charge was committed to, fixed at wind-up and NEVER recomputed. Null
+     * unless charging. This one field is what makes a charge evadable.
+     */
+    chargeBearing: number | null;
+    /** Its own need, driving the daily rhythm at coarse grain. */
+    hunger: number;
+    alive: boolean;
 }
 
 /** One life, closed. See `succession.ts`. Declared here because `GameState` carries it. */

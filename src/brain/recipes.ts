@@ -60,6 +60,20 @@ export function allRecipes(): Recipe[] {
             ]
         },
         {
+            //  DROP 1 — THE SPEAR. Enters the world exactly as every post-pivot item does:
+            //  by inspection and Try-Combining, never as a row that appears in a menu. Same
+            //  slot shape as the axe because it is the same kind of made thing — a haft, a
+            //  knapped edge, and lashing — and a survivor who worked out one has genuinely
+            //  learned something about the other.
+            id: 'spear',
+            domain: 'harvestingFabrication',
+            slots: [
+                { id: 'spear-shaft', require: { tag: 'woodwork' }, amount: TUNE.spearWoodCost },
+                { id: 'spear-head', require: { tag: 'blade' }, amount: TUNE.spearSharpbladeCost },
+                { id: 'spear-binding', require: { tag: 'textile' }, amount: TUNE.spearFiberCost }
+            ]
+        },
+        {
             id: 'shelter',
             domain: 'construction',
             slots: [

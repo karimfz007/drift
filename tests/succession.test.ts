@@ -53,8 +53,8 @@ function accomplished(): GameState {
     const s = createInitialState(0);
     s.gameHoursElapsed = 96;
     s.survivorStartedAtGameHours = 0;
-    s.inventory = { wood: 30, stone: 22, fiber: 15, berries: 4, coconut: 2, shellfish: 3, sharpblade: 2 };
-    s.tools = { axe: true, flask: true, flaskSips: 3, stoneHammer: true, axeGrade: 'refined', fishingLine: true };
+    s.inventory = { wood: 30, stone: 22, fiber: 15, berries: 4, coconut: 2, shellfish: 3, sharpblade: 2, meat: 0 };
+    s.tools = { axe: true, spear: false, flask: true, flaskSips: 3, stoneHammer: true, axeGrade: 'refined', fishingLine: true };
     s.torch = { owned: true, lit: true, fuelGameHoursRemaining: 4, grade: 'refined' };
     s.skills.woodcutting.level = 5;
     s.skills.foraging.level = 4;
@@ -119,6 +119,12 @@ describe('MATTER, NOT MEMORY — the property, not the examples (D-069)', () => 
     const PERSISTING_FIELDS = new Set([
         //  The island and the marks on it.
         'fire', 'shelter', 'storage', 'nodes', 'gameHoursElapsed',
+        //  DROP 1 — the boars. Classified here because the property test DEMANDED it the
+        //  moment the field appeared, which is the guard working exactly as designed: a new
+        //  GameState field cannot be added without someone deciding which side of the v13
+        //  §18 table it falls on. They are a fact about the PLACE — they watched the last
+        //  survivor die and they are still out there.
+        'boars',
         'salvageSpawnCount', 'nextSalvageSpawnAtGameHours', 'journal',
         //  The record of the dead, and the current survivor's own clock.
         'memorial', 'survivorStartedAtGameHours', 'lastDeathCause',

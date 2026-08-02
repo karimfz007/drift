@@ -846,20 +846,20 @@ async function main() {
     //  that guarantee is untouched. So the survivor now KNOWS fire (a torch already made,
     //  which is fire-craft demonstrated) and the check asserts the same thing it always
     //  meant: knowing how, in daylight, without an axe, the fire goes up.
-    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
+    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
     const clockNow = await page.evaluate(() => document.querySelector('.clock')?.textContent ?? '');
     const isDaytime = /^(0[6-9]|1[0-7]):/.test(clockNow);
     check('REGRESSION #3/#4 setup — it is broad daylight, no axe, 5 wood', isDaytime, `clock ${clockNow}`);
     //  LAW 130, on the player path: the same daylight, the same wood, and NO knowledge —
     //  the primary action must not be "Build fire". This is the entry-point check the
     //  standing corollary requires for anything new-player-facing.
-    await editSave('state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 }; state.blueprints = []; state.warmth = 100; state.gameHoursElapsed = 18;');
+    await editSave('state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 }; state.blueprints = []; state.warmth = 100; state.gameHoursElapsed = 18;');
     const unknownFire = await actionText();
     check('LAW 130 — a survivor who does not know fire is NOT offered it, holding the wood for one',
         !unknownFire || !/build fire/i.test(unknownFire.text),
         unknownFire ? `primary action reads "${unknownFire.text}"` : 'no primary action offered');
 
-    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
+    await editSave('state.tools.axe = false; state.inventory = { wood: 5, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 }; state.fire = { built: false, fuel: 0, x: 0, y: 0 }; state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 0 }; state.gameHoursElapsed = 18; state.player = { x: 0, y: 80 };');
     const fireAction = await actionText();
     check('REGRESSION #3/#4 — "Build fire" IS the primary action (not hidden by Craft)', !!fireAction && /build fire/i.test(fireAction.text) && fireAction.shown && fireAction.ready, fireAction ? `"${fireAction.text}" ready=${fireAction.ready}` : 'no action');
     await shot('c04-04-buildfire-daylight');
@@ -1073,7 +1073,7 @@ async function main() {
     //  this panel listed five things they had never seen, made, or thought of.
     await editSave(`
         state.blueprints = [];
-        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.tools = { ...state.tools, axe: false, stoneHammer: false };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
@@ -1141,7 +1141,7 @@ async function main() {
     //  catalogue is back, just retyped one sentence at a time in a nicer font.
     await editSave(`
         state.blueprints = [];
-        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.tools = { ...state.tools, stoneHammer: false };
@@ -1175,7 +1175,7 @@ async function main() {
     //  THE RECORD. What Try-Combine mints, the panel remembers — this is the earned half of
     //  the same rule, and the reason the pivot is a pivot rather than a deletion.
     await editSave(`
-        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.shelter = { ...state.shelter, built: false };
         state.warmth = 100; state.energy = 100;
         state.gameHoursElapsed = ${((12 - TUNE.startHourOfDay) + TUNE.gameHoursPerDay) % TUNE.gameHoursPerDay};
@@ -1206,7 +1206,7 @@ async function main() {
     //  and Try-Combining (D-075). Stage B's capacities were the fourth. So the check that
     //  matters is not "does the card render" — it is "can a thumb get there from the game".
     await editSave(`
-        state.inventory = { wood: 6, stone: 4, fiber: 6, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2 };
+        state.inventory = { wood: 6, stone: 4, fiber: 6, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2, meat: 0 };
         state.energy = 100; state.hunger = 90; state.thirst = 90;
         state.capacities = { strength: 78, endurance: 45, loadTolerance: 12, mobilityBalance: 10,
             coordinationDexterity: 10, breathWaterConfidence: 10, acclimatization: 10, generalResilience: 10 };
@@ -1286,7 +1286,7 @@ async function main() {
     //  actually pick a third chip, which is the half that was capped.
     await editSave(`
         state.blueprints = [];
-        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.energy = 100; state.hunger = 100; state.thirst = 100;
         for (const d of Object.keys(state.knowledge.domains)) state.knowledge.domains[d].technique = 100;
     `);
@@ -1347,7 +1347,7 @@ async function main() {
     //  systems with no way for a thumb to reach them; the hub is the surface every one of
     //  those failures would have hidden behind, so it is checked before its contents.
     await editSave(`
-        state.inventory = { wood: 6, stone: 4, fiber: 6, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2 };
+        state.inventory = { wood: 6, stone: 4, fiber: 6, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2, meat: 0 };
         state.energy = 100; state.hunger = 90; state.thirst = 90;
         state.capacities = { strength: 78, endurance: 45, loadTolerance: 12, mobilityBalance: 10,
             coordinationDexterity: 10, breathWaterConfidence: 10, acclimatization: 10, generalResilience: 10 };
@@ -1541,7 +1541,7 @@ async function main() {
     //  their controls.
     await editSave(`
         state.blueprints = [];
-        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
@@ -1594,7 +1594,7 @@ async function main() {
     //  a viable site, then the choice.
     await editSave(`
         ${grantBlueprints('shelter', 'storage')}
-        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
@@ -1883,7 +1883,7 @@ async function main() {
     //  Build the shelter through the (now five-item, D-055 adds the stone hammer) Build
     //  panel. The knap action isn't counted here — it only renders once the hammer is
     //  owned, which it isn't yet at this point in the run.
-    await editSave(`state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 }; ${grantBlueprints('torch', 'axe', 'shelter', 'storage', 'stonehammer')}`);
+    await editSave(`state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 }; ${grantBlueprints('torch', 'axe', 'shelter', 'storage', 'stonehammer')}`);
     await openBuild();
     await sleep(400);
     //  The card gained Rest and (conditionally) Mend in D-073, so a bare `.build-item`
@@ -3571,8 +3571,8 @@ async function main() {
     //  a real, measured walk covers less ground. Distance is measured over a fixed real-time
     //  window, the same technique the fast-movement check uses.
     await editSave(`
-        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
-        state.tools = { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' };
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
+        state.tools = { axe: false, spear: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' };
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
         state.energy = 100;
         state.player = { x: 0, y: 60 };
@@ -3602,7 +3602,7 @@ async function main() {
     //  drain, because the coordinates it guessed were nowhere near the actual rock.
     await editSave(`
         for (const n of state.nodes) { if (n.kind === 'rock') { n.available = true; n.depletedAtGameHours = null; } }
-        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.energy = 100;
     `);
     const rockForLight = await nodeOf('rock');
@@ -3703,8 +3703,8 @@ async function main() {
     //  and nothing else — tools and knowledge explicitly re-read afterwards.
     const deathsBaseline = (await live()).trace.deaths;
     await editSave(`
-        state.inventory = { wood: 12, stone: 8, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2 };
-        state.tools = { axe: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
+        state.inventory = { wood: 12, stone: 8, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2, meat: 0 };
+        state.tools = { axe: true, spear: false, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
         state.knowledge.domains.harvestingFabrication.technique = 42;
         state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.4;
         state.fatigue = 70;
@@ -3853,7 +3853,7 @@ async function main() {
 
     //  ITEM 1 — the panel opens from the carried row and shows all six zones with mass+bulk.
     await editSave(`
-        state.tools = { axe: true, flask: true, flaskSips: 0, stoneHammer: true, axeGrade: 'serviceable' };
+        state.tools = { axe: true, spear: false, flask: true, flaskSips: 0, stoneHammer: true, axeGrade: 'serviceable' };
         state.inventory.wood = 6; state.inventory.stone = 4; state.inventory.fiber = 3;
         state.loadout = { activeHand: null, supportHand: null, belt: [null,null,null,null], pockets: [null,null] };
         state.energy = 100;
@@ -4405,7 +4405,7 @@ async function main() {
     //  it, the ordinary act, was not taxed by the two new verbs.
     await editSave(`
         ${grantBlueprints('shelter')}
-        state.inventory = { wood: 12, stone: 6, fiber: 12, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 12, stone: 6, fiber: 12, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.fire = { built: true, fuel: 12, x: 0, y: 74 };
         state.storage = { ...state.storage, built: true, x: 5, y: 70 };
         state.shelter = { ...state.shelter, built: false };
@@ -4469,7 +4469,7 @@ async function main() {
         ${grantBlueprints('shelter')}
         state.shelter = { ...state.shelter, built: true, x: 6, y: 70, durability: 63 };
         state.storage = { ...state.storage, built: true, x: 4, y: 70 };
-        state.inventory = { wood: 7, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 7, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
         state.journal = { exists: true, x: 4, y: 70, carried: false, condition: 1,
             entries: [{ author: 1, writtenAtGameHours: 9, topic: 'shelter', text: 'Lashed at every crossing.' }],
             lastWrittenAtGameHours: 9 };
@@ -4580,7 +4580,7 @@ async function main() {
     //  unreachable the two would diverge sharply and consistently.
     await editSave(`
         state.tools.axe = true;
-        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
     `);
     const treeProbe = { ground: 0, canopy: 0, tried: 0, misses: [] };
     const treeList = (await live()).nodes.filter((n) => n.kind === 'tree' && n.available).slice(0, 6);

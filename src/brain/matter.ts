@@ -70,6 +70,8 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     coconut: 'cracked',
     shellfish: 'spilled',
     berries: 'contaminated',
+    //  DROP 1 — a failed attempt on meat spoils it. Matter comes out CHANGED (Law 128).
+    meat: 'contaminated',
 };
 
 export function transformationFor(material: MaterialKind): Transformation {
@@ -130,6 +132,7 @@ export function isNearlySpent(state: GameState, material: MaterialKind): boolean
 const LABEL: Record<MaterialKind, string> = {
     wood: 'The wood', stone: 'The stone', fiber: 'The fibre', sharpblade: 'The blade',
     coconut: 'The coconut', shellfish: 'The shell', berries: 'The berries',
+    meat: 'The meat',
 };
 
 const VERB: Record<Transformation, string> = {

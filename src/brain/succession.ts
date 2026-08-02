@@ -122,6 +122,10 @@ export function closeSurvivor(state: GameState, cause: string): {
         shelter: { ...state.shelter },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
         nodes: state.nodes.map((n) => ({ ...n })),
+        //  The boars are a fact about the PLACE. They watched the last survivor die and they
+        //  are still out there — killing one is a permanent change to the island, exactly
+        //  like felling a tree, and a successor inherits that too.
+        boars: state.boars.map((b) => ({ ...b })),
         salvageSpawnCount: state.salvageSpawnCount,
         nextSalvageSpawnAtGameHours: state.nextSalvageSpawnAtGameHours,
         //  The journal is matter, and it obeys matter's rule: carried, it goes with the body;

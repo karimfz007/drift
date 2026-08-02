@@ -5,6 +5,7 @@
 
 import { gameHoursFromRealSeconds } from './clock';
 import { arrivalProfile } from './arrival';
+import { createBoars } from './fauna';
 import { TUNE } from '../data/tune';
 import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
@@ -44,7 +45,7 @@ export function createInitialState(nowMs: number): GameState {
         fatigue: 0,
         resting: false,
         inventory: emptyInventory(),
-        tools: { axe: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false },
+        tools: { axe: false, spear: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable' },
@@ -85,7 +86,11 @@ export function createInitialState(nowMs: number): GameState {
         //  clock start together exactly once — for the first life, and never again.
         memorial: [],
         survivorStartedAtGameHours: 0,
-        journal: freshJournal()
+        journal: freshJournal(),
+        //  DROP 1: the boars were here before the survivor and stay after. Created once,
+        //  never added to — the absence of a spawner is the no-spawn-waves rail, in code.
+        boars: createBoars(),
+        meatFreshUntilGameHours: null
     };
 }
 
@@ -105,7 +110,7 @@ export function freshJournal(): JournalState {
 }
 
 export function emptyInventory(): Inventory {
-    return { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+    return { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
 }
 
 export function emptySkills(): Skills {
@@ -874,6 +879,88 @@ export function craftAxe(state: GameState): boolean {
     state.tools.axeGrade = rollGrade(nextGradeSeed(state));
     recordTrying(state, recipeDomain('axe'));
     return true;
+}
+
+// ---- DROP 1: the spear, the thrust, and the meat --------------------------
+
+/**
+ * THE SPEAR. The only made thing that answers a boar, and it enters the world exactly as
+ * every post-pivot item does — by inspection and Try-Combining, never as a row that appears
+ * in a menu the day a predator ships. A survivor who has never put a blade to a shaft does
+ * not know a spear is possible, and being charged does not teach them.
+ */
+export function canCraftSpear(state: GameState): boolean {
+    return !state.tools.spear
+        && state.inventory.wood >= TUNE.spearWoodCost
+        && state.inventory.sharpblade >= TUNE.spearSharpbladeCost
+        && state.inventory.fiber >= TUNE.spearFiberCost;
+}
+
+export function spearShortfall(state: GameState): { wood: number; sharpblade: number; fiber: number } {
+    return {
+        wood: Math.max(0, TUNE.spearWoodCost - state.inventory.wood),
+        sharpblade: Math.max(0, TUNE.spearSharpbladeCost - state.inventory.sharpblade),
+        fiber: Math.max(0, TUNE.spearFiberCost - state.inventory.fiber)
+    };
+}
+
+export function craftSpear(state: GameState): boolean {
+    if (!canCraftSpear(state)) return false;
+    state.inventory.wood -= TUNE.spearWoodCost;
+    state.inventory.sharpblade -= TUNE.spearSharpbladeCost;
+    state.inventory.fiber -= TUNE.spearFiberCost;
+    state.tools.spear = true;
+    recordTrying(state, recipeDomain('spear'));
+    return true;
+}
+
+/**
+ * THRUST. Reachable only with a spear in hand and a boar within reach — and it is the
+ * survivor's half of the rhythm the charge sets up: the aftermath window is when this lands.
+ *
+ * Returns what happened rather than mutating blindly, so the body can speak plainly about a
+ * miss instead of leaving a tap silent (D-042's fail-loud law).
+ */
+export function canThrustAt(state: GameState, boarId: string): boolean {
+    const boar = state.boars.find((b) => b.id === boarId);
+    if (!boar || !boar.alive || !state.tools.spear) return false;
+    return Math.hypot(boar.x - state.player.x, boar.y - state.player.y) <= TUNE.interactRadiusM + 1.5;
+}
+
+export function thrustSpear(state: GameState, boarId: string): { ok: boolean; killed: boolean; meat: number } {
+    if (!canThrustAt(state, boarId)) return { ok: false, killed: false, meat: 0 };
+    const boar = state.boars.find((b) => b.id === boarId)!;
+    const remaining = TUNE.boarHealth;
+    //  Damage accumulates in a session-local map, never in the save — see `boarDamage`.
+    const dealt = TUNE.spearThrustDamage;
+    const already = boarDamage.get(boar.id) ?? 0;
+    const total = already + dealt;
+    if (total >= remaining) {
+        boarDamage.delete(boar.id);
+        const index = state.boars.findIndex((b) => b.id === boarId);
+        state.boars = state.boars.map((b, i) => (i === index ? { ...b, alive: false, stage: 'aftermath' as const, chargeBearing: null } : b));
+        state.inventory.meat += TUNE.boarMeatYield;
+        state.meatFreshUntilGameHours = state.gameHoursElapsed + TUNE.meatSpoilGameHours;
+        recordTrying(state, 'survivalcraft');
+        return { ok: true, killed: true, meat: TUNE.boarMeatYield };
+    }
+    boarDamage.set(boar.id, total);
+    recordTrying(state, 'survivalcraft');
+    return { ok: true, killed: false, meat: 0 };
+}
+
+/**
+ * Damage dealt to each boar, held OUTSIDE the save on purpose. A boar heals between
+ * sessions — a wound model that persisted would be Drop 2's injury profile arriving early
+ * through the back door, and the handoff was explicit that harm is a number this drop.
+ */
+const boarDamage = new Map<string, number>();
+
+/** Raw meat spoils. Cooking is the NEXT discovery and is deliberately not built here. */
+export function meatIsSpoiled(state: GameState): boolean {
+    return state.inventory.meat > 0
+        && state.meatFreshUntilGameHours !== null
+        && state.gameHoursElapsed > state.meatFreshUntilGameHours;
 }
 
 // ---- The stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 ----------------

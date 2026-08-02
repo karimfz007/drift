@@ -13,6 +13,7 @@ import { SCHEMA_VERSION, type Blueprint, type GameState, type MaterialKind } fro
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshJournal } from './state';
+import { createBoars } from './fauna';
 import { freshMatterWear } from './matter';
 import { createInitialState } from './state';
 
@@ -98,6 +99,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 12) current = migrateV12toV13(current);
     if (current.schemaVersion === 13) current = migrateV13toV14(current);
     if (current.schemaVersion === 14) current = migrateV14toV15(current);
+    if (current.schemaVersion === 15) current = migrateV15toV16(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -545,6 +547,30 @@ function migrateV14toV15(envelope: SaveEnvelope): SaveEnvelope {
         memorial: Array.isArray(old.memorial) ? old.memorial : [],
         survivorStartedAtGameHours: num((old as Partial<GameState>).survivorStartedAtGameHours, 0),
         journal: old.journal ?? freshJournal(),
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v15 → v16 (Drop 1, the boar). Adds the fixed boar population, the spear, and meat.
+ *
+ * The boars are MERGED IN as a new fact about the island — the same shape v3→v4 used for the
+ * quarry and v8→v9 for the trees. A returning player's island grows a forest that has always
+ * had something living in it; they simply had not met it. They do NOT arrive mid-charge:
+ * `createBoars` places every one at its home, unaware, which is also exactly where D-011
+ * would have put them.
+ */
+function migrateV15toV16(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        boars: Array.isArray(old.boars) && old.boars.length > 0 ? old.boars : createBoars(),
+        //  A returning survivor has not made a spear and is carrying no meat. Nobody is
+        //  handed a predator answer they did not earn.
+        tools: { ...old.tools, spear: old.tools?.spear ?? false },
+        inventory: { ...old.inventory, meat: old.inventory?.meat ?? 0 },
+        meatFreshUntilGameHours: old.meatFreshUntilGameHours ?? null,
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

@@ -81,6 +81,6 @@ describe('recipes — the null-outcome combination journal (Ch.1 v3, D-055)', ()
 
     it('every recipe this pass knows about is walked — axe, torch, shelter, storage, stone hammer, knap', () => {
         const ids = allRecipes().map((r) => r.id);
-        expect(ids).toEqual(['torch', 'axe', 'shelter', 'storage', 'stonehammer', 'knap']);
+        expect(ids).toEqual(['torch', 'axe', 'spear', 'shelter', 'storage', 'stonehammer', 'knap']);
     });
 });

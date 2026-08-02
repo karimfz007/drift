@@ -18,6 +18,7 @@ export * from './growth';
 export * from './matter';
 export * from './bodyReport';
 export * from './construction';
+export * from './fauna';
 export * from './journal';
 export * from './succession';
 export * from './deathReview';

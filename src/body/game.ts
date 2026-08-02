@@ -63,6 +63,8 @@ import {
     verbsFor,
     readWrite,
     writeEntry,
+    nearestBoar,
+    thrustSpear,
     makeJournal,
     setJournalCarried,
     type MoveStep,
@@ -94,6 +96,7 @@ import {
 import { TUNE } from '../data/tune';
 import { COLD_OPEN, POND, WALKABLE_RADIUS } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
+import { BoarsView } from './boarView';
 import { Controls } from './controls';
 import { FireView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
 import {
@@ -123,6 +126,7 @@ type Pending =
     | { kind: 'fire' }
     | { kind: 'pond' }
     | { kind: 'shelter' }
+    | { kind: 'boar'; id: string }
     | { kind: 'storage' }
     | null;
 
@@ -234,6 +238,9 @@ export class Game {
      *  off by default. Multiplies `walkSpeedMps` at use; the base constant never changes. */
     private testSpeedEnabled = false;
     private deathShown = false;
+    private boars!: BoarsView;
+    /** Last stage announced per boar, so a cue fires ONCE on entry, never every frame. */
+    private boarStageSpoken = new Map<string, string>();
     //  Freeze backstop (see guardPanelLock): when control was taken but nothing visible
     //  holds it, and when the DOM was last probed for that.
     private panelMissingSinceMs = 0;
@@ -264,6 +271,7 @@ export class Game {
 
         const state = session().state;
         this.nodes = new NodeViews(this.scene, state.nodes, (x, z) => this.island.heightAt(x, z));
+        this.boars = new BoarsView(this.scene);
         this.lookSensitivity = readSensitivity();
         this.testSpeedEnabled = readTestSpeed();
 
@@ -677,6 +685,14 @@ export class Game {
         );
     }
 
+    /** Which boar the ray struck, read from mesh metadata rather than from its name. */
+    private pickBoar(screenX: number, screenY: number): string | null {
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top,
+            (m: AbstractMesh) => Boolean(m.metadata?.boarId) && m.isPickable);
+        return BoarsView.boarIdOf(hit?.pickedMesh);
+    }
+
     /** The survivor's own body, hit only by a ray aimed squarely at it. */
     private pickedBackpack(screenX: number, screenY: number): boolean {
         const rect = this.canvas.getBoundingClientRect();
@@ -745,6 +761,10 @@ export class Game {
      * nearest-centre-wins sort `onTap` runs, and returns the answer instead of acting on it.
      */
     private tapTargetAt(screenX: number, screenY: number): string | null {
+        //  DROP 1 — a boar the ray struck outranks everything. When one is in front of you it
+        //  is the only thing you meant to touch.
+        const boarHit = this.pickBoar(screenX, screenY);
+        if (boarHit) return `boar:${boarHit}`;
         const node = this.pickNode(screenX, screenY);
         if (node) return `node:${node.node.id}`;
         const point = this.pickHitPoint(screenX, screenY);
@@ -902,6 +922,17 @@ export class Game {
         this.lastActivityAt = now();
 
         //  A node under (or near) the finger wins.
+        //  DROP 1 — a boar outranks every other target. When one is in front of you, it is
+        //  the only thing you meant to touch, and making the player out-click a bush to
+        //  answer a charge would be the cruellest possible reading of the Default-Verb Law.
+        const boarId = this.pickBoar(screenX, screenY);
+        if (boarId) {
+            this.pending = { kind: 'boar', id: boarId };
+            this.cues.play(CUES.target);
+            this.recordTap(screenX, screenY, `boar:${boarId}`);
+            return;
+        }
+
         const node = this.pickNode(screenX, screenY);
         if (node) {
             this.pending = { kind: 'node', id: node.node.id };
@@ -970,6 +1001,7 @@ export class Game {
             case 'feed-fire': this.doFeedFire(); break;
             case 'light-torch': this.doLightTorch(); break;
             case 'write-journal': this.doWriteJournal(); break;
+            case 'thrust': this.doThrust(); break;
             case 'make-journal': this.doMakeJournal(); break;
             case 'store-journal': this.doSetJournalCarried(false); break;
             case 'take-journal': this.doSetJournalCarried(true); break;
@@ -1024,6 +1056,12 @@ export class Game {
         if (this.pending.kind === 'node') {
             const view = this.nodes.find(this.pending.id);
             return view && view.node.available ? { x: view.node.x, z: view.node.y } : null;
+        }
+        if (this.pending.kind === 'boar') {
+            //  A boar MOVES, so its target point is read fresh every frame rather than
+            //  captured at the tap. Walking to where it used to be is not an interaction.
+            const b = session().state.boars.find((x) => x.id === (this.pending as { id: string }).id);
+            return b && b.alive ? { x: b.x, z: b.y } : null;
         }
         if (this.pending.kind === 'fire') {
             const f = session().state.fire;
@@ -1087,6 +1125,18 @@ export class Game {
         //  third fire verb, which is what finally forces the issue — three verbs cannot be
         //  arbitrated by a priority order without starving one of them. So the fire joins the
         //  other three here, and `tryFeedFire`'s internal priority goes with it.
+        if (this.pending.kind === 'boar') {
+            //  Through the SAME circle machinery as everything else — a predator does not get
+            //  a bespoke input path, because a bespoke path is where the Default-Verb Law
+            //  quietly stops applying.
+            const only = defaultVerb(s, 'boar');
+            const blocked = verbsFor(s, 'boar').find((v) => v.reason);
+            this.pending = null;
+            if (only) this.performVerb(only.id);
+            else this.explain(blocked?.reason ?? 'Nothing you can do about it.');
+            return;
+        }
+
         if (this.pending.kind === 'pond' || this.pending.kind === 'shelter'
             || this.pending.kind === 'storage' || this.pending.kind === 'fire') {
             const target = this.pending.kind;
@@ -1409,6 +1459,27 @@ export class Game {
      * sleeping does, which means the world moves while you write: the fire burns down, the
      * night gets colder, and choosing to write is choosing not to do something else.
      */
+    /**
+     * THRUST. The survivor's half of the rhythm the charge sets up — this is what an
+     * aftermath window is FOR, and a miss says so rather than going silent (D-042).
+     */
+    private doThrust(): void {
+        const s = session().state;
+        const target = nearestBoar(s.boars, s.player.x, s.player.y);
+        if (!target) { this.explain('There is nothing there now.'); return; }
+        const out = thrustSpear(s, target.id);
+        if (!out.ok) { this.explain('Too far. You would have to close.'); return; }
+        this.cues.play(out.killed ? CUES.fell : CUES.gather);
+        if (out.killed) {
+            this.floatText(`+${out.meat} meat`);
+            this.explain('It goes down. There is meat here, and it will not keep long.');
+        } else {
+            this.floatText('struck');
+        }
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     private doMakeJournal(): void {
         const s = session().state;
         if (!makeJournal(s)) { this.explain('You cannot make one here.'); return; }
@@ -1662,6 +1733,11 @@ export class Game {
 
         this.nodes.sync(state);
         this.nodes.highlight(this.highlightTarget());
+        //  DROP 1 — the boars. Drawn from whatever the brain decided this tick; this call
+        //  reads state and never advances it.
+        this.boars.sync(state.boars, state.player.x, state.player.y,
+            (x, z) => this.island.heightAt(x, z), stamp / 1000);
+        this.announceBoarStages(state);
 
         this.paintHud(state);
         this.stepIdleHint();
@@ -2140,6 +2216,42 @@ export class Game {
     }
 
     // ---- Death -----------------------------------------------------------
+
+    /**
+     * THE AUDIBLE HALF of the five-stage grammar. Fires once on ENTRY to a stage, never per
+     * frame — a sound repeating every frame stops being information within a second.
+     *
+     * Paired with `boarView`'s posture changes, not replacing them: audio is reinforcement,
+     * because a player with the sound off must still be able to read every stage.
+     */
+    private announceBoarStages(state: ReturnType<typeof session>['state']): void {
+        for (const boar of state.boars) {
+            if (!boar.alive) { this.boarStageSpoken.delete(boar.id); continue; }
+            const near = Math.hypot(boar.x - state.player.x, boar.y - state.player.y) <= TUNE.boarRenderRadiusM;
+            if (!near) { this.boarStageSpoken.delete(boar.id); continue; }
+            if (this.boarStageSpoken.get(boar.id) === boar.stage) continue;
+            this.boarStageSpoken.set(boar.id, boar.stage);
+            switch (boar.stage) {
+                case 'alert':
+                    this.cues.play(CUES.target);
+                    break;
+                case 'warning':
+                    //  THE ONE THE PLAYER MUST NOT MISS. Loud, and said in words as well,
+                    //  because the wind-up is the whole of the fair-challenge promise.
+                    this.cues.play(CUES.denied);
+                    this.explain('It snorts and paws the ground. It is going to come.');
+                    break;
+                case 'charge':
+                    this.cues.play(CUES.fell);
+                    break;
+                case 'aftermath':
+                    this.cues.play(CUES.collected);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
 
     private openDeath(): void {
         this.deathShown = true;

@@ -442,6 +442,106 @@ export const TUNE = {
      *  crisis is past, so it shapes the first night and then lets go. */
     arrivalHealthFraction: 0.65,
 
+    // ---- DROP 1: THE BOAR ----------------------------------------------------------------
+    //  The island's first predator. Every number here is a fair-challenge number before it is
+    //  a difficulty number: the telegraph durations exist so a player who reads them lives.
+    /** [TUNE] Drop 1 — how many boars live on the island. FIXED at world birth, never added
+     *  to; there is no spawner and no wave. Three sits mid-range of the 2-4 band so the
+     *  forest has presence without the island becoming a hunting ground. */
+    boarPopulation: 3,
+    /** [TUNE] Drop 1 — the inland ring they live on. Basis: `WALKABLE_RADIUS` is 108 and the
+     *  survivor lands at the shore; 55 puts them squarely inland — far enough that a first
+     *  night contains no predator, near enough that the forest is theirs and you know it. */
+    boarRingRadiusM: 55,
+    /** [TUNE] Drop 1 — phase offset so the ring does not place one boar due north of spawn,
+     *  which would make the first walk inland a scripted encounter. */
+    boarRingPhase: 0.7,
+    /** [TUNE] Drop 1 — sight range. Basis: comfortably beyond `interactRadiusM` (2.5) and
+     *  beyond the fire's `fireWarmthRadius` (7), so a boar sees you before you are in reach
+     *  of anything — being noticed must precede being threatened. */
+    boarSightRangeM: 22,
+    /** [TUNE] Drop 1 — half-angle of the sight cone, radians (~50 deg each side). Wide
+     *  enough to be a real threat, narrow enough that circling behind it genuinely works —
+     *  which is what makes "break line of sight" an answer rather than a slogan. */
+    boarSightHalfAngleRad: 0.9,
+    /** [TUNE] Drop 1 — hearing, which ignores facing entirely. Deliberately shorter than
+     *  sight: you can be heard before you are seen only when close, so sneaking is about
+     *  staying out of the cone rather than about silence, which this game does not model. */
+    boarHearingRadiusM: 12,
+    /** [TUNE] Drop 1 — close enough that nothing else matters. Basis: `interactRadiusM`
+     *  (2.5) doubled — if you can nearly touch it, it knows. */
+    boarProximityRadiusM: 5,
+    /** [TUNE] Drop 1 — game hours from alert to warning. Basis: `dayLengthRealMinutes` makes
+     *  one game hour 150 real seconds, so 0.02 is ~3 real seconds — long enough to notice
+     *  the head come up and back away, short enough to feel like it decided. */
+    boarAlertToWarningGameHours: 0.02,
+    /** [TUNE] Drop 1 — THE TELEGRAPH. The single most important number in the drop: how long
+     *  the snort and ground-paw last before the charge commits. ~4.5 real seconds. That is
+     *  the window the fair-challenge contract promises, and it is why a charge that connects
+     *  is a charge you did not read. */
+    boarWarningGameHours: 0.03,
+    /** [TUNE] Drop 1 — how long a committed charge runs. ~2 real seconds: fast, final, and
+     *  over. A long charge would let it re-aim in practice even if the code says otherwise. */
+    boarChargeGameHours: 0.013,
+    /** [TUNE] Drop 1 — spent, and briefly harmless. ~4.5 real seconds to get clear or to
+     *  close in with the spear; the counter-attack window is real and it is short. */
+    boarAftermathGameHours: 0.03,
+    /** [TUNE] Drop 1 — an unbothered boar forgets you. ~15 real seconds of not being noticed
+     *  and it goes back to rooting; walking away is genuinely an answer. */
+    boarLoseInterestGameHours: 0.1,
+    /** [TUNE] Drop 1 — how far a charge travels. Basis: `boarProximityRadiusM` (5) plus the
+     *  run-up, so it covers the ground a survivor at warning range is standing on. */
+    boarChargeReachM: 9,
+    /** [TUNE] Drop 1 — the CORRIDOR a charge hits, not a radius. A line, so stepping aside
+     *  works; a radius would make the sidestep worthless and the telegraph a lie. Basis:
+     *  roughly a boar's own width plus the survivor's `playerCollisionRadius`. */
+    boarChargeHitCorridorM: 1.3,
+    /** [TUNE] Drop 1 — health a connected charge takes. Basis: the arrival profile lands at
+     *  65 health, so a full connect costs about a quarter of a fresh castaway and three of
+     *  them kill — a predator that is lethal by accumulation, never a one-shot. HARM ONLY;
+     *  the injury profile (bleed/limp/pain) is Drop 2's and is deliberately not here. */
+    boarChargeDamage: 16,
+    /** [TUNE] Drop 1 — how far a connect throws you. Enough to be a real interruption and to
+     *  read as impact, not enough to fling a survivor into the sea. */
+    boarKnockbackM: 3,
+    /** [TUNE] Drop 1 — a lit fire or torch within this radius de-escalates. Basis: inherits
+     *  `fireWarmthRadius` (7) — the light you are warmed by is the light it will not enter,
+     *  and two radii would eventually disagree on screen. */
+    boarFireDeterRadiusM: 7,
+    /** [TUNE] Drop 1 — beyond this the boar is not drawn at all. The standing perf rail:
+     *  this is the first genuinely new render-heavy entity type since the collision-model
+     *  work. Basis: comfortably past `boarSightRangeM` (22), so a boar that can see you is
+     *  always one you can see back — being able to be threatened by something off-screen
+     *  would break the perceivability half of the fair-challenge contract. */
+    boarRenderRadiusM: 34,
+
+    // ---- DROP 1: THE SPEAR AND THE MEAT ---------------------------------------------------
+    /** [TUNE] Drop 1 — the spear: a shaft, a knapped blade, and binding. Costs mirror the
+     *  axe's (`axeWoodCost` 3 / `axeSharpbladeCost` 1 / `axeFiberCost` 2) because it is the
+     *  same tier of made thing — one blade, one haft, lashing — and pricing it differently
+     *  would say something about difficulty that the fiction does not support. */
+    spearWoodCost: 3,
+    spearSharpbladeCost: 1,
+    spearFiberCost: 2,
+    /** [TUNE] Drop 1 — damage per thrust. Basis: `boarChargeDamage` (16) against a boar's
+     *  own health pool below, so a kill takes several committed thrusts and the aftermath
+     *  windows they must be spent in — the fight is a rhythm, not a damage race. */
+    spearThrustDamage: 22,
+    /** [TUNE] Drop 1 — a boar's health. Three thrusts and a little, so at one thrust per
+     *  aftermath window a kill costs three survived charges. That is the intended shape:
+     *  you beat it by reading it, repeatedly, not by out-damaging it. */
+    boarHealth: 70,
+    /** [TUNE] Drop 1 — meat from one boar. Enough to matter, not enough to end hunger as a
+     *  concern; it spoils before it can. */
+    boarMeatYield: 4,
+    /** [TUNE] Drop 1 — game hours before raw meat is spoiled and worthless. ~2 game days.
+     *  Fast enough that meat is an event rather than a stockpile, which is what makes
+     *  cooking (the NEXT discovery, explicitly not this drop) worth wanting. */
+    meatSpoilGameHours: 48,
+    /** [TUNE] Drop 1 — hunger restored by raw meat. Deliberately modest: raw is worse than
+     *  cooked will be, and the gap is the reason to learn fire-cooking later. */
+    meatHungerRestore: 18,
+
     // ---- THE SURVIVOR'S JOURNAL (Slice 3, D-068) -----------------------------------------
     /** [TUNE] D-068 — below this condition the ink has run and entries cannot be read. Not a
      *  cliff by accident: a journal degrades visibly for a long while before it stops working,
@@ -810,7 +910,10 @@ export const TUNE = {
         berries: 0.1,
         coconut: 1.4,
         shellfish: 0.3,
-        sharpblade: 0.4
+        sharpblade: 0.4,
+        //  DROP 1 — a unit of boar meat. Between shellfish (0.3) and coconut (1.4): heavy
+        //  enough that carrying a whole kill home is a real load decision.
+        meat: 0.5
     },
     /** [TUNE] Ch.6 — fixed mass in kg of each owned tool. Charged once when owned, not per
      *  use — a carried axe weighs the same whether or not you are swinging it. The flask's
@@ -874,7 +977,9 @@ export const TUNE = {
         berries: 0.4,
         coconut: 2,
         shellfish: 0.5,
-        sharpblade: 0.2
+        sharpblade: 0.2,
+        //  DROP 1 — bulky for its weight, the way meat is.
+        meat: 0.9
     },
     /** [TUNE] §9 — bulk per tool, same units. */
     toolBulk: { axe: 5, flask: 1.5, stoneHammer: 4, torch: 2.5 },

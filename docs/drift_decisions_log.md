@@ -3,6 +3,28 @@
 
 ---
 
+**D-109 · 2026-08-02 — DROP 1: THE BOAR. The island's first predator, and the fair-challenge contract's first real test.**
+
+**THE FIVE-STAGE GRAMMAR IS THE DESIGN, not decoration.** unaware → alert → warning → charge → aftermath, and **no attack without its precursor**: the ladder is property-swept over every stage × sense × timing × deterrence combination and may never climb more than ONE rung per step. An unaware boar with the survivor standing on it still only reaches `alert`. That sweep is the contract made executable — the skip is exactly the bug that ships when a transition table is "obviously" correct and nobody tests it.
+
+**THE CHARGE IS COMMITTED, AND THAT IS THE MECHANIC.** `chargeBearing` is fixed at wind-up and never recomputed. A charge that tracks the player is unevadable by definition — no amount of reading the telegraph helps if the attack follows you — so committing it to a bearing is what turns "you got hit" into "you did not move". The hit test is a **corridor**, not a radius, because a radius would make the sidestep worthless. `boarWarningGameHours` is ~4.5 real seconds and is asserted to be a real window, not a formality.
+
+**PERCEIVABLE MEANS SEEN *AND* HEARD.** Each stage changes posture, silhouette and motion — head-down rooting, head-up stillness, the hard repeated ground-paw — with audio as reinforcement, not the carrier. A telegraph that lives only in audio fails every player with the sound off, which on mobile is most of them; a colour-only tell fails a colourblind player outright. Cues fire once on stage ENTRY, never per frame.
+
+**D-011 ENFORCED AS STRUCTURE, not as a check.** Boars advance on the ONLINE tick and nowhere else; `settleOffline` is the only boar function reconcile's absence path may call, and it drops every boar to `unaware` and sends it home — all the way down, however long the absence. Swept to 365 days. A predator that hunts an absent player is the single most obviously unfair thing this game could contain.
+
+**NO SPAWN WAVES, ENFORCED BY ABSENCE.** The population is fixed at world birth and `fauna.ts` exports no way to create a boar afterwards — asserted structurally, so adding a wave means writing a new constructor and noticing that you did rather than quietly raising a budget. They start inland, beyond sight range of the shore: a first night contains no predator.
+
+**THREE ANSWERS, ALL REAL.** EVADE — the sight cone genuinely has a behind, and breaking line of sight de-escalates. DETER — fire and torch de-escalate `alert` and `warning`, and pointedly NEVER a committed charge. KILL — the SPEAR, entering by inspection and Try-Combining like every post-pivot item, with the **reachability proof mandatory per [[D-090]]**: driven from a bare castaway to a made spear using only the pre-axe tier. A kill takes several thrusts spent in aftermath windows, so the fight is a rhythm rather than a damage race.
+
+**SCOPE BOUNDARIES HELD, deliberately.** Harm is a NUMBER this drop — damage and knockback, nothing else; the injury profile (bleed/limp/pain) is Drop 2's and is not half-shipped here. Boar damage is held in a session-local map, never the save, so a persisted wound model cannot arrive through the back door. COOKING is named as the next discovery and is asserted absent from the module. Raw meat spoils in ~2 game days: an event, not a stockpile, which is what makes cooking worth wanting.
+
+**FOUND ALONG THE WAY:** `ALL_MATERIAL_KINDS` was a hand-written list sitting under a test named *"the combinable list is DERIVED, so it cannot drift again"*. It derived nothing — it merely happened to match, and it took adding `meat` for the gap to show. Now genuinely derived from `MATERIAL_PROFILE`'s keys, which is what the original defect (a missing `sharpblade` silently breaking the whole axe route) actually needed.
+
+**Class: OPERATIVE**
+
+*Witness: 748 unit tests across 43 files (23 new for the boar and the spear). Purity 36 brain files, tune-mirror 45 values, docs-integrity, production build. Schema v15 → v16 with migration; boars merge into an existing save at home and unaware.*
+
 **D-108 · 2026-08-01 — The One Body Resolver REVERTED from main, preserved on branch `resolver/one-body`.** Reason: queue order, not a fault in the work — it was Drop 2's item, built ahead of Drop 1 and ahead of the director's play. A confirmed device regression (slide 40%->27% of walk speed) also travels with it, unroot-caused. The Resolver returns at Drop 2 with a NEW device acceptance check it did not have the first time: slide >= 2.29 m/s, free walk 5.77 m/s. The slide root-cause is Drop 2's opening item.
 
 **Class: OPERATIVE**
