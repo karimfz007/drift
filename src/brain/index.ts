@@ -10,7 +10,6 @@ export * from './movement';
 export * from './verbs';
 export * from './ladder';
 export * from './workload';
-export * from './resolver';
 export * from './affordance';
 export * from './discovery';
 export * from './reveal';

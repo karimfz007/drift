@@ -11,8 +11,7 @@ import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshMatterWear } from './matter';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
-
-import { applyEffect, demandFor, resolveActivity } from './resolver';
+import { loadEnergyMultiplierOf } from './body';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, masteryForNodeKind } from './knowledge';
 import { cloneLoadout, freshLoadout } from './loadout';
 import { recipeDomain } from './recipes';
@@ -328,20 +327,7 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
     //  rather than adding a second drain beside it, so there is still exactly one place
     //  effortful energy is priced. A `light` band multiplies by exactly 1, leaving the
     //  pre-Ch.6 numbers bit-for-bit unchanged; a tap kind still costs 0 either way.
-    //  PART 3 — THROUGH THE ONE BODY RESOLVER. This line used to BE the body model for every
-    //  effortful act in the game: one channel, one multiplier, one subtraction. §13's formula
-    //  existed the whole time and governed nothing.
-    //
-    //  It now declares what the ACT is and lets the resolver supply what it costs THIS body
-    //  HERE — load (as before), and additionally impairment and environment, which this call
-    //  site never knew about. `demandFor` derives the base demand from the same shipped
-    //  constant, so a neutral body pays exactly what it always paid; a wounded, frozen or
-    //  exhausted one now pays more, which is the causality that was described and not wired.
-    applyEffect(state, resolveActivity(state, {
-        id: `gather:${node.kind}`,
-        baseDemand: demandFor(effortEnergyCostFor(node.kind)),
-        durationGameHours: 1,
-    }));
+    state.energy = Math.max(0, state.energy - effortEnergyCostFor(node.kind) * loadEnergyMultiplierOf(state));
 
     switch (node.kind) {
         case 'driftwood':

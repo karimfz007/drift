@@ -3,6 +3,12 @@
 
 ---
 
+**D-108 · 2026-08-01 — The One Body Resolver REVERTED from main, preserved on branch `resolver/one-body`.** Reason: queue order, not a fault in the work — it was Drop 2's item, built ahead of Drop 1 and ahead of the director's play. A confirmed device regression (slide 40%->27% of walk speed) also travels with it, unroot-caused. The Resolver returns at Drop 2 with a NEW device acceptance check it did not have the first time: slide >= 2.29 m/s, free walk 5.77 m/s. The slide root-cause is Drop 2's opening item.
+
+**Class: OPERATIVE**
+
+*Witness: branch `resolver/one-body` at `764e640` on origin; main reverted, 725 tests across 42 files green.*
+
 **D-107 · 2026-08-02 — THE ONE BODY RESOLVER. Every activity in the game now flows through one causal function, and the model that described the game finally governs it.**
 
 **THE GAP WAS NOT A MISSING PIECE — IT WAS A MISSING WIRE.** All three parts shipped and two were connected. `thermal.ts` feeds `reconcile.ts`; `workload.ts` — [[D-089]]'s §13 formula and its five channels — fed nothing but `bodyReport.ts`, **a report**. Meanwhile the actual cost of felling a tree was one line in `gatherNode`: `energy -= effortEnergyCostFor(kind) * loadEnergyMultiplierOf(state)`. One channel, one multiplier, one subtraction. **A model nothing flows through is documentation, not a system**, and this one had been documentation since the chapter that authored it.

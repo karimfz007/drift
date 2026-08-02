@@ -442,40 +442,6 @@ export const TUNE = {
      *  crisis is past, so it shapes the first night and then lets go. */
     arrivalHealthFraction: 0.65,
 
-    // ---- THE ONE BODY RESOLVER (Part 3) -------------------------------------------------
-    //  §13's terms that are read from the BODY rather than declared by the activity. Each is
-    //  a multiplier on the one workload line, and each is bounded on purpose: an impaired
-    //  body works harder, never impossibly hard. An unbounded term lets a bad state multiply
-    //  into an unpayable cost, which reads to a player as the game breaking rather than as
-    //  their own body failing them.
-    /** [TUNE] Part 3 — the ceiling on `impairmentOf`. Basis: `loadOverloadMultiplier` (1.6)
-     *  is what the heaviest sustainable burden already costs; being wounded, frozen or
-     *  wrung out is priced at the same order, so no single bad state outweighs carrying
-     *  everything you own. Reached only at zero health, zero warmth, or full fatigue. */
-    impairmentMaxMultiplier: 1.6,
-    /** [TUNE] Part 3 — work costs this much more at the extremes of the thermal band
-     *  (hypothermic or heat-strained). Basis: the midpoint between neutral and
-     *  `impairmentMaxMultiplier`, so environment and impairment can stack to roughly the
-     *  cost of a second worker without either alone dominating. */
-    environmentStrainMultiplier: 1.3,
-    /** [TUNE] Part 3 — and this much in the merely cold/hot bands. Half the strain term:
-     *  uncomfortable is a real cost, and it is not the same cost as dangerous. */
-    environmentMildStrainMultiplier: 1.15,
-    /** [TUNE] Part 3 — sweat loss multiplier under heat strain (§13 names heat as the
-     *  intensifier of the hydration channel specifically). Basis: matched to
-     *  `environmentStrainMultiplier` so the two extremes cost comparably in their own
-     *  currencies rather than one silently dominating. */
-    hydrationHeatMultiplier: 1.3,
-    /** [TUNE] Part 3 — and in the merely hot band. Same halving as the environment pair. */
-    hydrationWarmMultiplier: 1.15,
-    /** [TUNE] Part 3 — what share of accrued nutrition DEBT settles onto hunger immediately.
-     *  §13 is explicit that nutrition is a delayed, accumulated demand and not calories
-     *  removed per swing. Basis: `workNutritionDebtPerUnit` (1.8) against
-     *  `hungerDrainPerGameHour` (0.6) — at this share a hard hour of work costs roughly one
-     *  extra hour of ordinary hunger, which is a debt a player can feel without it
-     *  outrunning the slow clock hunger is designed to be. */
-    nutritionDebtSettleShare: 0.2,
-
     // ---- THE SURVIVOR'S JOURNAL (Slice 3, D-068) -----------------------------------------
     /** [TUNE] D-068 — below this condition the ink has run and entries cannot be read. Not a
      *  cliff by accident: a journal degrades visibly for a long while before it stops working,
