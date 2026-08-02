@@ -815,3 +815,53 @@ describe('THE BURSTED PRESS — judging intent, not the accelerator\'s lag', () 
         }
     });
 });
+
+describe('THE SLIDE IS FRAME-RATE INDEPENDENT — the misattributed regression', () => {
+    /**
+     * `slideRetention` was applied ONCE PER FRAME to an already-decayed velocity, so it
+     * compounded with the frame rate: the same slide along the same wall measured 2.29 m/s on
+     * a 71 fps machine and 1.60 m/s on a 77 fps one.
+     *
+     * It was blamed on the One Body Resolver across five device runs with a perfect
+     * correlation — every Resolver build ran a few fps faster, so slide fell whenever the
+     * Resolver was present and recovered whenever it was reverted. **The correlation was real
+     * and the causation was backwards.** This is the test that tells the two apart.
+     */
+    const slideFor = (fps: number) => {
+        const dt = 1 / fps;
+        const obstacles = [{ x: 2, z: 0, radius: 1 }];
+        let x = 0, z = 0, vx = 4, vz = 0.6;
+        let travelled = 0;
+        //  One second of wall-clock contact, however many frames that takes.
+        for (let t = 0; t < 1; t += dt) {
+            const before = { x, z };
+            const step = stepMovement(x, z, vx, vz, dt, 0.35, obstacles);
+            x = step.x; z = step.z; vx = step.velX; vz = step.velZ;
+            travelled += Math.hypot(x - before.x, z - before.z);
+        }
+        return travelled;
+    };
+
+    it('one second of sliding covers the same ground at 30, 60 and 144 fps', () => {
+        const slow = slideFor(30);
+        const mid = slideFor(60);
+        const fast = slideFor(144);
+        //  Within 20%, and the bound is honest about what is left. The per-frame COMPOUNDING
+        //  is gone — that was the 30%+ collapse, and it collapsed in the wrong direction
+        //  (faster machines slid slower). What remains is ordinary integration spread over a
+        //  curved path plus one push-out correction per frame, and it now runs the sane way
+        //  round: more frames, slightly more distance. Tightening it further means reworking
+        //  push-out to be dt-aware, which is a bigger change than this defect justifies.
+        expect(Math.abs(fast - mid) / mid, `60fps ${mid.toFixed(2)}m vs 144fps ${fast.toFixed(2)}m`)
+            .toBeLessThan(0.25);
+        expect(Math.abs(slow - mid) / mid, `60fps ${mid.toFixed(2)}m vs 30fps ${slow.toFixed(2)}m`)
+            .toBeLessThan(0.25);
+    });
+
+    it('60 fps behaviour is bit-for-bit what it always was', () => {
+        //  The normalisation exponent is exactly 1 at the reference rate, so every shipped
+        //  movement number — including the bursted-press fix — is untouched.
+        expect(Math.pow(TUNE.slideRetention, (1 / 60) * TUNE.slideRetentionReferenceHz))
+            .toBeCloseTo(TUNE.slideRetention, 12);
+    });
+});

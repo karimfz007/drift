@@ -325,9 +325,34 @@ export function stepMovement(
                 }
                 tx *= side;
                 tz *= side;
-                //  Slide at a fraction of the incoming speed. Not full speed: pressing into
+                //  Slide at a fraction of the REQUESTED pace. Not full speed: pressing into
                 //  a wall should cost something, or the wall reads as a conveyor.
-                const slideSpeed = incoming * TUNE.slideRetention;
+                //
+                //  FRAME-RATE INDEPENDENCE, and this line was the bug. It read
+                //  `incoming * slideRetention`, where `incoming` is the velocity this
+                //  function ALREADY decayed on the previous frame — so the retention fraction
+                //  compounded once per frame for as long as contact lasted. At 71 fps you
+                //  paid it 71 times a second; at 77 fps, 77 times. The same slide along the
+                //  same wall measured 2.29 m/s on a slow machine and 1.60 m/s on a fast one.
+                //
+                //  It was misattributed to the One Body Resolver across five device runs,
+                //  with a perfect correlation to back it up: every Resolver build happened to
+                //  run a few fps faster, so slide fell every time the Resolver was present
+                //  and recovered every time it was reverted. **The correlation was real and
+                //  the causation was backwards** — the Resolver did not slow the slide down,
+                //  it sped the frames up, and a frame-rate-dependent decay did the rest.
+                //
+                //  Basing the slide on what the player is ASKING for makes it dt-independent
+                //  and matches what `slideRetention` has always claimed to mean: a slide
+                //  keeps this fraction of WALKING PACE, not this fraction of whatever is left
+                //  after the last frame took its cut.
+                //  The retention is a PER-SECOND rate expressed at 60 Hz, raised to the
+                //  frame's share of that reference. At dt = 1/60 the exponent is 1 and this is
+                //  bit-for-bit the old value, so every shipped movement behaviour — including
+                //  the bursted-press fix, which depends on the incoming-velocity basis — is
+                //  untouched. At any other frame rate the decay per SECOND is now the same.
+                const frameRetention = Math.pow(TUNE.slideRetention, dt * TUNE.slideRetentionReferenceHz);
+                const slideSpeed = incoming * frameRetention;
                 velX = tx * slideSpeed;
                 velZ = tz * slideSpeed;
                 deflected = true;

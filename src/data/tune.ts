@@ -522,6 +522,11 @@ export const TUNE = {
      *  through, and matching a tree's feel is right because that is the collision the player
      *  has already learned. Push-out only: the charge delivers its own knockback, and a
      *  second shove on top of it would read as the world fighting you. */
+    /** [TUNE] The frame rate `slideRetention` is expressed at. Basis: 60 Hz, the rate every
+     *  shipped movement number was measured and tuned at — so at 60 fps the normalisation is
+     *  exactly 1 and nothing moves. It exists so the retention is a decay per SECOND rather
+     *  than per FRAME, which is what it always claimed to be. */
+    slideRetentionReferenceHz: 60,
     boarCollisionRadius: 0.9,
     boarWanderSpeedMPerGameHour: 26,
     /** [TUNE] Drop 1 FIX — how far it drifts from home before turning back. Keeps a boar in
