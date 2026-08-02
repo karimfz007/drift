@@ -14,6 +14,7 @@ import {
     knapSharpblade
 } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
+import { closeSurvivor } from '../src/brain/succession';
 import { SPAWN } from '../src/data/world';
 
 function run() {
@@ -21,18 +22,47 @@ function run() {
 }
 
 describe('state — the fresh run', () => {
-    it('starts at the waterline, full on every vital, empty-handed, at dusk', () => {
+    it('starts at the waterline WASHED ASHORE — hurt, soaked, empty-handed, at dusk', () => {
+        //  THIS TEST CODIFIED THE DEFECT. It read "full on every vital" and asserted
+        //  `warmthMax`/`thirstMax`/`hungerMax`/`healthMax`, which is exactly the "100% spawn"
+        //  the director reported. It passed on every run of the slice that was supposed to
+        //  fix it, because Laws 115-117 were wired into succession and never into the first
+        //  life — and a green test asserting the old behaviour is how that goes unnoticed.
+        //
+        //  Inverted, not deleted: the assertion that a castaway lands compromised is exactly
+        //  as load-bearing as the one it replaces, and it must fail loudly if anyone restores
+        //  full bars for "a gentler opening".
         const s = run();
         expect(s.player).toEqual({ x: SPAWN.x, y: SPAWN.y });
-        expect(s.warmth).toBe(TUNE.warmthMax);
-        expect(s.thirst).toBe(TUNE.thirstMax);
-        expect(s.hunger).toBe(TUNE.hungerMax);
-        expect(s.health).toBe(TUNE.healthMax);
+        expect(s.warmth).toBe(TUNE.warmthMax * TUNE.arrivalWarmthFraction);
+        expect(s.thirst).toBe(TUNE.thirstMax * TUNE.arrivalThirstFraction);
+        expect(s.hunger).toBe(TUNE.hungerMax * TUNE.arrivalHungerFraction);
+        expect(s.health).toBe(TUNE.healthMax * TUNE.arrivalHealthFraction);
+        expect(s.energy).toBe(TUNE.energyMax * TUNE.arrivalEnergyFraction);
+        expect(s.wet).toBe(TUNE.wetMax * TUNE.arrivalWetFraction);
+        //  ...and NOT full, stated separately so the intent survives a tuning pass that
+        //  happens to move a fraction to 1.0 by accident.
+        for (const [have, max] of [[s.warmth, TUNE.warmthMax], [s.thirst, TUNE.thirstMax],
+            [s.hunger, TUNE.hungerMax], [s.health, TUNE.healthMax], [s.energy, TUNE.energyMax]]) {
+            expect(have, 'a castaway who washed ashore has not survived anything yet').toBeLessThan(max);
+        }
         expect(s.inventory.wood).toBe(0);
         expect(s.tools.axe).toBe(false);
         expect(s.skills.woodcutting.level).toBe(1);
         expect(s.gameHoursElapsed).toBe(0);
         expect(s.fire.built).toBe(false);
+    });
+
+    it('the FIRST life and a SUCCESSOR land identically — one arrival, one source', () => {
+        //  The structural guarantee behind the fix. The profile lived in `closeSurvivor` and
+        //  nowhere else, so the two arrivals could differ — and did, completely. Comparing
+        //  them here means any future edit that touches one and not the other fails, which is
+        //  the only thing that keeps `arrival.ts` honest about being the single source.
+        const first = run();
+        const successor = closeSurvivor(run(), 'thirst').next;
+        for (const k of ['warmth', 'thirst', 'hunger', 'health', 'energy', 'wet'] as const) {
+            expect(successor[k], `${k} differs between the first life and a successor`).toBe(first[k]);
+        }
     });
 
     it('has every node kind the pressure loop needs', () => {

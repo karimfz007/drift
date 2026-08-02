@@ -4,11 +4,12 @@ import { reconcile } from '../src/brain/reconcile';
 import { buildFire, createInitialState } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
+import { fullBody } from './_baseline';
 
 const MINUTE = 60;
 
 function shelteredRun() {
-    const s = createInitialState(0);
+    const s = fullBody(createInitialState(0));
     s.inventory.wood = TUNE.woodPerFire;
     buildFire(s, s.player.x, s.player.y);
     return s;

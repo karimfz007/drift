@@ -4,6 +4,7 @@
  */
 
 import { gameHoursFromRealSeconds } from './clock';
+import { arrivalProfile } from './arrival';
 import { TUNE } from '../data/tune';
 import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
@@ -35,12 +36,11 @@ export function createInitialState(nowMs: number): GameState {
         startedAtMs: nowMs,
         lastSeenMs: nowMs,
         gameHoursElapsed: 0,
-        warmth: TUNE.warmthMax,
-        thirst: TUNE.thirstMax,
-        hunger: TUNE.hungerMax,
-        health: TUNE.healthMax,
-        energy: TUNE.energyMax,
-        wet: 0,
+        //  LAWS 115-117: the first survivor lands EXACTLY as every successor does. This used
+        //  to read `warmthMax`/`thirstMax`/... — six full bars, a castaway who had survived
+        //  nothing — and the director reported it as "100% spawn". The profile is spread here
+        //  rather than restated so the two arrivals cannot drift apart again.
+        ...arrivalBody(),
         fatigue: 0,
         resting: false,
         inventory: emptyInventory(),
@@ -87,6 +87,16 @@ export function createInitialState(nowMs: number): GameState {
         survivorStartedAtGameHours: 0,
         journal: freshJournal()
     };
+}
+
+/**
+ * The six body values of the arrival profile, ready to spread. Split from `arrivalProfile`
+ * because that carries a `condition` sentence for the UI, and spreading a string into
+ * `GameState` would be a type error waiting to be silenced with a cast.
+ */
+function arrivalBody(): Pick<GameState, 'warmth' | 'thirst' | 'hunger' | 'health' | 'energy' | 'wet'> {
+    const p = arrivalProfile();
+    return { warmth: p.warmth, thirst: p.thirst, hunger: p.hunger, health: p.health, energy: p.energy, wet: p.wet };
 }
 
 /** No journal until someone makes one. See `journal.ts` — this is the absent state. */

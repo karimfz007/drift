@@ -62,6 +62,9 @@ describe('THE CHAIN — what happened, in the order it happened', () => {
         //  genuinely false, so it has nothing true to say about the mechanism.
         s.shelter = { ...s.shelter, built: true };
         s.fire = { built: true, fuel: 5, x: 0, y: 0 };
+        //  ...and DRY. A fresh state is now an arrival, and an arrival is soaked, so the wet
+        //  link would fire and the review would have something true to say after all.
+        s.wet = 0;
         const r = reviewDeath(s, 'a falling coconut');
         expect(r.chain).toHaveLength(1);
         expect(r.chain[0]).toMatch(/falling coconut/);

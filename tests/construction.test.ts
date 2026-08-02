@@ -23,12 +23,13 @@ import { Session } from '../src/brain/session';
 import { MemorySaveRepository } from '../src/brain/save';
 import { realSecondsFromGameHours } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
+import { fullBody } from './_baseline';
 import { closeSurvivor } from '../src/brain/succession';
 import { SPAWN } from '../src/data/world';
 import { POND } from '../src/data/world';
 
 function run() {
-    return createInitialState(0);
+    return fullBody(createInitialState(0));
 }
 
 describe('construction — shelter', () => {

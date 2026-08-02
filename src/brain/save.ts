@@ -119,8 +119,26 @@ function migrateV1toV2(envelope: SaveEnvelope): SaveEnvelope {
         startedAtMs: num(old.startedAtMs, fresh.startedAtMs),
         lastSeenMs: num(old.lastSeenMs, fresh.lastSeenMs),
         gameHoursElapsed: num(old.gameHoursElapsed, 0),
-        // Warmth carries over; the three new vitals start full.
-        warmth: num(old.warmth, fresh.warmth),
+        //  Warmth carries over; the three new vitals start FULL — explicitly, not by
+        //  inheriting `fresh`.
+        //
+        //  This became load-bearing when Laws 115-117 made `createInitialState` an ARRIVAL:
+        //  it now returns a body that is soaked, winded and hurt, which is right for someone
+        //  who has just washed ashore and wrong for everyone else. A returning player did not
+        //  wash ashore — they have been here for six game-hours with a fire burning. Letting
+        //  a migration inherit the crash profile would injure a survivor for the crime of
+        //  loading their own save, which is the same class of insult as a death that forgets
+        //  what you built.
+        //
+        //  So arrivals and migrations are stated separately on purpose: **`createInitialState`
+        //  answers "how does a castaway land"; a migration answers "what did this survivor
+        //  not have yet".** Those are different questions and they must not share a default.
+        warmth: num(old.warmth, TUNE.warmthMax),
+        thirst: TUNE.thirstMax,
+        hunger: TUNE.hungerMax,
+        health: TUNE.healthMax,
+        energy: TUNE.energyMax,
+        wet: 0,
         // Only wood existed in v1; the rest of the inventory starts empty.
         inventory: { ...fresh.inventory, wood: num((old.inventory as Record<string, unknown>)?.wood, 0) },
         fire: isObject(old.fire)

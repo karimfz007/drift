@@ -4,6 +4,7 @@ import { MemorySaveRepository, deserialize } from '../src/brain/save';
 import { buildFire } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
+import { fullBody } from './_baseline';
 
 const T0 = 1_700_000_000_000;
 
@@ -77,13 +78,19 @@ describe('session — A4: quit, wait, reopen', () => {
 
         expect(isNewRun).toBe(true);
         expect(report).toBeNull();
-        expect(session.state.warmth).toBe(TUNE.warmthMax);
+        //  LAWS 115-117: a fresh run is an ARRIVAL, not a full tank. This used to assert
+        //  `warmthMax` and was one of the tests that let "100% spawn" ship.
+        expect(session.state.warmth).toBe(TUNE.warmthMax * TUNE.arrivalWarmthFraction);
+        expect(session.state.health).toBe(TUNE.healthMax * TUNE.arrivalHealthFraction);
         expect(deserialize(repo.read())!.savedAtMs).toBe(T0);
     });
 
     it('folds the absence in on reopen and produces the report', () => {
         const repo = new MemorySaveRepository();
         const first = Session.start(repo, T0).session;
+        //  A RATE is being measured across the absence, so the body starts from a stated
+        //  baseline rather than from wherever the arrival profile happens to put it.
+        fullBody(first.state);
         first.state.inventory.wood = TUNE.woodPerFire;
         buildFire(first.state, first.state.player.x, first.state.player.y);
         first.persist(T0);
@@ -121,6 +128,9 @@ describe('session — the frame loop uses the same maths', () => {
     it('ticking forward advances the world exactly like an absence', () => {
         const repo = new MemorySaveRepository();
         const { session } = Session.start(repo, T0);
+        //  Same reason: this asserts warmthMax MINUS one night-hour of drain, which is a
+        //  statement about the RATE and needs a known starting bar to subtract from.
+        fullBody(session.state);
 
         session.tick(T0 + realSecondsPerGameHour * 1000); // one game hour of foreground play
         expect(session.state.gameHoursElapsed).toBeCloseTo(1, 9);

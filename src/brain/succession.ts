@@ -37,9 +37,10 @@
  * — the dead stay dead once the commit lands; what a crash may cost is the commit, not the
  * truth.
  */
-import { TUNE } from '../data/tune';
 import { succeedJournal } from './journal';
 import { createInitialState } from './state';
+
+export { arrivalProfile, type ArrivalProfile } from './arrival';
 import type { GameState, SurvivorRecord } from './types';
 
 /** The v13 §18 table, as data. Every future system declares its side here. */
@@ -61,46 +62,6 @@ export const DIES_WITH_THE_SURVIVOR = [
     'developed capacities',
     'unwritten experience of any kind',
 ] as const;
-
-/**
- * THE ARRIVAL PROFILE (Laws 115–117). Authored, survivable, legible — never six full bars,
- * and never random cruelty.
- *
- * A castaway does not wash ashore at full health any more than they wash ashore dead. They
- * arrive *compromised in a way they can read and act on*: winded, soaked, carrying an injury
- * that will matter for a while. The first life and every successor land the same way, because
- * a successor who arrived fresh would make death a convenience.
- *
- * Every value is a fraction of max, chosen so the first night remains survivable from here —
- * F3's certified envelope assumes a body that can still act. **Authored, not rolled**: a
- * random arrival is a coin-flip with the run on it, which the fair-challenge contract forbids.
- */
-export interface ArrivalProfile {
-    warmth: number;
-    thirst: number;
-    hunger: number;
-    energy: number;
-    health: number;
-    wet: number;
-    /** One sentence the survivor could say about their own body. */
-    condition: string;
-}
-
-export function arrivalProfile(): ArrivalProfile {
-    return {
-        //  Cold and soaked from the water, but not hypothermic — the sea took heat, not life.
-        warmth: TUNE.warmthMax * TUNE.arrivalWarmthFraction,
-        wet: TUNE.wetMax * TUNE.arrivalWetFraction,
-        //  Thirsty and hungry enough to matter within the first day, not within the hour.
-        thirst: TUNE.thirstMax * TUNE.arrivalThirstFraction,
-        hunger: TUNE.hungerMax * TUNE.arrivalHungerFraction,
-        //  Winded. Enough to walk and work, not enough to do it carelessly.
-        energy: TUNE.energyMax * TUNE.arrivalEnergyFraction,
-        //  Hurt. The one that persists past the first night and shapes what is sensible.
-        health: TUNE.healthMax * TUNE.arrivalHealthFraction,
-        condition: 'Soaked, winded, and hurt somewhere that will not let you forget it.',
-    };
-}
 
 /** What the island itself tells a newcomer, before they know anything. Evidence, not memory. */
 export function evidenceOnArrival(state: GameState): string[] {
@@ -142,19 +103,15 @@ export function closeSurvivor(state: GameState, cause: string): {
     //  This way round, a forgotten new field defaults to dying. If it was personal, the
     //  default is correct. If it was worldly, the island forgets a detail and someone
     //  notices — a visible, benign, fixable failure. **Default to death.**
+    //  The body is NOT set here, and that absence is deliberate. `createInitialState` now
+    //  applies the arrival profile itself, so a fresh state IS an arrival — which is the
+    //  fix for the director's "100% spawn". Re-applying the six values here would restore
+    //  the very thing that went wrong: two places deciding how a castaway lands, free to
+    //  drift apart. One arrival, one source.
     const fresh = createInitialState(state.startedAtMs);
-    const profile = arrivalProfile();
 
     const next: GameState = {
         ...fresh,
-
-        //  ---- THE BODY: the arrival profile, exactly as a first life gets it -------------
-        warmth: profile.warmth,
-        thirst: profile.thirst,
-        hunger: profile.hunger,
-        energy: profile.energy,
-        health: profile.health,
-        wet: profile.wet,
 
         //  ---- PERSISTS: the island (v13 §18) --------------------------------------------
         //  Listed one by one, on purpose. This is the table made executable, and being

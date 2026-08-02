@@ -4,13 +4,14 @@ import { KNOWLEDGE_DOMAINS } from '../src/brain/knowledge';
 import { buildFire, createInitialState } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
+import { fullBody } from './_baseline';
 import type { GameState } from '../src/brain/types';
 
 const HOUR = 3600;
 const DAY = 86400;
 
 function fresh(): GameState {
-    return createInitialState(1_700_000_000_000);
+    return fullBody(createInitialState(1_700_000_000_000));
 }
 
 //  A deterministic pseudo-random sweep — no Math.random (forbidden in the brain's world,

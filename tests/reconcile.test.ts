@@ -3,6 +3,7 @@ import { reconcile } from '../src/brain/reconcile';
 import { buildFire, createInitialState, gatherNode } from '../src/brain/state';
 import { realSecondsPerGameHour } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
+import { fullBody } from './_baseline';
 import type { GameState } from '../src/brain/types';
 
 const MINUTE = 60;
@@ -11,7 +12,7 @@ const DAY = 86400;
 
 /** A run that has just started: dusk, full warmth, no fire, standing where they washed up. */
 function freshRun(): GameState {
-    return createInitialState(1_700_000_000_000);
+    return fullBody(createInitialState(1_700_000_000_000));
 }
 
 /** A run with a 5-wood fire lit at the player's feet. */
