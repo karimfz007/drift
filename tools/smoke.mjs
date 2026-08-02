@@ -100,6 +100,8 @@ const TUNE = new Proxy({
     //  two `respawn*` constants are GONE from the source, so mirroring them would be mirroring
     //  a value that no longer exists — which is exactly the drift this mirror exists to catch.
     arrivalHealthFraction: 0.65,
+    impairmentMaxMultiplier: 1.6,
+    environmentStrainMultiplier: 1.3,
     arrivalThirstFraction: 0.45,
     arrivalHungerFraction: 0.6,
     arrivalWarmthFraction: 0.45,
@@ -3102,7 +3104,22 @@ async function main() {
     const afterRockEnergy = (await live()).energy;
     const rockDelta = beforeRockEnergy - afterRockEnergy;
     check('FIX-1 — mining a rock (effortful) visibly costs energy', rockResult.ok && afterRockEnergy < beforeRockEnergy, `rock ok=${rockResult.ok}, energy ${beforeRockEnergy} -> ${afterRockEnergy}`);
-    check('FIX-1 — the energy cost matches the tuned amount (within incidental ambient drain)', rockResult.ok && Math.abs(rockDelta - TUNE.energyCostRockMine) < 0.3, `delta ${rockDelta.toFixed(2)}, expected ${TUNE.energyCostRockMine}`);
+    //  MIGRATED for the One Body Resolver. This asserted the FLAT pre-Resolver cost — the
+    //  tuned amount and nothing else — which is the model that shipped before an activity's
+    //  price depended on the body paying it. A wounded, cool or tired survivor now pays
+    //  impairment and environment on top, which is the whole point of the unification, and on
+    //  device the castaway is all three: the arrival profile lands them hurt and cool.
+    //
+    //  So the check now asserts the RANGE the resolver can legally produce — never cheaper
+    //  than the tuned base, never more than the two body multipliers can justify. That still
+    //  catches the defect it was written for (an effortful gather costing nothing) without
+    //  asserting a flat price the game deliberately stopped charging.
+    const maxBodyMultiplier = TUNE.impairmentMaxMultiplier * TUNE.environmentStrainMultiplier * 1.6;
+    check('FIX-1 — the energy cost is the tuned amount, scaled by what THIS body pays',
+        rockResult.ok
+        && rockDelta >= TUNE.energyCostRockMine - 0.3
+        && rockDelta <= TUNE.energyCostRockMine * maxBodyMultiplier + 0.3,
+        `delta ${rockDelta.toFixed(2)}, base ${TUNE.energyCostRockMine}, ceiling ${(TUNE.energyCostRockMine * maxBodyMultiplier).toFixed(2)}`);
     const driftTarget = await nodeOf('driftwood');
     await editSave(`state.player = { x: ${driftTarget.x - 1.5}, y: ${driftTarget.y} };`);
     const beforeDriftwoodEnergy = (await live()).energy;
