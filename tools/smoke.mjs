@@ -96,8 +96,13 @@ const TUNE = new Proxy({
     salvageStoneAmount: 2,
     //  Living Island Track A FIX package (D-052) — mirrors src/data/tune.ts, same
     //  duplication convention as every constant above.
-    respawnHealthFraction: 0.3,
-    respawnVitalFraction: 0.5,
+    //  SLICE 3: the arrival profile replaces the respawn fractions, here as in tune.ts. The
+    //  two `respawn*` constants are GONE from the source, so mirroring them would be mirroring
+    //  a value that no longer exists — which is exactly the drift this mirror exists to catch.
+    arrivalHealthFraction: 0.65,
+    arrivalWarmthFraction: 0.45,
+    arrivalEnergyFraction: 0.6,
+    arrivalWetFraction: 0.6,
     energyCostRockMine: 1.5,
     torchWoodCost: 2,
     torchFiberCost: 2,
@@ -2948,14 +2953,24 @@ async function main() {
     //  while printing only the (passing) position in its detail string. Position is this
     //  regression's actual subject; the resource cost is its own check, computed from the
     //  pre-death count so it cannot drift out of date again.
-    check('REGRESSION — once a shelter is built, respawn wakes you there instead of the beach', Math.abs(revived.player.x - afterShelter.shelter.x) < 0.5 && Math.abs(revived.player.y - afterShelter.shelter.y) < 0.5, `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}`);
+    //  SLICE 3 INVERTS THIS. It read "once a shelter is built, respawn wakes you there" — true
+    //  while it was still YOU. A successor is a different person, and materialising inside a
+    //  stranger's shelter would skip the discovery entirely: the walk up the beach IS how they
+    //  find out someone lived here. The shelter still persists; the arrival point does not.
+    check('SLICE 3 — a successor washes ashore at the SEA, never inside the shelter they found',
+        Math.abs(revived.player.y - afterShelter.shelter.y) > 0.5 && revived.shelter.built === true,
+        `player ${revived.player.x.toFixed(1)},${revived.player.y.toFixed(1)} vs shelter ${afterShelter.shelter.x.toFixed(1)},${afterShelter.shelter.y.toFixed(1)}, still standing ${revived.shelter.built}`);
     const expectedWoodAfterDeath = dying.inventory.wood - Math.floor(dying.inventory.wood * 0.25);
-    check('Ch.6 — that same death cost a floored quarter of the carried wood, and no more', revived.inventory.wood === expectedWoodAfterDeath, `wood ${dying.inventory.wood} -> ${revived.inventory.wood}, expected ${expectedWoodAfterDeath}`);
+    check('SLICE 3 — that same death cost EVERYTHING carried: the body carrying it is dead',
+        revived.inventory.wood === 0,
+        `wood ${dying.inventory.wood} -> ${revived.inventory.wood}`);
     //  A generous tolerance, not 0.01: `revived` is read after a real tap + sleep(500),
     //  and online health regen (healthRegenPerGameHour) keeps ticking the instant no vital
     //  is empty, the same continuous-drift reason C05's own audit already loosened an
     //  energy===100 assertion for. The fraction should still land close, just not exact.
-    check('FIX-2 — a death is NOT a full refill: health wakes near respawnHealthFraction, not 100', Math.abs(revived.health - 100 * TUNE.respawnHealthFraction) < 1 && revived.health < 100, `health ${revived.health}`);
+    check('SLICE 3 — nobody wakes: the successor lands on the authored arrival profile',
+        Math.abs(revived.health - 100 * TUNE.arrivalHealthFraction) < 1.5 && revived.health < 100,
+        `health ${revived.health} (arrival profile ${100 * TUNE.arrivalHealthFraction})`);
     check('FIX-2 — every death is logged with a cause and a game-clock timestamp', Array.isArray(revived.trace.deathLog) && revived.trace.deathLog.length >= 1 && typeof revived.trace.deathLog[revived.trace.deathLog.length - 1].cause === 'string', JSON.stringify(revived.trace.deathLog?.slice(-1)));
 
     // ---- A4: absence and the morning report ----
@@ -3174,12 +3189,30 @@ async function main() {
         //  trusted to incidental leftover world state.
         await editSave(`state.fire.fuel = 5; state.player = { x: ${fireForTorch.x - 1.5}, y: ${fireForTorch.y} };`);
         await faceNode(fireForTorch.x, fireForTorch.y);
-        await tapWorld(fireForTorch.x, fireForTorch.y, 55);
-        await sleep(500);
+        //  SLICE 3 MOVED THIS, DELIBERATELY. Lighting a torch used to be a TAP, because
+        //  `tryFeedFire` gave it priority over feeding — the fourth priority hack. The fire
+        //  now has four verbs and the circle arbitrates, so a TAP feeds the fire (its declared
+        //  default, the Default-Verb Law) and the rarer act is reached by a HOLD. The check
+        //  follows the verb to its new home rather than asserting the old route forever.
+        await holdWorld(fireForTorch.x, fireForTorch.y, 60);
+        await sleep(3000);
+        const torchSeg = await realTapDom('.verb-seg[data-verb="light-torch"]');
+        await sleep(600);
         const litTorch = await live();
-        check('FIX-5 — the torch lights via a real tap on an active fire', litTorch.torch.lit === true, JSON.stringify(litTorch.torch));
+        check('SLICE 3 — the torch lights from the CIRCLE at the fire, on a real hold-then-pick',
+            litTorch.torch.lit === true,
+            `pick ${torchSeg?.ok ?? 'n/a'} ${torchSeg?.reason ?? ''} — ${JSON.stringify(litTorch.torch)}`);
+        //  ...and the tap it displaced still does the ordinary thing, undiminished.
+        const woodBefore = (await live()).inventory.wood;
+        await tapWorld(fireForTorch.x, fireForTorch.y, 55);
+        await sleep(600);
+        const fedState = await live();
+        check('SLICE 3 — and a TAP on the fire still FEEDS it (the frequent verb was not taxed)',
+            fedState.inventory.wood < woodBefore || fedState.fire.fuel > 5,
+            `wood ${woodBefore} -> ${fedState.inventory.wood}, fuel ${fedState.fire.fuel?.toFixed(2)}`);
     } else {
-        check('FIX-5 — the torch lights via a real tap on an active fire', false, 'setup failed: no fire standing to light it from');
+        check('SLICE 3 — the torch lights from the CIRCLE at the fire, on a real hold-then-pick',
+            false, 'setup failed: no fire standing to light it from');
     }
 
     // ---- Missing Build button: a stale HUD visibility gate (D-053) ----
@@ -3650,10 +3683,25 @@ async function main() {
     await sleep(500);
     const afterDeath = await live();
     check('Ch.6 — a real death occurred to test its cost', diedForBody, `deaths ${deathsBaseline} -> ${afterDeath.trace.deaths}`);
-    check('Ch.6 — the death took a floored quarter of the carried loose stacks', afterDeath.inventory.wood === 9 && afterDeath.inventory.stone === 6, `wood 12->${afterDeath.inventory.wood}, stone 8->${afterDeath.inventory.stone}`);
-    check('Ch.6 — small stacks are never wiped by rounding (2 sharp blades survive intact)', afterDeath.inventory.sharpblade === 2, `sharpblade ${afterDeath.inventory.sharpblade}`);
-    check('Ch.6 — the death NEVER took tools', afterDeath.tools.axe === true && afterDeath.tools.stoneHammer === true && afterDeath.tools.flask === true, JSON.stringify(afterDeath.tools));
-    check('Ch.6 — the death NEVER touched KnowledgeState (Ch.2 amendment B holds across a second system)', afterDeath.knowledge.domains.harvestingFabrication.technique === 42, `technique ${afterDeath.knowledge.domains.harvestingFabrication.technique}`);
+    //  THE CH.6 DEATH-COST BLOCK, REPLACED. It asserted the interim mercy — a floored quarter
+    //  of each stack, tools and knowledge untouched — and every line of it is now false by
+    //  design. Migrated rather than deleted, because the QUESTIONS were the right ones; only
+    //  the answers changed, and the new answers are worth witnessing on a device.
+    check('SLICE 3 — the death took everything carried, stacks and tools alike',
+        afterDeath.inventory.wood === 0 && afterDeath.inventory.stone === 0
+        && afterDeath.inventory.sharpblade === 0 && afterDeath.tools.axe === false,
+        `wood ${afterDeath.inventory.wood}, stone ${afterDeath.inventory.stone}, blades ${afterDeath.inventory.sharpblade}, axe ${afterDeath.tools.axe}`);
+    //  AMENDMENT B IS NOT WEAKENED BY THIS, and the distinction is the whole point: Ch.2 says
+    //  knowledge never decays through ABSENCE, and it still does not (property-tested over
+    //  2000 random states). Slice 3 says knowledge dies with the SURVIVOR. Different claims,
+    //  both standing — one is about time passing, the other about a person ending.
+    check('SLICE 3 — MATTER NOT MEMORY: what the dead survivor understood did not carry over',
+        afterDeath.knowledge.domains.harvestingFabrication.technique < 42
+        && afterDeath.blueprints.length === 0,
+        `technique 42 -> ${afterDeath.knowledge.domains.harvestingFabrication.technique}, ${afterDeath.blueprints.length} blueprint(s)`);
+    check('SLICE 3 — ...while the island the survivor changed is exactly as they left it',
+        afterDeath.shelter.built === true && afterDeath.storage.built === true,
+        `shelter ${afterDeath.shelter.built}, store ${afterDeath.storage.built}`);
     check('Ch.6 — waking clears fatigue rather than compounding it', afterDeath.fatigue === 0, `fatigue was forced to 70 before the death, now ${afterDeath.fatigue}`);
     const lastDeath = afterDeath.trace.deathLog[afterDeath.trace.deathLog.length - 1];
     check('Ch.6 — the death log records the cause-specific lesson and exactly what was lost', Boolean(lastDeath && lastDeath.message && lastDeath.lost), JSON.stringify(lastDeath));
@@ -4305,6 +4353,174 @@ async function main() {
         await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
         await sleep(300);
     }
+
+
+    // ================================================================
+    // SLICE 3 — THE CASTAWAY CYCLE. Die, wash ashore as someone else, read the book.
+    // ================================================================
+    console.log('\nSLICE 3 — the castaway cycle: permadeath, succession, the journal');
+
+    //  THE FIRE'S CIRCLE, on the real device. Slice 3 retires the fourth priority hack, so
+    //  the first thing to witness is that the fire opens a circle at all — and that feeding
+    //  it, the ordinary act, was not taxed by the two new verbs.
+    await editSave(`
+        ${grantBlueprints('shelter')}
+        state.inventory = { wood: 12, stone: 6, fiber: 12, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.fire = { built: true, fuel: 12, x: 0, y: 74 };
+        state.storage = { ...state.storage, built: true, x: 5, y: 70 };
+        state.shelter = { ...state.shelter, built: false };
+        state.player = { x: 0, y: 70 };
+        state.energy = 95;
+        state.journal = { exists: false, x: 0, y: 0, carried: false, condition: 1, entries: [], lastWrittenAtGameHours: null };
+        state.memorial = [];
+        state.survivorStartedAtGameHours = 0;
+    `);
+
+    //  `screenOf` returns {x, y} and NOTHING else — there is no `onScreen` field on it. The
+    //  first cut of this section gated on `fireScreen.onScreen`, which is undefined, so the
+    //  guard was UNFALSIFIABLE IN THE FAILING DIRECTION: it could only ever take the else
+    //  branch and report a hard failure, whatever the game did. `holdWorld` already returns
+    //  {ok, why} with its own bound check, so the gate is redundant as well as wrong —
+    //  the honest thing is to attempt the gesture and report what came back.
+    //  D-102, APPLIED RATHER THAN RE-LEARNED. Hardcoded world coordinates are not where the
+    //  camera is looking: (0,74) projected to y=-3873 on a 412-tall viewport, far above the
+    //  screen, because the survivor's FACING decides what is reachable. `findHoldableSite`
+    //  already solves exactly this with a camera-yaw cone scan — so the fire is placed at a
+    //  point the camera can actually see, instead of a point I assumed it could.
+    const fireAt = await findHoldableSite(5);
+    if (fireAt) {
+        await editSave(`state.fire = { built: true, fuel: 12, x: ${fireAt.x.toFixed(2)}, y: ${fireAt.y.toFixed(2)} };`);
+        const fireHold = await holdWorld(fireAt.x, fireAt.y, 60);
+        //  A hold sets an INTENTION; the circle opens on ARRIVAL. `findHoldableSite` returns
+        //  ground with clearance — which by definition is not where the survivor is standing
+        //  — so they have to walk there first. 600ms was the gesture landing and the walk
+        //  being cut off, not the circle failing to open.
+        await sleep(3000);
+        const circle = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            const segs = Array.from(el ? el.querySelectorAll('.verb-seg') : []);
+            return {
+                open: Boolean(el),
+                verbs: segs.map((b) => b.dataset.verb),
+                ready: segs.filter((b) => b.classList.contains('ready')).map((b) => b.dataset.verb),
+            };
+        });
+        check('SLICE 3 — the FIRE opens the radial circle (the fourth priority hack, retired)',
+            circle.open && circle.verbs.length >= 3,
+            `at ${fireAt.x.toFixed(1)},${fireAt.y.toFixed(1)} — hold ${fireHold?.ok ?? 'n/a'} ${fireHold?.why ?? ''}, open ${circle.open}, ${circle.verbs.length} verb(s): ${circle.verbs.join(' | ')}`);
+        check('SLICE 3 — "Make a journal" is offered at the fire, and feeding it is still ready',
+            circle.ready.includes('make-journal') && circle.ready.includes('feed-fire'),
+            `ready: ${circle.ready.join(' | ')}`);
+        await realTapDom('.verb-seg[data-verb="make-journal"]');
+        await sleep(800);
+        const made = await live();
+        check('SLICE 3 — REACHABILITY: the journal is really made, and it is in hand',
+            made.journal?.exists === true && made.journal?.carried === true,
+            `exists ${made.journal?.exists}, carried ${made.journal?.carried}, fiber ${made.inventory?.fiber}`);
+    } else {
+        check('SLICE 3 — the FIRE opens the radial circle (the fourth priority hack, retired)',
+            false, 'no holdable site found in the camera cone — see D-102');
+    }
+
+    //  DEATH IS FINAL, AND THE ISLAND IS NOT. Driven through the brain's own commit — the
+    //  device half being witnessed here is the OVERLAY: that a death produces the review and
+    //  the arrival, and that control comes back afterwards.
+    await editSave(`
+        ${grantBlueprints('shelter')}
+        state.shelter = { ...state.shelter, built: true, x: 6, y: 70, durability: 63 };
+        state.storage = { ...state.storage, built: true, x: 4, y: 70 };
+        state.inventory = { wood: 7, stone: 3, fiber: 2, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.journal = { exists: true, x: 4, y: 70, carried: false, condition: 1,
+            entries: [{ author: 1, writtenAtGameHours: 9, topic: 'shelter', text: 'Lashed at every crossing.' }],
+            lastWrittenAtGameHours: 9 };
+        state.warmth = 0; state.wet = 70; state.thirst = 2;
+        state.gameHoursElapsed = 41;
+        state.player = { x: 0, y: 70 };
+    `);
+    await sleep(900);
+
+    //  THE DEATH MUST BE DRIVEN ONLINE, and finding that out is worth the note.
+    //
+    //  The first cut of this section wrote `health = 0.4` into the save and reloaded. It
+    //  never died — because a reload is an ABSENCE, and on the absence path `vitalLowerBound`
+    //  floors health at `healthOfflineFloor` (25). **[[D-011]] is enforced strongly enough
+    //  that a death cannot even be SET UP through the save**, which is the law working, not
+    //  failing. So the dying blow is struck on the LIVE state, and `tick` — the online path,
+    //  the only one where death is real — is what kills.
+    //  ...and it needs long enough to LAND. `__drift.state()` really is the live object, so
+    //  the blow connects — but health 0.4 draining at ~16/game-hour (warmth-empty 6 + two
+    //  empty vitals at 5 each) needs about 3.75 REAL seconds to reach zero, and the first
+    //  attempt waited 1.6. The wound is made mortal and the clock is given room.
+    await page.evaluate(() => {
+        const s = window.__drift.state();
+        s.health = 0.05; s.warmth = 0; s.thirst = 0; s.hunger = 0;
+    });
+    await sleep(5000);
+    await shot('slice3-01-death-review');
+    const review = await page.evaluate(() => {
+        const p = document.querySelector('.panel.death');
+        return {
+            open: Boolean(p),
+            heading: p?.querySelector('h2')?.textContent?.trim() ?? null,
+            sections: Array.from(p?.querySelectorAll('.death-section h3') ?? []).map((n) => n.textContent.trim()),
+            chain: Array.from(p?.querySelectorAll('.death-chain li') ?? []).map((n) => n.textContent.trim()),
+            legacy: Array.from(p?.querySelectorAll('.death-legacy li') ?? []).map((n) => n.textContent.trim()),
+            btn: p?.querySelector('button')?.textContent?.trim() ?? null,
+        };
+    });
+    check('SLICE 3 — a death opens the REVIEW: the cause, and the chain that led to it',
+        review.open && Boolean(review.heading) && review.chain.length >= 2,
+        `"${review.heading}" — ${review.chain.length} link(s): ${review.chain.slice(0, 2).join(' | ')}`);
+    check('SLICE 3 — the review names what you LEAVE, including the book you stored',
+        review.legacy.some((l) => /journal/i.test(l)),
+        `legacy: ${review.legacy.join(' | ')}`);
+
+    //  THE TWO BEATS. The review is dismissed deliberately, and only then does a different
+    //  person wash ashore — the boundary between "you" and "someone" is worth a tap.
+    await realTapDom('.panel.death button');
+    await sleep(600);
+    await shot('slice3-02-arrival');
+    const arrival = await page.evaluate(() => {
+        const p = document.querySelector('.panel.death');
+        return {
+            open: Boolean(p),
+            lines: Array.from(p?.querySelectorAll('.arrival-line') ?? []).map((n) => n.textContent.trim()),
+            btn: p?.querySelector('button')?.textContent?.trim() ?? null,
+        };
+    });
+    check('SLICE 3 — then the ARRIVAL: someone lived here, and you did not build it',
+        arrival.open && arrival.lines.some((l) => /someone lived here/i.test(l))
+        && arrival.lines.some((l) => /did not build it/i.test(l)),
+        `${arrival.lines.length} line(s): ${arrival.lines.join(' | ')}`);
+
+    await realTapDom('.panel.death button');
+    await sleep(900);
+    const after = await live();
+    const control = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel')),
+        locked: window.__drift?.panelOpen?.() === true,
+    }));
+    check('SLICE 3 — the overlay closes and hands control back (no held lock after dying)',
+        !control.panel && !control.locked,
+        `panel ${control.panel}, locked ${control.locked}`);
+    //  Durability DECAYS with time — that is shipped behaviour, tested in its own suite. A
+    //  0.001 tolerance quietly asserted the opposite, so this check was failing on the world
+    //  working correctly. What succession actually claims is that the wear CARRIES: the
+    //  shelter is still standing and still worn, neither reset to full nor destroyed.
+    check('SLICE 3 — THE ISLAND PERSISTED: the shelter still stands, and its wear carried over',
+        after.shelter?.built === true
+        && (after.shelter?.durability ?? 0) > 60 && (after.shelter?.durability ?? 0) < 64,
+        `built ${after.shelter?.built}, durability ${after.shelter?.durability?.toFixed(2)} — set to 63, never reset to full`);
+    check('SLICE 3 — MATTER NOT MEMORY: nothing carried and nothing known came across',
+        (after.blueprints?.length ?? -1) === 0 && (after.inventory?.wood ?? -1) === 0,
+        `${after.blueprints?.length} blueprint(s), ${after.inventory?.wood} wood`);
+    check('SLICE 3 — ...and the BOOK is still in the box, readable by whoever came next',
+        after.journal?.exists === true && (after.journal?.entries?.length ?? 0) === 1,
+        `exists ${after.journal?.exists}, ${after.journal?.entries?.length} entry(s)`);
+    check('SLICE 3 — the dead are recorded, and the successor\'s own clock starts now',
+        (after.memorial?.length ?? 0) === 1 && Math.abs((after.survivorStartedAtGameHours ?? 0) - 41) < 0.5,
+        `${after.memorial?.length} in the memorial, clock ${after.survivorStartedAtGameHours}`);
+
 
     // ---- Hygiene ----
     console.log('\nHygiene');
