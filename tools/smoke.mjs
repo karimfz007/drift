@@ -100,6 +100,8 @@ const TUNE = new Proxy({
     //  two `respawn*` constants are GONE from the source, so mirroring them would be mirroring
     //  a value that no longer exists — which is exactly the drift this mirror exists to catch.
     arrivalHealthFraction: 0.65,
+    arrivalThirstFraction: 0.45,
+    arrivalHungerFraction: 0.6,
     arrivalWarmthFraction: 0.45,
     arrivalEnergyFraction: 0.6,
     arrivalWetFraction: 0.6,
@@ -757,7 +759,17 @@ async function main() {
     await startFresh();
 
     const booted = await page.evaluate(() => { const s = window.__drift.state(); return { canvas: !!document.getElementById('game-canvas'), nodes: s.nodes.length, thirst: s.thirst, hunger: s.hunger, health: s.health }; });
-    check('loads a playable 3D scene with the three vitals full', booted.canvas && booted.nodes > 0 && booted.thirst > 98 && booted.hunger > 98 && booted.health === 100, `${booted.nodes} nodes`);
+    //  LAWS 115-117. This asserted the three vitals were FULL at boot, and it is the harness
+    //  twin of the unit test that codified "100% spawn" as correct — both sat green through
+    //  the slice that was supposed to fix it. A castaway now WASHES ASHORE: compromised on
+    //  every bar, and the boot check says so. The bounds are read from the mirrored TUNE
+    //  fractions rather than typed, so a tuning pass moves the check with the game.
+    check('loads a playable 3D scene, and the survivor WASHED ASHORE (not six full bars)',
+        booted.canvas && booted.nodes > 0
+        && Math.abs(booted.thirst - 100 * TUNE.arrivalThirstFraction) < 1.5
+        && Math.abs(booted.health - 100 * TUNE.arrivalHealthFraction) < 1.5
+        && booted.health < 100 && booted.thirst < 100 && booted.hunger < 100,
+        `${booted.nodes} nodes — thirst ${booted.thirst?.toFixed?.(1)}, hunger ${booted.hunger?.toFixed?.(1)}, health ${booted.health?.toFixed?.(1)}`);
 
     const layout = await page.evaluate(() => { const c = document.getElementById('game-canvas'); const r = c.getBoundingClientRect(); return { fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1, landscape: window.innerWidth >= window.innerHeight, touch: getComputedStyle(document.body).touchAction, vp: document.querySelector('meta[name=viewport]')?.content ?? '' }; });
     check('canvas fills the viewport, no pinch/zoom trap', layout.fits && layout.touch === 'none' && /user-scalable=no/.test(layout.vp));
@@ -4548,6 +4560,70 @@ async function main() {
     check('SLICE 3 — the dead are recorded, and the successor\'s own clock starts now',
         (after.memorial?.length ?? 0) === 1 && Math.abs((after.survivorStartedAtGameHours ?? 0) - 41) < 0.5,
         `${after.memorial?.length} in the memorial, clock ${after.survivorStartedAtGameHours}`);
+
+
+
+    // ================================================================
+    // FINDING 4 — "upper-screen tree taps read no-hit". JUDGED, not assumed.
+    // ================================================================
+    console.log('\nFINDING 4 — do taps on a tree CANOPY resolve to the tree?');
+
+    //  THE DIRECTOR'S REPORT, reproduced as a measurement. Eight consecutive upper-screen
+    //  tree taps read no-hit in his export, and the reading offered was "rays missing
+    //  canopies entirely". That is a hypothesis about the renderer, and this session already
+    //  learned twice over what happens when a hypothesis is fixed instead of tested —
+    //  [[D-101]] disproved one outright, and [[D-102]]'s gesture gap turned out to be three
+    //  stacked harness defects. So this measures rather than reasons.
+    //
+    //  THE PROBE MIRRORS THE GESTURE, not the geometry: tap the tree at ground level, then
+    //  tap the SAME tree higher up the screen, where its canopy is drawn. If canopies were
+    //  unreachable the two would diverge sharply and consistently.
+    await editSave(`
+        state.tools.axe = true;
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+    `);
+    const treeProbe = { ground: 0, canopy: 0, tried: 0, misses: [] };
+    const treeList = (await live()).nodes.filter((n) => n.kind === 'tree' && n.available).slice(0, 6);
+    for (const t of treeList) {
+        //  STAND NEXT TO IT FIRST. The first cut probed from wherever the previous section
+        //  left the survivor, so no tree was on screen and the probe judged 0 of 0 — which it
+        //  reported as a FAILURE rather than a pass, because `tried > 0` is part of both
+        //  conditions. A ratio over an empty set is the vacuity that has bitten this session
+        //  more than once; here it was caught by construction.
+        await editSave(`state.player = { x: ${(t.x - 4).toFixed(2)}, y: ${t.y.toFixed(2)} };`);
+        await faceNode(t.x, t.y);
+        await sleep(320);
+        const at = await page.evaluate(({ x, y }) => window.__drift.screenOf(x, y), { x: t.x, y: t.y });
+        if (!at) continue;
+        const vh = await page.evaluate(() => window.innerHeight);
+        //  Only judge trees whose ground point is genuinely on screen; an off-screen tree
+        //  says nothing about canopies and would poison the ratio either way.
+        if (at.y < 0 || at.y > vh) continue;
+        treeProbe.tried += 1;
+
+        const groundHit = await page.evaluate(({ x, y }) => window.__drift.tapTargetAt(x, y), { x: at.x, y: at.y });
+        //  The canopy sits ~4 m above the trunk base. On screen that is UP — smaller y.
+        //  Sampled at three heights so a single unlucky offset cannot decide the verdict.
+        let canopyHit = null;
+        for (const dy of [60, 110, 160]) {
+            const py = at.y - dy;
+            if (py < 0) continue;
+            const got = await page.evaluate(({ x, y }) => window.__drift.tapTargetAt(x, y), { x: at.x, y: py });
+            if (got && got.startsWith('node:')) { canopyHit = got; break; }
+        }
+        if (groundHit && groundHit.startsWith('node:')) treeProbe.ground += 1;
+        if (canopyHit) treeProbe.canopy += 1;
+        else treeProbe.misses.push(`${t.id}@${Math.round(at.x)},${Math.round(at.y)} ground=${groundHit ?? 'null'}`);
+    }
+
+    check('FINDING 4 — a tap on the tree TRUNK resolves to that tree (the control)',
+        treeProbe.tried > 0 && treeProbe.ground === treeProbe.tried,
+        `${treeProbe.ground}/${treeProbe.tried} trunk taps resolved`);
+    //  THE VERDICT. Stated as a ratio over the same trees the control used, so "canopies are
+    //  unreachable" and "that tree was simply not where I thought" cannot be confused.
+    check('FINDING 4 — a tap on the CANOPY, higher up the screen, resolves to the same tree',
+        treeProbe.tried > 0 && treeProbe.canopy === treeProbe.tried,
+        `${treeProbe.canopy}/${treeProbe.tried} canopy taps resolved${treeProbe.misses.length ? ' — misses: ' + treeProbe.misses.join(' | ') : ''}`);
 
 
     // ---- Hygiene ----

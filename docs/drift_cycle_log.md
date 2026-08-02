@@ -2536,3 +2536,28 @@ docs-integrity (83 decisions), tune-mirror, typecheck all green.
 measured-intermittent back to a plain `check()` after a single clean run. [[D-084]]'s own rule
 requires **a full slice at zero failures**, not one run, and I applied my own rule too loosely
 one commit after writing it. It is reclassified at its real ratio, 8/10 over ten recorded runs.
+
+
+## SLICE 3 — "THE CASTAWAY CYCLE" ([[D-105]]) + ITEM 0 ([[D-106]])
+
+**What shipped.** Real permadeath — `respawn()` and every part of the interim mercy deleted
+from the document, not deprecated. The island persists through death per v13 §18, with the
+successor built from a FRESH state and the island copied ONTO it, so a field added later
+defaults to dying rather than to inheriting. Requalification wired to [[D-086]]'s
+`found-intact` rung, which existed and was unreachable until something could be inherited.
+The Survivor's Journal ([[D-068]]) — made and written at a fire, an hour of real game time,
+reading capped at `conceptually-suspected`, and the carrier mortal. The death review and the
+arrival narration. [[D-011]] re-proven individually against all three.
+
+**What was wrong with it, found afterwards.** The crash-arrival profile went into succession
+and never into the first life, so "100% spawn" survived the slice built to fix it. Three
+measurements of the wrong thing let it through — a test that codified the bug as correct, a
+first-night measurement that constructed its own idealized input, and no comparison between
+the two arrival paths. Closed structurally in [[D-106]].
+
+**The lesson worth carrying.** Every device-harness failure in this cycle was in the
+INSTRUMENT, not the product: a guard unfalsifiable in the failing direction, a death staged
+through a path [[D-011]] forbids, hardcoded coordinates the camera was not facing, a
+tolerance asserting structures do not decay, and the TUNE Proxy guard finding the retired
+mechanic's last hiding place in the harness mirror. A test that cannot fail and a test that
+cannot pass are the same defect seen from opposite sides.
