@@ -517,6 +517,12 @@ export const TUNE = {
     /** [TUNE] Drop 1 FIX — idle wander speed, m per game hour. Basis: a rooting boar covers
      *  its territory slowly; this crosses `boarWanderRadiusM` in roughly an hour of game
      *  time, which reads as "living there" rather than "patrolling". */
+    /** [TUNE] Drop 1 FIX — the boar's solid body. Basis: sits between
+     *  `decorTreeCollisionRadius` and the shelter's — a boar is a big animal you cannot walk
+     *  through, and matching a tree's feel is right because that is the collision the player
+     *  has already learned. Push-out only: the charge delivers its own knockback, and a
+     *  second shove on top of it would read as the world fighting you. */
+    boarCollisionRadius: 0.9,
     boarWanderSpeedMPerGameHour: 26,
     /** [TUNE] Drop 1 FIX — how far it drifts from home before turning back. Keeps a boar in
      *  its own territory, which is what makes the forest learnable. */

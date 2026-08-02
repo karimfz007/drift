@@ -1372,6 +1372,14 @@ export class Game {
         if (shelterObstacle) out.push(shelterObstacle);
         const storageObstacle = this.storage.obstacle(state);
         if (storageObstacle) out.push(storageObstacle);
+        //  DROP 1 FIX — the boar is SOLID. It shipped as a ghost: the player walked straight
+        //  through the one thing on the island that is supposed to be frightening, which
+        //  undoes the threat more thoroughly than any tuning could. Push-out only, joining
+        //  the same field as trees and rocks, so it feels like the collision the player has
+        //  already learned rather than a new rule.
+        for (const boar of state.boars) {
+            if (boar.alive) out.push({ x: boar.x, z: boar.y, radius: TUNE.boarCollisionRadius });
+        }
         return out;
     }
 
