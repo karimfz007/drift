@@ -29,3 +29,25 @@ export function fullBody<T extends GameState>(s: T): T {
     s.wet = 0;
     return s;
 }
+
+/**
+ * A THERMALLY COMFORTABLE body — the only one that pays the neutral 1 for every body term.
+ *
+ * DISTINCT FROM `fullBody`, and the distinction is not pedantry. `fullBody` means "every bar
+ * at max", which is what a DRAIN-RATE test needs to subtract from. But `warmthMax` is
+ * **heat-strain** — §12 is explicit that more warmth is not automatically better, and
+ * `thermalStrain` costs the top of the band exactly as it costs the bottom.
+ *
+ * So a full-bar body is the wrong baseline for measuring what an ACTIVITY costs: the One Body
+ * Resolver applies an environment multiplier, and a survivor at 100 warmth is being charged
+ * for cooking. Five energy-cost tests caught precisely this when the resolver landed, reading
+ * a legitimate 1.3 as if the resolver were overcharging.
+ *
+ * Rate tests want `fullBody`. Cost tests want this. Naming both stops the next person from
+ * discovering the difference the hard way.
+ */
+export function comfortableBody<T extends GameState>(s: T): T {
+    fullBody(s);
+    s.warmth = (TUNE.thermalComfortLow + TUNE.thermalComfortHigh) / 2;
+    return s;
+}
