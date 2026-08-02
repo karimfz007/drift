@@ -23,7 +23,7 @@ import { Session } from '../src/brain/session';
 import { MemorySaveRepository } from '../src/brain/save';
 import { realSecondsFromGameHours } from '../src/brain/clock';
 import { TUNE } from '../src/data/tune';
-import { fullBody } from './_baseline';
+import { comfortableBody, fullBody } from './_baseline';
 import { closeSurvivor } from '../src/brain/succession';
 import { SPAWN } from '../src/data/world';
 import { POND } from '../src/data/world';
@@ -267,6 +267,12 @@ describe('energy — the 5th vital (soft debuff, never a death vector)', () => {
 });
 
 describe('FIX-1 (Living Island Track A) — energy inversion closed', () => {
+    //  MEASURED ON A THERMALLY COMFORTABLE BODY, not a full-bar one. These assert what an
+    //  ACTIVITY costs, and the One Body Resolver charges an environment multiplier on top —
+    //  so a survivor at `warmthMax`, which is heat-strain, legitimately pays 1.3x. Measuring
+    //  the act's own price requires a body with no body-term in play. See `_baseline.ts`.
+    const run = () => comfortableBody(createInitialState(0));
+
     it('an effortful (hold-interaction) gather visibly costs energy: felling a tree', () => {
         const s = run();
         s.tools.axe = true; // trees need the axe, or gatherNode refuses
