@@ -3,6 +3,26 @@
 
 ---
 
+**D-107 · 2026-08-02 — THE ONE BODY RESOLVER. Every activity in the game now flows through one causal function, and the model that described the game finally governs it.**
+
+**THE GAP WAS NOT A MISSING PIECE — IT WAS A MISSING WIRE.** All three parts shipped and two were connected. `thermal.ts` feeds `reconcile.ts`; `workload.ts` — [[D-089]]'s §13 formula and its five channels — fed nothing but `bodyReport.ts`, **a report**. Meanwhile the actual cost of felling a tree was one line in `gatherNode`: `energy -= effortEnergyCostFor(kind) * loadEnergyMultiplierOf(state)`. One channel, one multiplier, one subtraction. **A model nothing flows through is documentation, not a system**, and this one had been documentation since the chapter that authored it.
+
+**THE DIVISION IT ESTABLISHES**, which is the whole content of the unification: **an activity declares only what it IS** — base demand, duration, pace, tool fitness — and **the body supplies what it costs THIS body HERE** — load, impairment, environment. Before this every call site mixed the two by hand and each mixed them differently: gather applied load and ignored cold, walking looked at exhaustion and ignored load, and nothing outside reconcile knew the weather existed. A new activity had to re-derive the whole set and would get it subtly wrong — the shape this codebase already knows as *a law enforced in one layer is enforced nowhere*.
+
+**CALIBRATION REPRODUCES, IT DOES NOT REPLACE.** `demandFor` derives each activity's base demand from the constant that priced it before, so a neutral body pays exactly what it always paid — proved per activity and swept across every load band, because "the algebra works out" is a claim about my arithmetic and not about the code. **A unification that changes the answers is a rewrite wearing a smaller word.** Rail D applied to a whole table at once: not one number was chosen, and retuning a shipped cost moves its demand automatically.
+
+**WHAT IS GENUINELY NEW, stated rather than smuggled in.** The other four channels are live for every activity: work now costs hydration, accrues nutrition **debt** rather than instant calories per §13, and its metabolic heat enters the exposure chain instead of being computed and thrown away. That last one is the join that did not exist — `channelsFor` produced a thermal gain nobody read while `netHeatFlowPerGameHour` was asked the same question separately. **Two answers to one question is how a body warms itself in one system and freezes in another.**
+
+**FOUND ALONG THE WAY: `warmthMax` IS HEAT-STRAIN.** §12 says more warmth is not automatically better, and `thermalStrain` costs the top of the band exactly as it costs the bottom — so a full-bar fixture is not a neutral body, it is a survivor cooking. Five energy tests read the resulting legitimate 1.3x as the resolver overcharging. Closed by naming the distinction rather than papering it: `fullBody` for rate tests (which subtract from a known bar), `comfortableBody` for cost tests (which measure what an act itself costs). It is also one more argument for the arrival profile sitting at 45% warmth rather than 100.
+
+**PROPERTY TESTS PER [[D-066]]**, because this is the change that needs them most: equivalence per activity and per load band; monotonicity of every body term, each swept independently so one cannot mask another's inversion; impairment BOUNDED, because an unbounded term lets a bad state multiply into an unpayable cost that reads as the game breaking rather than the body failing; purity under 500 resolutions; and **the health wall** — 3000 random bodies at random workloads, proving ordinary work never touches health and only a named hazard may.
+
+**SUB-BOUNDARY, DECLARED.** Boulder Formation and the [[D-051]] First Amendment are **NOT in this commit** and are not claimed. They ship together as the distinct follow-on per the standing effectivity binding — the amendment enters force exactly when the Boulder Formation ships, not before — and stopping here was C1's own named alternative to leaving both half-done.
+
+**Class: OPERATIVE**
+
+*Witness: 738 unit tests across 43 files (13 new, property-first). Purity 36 brain files, tune-mirror 45 values none drifted, docs-integrity, production build. Three-way SHA witness in the report.*
+
 **D-106 · 2026-08-01 — Item 0: the deploy pipeline was never the cause; the missing witness was.**
 
 **0a — AUDITED, AND THE PREMISE DID NOT HOLD.** The last 100 deploys: **99 green**, one failure (`30376841084`, 2026-07-28, ~40 green runs ago). No service worker, no cache layer anywhere in the app. Both Slice 3 pushes deployed green in ~1m15s. **The director's stale-build symptoms were never a deploy failure** — which is why the instruction to "find the first RED run and fix the root cause" had nothing to act on, and why the stamp is the real fix rather than instrumentation added after one.
