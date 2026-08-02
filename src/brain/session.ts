@@ -12,7 +12,7 @@ import { recordTrying } from './knowledge';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, isFireLit } from './state';
-import { chargeConnects, chargeHarm, senseSurvivor, stepBoar } from './fauna';
+import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -111,7 +111,7 @@ export class Session {
         //  advanced here, never in the absence path, which is D-011's enforcement stated as
         //  structure rather than as a check: there is no code path by which a boar escalates
         //  while the game is closed.
-        this.advanceBoars(nowMs);
+        this.advanceBoars(nowMs, outcome.result.elapsedGameHours);
         return this.handleDeath(outcome, nowMs);
     }
 
@@ -231,7 +231,7 @@ export class Session {
      * Coarse-grained on purpose: this is a rhythm read once per tick, not per-frame AI. The
      * body renders what this decides; it never decides anything itself.
      */
-    private advanceBoars(nowMs: number): void {
+    private advanceBoars(nowMs: number, gameHours: number): void {
         const s = this.state;
         if (s.boars.length === 0) return;
         const deterred = isFireLit(s)
@@ -242,11 +242,18 @@ export class Session {
         const next = s.boars.map((boar) => {
             if (!boar.alive) return boar;
             const wasCharging = boar.stage === 'charge';
-            const stepped = stepBoar(boar, {
-                senses: senseSurvivor(boar, s),
+            const senses = senseSurvivor(boar, s);
+            //  Turn to face the survivor the moment it knows about them — otherwise its own
+            //  sight cone keeps losing them and it oscillates between alert and unaware.
+            const oriented = (senses.seen || senses.heard || senses.crowded)
+                && boar.stage !== 'charge'
+                ? faceSurvivor(boar, s.player.x, s.player.y)
+                : boar;
+            const stepped = moveBoar(stepBoar(oriented, {
+                senses,
                 gameHoursElapsed: s.gameHoursElapsed,
                 deterred,
-            });
+            }), gameHours);
             //  THE CHARGE RESOLVES AT ITS END, once, against where the survivor ACTUALLY is —
             //  so a player who read the wind-up and stepped off the committed bearing is
             //  genuinely missed. Resolving continuously would make the sidestep pointless.

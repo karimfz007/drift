@@ -514,6 +514,20 @@ export const TUNE = {
      *  always one you can see back — being able to be threatened by something off-screen
      *  would break the perceivability half of the fair-challenge contract. */
     boarRenderRadiusM: 34,
+    /** [TUNE] Drop 1 FIX — idle wander speed, m per game hour. Basis: a rooting boar covers
+     *  its territory slowly; this crosses `boarWanderRadiusM` in roughly an hour of game
+     *  time, which reads as "living there" rather than "patrolling". */
+    boarWanderSpeedMPerGameHour: 26,
+    /** [TUNE] Drop 1 FIX — how far it drifts from home before turning back. Keeps a boar in
+     *  its own territory, which is what makes the forest learnable. */
+    boarWanderRadiusM: 14,
+    /** [TUNE] Drop 1 FIX — charge speed, m per game hour. Basis: `boarChargeReachM` (9)
+     *  covered within `boarChargeGameHours` (0.013) — the charge must actually ARRIVE inside
+     *  its own window or the commitment means nothing. 9/0.013 rounded up. */
+    boarChargeSpeedMPerGameHour: 720,
+    /** [TUNE] Drop 1 FIX — alert/warning creep speed. It closes slowly while sizing you up;
+     *  a boar frozen at 20m while snorting reads as broken, not as menacing. */
+    boarStalkSpeedMPerGameHour: 40,
 
     // ---- DROP 1: THE SPEAR AND THE MEAT ---------------------------------------------------
     /** [TUNE] Drop 1 — the spear: a shaft, a knapped blade, and binding. Costs mirror the

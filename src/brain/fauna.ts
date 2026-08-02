@@ -154,6 +154,58 @@ export function nextStage(boar: Boar, ctx: ThreatContext): BoarStage {
     }
 }
 
+/**
+ * MOVE ONE BOAR, for the stage it is in. Split from the ladder because they answer different
+ * questions — what it has decided, and where that puts it.
+ *
+ * THE BUG THIS CLOSES: `stepBoar` returned `{...boar, stage, stageSinceGameHours,
+ * chargeBearing}` and touched POSITION IN NO STATE AT ALL. Not the wander, not the stalk, and
+ * not even the charge — a committed charge changed the boar's colour and posture and left it
+ * standing exactly where it was. It looked like a rhythm system that forgot to move things;
+ * it was actually a movement system that had never been written.
+ *
+ * `hunger` drives the wander's phase so the three boars do not drift in lockstep — a herd
+ * moving as one body is the tell that there is no rhythm behind it.
+ */
+export function moveBoar(boar: Boar, gameHours: number): Boar {
+    if (!boar.alive || gameHours <= 0) return boar;
+
+    if (boar.stage === 'charge' && boar.chargeBearing !== null) {
+        //  COMMITTED, and it must actually ARRIVE inside its own window. The bearing is not
+        //  recomputed here — it is read. That is the whole of what "committed" means.
+        const d = TUNE.boarChargeSpeedMPerGameHour * gameHours;
+        return { ...boar, x: boar.x + Math.cos(boar.chargeBearing) * d, y: boar.y + Math.sin(boar.chargeBearing) * d };
+    }
+
+    if (boar.stage === 'alert' || boar.stage === 'warning') {
+        //  Sizing you up, closing slowly. A boar frozen at 20m while snorting reads as
+        //  broken rather than as menacing.
+        const d = TUNE.boarStalkSpeedMPerGameHour * gameHours;
+        return { ...boar, x: boar.x + Math.cos(boar.facing) * d, y: boar.y + Math.sin(boar.facing) * d };
+    }
+
+    //  UNAWARE / AFTERMATH: rooting about its own ground. Drifts on its facing, turns back
+    //  when it reaches the edge of its territory, so it stays somewhere the player can learn.
+    const d = TUNE.boarWanderSpeedMPerGameHour * gameHours;
+    const nx = boar.x + Math.cos(boar.facing) * d;
+    const ny = boar.y + Math.sin(boar.facing) * d;
+    const fromHome = Math.hypot(nx - boar.homeX, ny - boar.homeY);
+    if (fromHome > TUNE.boarWanderRadiusM) {
+        //  Turn back toward home, with a little bias so it does not simply pace a line.
+        const home = Math.atan2(boar.homeY - boar.y, boar.homeX - boar.x);
+        return { ...boar, facing: home + (boar.hunger % 1) - 0.5 };
+    }
+    return { ...boar, x: nx, y: ny, hunger: boar.hunger + gameHours };
+}
+
+/**
+ * FACE THE SURVIVOR once it knows about them. A boar that has noticed you and is looking
+ * elsewhere is not menacing, and its sight cone would keep losing you for no reason.
+ */
+export function faceSurvivor(boar: Boar, px: number, py: number): Boar {
+    return { ...boar, facing: Math.atan2(py - boar.y, px - boar.x) };
+}
+
 /** Advance one boar by one step. Pure: returns the next boar, never mutates. */
 export function stepBoar(boar: Boar, ctx: ThreatContext): Boar {
     if (!boar.alive) return boar;
@@ -166,7 +218,7 @@ export function stepBoar(boar: Boar, ctx: ThreatContext): Boar {
         //  The bearing is FIXED at the moment of commitment and never recomputed. This one
         //  line is what "committed" means mechanically.
         chargeBearing: stage === 'charge'
-            ? Math.atan2(boar.facing === 0 ? 0 : Math.sin(boar.facing), Math.cos(boar.facing))
+            ? boar.facing
             : stage === 'aftermath' ? null : boar.chargeBearing,
     };
 }

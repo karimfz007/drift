@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     BOAR_STAGES, anyCharging, chargeConnects, chargeHarm, createBoars, nearestBoar,
-    nextStage, senseSurvivor, settleOffline, stageRank, stepBoar, type ThreatContext,
+    moveBoar, nextStage, senseSurvivor, settleOffline, stageRank, stepBoar, type ThreatContext,
 } from '../src/brain/fauna';
 import { createInitialState } from '../src/brain/state';
 import { reconcile } from '../src/brain/reconcile';
@@ -308,5 +308,47 @@ describe('THE SPEAR — reachability, per D-090, mandatory', () => {
         //  scope blur that makes the next drop's real work harder to see.
         const state = await import('../src/brain/state');
         expect(Object.keys(state).filter((k) => /cook|roast/i.test(k))).toEqual([]);
+    });
+});
+
+describe('MOVEMENT — the boar was a statue that changed colour', () => {
+    /**
+     * THE BUG: `stepBoar` touched position in NO state at all. Not the wander, not the stalk,
+     * and not even the charge — a committed charge changed colour and posture and stayed
+     * exactly where it stood. These are the checks that would have caught it.
+     */
+    it('an UNAWARE boar actually moves — the idle rhythm is real', () => {
+        const b = boarAt({ stage: 'unaware', x: 0, y: 0, homeX: 0, homeY: 0, facing: 0 });
+        const after = moveBoar(b, 0.05);
+        expect(Math.hypot(after.x - b.x, after.y - b.y)).toBeGreaterThan(0);
+    });
+
+    it('a CHARGING boar covers its own reach inside its own window', () => {
+        //  The charge must ARRIVE. A committed charge that never closes the distance is a
+        //  telegraph with no consequence behind it.
+        const b = boarAt({ stage: 'charge', chargeBearing: 0, x: 0, y: 0 });
+        const after = moveBoar(b, TUNE.boarChargeGameHours);
+        expect(after.x).toBeGreaterThanOrEqual(TUNE.boarChargeReachM);
+    });
+
+    it('a charge does NOT re-aim while it runs — the bearing is read, never recomputed', () => {
+        const b = boarAt({ stage: 'charge', chargeBearing: 0, x: 0, y: 0, facing: 2.5 });
+        const after = moveBoar(b, 0.005);
+        expect(after.chargeBearing).toBe(0);
+        expect(after.y).toBeCloseTo(0, 9);          // straight along the committed line
+    });
+
+    it('a wandering boar stays in its own territory', () => {
+        let b = boarAt({ stage: 'unaware', x: 0, y: 0, homeX: 0, homeY: 0, facing: 0.3 });
+        for (let i = 0; i < 400; i += 1) b = moveBoar(b, 0.02);
+        expect(Math.hypot(b.x - b.homeX, b.y - b.homeY))
+            .toBeLessThanOrEqual(TUNE.boarWanderRadiusM * 1.5);
+    });
+
+    it('a dead boar does not move, and no boar moves on a zero span', () => {
+        const dead = boarAt({ alive: false });
+        expect(moveBoar(dead, 1)).toEqual(dead);
+        const live = boarAt();
+        expect(moveBoar(live, 0)).toEqual(live);
     });
 });
