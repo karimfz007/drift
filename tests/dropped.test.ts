@@ -148,13 +148,28 @@ describe('ITEM 4 — the Skills tab shows the skills', () => {
         }
     });
 
-    it('the panel renders them — level and a progress bar per skill', async () => {
+    it('the panel renders them — a standing and a bar, and NOT ONE raw score', async () => {
+        //  THE LAW THE DEVICE CAUGHT ME BREAKING. This panel's rule is that no raw score
+        //  reaches the player; I shipped 'Level 3' and '45%' straight into it. §12's position
+        //  is that a survivor knows what they can DO, not what integer sits behind it, and
+        //  the capacities beside these rows have obeyed it since they shipped.
         const { readFileSync } = await import('node:fs');
         const hud = readFileSync('src/body/hud.ts', 'utf8');
         expect(hud).toContain('skill-bar');
-        expect(hud).toContain('levelProgress');
-        //  Read from `levelProgress`, the same function the level-up beat uses, so the bar
-        //  and the beat can never disagree about how close you are.
         expect(hud).toContain('playerSkills');
+        //  The standing is words; the BAR carries the precision, the way vital bars always
+        //  have — a filled track is a quantity you see without being told a figure.
+        expect(hud).toContain('skillStanding');
+        expect(hud).toContain('progressWord');
+        expect(hud, 'a percentage leaked back into the growth panel').not.toMatch(/\$\{pct\}%<\/p>|% toward level/);
+    });
+
+    it('skill rows are NOT counted as capacities — a distinct class, not a borrowed one', async () => {
+        //  The other half of what the device caught: reusing `growth-item` made the harness
+        //  read 10 capacities where §12 defines exactly eight. A shared class is a shared
+        //  identity as far as any check is concerned.
+        const { readFileSync } = await import('node:fs');
+        const hud = readFileSync('src/body/hud.ts', 'utf8');
+        expect(hud).toContain('skill-row');
     });
 });

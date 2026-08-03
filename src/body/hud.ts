@@ -11,6 +11,34 @@ import { formatClock, levelProgress, type MorningReport, type Skills } from '../
 
 /** Player-facing names for the shipped skills. */
 const SKILL_LABEL: Record<string, string> = { woodcutting: 'Woodcutting', foraging: 'Foraging' };
+
+/**
+ * SKILL STANDING, IN WORDS — never the number.
+ *
+ * The device harness caught this within one run of shipping it: this panel's law is that
+ * **not one raw score leaks to the player**, and I printed "Level 3" and "45%" straight into
+ * it. The law is not decoration. §12's whole position is that a survivor knows what they can
+ * DO, not what integer sits behind it, and the capacities beside these rows have obeyed it
+ * since they shipped. A skill is no more entitled to an exception than a capacity is.
+ *
+ * The BAR still carries the precision — a filled track is a quantity you can see without
+ * being told a figure, which is how the vital bars have always worked.
+ */
+function skillStanding(level: number): string {
+    if (level <= 1) return 'new to it';
+    if (level === 2) return 'getting the hang of it';
+    if (level <= 4) return 'practised';
+    if (level <= 6) return 'skilled';
+    return 'expert';
+}
+
+/** The same rule for progress: a word, not a percentage. */
+function progressWord(fraction: number): string {
+    if (fraction < 0.2) return 'Barely started';
+    if (fraction < 0.5) return 'Some way';
+    if (fraction < 0.8) return 'Most of the way';
+    return 'Nearly there';
+}
 import { TUNE } from '../data/tune';
 import { CSS } from './theme';
 
@@ -1076,10 +1104,10 @@ function growthBody(report: GrowthReportView, skills?: Skills): string {
         .map(([name, sk]) => {
             const pct = Math.round(levelProgress(sk) * 100);
             return `
-        <div class="growth-item skill-item">
-            <div class="build-head"><strong>${SKILL_LABEL[name] ?? name}</strong><span class="standing-chip">Level ${sk.level}</span></div>
+        <div class="skill-row">
+            <div class="build-head"><strong>${SKILL_LABEL[name] ?? name}</strong><span class="standing-chip">${skillStanding(sk.level)}</span></div>
             <div class="skill-bar"><div class="skill-fill" style="width:${pct}%"></div></div>
-            <p class="growth-how">${pct}% toward level ${sk.level + 1}.</p>
+            <p class="growth-how">${progressWord(levelProgress(sk))} toward the next.</p>
         </div>`;
         }).join('');
 
