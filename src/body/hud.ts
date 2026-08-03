@@ -814,6 +814,7 @@ export function showLoadout(
     onUseStorage: () => void = () => {},
     onRepairStorage: () => void = () => {},
     onTryCombine: (materials: string[]) => void = () => {},
+    onDrop: (material: string) => void = () => {},
     //  `onGrowth` is gone: the growth card is a TAB now, not a separate surface, so the
     //  shortcut switches tabs rather than opening one. Retiring the parameter rather than
     //  leaving it inert — a hook nothing calls is the next reader's false lead.
@@ -871,6 +872,18 @@ export function showLoadout(
            </div>`
         : '';
 
+    //  ITEM 2 — THE DROP ROW. Put something down rather than carrying it forever. Sits with
+    //  the combine row because both are things you do WITH what you carry, and because the
+    //  drop clock is a fact about a carried thing's future.
+    const dropRow = !view.atStorage && view.combinable.length > 0
+        ? `<div class="drop-row">
+             <p class="subtitle">Set something down. It keeps for three days, then weathers away.</p>
+             <div class="drop-chips">${view.combinable.map((m) =>
+                `<button class="quiet drop-chip" data-drop="${m}" type="button">Drop ${MATERIAL_LABEL[m] ?? m}</button>`
+             ).join('')}</div>
+           </div>`
+        : '';
+
     const inventoryBody = `
         <h2>${view.atStorage ? 'The store box' : 'Carried'}</h2>
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
@@ -879,6 +892,7 @@ export function showLoadout(
         ${view.maker.visible ? `<button class="primary make-btn" type="button">${view.maker.label}</button>` : ''}
         <button class="quiet growth-btn" type="button">What the island has done to you</button>
         ${combineRow}
+        ${dropRow}
         <div class="zones">${zoneRows}</div>`;
 
     const activeBody = tab === 'vitals' ? vitalsBody(view.vitals)
@@ -891,6 +905,13 @@ export function showLoadout(
     //  Switching re-renders in place rather than closing and reopening: the panel lock is
     //  already held, and releasing it between tabs would let a world tap through the gap —
     //  the exact class of leak D-063's INPUT SAFETY law exists to prevent.
+    //  ITEM 2 — one listener for every drop chip, delegated so a re-render cannot strand it.
+    for (const chip of el.querySelectorAll<HTMLButtonElement>('.drop-chip')) {
+        chip.addEventListener('click', () => {
+            const mat = chip.dataset.drop;
+            if (mat) { onDrop(mat); fade(el, onClose); }
+        });
+    }
     el.querySelector<HTMLButtonElement>('.make-btn')?.addEventListener('click', () => {
         el.remove();
         onMake();

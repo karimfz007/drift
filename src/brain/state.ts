@@ -93,7 +93,9 @@ export function createInitialState(nowMs: number): GameState {
         //  never added to — the absence of a spawner is the no-spawn-waves rail, in code.
         boars: createBoars(),
         meatFreshUntilGameHours: null,
-        injuries: freshInjuries()
+        injuries: freshInjuries(),
+        dropped: [],
+        dropCount: 0
     };
 }
 

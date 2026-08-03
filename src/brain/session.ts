@@ -14,6 +14,7 @@ import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, isFireLit } from './state';
 import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
 import { injuriesFromCharge, stepInjuries } from './injury';
+import { pruneDropped } from './dropped';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -113,6 +114,10 @@ export class Session {
         //  structure rather than as a check: there is no code path by which a boar escalates
         //  while the game is closed.
         this.advanceBoars(nowMs, outcome.result.elapsedGameHours);
+        //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
+        //  is deliberately no absence-path counterpart: absence never erases, and a stack on
+        //  the ground is the survivor's property exactly as the store box's contents are.
+        pruneDropped(this.state);
         return this.handleDeath(outcome, nowMs);
     }
 

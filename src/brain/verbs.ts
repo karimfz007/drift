@@ -23,6 +23,7 @@ import type { GameState } from './types';
 import { canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall } from './state';
 import { canBindWound } from './injury';
 import { nearestBoar } from './fauna';
+import { droppedWithinReach } from './dropped';
 import { readWrite } from './journal';
 
 /** A single segment of the circle — or, when it is the only one, simply what a tap does. */
@@ -40,7 +41,7 @@ export interface VerbOption {
     reason: string | null;
 }
 
-export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar';
+export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped';
 
 /**
  * Does the survivor know how to fish? A capability, not an inventory item — Slice 2's
@@ -65,6 +66,7 @@ export function verbsFor(state: GameState, target: VerbTarget): VerbOption[] {
         case 'storage': return storageVerbs(state);
         case 'fire': return fireVerbs(state);
         case 'boar': return boarVerbs(state);
+        case 'dropped': return droppedVerbs(state);
     }
 }
 
@@ -104,6 +106,8 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  A boar is not a thing you idly interact with. The default verb is the only verb
     //  that makes sense while one is in front of you, and it needs a spear in your hands.
     boar: 'thrust',
+    //  A stack on the ground has exactly one thing you want from it.
+    dropped: 'pick-up',
 };
 
 /**
@@ -266,6 +270,21 @@ function storageVerbs(state: GameState): VerbOption[] {
         },
         ...journalStorageVerbs(state, built, notBuilt),
     ];
+}
+
+/**
+ * A STACK ON THE GROUND. One verb, because there is only one thing to want — and it names
+ * what is there and how long it has, so the despawn clock is never a silent surprise.
+ */
+function droppedVerbs(state: GameState): VerbOption[] {
+    const near = droppedWithinReach(state)[0];
+    if (!near) return [];
+    return [{
+        id: 'pick-up',
+        label: `Pick up ${near.amount} ${near.kind}`,
+        available: true,
+        reason: null,
+    }];
 }
 
 /**

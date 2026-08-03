@@ -105,6 +105,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 16) current = migrateV16toV17(current);
     if (current.schemaVersion === 17) current = migrateV17toV18(current);
     if (current.schemaVersion === 18) current = migrateV18toV19(current);
+    if (current.schemaVersion === 19) current = migrateV19toV20(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -634,6 +635,18 @@ function migrateV18toV19(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         tools: { ...old.tools, backpack: old.tools?.backpack ?? true },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/** v19 → v20 (item 2, dropped stacks). A returning player has dropped nothing yet. */
+function migrateV19toV20(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        dropped: Array.isArray(old.dropped) ? old.dropped : [],
+        dropCount: num((old as Partial<GameState>).dropCount, 0),
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

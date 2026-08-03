@@ -563,6 +563,11 @@ export const TUNE = {
     /** [TUNE] Drop 2 — pain fades per game hour. ~2 game hours from a full hit. */
     injuryPainFadePerGameHour: 0.5,
 
+    /** [TUNE] Item 2 — how long a dropped stack lasts, in game hours. Three game days, as
+     *  specified. Long enough that a deliberate cache survives a real play session; short
+     *  enough that the beach does not silently fill with abandoned piles. The timer runs
+     *  ONLINE ONLY — see `dropped.ts` for why D-011 requires that. */
+    dropDespawnGameHours: 72,
     boarCollisionRadius: 0.9,
     boarWanderSpeedMPerGameHour: 26,
     /** [TUNE] Drop 1 FIX — how far it drifts from home before turning back. Keeps a boar in

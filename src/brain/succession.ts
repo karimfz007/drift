@@ -122,6 +122,10 @@ export function closeSurvivor(state: GameState, cause: string): {
         shelter: { ...state.shelter },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
         nodes: state.nodes.map((n) => ({ ...n })),
+        //  Stacks on the ground are matter, and matter stays. A successor finds what the last
+        //  survivor set down, exactly like the store box and the journal.
+        dropped: state.dropped.map((d) => ({ ...d })),
+        dropCount: state.dropCount,
         //  The boars are a fact about the PLACE. They watched the last survivor die and they
         //  are still out there — killing one is a permanent change to the island, exactly
         //  like felling a tree, and a successor inherits that too.

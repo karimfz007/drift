@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -531,6 +531,26 @@ export interface GameState {
      * All three clot to zero the moment a span counts as an absence ([[D-011]]).
      */
     injuries: InjuryState;
+    /**
+     * Item 2 — stacks the survivor has set down. Each carries its OWN drop timestamp, so
+     * picking one up and dropping it again resets that stack alone. The timer runs on the
+     * ONLINE tick only: absence never erases, and a dropped stack is property like anything
+     * else in the store box.
+     */
+    dropped: DroppedItem[];
+    /** The id counter for drops — "counter as seed", no clock read and no RNG. */
+    dropCount: number;
+}
+
+/** One stack on the ground. See `dropped.ts`. */
+export interface DroppedItem {
+    id: string;
+    kind: MaterialKind;
+    amount: number;
+    x: number;
+    y: number;
+    /** Island-clock reading when it was set down. Its own clock, never a shared one. */
+    droppedAtGameHours: number;
 }
 
 /** The three conditions. See `injury.ts` — proportionate on purpose, not an anatomy model. */

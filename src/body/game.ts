@@ -67,6 +67,9 @@ import {
     writeEntry,
     limpSpeedMultiplierOf,
     injuryNote,
+    droppedWithinReach,
+    pickUpDropped,
+    dropAll,
     bindWound,
     nearestBoar,
     thrustSpear,
@@ -607,6 +610,16 @@ export class Game {
             () => this.tryUseStorage(),
             () => this.tryRepair('storage'),
             (materials: string[]) => this.onTryCombine(materials),
+            (material: string) => {
+                const s2 = session().state;
+                const item = dropAll(s2, material as never);
+                if (!item) { this.explain('You are not carrying any.'); return; }
+                this.cues.play(CUES.pickup);
+                this.floatText(`${item.amount} ${item.kind} set down`);
+                this.showHint('It keeps for three days. Pick it up to reset that.');
+                session().persist(now());
+                this.lastActivityAt = now();
+            },
             //  LAW 126: which tab, and how to switch. The lock is NOT released between tabs
             //  — the panel re-renders in place — because releasing it would let a world tap
             //  through the gap, which is the leak D-063's INPUT SAFETY law exists to stop.
@@ -1008,6 +1021,7 @@ export class Game {
             case 'write-journal': this.doWriteJournal(); break;
             case 'thrust': this.doThrust(); break;
             case 'bind-wound': this.doBindWound(); break;
+            case 'pick-up': this.doPickUpDropped(); break;
             case 'make-journal': this.doMakeJournal(); break;
             case 'store-journal': this.doSetJournalCarried(false); break;
             case 'take-journal': this.doSetJournalCarried(true); break;
@@ -1478,6 +1492,17 @@ export class Game {
      * aftermath window is FOR, and a miss says so rather than going silent (D-042).
      */
     /** Bind a bleeding wound with fibre. The one treatment injury has. */
+    /** Pick up the nearest dropped stack. Its entry is gone, so a re-drop restarts its clock. */
+    private doPickUpDropped(): void {
+        const s = session().state;
+        const near = droppedWithinReach(s)[0];
+        if (!near || !pickUpDropped(s, near.id)) { this.explain('There is nothing here to pick up.'); return; }
+        this.cues.play(CUES.pickup);
+        this.floatText(`+${near.amount} ${near.kind}`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     private doBindWound(): void {
         const s = session().state;
         if (!bindWound(s)) { this.explain('Nothing to bind, or nothing to bind it with.'); return; }
