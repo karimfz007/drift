@@ -69,6 +69,7 @@ import {
     limpSpeedMultiplierOf,
     injuryNote,
     droppedWithinReach,
+    previewFor,
     pickUpDropped,
     dropAll,
     bindWound,
@@ -646,6 +647,7 @@ export class Game {
                 this.floatText(`${tool} in ${hand} hand`);
                 session().persist(now());
             },
+            (materials: string[]) => previewFor(session().state, materials as never).lines.join(' '),
             //  LAW 126: which tab, and how to switch. The lock is NOT released between tabs
             //  — the panel re-renders in place — because releasing it would let a world tap
             //  through the gap, which is the leak D-063's INPUT SAFETY law exists to stop.

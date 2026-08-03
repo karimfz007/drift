@@ -22,6 +22,7 @@ export * from './construction';
 export * from './fauna';
 export * from './injury';
 export * from './dropped';
+export * from './evidence';
 export * from './journal';
 export * from './succession';
 export * from './deathReview';

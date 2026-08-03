@@ -857,6 +857,7 @@ export function showLoadout(
     onTryCombine: (materials: string[]) => void = () => {},
     onDrop: (material: string) => void = () => {},
     onEquipHand: (tool: string, hand: 'left' | 'right') => void = () => {},
+    onPreview: (materials: string[]) => string | null = () => null,
     //  `onGrowth` is gone: the growth card is a TAB now, not a separate surface, so the
     //  shortcut switches tabs rather than opening one. Retiring the parameter rather than
     //  leaving it inert — a hook nothing calls is the next reader's false lead.
@@ -910,6 +911,7 @@ export function showLoadout(
              <div class="combine-chips">${view.combinable.map((m) =>
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
              ).join('')}</div>
+             <p class="subtitle evidence-line"></p>
              <button class="primary try-combine-btn" type="button" disabled>Try combining</button>
            </div>`
         : '';
@@ -995,6 +997,13 @@ export function showLoadout(
             if (at >= 0) { picked.splice(at, 1); chip.classList.remove('picked'); }
             else if (picked.length < TUNE.combineMaxInputs) { picked.push(mat); chip.classList.add('picked'); }
             if (tryBtn) tryBtn.disabled = picked.length < TUNE.combineMinInputs;
+            //  ITEM 5 — the evidence preview, refreshed as the pile changes. What it says
+            //  depends on the ladder: properties only until something has been made, the
+            //  outcome WITH its uncertainty once it has, and full reliability once understood.
+            const ev = el.querySelector('.evidence-line');
+            if (ev) ev.textContent = picked.length >= TUNE.combineMinInputs
+                ? (onPreview(picked) ?? '')
+                : '';
         });
     });
     tryBtn?.addEventListener('click', () => { if (picked.length >= TUNE.combineMinInputs) { onTryCombine([...picked]); fade(el, onClose); } });
