@@ -124,3 +124,35 @@ describe('MIGRATION — an existing island grows the bluff', () => {
         expect(out.state.nodes.filter((n) => n.kind === 'boulder')).toHaveLength(1);
     });
 });
+
+describe('THE BACKPACK IS EARNED (item 1)', () => {
+    it('a fresh castaway has NO pack, and hits the load bands sooner without one', async () => {
+        const { loadBandForKg } = await import('../src/brain/body');
+        expect(createInitialState(0).tools.backpack).toBe(false);
+        //  Same weight, two verdicts. Not a hard cap: you can still pick everything up, it
+        //  simply costs you sooner — a refusal would be a decision the player did not make.
+        const kg = TUNE.loadWorkingAtKg - 1;
+        expect(loadBandForKg(kg, true)).toBe('light');
+        expect(loadBandForKg(kg, false)).toBe('working');
+    });
+
+    it('making one restores full capacity, and spends real materials', async () => {
+        const { makeBackpack, canMakeBackpack } = await import('../src/brain/state');
+        const s = createInitialState(0);
+        expect(canMakeBackpack(s)).toBe(false);            // nothing carried yet
+        s.inventory.fiber = TUNE.backpackFiberCost;
+        s.inventory.sharpblade = TUNE.backpackBladeCost;
+        expect(makeBackpack(s)).toBe(true);
+        expect(s.tools.backpack).toBe(true);
+        expect(s.inventory.fiber).toBe(0);
+        expect(makeBackpack(s), 'never twice').toBe(false);
+    });
+
+    it('an existing save migrates in ALREADY CARRYING one — never retroactively stranded', async () => {
+        const { migrate } = await import('../src/brain/save');
+        const s = createInitialState(0);
+        const v18 = { schemaVersion: 18, savedAtMs: 1_700_000_000_000,
+            state: { ...s, tools: { ...s.tools, backpack: undefined }, schemaVersion: 18 } };
+        expect(migrate(v18 as never)!.state.tools.backpack).toBe(true);
+    });
+});

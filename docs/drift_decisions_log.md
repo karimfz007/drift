@@ -3,6 +3,22 @@
 
 ---
 
+**D-113 · 2026-08-03 — THE SPEAR WAS NEVER A DISPLAY BUG: it was a DUPLICATE SIGNATURE. Two recipes competing for one gesture, and a matcher that can only answer with the first.**
+
+**THE FIRE-HARDENED SPEAR IS NOT BUILDABLE, and the check took one command.** `tryCombine(state, a: MaterialKind, b: MaterialKind)` takes carried materials only, and the surface stages from `ALL_MATERIAL_KINDS.filter(m => inventory[m] > 0)`. A fire is a `FireState` world structure, not a material — **the combination surface cannot host it as a staged participant.** Fallback route taken as instructed: shaft + knapped blade, two positions, binding folded into the operation.
+
+**THE REAL DEFECT, and it is neither the original report nor the stated premise.** The premise was that only two staging positions exist; `combineMaxInputs` is **4**. The spear failed for a different reason: its slots were byte-identical to the AXE's — woodwork 3 + blade 1 + textile 2 — so staging those three materials resolved to the axe every time and **the spear was undiscoverable forever**. The conclusion in the handoff was right; the mechanism was not.
+
+**MY DROP 1 REACHABILITY PROOF MISSED IT, and the reason generalises.** It drove `craftSpear()` directly, so it proved the MATERIALS were obtainable and never that the recipe was DISCOVERABLE. Post-pivot those are different claims and [[D-090]] means the second one. A reachability proof that bypasses the discovery surface is not a reachability proof.
+
+**THE GUARD, AND THE CORRECTION TO THE GUARD.** A collision test now sweeps every recipe pair. My first version compared tag+amount, saw two different signatures for backpack and torch, and passed — while the backpack sat undiscoverable behind the torch for exactly the spear's reason. **The matcher treats amounts as MINIMUMS, so what collides is the TAG SET.** Corrected, it immediately surfaced a genuine PRE-EXISTING collision: **`stonehammer` and `storage` share a tag set, so one of them is unreachable through discovery today.** Recorded as a named known-collision rather than hidden or hot-fixed — closing it needs the matcher to disambiguate on amounts, which is discovery-core work.
+
+**THE BACKPACK IS EARNED (item 1).** A fresh castaway has none; both load-band thresholds drop by `backpackLoadPenaltyKg` (6) until one is made, so the same quarry trip that lands in Working with a pack lands in HEAVY without one. Deliberately a shifted band and **not a hard cap** — a cap refuses pickups the player did not choose to refuse. Existing saves migrate in **already carrying one** (v18 → v19): a survivor mid-run has been carrying things all along, and gating them behind a craft that did not exist would strand them retroactively. It ships as a direct craft this pass, NOT wired into the discovery table, because its route needs the same matcher work the stonehammer/storage collision does — and a half-wired discovery route is worse than an honest direct craft.
+
+**Class: OPERATIVE**
+
+*Witness: 801 unit tests across 46 files. Purity, tune-mirror, typecheck, build. Schema v18 → v19.*
+
 **D-112 · 2026-08-03 — THE BOULDER FORMATION SHIPS, AND THE [[D-051]] FIRST AMENDMENT ENTERS FORCE WITH IT.** Effectivity binding honoured exactly: same commit, not before.
 
 **THE THIRD STONE TIER.** The island's geology now reads as three visibly different places. **(a) Scattered surface rock** — depletes in view, restocks out-of-view on the tide. Unchanged. **(b) The quarry seam** — rich, fast, genuinely finite forever. [[D-070]]'s regression stands, untouched. **(c) THE BOULDER FORMATION** — a bedrock bluff, effectively inexhaustible, deliberately slow and effortful: **2 stone per swing against the quarry's 4**, 3.6 energy against 2, and ~2.7x the energy per unit of stone. Always available, never fast, never free.

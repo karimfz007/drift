@@ -3589,7 +3589,7 @@ async function main() {
     //  window, the same technique the fast-movement check uses.
     await editSave(`
         state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
-        state.tools = { axe: false, spear: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' };
+        state.tools = { axe: false, spear: false, backpack: true, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' };
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
         state.energy = 100;
         state.player = { x: 0, y: 60 };
@@ -3721,7 +3721,7 @@ async function main() {
     const deathsBaseline = (await live()).trace.deaths;
     await editSave(`
         state.inventory = { wood: 12, stone: 8, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2, meat: 0 };
-        state.tools = { axe: true, spear: false, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
+        state.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
         state.knowledge.domains.harvestingFabrication.technique = 42;
         state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.4;
         state.fatigue = 70;
@@ -3870,7 +3870,7 @@ async function main() {
 
     //  ITEM 1 — the panel opens from the carried row and shows all six zones with mass+bulk.
     await editSave(`
-        state.tools = { axe: true, spear: false, flask: true, flaskSips: 0, stoneHammer: true, axeGrade: 'serviceable' };
+        state.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 0, stoneHammer: true, axeGrade: 'serviceable' };
         state.inventory.wood = 6; state.inventory.stone = 4; state.inventory.fiber = 3;
         state.loadout = { activeHand: null, supportHand: null, belt: [null,null,null,null], pockets: [null,null] };
         state.energy = 100;

@@ -61,14 +61,19 @@ export type LoadBand = 'light' | 'working' | 'heavy';
 /** Which band a given mass falls in. Boundaries are inclusive-below: exactly
  *  `loadWorkingAtKg` is still Light, so a threshold is a ceiling you cross, not one you
  *  sit on ambiguously. */
-export function loadBandForKg(kg: number): LoadBand {
-    if (kg > TUNE.loadHeavyAtKg) return 'heavy';
-    if (kg > TUNE.loadWorkingAtKg) return 'working';
+export function loadBandForKg(kg: number, hasBackpack = true): LoadBand {
+    //  ITEM 1 — no pack, less capacity. Both thresholds drop rather than a hard cap being
+    //  imposed: a survivor without a backpack can still carry everything they could before,
+    //  it simply costs them sooner. A cap would refuse pickups, which is a refusal the
+    //  player did not choose; a shifted band is a cost they can feel and act on.
+    const shift = hasBackpack ? 0 : TUNE.backpackLoadPenaltyKg;
+    if (kg > TUNE.loadHeavyAtKg - shift) return 'heavy';
+    if (kg > TUNE.loadWorkingAtKg - shift) return 'working';
     return 'light';
 }
 
 export function loadBandOf(state: GameState): LoadBand {
-    return loadBandForKg(carriedWeightKg(state));
+    return loadBandForKg(carriedWeightKg(state), state.tools.backpack);
 }
 
 /** Walk-speed multiplier for a band. Applied on top of `walkSpeedMps`, stacking with the

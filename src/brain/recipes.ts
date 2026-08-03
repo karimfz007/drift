@@ -67,10 +67,24 @@ export function allRecipes(): Recipe[] {
             //  learned something about the other.
             id: 'spear',
             domain: 'harvestingFabrication',
+            //  TWO POSITIONS, and the binding is NOT one of them. The lashing is folded into
+            //  the operation — `craftSpear` still spends fibre — rather than occupying a
+            //  staged slot.
+            //
+            //  THE DEFECT THIS CLOSES, and it was never the display bug it was reported as.
+            //  The spear shipped with slots byte-identical to the AXE's (woodwork 3 + blade 1
+            //  + textile 2), so staging those three materials resolved to the axe every time
+            //  and the spear was **unreachable through discovery forever**. Not a position
+            //  count — `combineMaxInputs` is 4 — a DUPLICATE SIGNATURE. Two recipes competing
+            //  for one gesture, and the matcher can only ever answer with the first.
+            //
+            //  My Drop 1 reachability proof missed it because it drove `craftSpear()`
+            //  directly: it proved the MATERIALS were obtainable, never that the recipe was
+            //  DISCOVERABLE. Post-pivot those are different claims, and [[D-090]] means the
+            //  second one.
             slots: [
                 { id: 'spear-shaft', require: { tag: 'woodwork' }, amount: TUNE.spearWoodCost },
-                { id: 'spear-head', require: { tag: 'blade' }, amount: TUNE.spearSharpbladeCost },
-                { id: 'spear-binding', require: { tag: 'textile' }, amount: TUNE.spearFiberCost }
+                { id: 'spear-head', require: { tag: 'blade' }, amount: TUNE.spearSharpbladeCost }
             ]
         },
         {

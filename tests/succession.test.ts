@@ -54,7 +54,7 @@ function accomplished(): GameState {
     s.gameHoursElapsed = 96;
     s.survivorStartedAtGameHours = 0;
     s.inventory = { wood: 30, stone: 22, fiber: 15, berries: 4, coconut: 2, shellfish: 3, sharpblade: 2, meat: 0 };
-    s.tools = { axe: true, spear: false, flask: true, flaskSips: 3, stoneHammer: true, axeGrade: 'refined', fishingLine: true };
+    s.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 3, stoneHammer: true, axeGrade: 'refined', fishingLine: true };
     s.torch = { owned: true, lit: true, fuelGameHoursRemaining: 4, grade: 'refined' };
     s.skills.woodcutting.level = 5;
     s.skills.foraging.level = 4;

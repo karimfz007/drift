@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -152,6 +152,16 @@ export interface Tools {
     axe: boolean;
     /** DROP 1 — the spear. The only made thing that answers a boar. */
     spear: boolean;
+    /**
+     * The backpack. Until it is MADE, the survivor carries what their arms and pockets can
+     * take — `backpackLoadPenaltyKg` is subtracted from both load-band thresholds, so an
+     * unequipped castaway hits Working and Heavy sooner. Crafting it restores full capacity.
+     *
+     * Existing saves migrate in at `true`: a survivor mid-run has been carrying things all
+     * along, and retroactively stranding them under a new gate would be the same insult as
+     * injuring them for loading their own save.
+     */
+    backpack: boolean;
     /** The water flask: found in the crash box; carries drinks inland. */
     flask: boolean;
     /** Drinks currently in the flask (0..flaskCapacitySips). */

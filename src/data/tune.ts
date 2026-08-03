@@ -1046,6 +1046,18 @@ export const TUNE = {
      *  is Light (unencumbered); above it, Working; above `loadHeavyAtKg`, Heavy. Sized
      *  against real early-game carries: a full trip home from the quarry (~10 stone = 20 kg)
      *  should land in Working, not Heavy — Heavy is for genuine hoarding, not ordinary play. */
+    /** [TUNE] Item 1 — how much LESS a survivor can carry before making a backpack. Both
+     *  load-band thresholds drop by this. Basis: `loadWorkingAtKg` is 14, and a full trip
+     *  home from the quarry (~10 stone = 20 kg) is meant to land in Working; without a pack
+     *  that same trip should land in HEAVY, so the pack is the difference between hauling and
+     *  struggling. Not a hard cap — you can still carry everything, it just costs more. */
+    backpackLoadPenaltyKg: 6,
+    /** [TUNE] Item 1 — what a backpack costs. Fibre and wood: a frame and a lashing. Cheap
+     *  enough to be an early win, expensive enough to be a decision on day one. */
+    backpackFiberCost: 6,
+    backpackWoodCost: 2,
+    /** [TUNE] Item 1 — an edge to cut and shape the fibre. One blade, not consumed lightly. */
+    backpackBladeCost: 1,
     loadWorkingAtKg: 14,
     loadHeavyAtKg: 30,
     /** [TUNE] Ch.6 — walk-speed multiplier per load band, applied on top of `walkSpeedMps`

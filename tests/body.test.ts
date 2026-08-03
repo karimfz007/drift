@@ -387,7 +387,7 @@ describe('body — save migration v7 → v8 (Ch.6)', () => {
             gameHoursElapsed: 40,
             energy: 30,
             inventory: { wood: 6, stone: 3, fiber: 1, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 },
-            tools: { axe: true, spear: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude', fishingLine: false },
+            tools: { axe: true, spear: false, backpack: true, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'crude', fishingLine: false },
             trace: { deathLog: [{ cause: 'thirst', gameHoursElapsed: 9 }] }
         };
         return JSON.stringify({ schemaVersion: 7, savedAtMs: 1_700_000_300_000, state });

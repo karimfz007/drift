@@ -104,6 +104,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 15) current = migrateV15toV16(current);
     if (current.schemaVersion === 16) current = migrateV16toV17(current);
     if (current.schemaVersion === 17) current = migrateV17toV18(current);
+    if (current.schemaVersion === 18) current = migrateV18toV19(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -613,6 +614,26 @@ function migrateV17toV18(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         nodes: hasBluff ? nodes : [...nodes, ...createNodes().filter((n) => n.kind === 'boulder')],
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v18 → v19 (the backpack becomes a craft). A returning player migrates in **already
+ * carrying one**.
+ *
+ * This is the same principle the v1→v2 vitals and the v16→v17 injuries followed: a migration
+ * answers "what did this survivor not have yet", and the honest answer is that they have been
+ * carrying things all along. Gating an existing run behind a craft it never had the chance to
+ * make would retroactively strand it — the survivor would walk out of the shelter suddenly
+ * over-encumbered by a rule that did not exist when they packed.
+ */
+function migrateV18toV19(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        tools: { ...old.tools, backpack: old.tools?.backpack ?? true },
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

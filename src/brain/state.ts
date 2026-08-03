@@ -47,7 +47,7 @@ export function createInitialState(nowMs: number): GameState {
         fatigue: 0,
         resting: false,
         inventory: emptyInventory(),
-        tools: { axe: false, spear: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false },
+        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable' },
@@ -955,6 +955,33 @@ export function craftAxe(state: GameState): boolean {
  * in a menu the day a predator ships. A survivor who has never put a blade to a shaft does
  * not know a spear is possible, and being charged does not teach them.
  */
+/**
+ * THE BACKPACK. It used to be free — every survivor had full carry capacity from the moment
+ * they washed ashore, which quietly said that the one thing every other tool had to be
+ * EARNED did not apply to the container holding them all.
+ */
+export function canMakeBackpack(state: GameState): boolean {
+    return !state.tools.backpack
+        && state.inventory.fiber >= TUNE.backpackFiberCost
+        && state.inventory.sharpblade >= TUNE.backpackBladeCost;
+}
+
+export function backpackShortfall(state: GameState): { fiber: number; sharpblade: number } {
+    return {
+        fiber: Math.max(0, TUNE.backpackFiberCost - state.inventory.fiber),
+        sharpblade: Math.max(0, TUNE.backpackBladeCost - state.inventory.sharpblade)
+    };
+}
+
+export function makeBackpack(state: GameState): boolean {
+    if (!canMakeBackpack(state)) return false;
+    state.inventory.fiber -= TUNE.backpackFiberCost;
+    state.inventory.sharpblade -= TUNE.backpackBladeCost;
+    state.tools.backpack = true;
+    recordTrying(state, 'harvestingFabrication');
+    return true;
+}
+
 export function canCraftSpear(state: GameState): boolean {
     return !state.tools.spear
         && state.inventory.wood >= TUNE.spearWoodCost

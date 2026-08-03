@@ -352,3 +352,67 @@ describe('MOVEMENT — the boar was a statue that changed colour', () => {
         expect(moveBoar(live, 0)).toEqual(live);
     });
 });
+
+describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 correction)', () => {
+    /**
+     * THE DEFECT: the spear shipped with slots byte-identical to the AXE's — woodwork 3 +
+     * blade 1 + textile 2 — so staging those three materials resolved to the axe every time
+     * and the spear could never be discovered at all. Reported as "the spear doesn't appear
+     * in the Build menu"; it was never a display bug.
+     *
+     * MY REACHABILITY PROOF MISSED IT because it drove `craftSpear()` directly. That proved
+     * the MATERIALS were obtainable, never that the recipe was DISCOVERABLE — and post-pivot
+     * those are different claims. D-090 means the second one.
+     */
+    it('no two recipes share a slot signature — the collision, made impossible', async () => {
+        const { allRecipes } = await import('../src/brain/recipes');
+        const seen = new Map<string, string>();
+        const collisions: string[] = [];
+        for (const r of allRecipes()) {
+            //  THE TAG SET, not tag+amount — and this correction is the whole point. The
+            //  matcher treats amounts as MINIMUMS, so two recipes with the same tag set are
+            //  never both reachable: whichever is cheaper answers every time. My first cut
+            //  compared tag+amount, saw two different signatures, and passed — while the
+            //  backpack sat undiscoverable behind the torch for exactly this reason.
+            const sig = r.slots.map((sl) => JSON.stringify(sl.require)).sort().join('|');
+            const clash = seen.get(sig);
+            if (clash) collisions.push([r.id, clash].sort().join('='));
+            seen.set(sig, r.id);
+        }
+        //  ONE KNOWN, PRE-EXISTING collision, recorded rather than hidden: `stonehammer` and
+        //  `storage` share a tag set, so one of them is already unreachable through discovery
+        //  TODAY. Surfaced by strengthening this guard from tag+amount to TAG SET — the weaker
+        //  form passed it for exactly the reason it passed the spear. Not fixed here: it needs
+        //  the matcher to disambiguate on amounts, which is a change to the discovery core and
+        //  not something to bolt on at the end of a long session.
+        const KNOWN = ['stonehammer=storage'];
+        const fresh = collisions.filter((c) => !KNOWN.includes(c));
+        expect(fresh, `NEW signature collision(s): ${fresh.join(', ')}`).toEqual([]);
+    });
+
+    it('staging shaft + blade discovers the SPEAR, not the axe', async () => {
+        const { tryCombineWith } = await import('../src/brain/experiment');
+        const s = createInitialState(0);
+        s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
+        expect(tryCombineWith(s, ['wood', 'sharpblade'] as never).recipeId).toBe('spear');
+    });
+
+    it('...and shaft + blade + binding still discovers the AXE', async () => {
+        const { tryCombineWith } = await import('../src/brain/experiment');
+        const s = createInitialState(0);
+        s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
+        expect(tryCombineWith(s, ['wood', 'sharpblade', 'fiber'] as never).recipeId).toBe('axe');
+    });
+
+    it('the binding is still SPENT — folded into the operation, not staged', async () => {
+        //  Two staged positions, three materials consumed. The lashing is part of the ACT of
+        //  making a spear, which is both true to the object and what keeps its signature
+        //  distinct from the axe's.
+        const { craftSpear } = await import('../src/brain/state');
+        const s = createInitialState(0);
+        s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
+        const before = s.inventory.fiber;
+        expect(craftSpear(s)).toBe(true);
+        expect(s.inventory.fiber).toBe(before - TUNE.spearFiberCost);
+    });
+});
