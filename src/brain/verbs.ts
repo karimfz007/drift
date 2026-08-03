@@ -21,6 +21,7 @@
 import { TUNE } from '../data/tune';
 import type { GameState } from './types';
 import { canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall } from './state';
+import { canBindWound } from './injury';
 import { nearestBoar } from './fauna';
 import { readWrite } from './journal';
 
@@ -181,10 +182,26 @@ function pondVerbs(state: GameState): VerbOption[] {
  * for a target that always had two things to do. They come here and the Build card loses
  * them; the point is replacement, not a second route to the same place.
  */
+/**
+ * BINDING A WOUND lives on the SHELTER, not in a menu: it is something you stop and do
+ * somewhere, the same reasoning that put the journal on the fire. It is offered only when
+ * there is actually blood to stop, so it never clutters the circle of an unhurt survivor.
+ */
+function bindVerbs(state: GameState): VerbOption[] {
+    if (state.injuries.bleeding <= 0) return [];
+    return [{
+        id: 'bind-wound',
+        label: 'Bind the wound',
+        available: canBindWound(state),
+        reason: canBindWound(state) ? null : `You need ${TUNE.injuryBindFiberCost} fibre to bind it.`,
+    }];
+}
+
 function shelterVerbs(state: GameState): VerbOption[] {
     const built = state.shelter.built;
     const notBuilt = built ? null : 'There is no shelter here yet.';
     return [
+        ...bindVerbs(state),
         {
             id: 'sleep',
             label: 'Sleep',

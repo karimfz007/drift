@@ -101,7 +101,11 @@ export function impairmentOf(state: GameState): number {
     const woundShare = 1 - clamp01(state.health / TUNE.healthMax);
     const coldShare = thermalStrain(state.warmth) === 'hypothermic' ? 1
         : thermalStrain(state.warmth) === 'cold' ? 0.5 : 0;
-    const worst = Math.max(fatigueShare, woundShare, coldShare);
+    //  DROP 2 — PAIN. Reuses the term that already exists rather than adding a parallel one,
+    //  which is why an injury is FELT without new machinery: a hurt survivor's whole day gets
+    //  more expensive, in the currency the game already speaks.
+    const painShare = clamp01(state.injuries?.pain ?? 0);
+    const worst = Math.max(fatigueShare, woundShare, coldShare, painShare);
     return 1 + worst * (TUNE.impairmentMaxMultiplier - 1);
 }
 

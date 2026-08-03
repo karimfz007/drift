@@ -20,6 +20,7 @@ export * from './matter';
 export * from './bodyReport';
 export * from './construction';
 export * from './fauna';
+export * from './injury';
 export * from './journal';
 export * from './succession';
 export * from './deathReview';

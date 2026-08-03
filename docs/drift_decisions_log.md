@@ -3,6 +3,22 @@
 
 ---
 
+**D-111 · 2026-08-02 — DROP 2: the boar's INJURY PROFILE ships; Boulder Formation is BLOCKED on a spec that does not exist.**
+
+**THE INJURY PROFILE.** Drop 1 shipped harm as a bare number on purpose and named this as the other half. Three conditions, each with its own clock and its own answer: **BLEEDING** costs health continuously until bound or clotted — the only one with a treatment, because it is the only one where doing nothing has a price; **LIMP** slows movement and cannot be treated, so it reads as a consequence rather than a chore; **PAIN** feeds `impairmentOf` in the resolver, which means a hurt survivor's whole day gets more expensive *in a currency the game already speaks* — no new machinery was needed for it to be felt. Conditions stack (disengaging after the first hit is correct) and every one is capped (a bad fight stays survivable).
+
+**D-011 GOT ITS SHARPEST TEST YET.** A condition that drains health over time is precisely the mechanic that would kill an absent player. `settleInjuriesOffline` clots everything to zero on any span that counts as an absence — not "slower", not "to a floor", **stopped** — and it is the only injury function reconcile's absence path may call, the same structural shape the boars use. Swept to 365 days.
+
+**LEGIBLE, NOT MERELY FELT.** The injury note outranks the ordinary HUD goal line, because a survivor paying more for every job needs to be told why — otherwise the resolver's impairment term reads as the game getting harder at random.
+
+**PROPORTIONATE, DELIBERATELY.** Three conditions, one treatment, no infection model and no per-limb anatomy — that is the parked localized-injury dossier, not this. First injury content needs to be real and felt, not exhaustive.
+
+**BOULDER FORMATION + [[D-051]] FIRST AMENDMENT: NOT SHIPPED, AND NOT BUILDABLE AS BRIEFED.** The handoff said the spec was "already in the ledger from its own reception". **It is not.** Every occurrence of "Boulder Formation" in the repository is a forward-reference stating it has not shipped — two of them, both in this ledger and in `drift_state.md`, plus this one. There is no reception entry, nothing in `docs/reference/`, nothing in the design bible, and the only "boulder" content that exists is decorative world obstacles from D-064's salvage-placement work. **I did not invent one.** A fabricated spec ratified by implementation is worse than a missing one, because the ledger would then record a design decision nobody made. Closed by: C1 or the director supplying the reception, at which point it ships with the amendment per the unchanged effectivity binding.
+
+**Class: OPERATIVE**
+
+*Witness: 782 unit tests across 45 files (14 new). Purity 38 brain files, tune-mirror 47, build. Schema v16 → v17; a returning player arrives whole, which is also exactly what D-011 would have done to them during the absence.*
+
 **D-110 · 2026-08-02 — TWO ANOMALIES RESOLVED BY MEASUREMENT: the slide regression is CONFIRMED as the Resolver's, and the absence-clock check is MEASURED-INTERMITTENT ([[D-084]]).**
 
 **THE SLIDE — CAUSATION ESTABLISHED, 4 runs, perfect correlation.** Pre-Resolver `2.29 m/s`; with the Resolver `1.55` and `1.57`; after the revert `2.27`. Free walk was bit-identical at `5.77 m/s` throughout, which had already ruled out an energy/exhaustion cause. **The One Body Resolver caused it and the revert cleared it** — established by the revert itself rather than by investigation, which is the cheapest proof available and one that only existed because [[D-108]] sequenced the revert before the diagnosis. The root-cause remains unknown and is Drop 2's opening item, now with a known-good baseline (`slide >= 2.29`) and a known-bad build (`764e640` on `resolver/one-body`) to bisect between.

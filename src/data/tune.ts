@@ -527,6 +527,42 @@ export const TUNE = {
      *  exactly 1 and nothing moves. It exists so the retention is a decay per SECOND rather
      *  than per FRAME, which is what it always claimed to be. */
     slideRetentionReferenceHz: 60,
+    // ---- DROP 2: INJURY -------------------------------------------------------------------
+    /** [TUNE] Drop 2 — bleeding severity from one full-damage charge. Units are severity, and
+     *  `injuryBleedHealthPerGameHour` prices them. One clean hit leaves you bleeding but not
+     *  in a spiral; two stack toward the cap, which is what makes disengaging correct. */
+    injuryBleedFromCharge: 0.6,
+    /** [TUNE] Drop 2 — the cap. Bleeding cannot stack past this however many times you are
+     *  hit, so a bad fight is survivable if you break away and bind it. */
+    injuryBleedMax: 1.5,
+    /** [TUNE] Drop 2 — health per game hour at severity 1. Basis: `healthRegenPerGameHour`
+     *  (4) — bleeding at full severity slightly OUTPACES natural recovery, so it is a real
+     *  clock and not a nuisance, but a light bleed loses to a resting body. */
+    injuryBleedHealthPerGameHour: 5,
+    /** [TUNE] Drop 2 — severity clotted per game hour untreated. Basis: a full-severity bleed
+     *  stops on its own in ~5 game hours, having cost roughly 12 health. Dangerous, not a
+     *  death sentence — the survivor must be able to simply avoid an animal without fibre
+     *  becoming a hard requirement for surviving it. */
+    injuryBleedClotPerGameHour: 0.3,
+    /** [TUNE] Drop 2 — fibre to bind a wound. Cheap on purpose: the decision is whether to
+     *  stop and do it under pressure, not whether you can afford it. */
+    injuryBindFiberCost: 1,
+    /** [TUNE] Drop 2 — game hours of limp from one full charge. ~6 real minutes: long enough
+     *  to change how you plan the next errand, short enough not to become the game. */
+    injuryLimpFromCharge: 2.5,
+    injuryLimpMaxGameHours: 6,
+    /** [TUNE] Drop 2 — how much slower a limp makes you. Basis: gentler than
+     *  `energySlowWalkMultiplier`, because exhaustion is a state you chose and an injury is
+     *  one that happened to you. */
+    injuryLimpSpeedMultiplier: 0.75,
+    /** [TUNE] Drop 2 — pain from one full charge, 0..1. Feeds `impairmentOf` in the resolver,
+     *  so a hurt survivor's whole day gets more expensive in a currency the game already
+     *  speaks — no new machinery needed for it to be felt. */
+    injuryPainFromCharge: 0.5,
+    injuryPainMax: 1,
+    /** [TUNE] Drop 2 — pain fades per game hour. ~2 game hours from a full hit. */
+    injuryPainFadePerGameHour: 0.5,
+
     boarCollisionRadius: 0.9,
     boarWanderSpeedMPerGameHour: 26,
     /** [TUNE] Drop 1 FIX — how far it drifts from home before turning back. Keeps a boar in

@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -513,6 +513,22 @@ export interface GameState {
      * this drop — worth wanting.
      */
     meatFreshUntilGameHours: number | null;
+    /**
+     * DROP 2 — what a connected charge leaves behind. `bleeding` is a severity that costs
+     * health per game hour until bound or clotted; `limp` and `pain` are game-hour timers.
+     * All three clot to zero the moment a span counts as an absence ([[D-011]]).
+     */
+    injuries: InjuryState;
+}
+
+/** The three conditions. See `injury.ts` — proportionate on purpose, not an anatomy model. */
+export interface InjuryState {
+    /** 0..injuryBleedMax. Costs health continuously. The only one with a treatment. */
+    bleeding: number;
+    /** Game hours remaining. Slows movement; heals with time, cannot be treated. */
+    limp: number;
+    /** 0..1. Feeds the resolver's impairment term, so every activity costs more. */
+    pain: number;
 }
 
 /** The five-stage grammar of the fair-challenge contract. See `fauna.ts`. */

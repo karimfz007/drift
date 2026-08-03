@@ -6,6 +6,7 @@
 import { gameHoursFromRealSeconds } from './clock';
 import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
+import { freshInjuries } from './injury';
 import { TUNE } from '../data/tune';
 import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
@@ -91,7 +92,8 @@ export function createInitialState(nowMs: number): GameState {
         //  DROP 1: the boars were here before the survivor and stay after. Created once,
         //  never added to — the absence of a spawner is the no-spawn-waves rail, in code.
         boars: createBoars(),
-        meatFreshUntilGameHours: null
+        meatFreshUntilGameHours: null,
+        injuries: freshInjuries()
     };
 }
 

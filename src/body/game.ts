@@ -63,6 +63,9 @@ import {
     verbsFor,
     readWrite,
     writeEntry,
+    limpSpeedMultiplierOf,
+    injuryNote,
+    bindWound,
     nearestBoar,
     thrustSpear,
     makeJournal,
@@ -1002,6 +1005,7 @@ export class Game {
             case 'light-torch': this.doLightTorch(); break;
             case 'write-journal': this.doWriteJournal(); break;
             case 'thrust': this.doThrust(); break;
+            case 'bind-wound': this.doBindWound(); break;
             case 'make-journal': this.doMakeJournal(); break;
             case 'store-journal': this.doSetJournalCarried(false); break;
             case 'take-journal': this.doSetJournalCarried(true); break;
@@ -1471,6 +1475,17 @@ export class Game {
      * THRUST. The survivor's half of the rhythm the charge sets up — this is what an
      * aftermath window is FOR, and a miss says so rather than going silent (D-042).
      */
+    /** Bind a bleeding wound with fibre. The one treatment injury has. */
+    private doBindWound(): void {
+        const s = session().state;
+        if (!bindWound(s)) { this.explain('Nothing to bind, or nothing to bind it with.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('bound');
+        this.explain('You wrap it tight. The bleeding stops.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     private doThrust(): void {
         const s = session().state;
         const target = nearestBoar(s.boars, s.player.x, s.player.y);
@@ -1778,6 +1793,8 @@ export class Game {
         //  as they did before this chapter existed.
         const speedScale =
             (isExhausted(state) ? TUNE.energySlowWalkMultiplier : 1) *
+            //  DROP 2 — a limp is felt in the feet, which is the only place it could be felt.
+            limpSpeedMultiplierOf(state.injuries) *
             (this.testSpeedEnabled ? TUNE.testSpeedMultiplier : 1) *
             //  D-059: weight-aware, not band-aware. The banded form saturated at the Heavy
             //  threshold, so 100 stone moved exactly as fast as 16 — the director's report.
@@ -2146,6 +2163,11 @@ export class Game {
     private goalLine(state: ReturnType<typeof session>['state']): string {
         //  Exhausted (C05): a soft debuff, but an active one — worth naming before anything
         //  else, since it is visibly slowing the player down right now.
+        //  DROP 2 — a wound outranks the ordinary goal line. It must be LEGIBLE, not merely
+        //  felt: a survivor paying more for every job needs to be told why, or the resolver's
+        //  impairment term reads as the game getting harder at random.
+        const wound = injuryNote(state.injuries);
+        if (wound) return wound;
         if (isExhausted(state)) {
             return state.shelter.built ? 'Exhausted — tap the shelter to sleep.' : 'Exhausted. A shelter would give you somewhere to rest.';
         }

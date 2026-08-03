@@ -14,6 +14,7 @@ import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshJournal } from './state';
 import { createBoars } from './fauna';
+import { freshInjuries } from './injury';
 import { freshMatterWear } from './matter';
 import { createInitialState } from './state';
 
@@ -100,6 +101,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 13) current = migrateV13toV14(current);
     if (current.schemaVersion === 14) current = migrateV14toV15(current);
     if (current.schemaVersion === 15) current = migrateV15toV16(current);
+    if (current.schemaVersion === 16) current = migrateV16toV17(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -571,6 +573,22 @@ function migrateV15toV16(envelope: SaveEnvelope): SaveEnvelope {
         tools: { ...old.tools, spear: old.tools?.spear ?? false },
         inventory: { ...old.inventory, meat: old.inventory?.meat ?? 0 },
         meatFreshUntilGameHours: old.meatFreshUntilGameHours ?? null,
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v16 → v17 (Drop 2, injury). A returning player arrives WHOLE — no bleeding, no limp, no
+ * pain. The honest answer: we have no record of what hurt them, and inventing a wound on
+ * load would be the same insult as injuring a survivor for opening their own save. It is
+ * also exactly what [[D-011]] would have done to them during the absence anyway.
+ */
+function migrateV16toV17(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        injuries: old.injuries ?? freshInjuries(),
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

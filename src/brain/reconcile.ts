@@ -22,6 +22,7 @@ import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from '
 import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
 import { netHeatFlowPerGameHour } from './thermal';
 import { settleOffline } from './fauna';
+import { settleInjuriesOffline } from './injury';
 import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
@@ -419,6 +420,11 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  other function reconcile's absence path may call.
     if (qualifiesForReport) {
         next.boars = settleOffline(next.boars, next.gameHoursElapsed);
+        //  DROP 2 — and every wound clots. Not "bleeds more slowly", not "bleeds to the
+        //  floor": STOPS. A bleed is the sharpest test D-011 has been given, because it is
+        //  precisely the mechanic that would kill an absent player. Same structural shape as
+        //  the boars — the guarantee is impossible to break rather than merely checked for.
+        next.injuries = settleInjuriesOffline(next.injuries);
     }
 
     return {

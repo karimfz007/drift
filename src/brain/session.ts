@@ -13,6 +13,7 @@ import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, isFireLit } from './state';
 import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
+import { injuriesFromCharge, stepInjuries } from './injury';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -265,7 +266,17 @@ export class Session {
         s.boars = next;
         if (harmed > 0) {
             s.health = Math.max(0, s.health - harmed);
+            //  DROP 2 — and it leaves something behind. Drop 1 stopped at the number on
+            //  purpose; this is the other half of the same hit.
+            s.injuries = injuriesFromCharge(s.injuries, harmed);
             this.persist(nowMs);
+        }
+        //  Bleeding costs health over time, ONLINE only. The absence path clots everything
+        //  (see reconcile), so this is the only place a wound can ever cost anything.
+        const bled = stepInjuries(s.injuries, gameHours);
+        if (bled.healthLost > 0 || bled.next !== s.injuries) {
+            s.injuries = bled.next;
+            if (bled.healthLost > 0) s.health = Math.max(0, s.health - bled.healthLost);
         }
     }
 
