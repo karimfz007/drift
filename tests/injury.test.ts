@@ -13,6 +13,7 @@ import { impairmentOf } from '../src/brain/resolver';
 import { createInitialState } from '../src/brain/state';
 import { reconcile } from '../src/brain/reconcile';
 import { TUNE } from '../src/data/tune';
+import type { InjuryState } from '../src/brain/types';
 
 const REAL_DAY = 24 * 3600;
 
@@ -77,7 +78,9 @@ describe('THE THREE CONDITIONS ARE FELT, each in its own currency', () => {
 
         //  An untreated wound is dangerous, not a death sentence — otherwise fibre becomes a
         //  hard requirement for surviving an animal the player can simply avoid.
-        let inj = { bleeding: TUNE.injuryBleedMax, limp: 0, pain: 0 };
+        //  Annotated: TUNE is `as const`, so `injuryBleedMax` infers the literal 1.5 and the
+        //  loop cannot assign a widened InjuryState back into it.
+        let inj: InjuryState = { bleeding: TUNE.injuryBleedMax, limp: 0, pain: 0 };
         for (let i = 0; i < 40 && inj.bleeding > 0; i += 1) inj = stepInjuries(inj, 0.5).next;
         expect(inj.bleeding).toBe(0);
     });
