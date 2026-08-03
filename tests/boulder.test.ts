@@ -166,22 +166,15 @@ describe('THE PIVOT LAW HOLDS FOR THE BACKPACK TOO (device-caught regression)', 
         expect(revealedInPanel(createInitialState(0), 'backpack')).toBe(false);
     });
 
-    it('KNOWN-OPEN: the backpack has no discovery route, so the gated row never appears', async () => {
-        //  Stated as a defect rather than hidden. Gating the row restored SLICE 2B's pivot
-        //  law — the thing the device caught — but `revealedInPanel` needs a DEMONSTRATED
-        //  ladder, which needs a blueprint, which needs a recipe in the discovery table. The
-        //  backpack has none, so the row is now correctly gated and permanently closed.
-        //
-        //  Restoring the recipe is NOT a one-line change: recipe ORDER decides resolution,
-        //  and inserting it ahead of the torch flipped two shipped tests immediately. That is
-        //  matcher work, and I am not tuning list order blind at the end of a session — the
-        //  last three times I pushed on with partial information this session I was wrong.
-        //
-        //  Closed by: the next session, alongside item 5's combination-evidence work, which
-        //  touches the same surface. The craft itself remains reachable directly.
-        const { allRecipes } = await import('../src/brain/recipes');
+    it('...and it CAN be revealed once demonstrated — a gated row is not a dead row', async () => {
+        //  The other half of the gate. Gating without a route would strand it exactly as the
+        //  spear was stranded, so the route is asserted rather than assumed.
         const { revealedInPanel } = await import('../src/brain/reveal');
-        expect(allRecipes().map((r) => r.id)).not.toContain('backpack');
-        expect(revealedInPanel(createInitialState(0), 'backpack')).toBe(false);
+        const { allRecipes } = await import('../src/brain/recipes');
+        expect(allRecipes().map((r) => r.id)).toContain('backpack');
+        const s = createInitialState(0);
+        s.blueprints = [{ id: 'bp', name: 'Pack', recipeId: 'backpack', inputs: ['fiber', 'wood'],
+            version: 1, workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 2 } as never];
+        expect(revealedInPanel(s, 'backpack')).toBe(true);
     });
 });

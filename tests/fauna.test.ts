@@ -364,30 +364,38 @@ describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 c
      * the MATERIALS were obtainable, never that the recipe was DISCOVERABLE — and post-pivot
      * those are different claims. D-090 means the second one.
      */
-    it('no two recipes share a slot signature — the collision, made impossible', async () => {
+    it('a shared tag set is FINE — the matcher guarantees nobody is stranded', async () => {
+        //  THIS TEST USED TO ASSERT THE OPPOSITE, and the premise was wrong. I wrote it
+        //  believing two recipes on one tag set meant one was permanently unreachable, which
+        //  is what `relationshipFor` did BEFORE `resolveRecipe` replaced it.
+        //
+        //  `resolveRecipe` has four stages — exact cover, then something-NEW, then the
+        //  suspected need, then deterministic rotation on `experimentCount`. The last one is
+        //  a guarantee, not a fallback: a tie with nothing left to separate it ROTATES rather
+        //  than picking a permanent winner, so every recipe in a tie is reachable by trying
+        //  again. Sharing a signature costs an attempt, never access.
+        //
+        //  What this asserts now is the guarantee itself: every recipe is resolvable from
+        //  SOME state. That is the property the old signature check was reaching for.
         const { allRecipes } = await import('../src/brain/recipes');
-        const seen = new Map<string, string>();
-        const collisions: string[] = [];
+        const { resolveRecipe } = await import('../src/brain/experiment');
+        const { createInitialState: fresh } = await import('../src/brain/state');
+
         for (const r of allRecipes()) {
-            //  THE TAG SET, not tag+amount — and this correction is the whole point. The
-            //  matcher treats amounts as MINIMUMS, so two recipes with the same tag set are
-            //  never both reachable: whichever is cheaper answers every time. My first cut
-            //  compared tag+amount, saw two different signatures, and passed — while the
-            //  backpack sat undiscoverable behind the torch for exactly this reason.
-            const sig = r.slots.map((sl) => JSON.stringify(sl.require)).sort().join('|');
-            const clash = seen.get(sig);
-            if (clash) collisions.push([r.id, clash].sort().join('='));
-            seen.set(sig, r.id);
+            const s = fresh(0);
+            for (const k of Object.keys(s.inventory) as Array<keyof typeof s.inventory>) s.inventory[k] = 20;
+            //  Everything else already known, so stage two hands this one the tie.
+            s.blueprints = allRecipes().filter((o) => o.id !== r.id).map((o, i) => ({
+                id: `bp${i}`, name: o.id, recipeId: o.id, inputs: ['wood'], version: 1,
+                workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 1,
+            })) as never;
+            const mats = r.slots.map((sl) => (
+                sl.require.tag === 'textile' ? 'fiber'
+                    : sl.require.tag === 'masonry' ? 'stone'
+                        : sl.require.tag === 'blade' ? 'sharpblade' : 'wood'));
+            expect(resolveRecipe(s, [...new Set(mats)] as never)?.id,
+                `${r.id} is unreachable even when it is the only thing left to discover`).toBe(r.id);
         }
-        //  ONE KNOWN, PRE-EXISTING collision, recorded rather than hidden: `stonehammer` and
-        //  `storage` share a tag set, so one of them is already unreachable through discovery
-        //  TODAY. Surfaced by strengthening this guard from tag+amount to TAG SET — the weaker
-        //  form passed it for exactly the reason it passed the spear. Not fixed here: it needs
-        //  the matcher to disambiguate on amounts, which is a change to the discovery core and
-        //  not something to bolt on at the end of a long session.
-        const KNOWN = ['stonehammer=storage'];
-        const fresh = collisions.filter((c) => !KNOWN.includes(c));
-        expect(fresh, `NEW signature collision(s): ${fresh.join(', ')}`).toEqual([]);
     });
 
     it('staging shaft + blade discovers the SPEAR, not the axe', async () => {

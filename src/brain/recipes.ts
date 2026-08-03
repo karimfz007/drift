@@ -48,6 +48,28 @@ export function allRecipes(): Recipe[] {
             ]
         },
         {
+            //  THE BACKPACK, restored. It was pulled on a collision theory that was WRONG:
+            //  I read one `tryCombineWith` result, saw the torch win the fibre+wood gesture,
+            //  and concluded the shared tag set made it permanently unreachable.
+            //
+            //  `resolveRecipe` has FOUR stages — exact cover, then something-NEW, then the
+            //  suspected NEED, then deterministic rotation on `experimentCount`. The second
+            //  stage alone settles this: a survivor who already holds the torch's plan and
+            //  puts fibre and wood together again is trying the other thing. **No recipe is
+            //  permanently unreachable in this matcher**, which is exactly what it was built
+            //  to guarantee after `relationshipFor` stranded three of them.
+            //
+            //  Position therefore does not decide precedence — it only orders the rotation
+            //  pool at stage four. Placed with the other made tools because that is where it
+            //  belongs to read, not because the slot mattered.
+            id: 'backpack',
+            domain: 'harvestingFabrication',
+            slots: [
+                { id: 'pack-body', require: { tag: 'textile' }, amount: TUNE.backpackFiberCost },
+                { id: 'pack-frame', require: { tag: 'woodwork' }, amount: TUNE.backpackWoodCost }
+            ]
+        },
+        {
             id: 'axe',
             //  Fabrication of a harvesting tool — the same domain "knapping" (below)
             //  already trains; leaving it out while knapping counts would be an arbitrary

@@ -153,14 +153,22 @@ describe('experiment — failures teach through D-055\'s journal, and nothing el
 });
 
 describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () => {
-    /** Run attempts until the confidence curve lands one, with Technique high so it is quick. */
+    /**
+     * Run attempts until the confidence curve lands the TORCH specifically.
+     *
+     * It used to stop at the first success of any kind, which was safe while the torch was
+     * the only recipe on {woodwork, textile}. The backpack now shares that gesture, and
+     * `resolveRecipe`'s rotation deliberately alternates between them — so "the first
+     * success" can be either, and running on can mint both. That is the matcher working as
+     * designed; the helper was the thing assuming a monopoly.
+     */
     function inventTorch(s: GameState) {
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < 80; i++) {
             s.energy = TUNE.energyMax;
             s.inventory.wood = 20;
             s.inventory.fiber = 20;
             const r = tryCombine(s, 'wood', 'fiber');
-            if (r.outcome === 'invented') return r;
+            if (r.outcome === 'invented' && r.recipeId === 'torch') return r;
         }
         return null;
     }
@@ -177,7 +185,7 @@ describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () 
     it('the plan records its inputs, authorship, version and workmanship (§10.6)', () => {
         const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
         inventTorch(s);
-        const bp = s.blueprints[0];
+        const bp = s.blueprints.find((b) => b.recipeId === 'torch')!;
         expect(bp.inputs.sort()).toEqual(['fiber', 'wood']);
         expect(bp.author).toBeTruthy();
         expect(bp.version).toBe(1);
@@ -198,13 +206,17 @@ describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () 
     });
 
     it('re-deriving a plan you hold BUMPS its version rather than duplicating it (§10.5)', () => {
+        //  Asserted on the TORCH's plan rather than on the total, which is what the claim was
+        //  always about. The backpack shares this gesture and the matcher's rotation may mint
+        //  it alongside — that is the tie-break working, not a duplicate.
         const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
+        const torchPlans = () => s.blueprints.filter((b) => b.recipeId === 'torch');
         inventTorch(s);
-        expect(s.blueprints).toHaveLength(1);
-        const v1 = s.blueprints[0].version;
+        expect(torchPlans()).toHaveLength(1);
+        const v1 = torchPlans()[0].version;
         inventTorch(s);
-        expect(s.blueprints).toHaveLength(1); // still ONE plan
-        expect(s.blueprints[0].version).toBeGreaterThan(v1);
+        expect(torchPlans(), 'still ONE torch plan').toHaveLength(1);
+        expect(torchPlans()[0].version).toBeGreaterThan(v1);
     });
 
     it('minting is deterministic — no Math.random anywhere in the path', () => {
