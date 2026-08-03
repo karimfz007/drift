@@ -161,7 +161,14 @@ export function createNodes(): WoodNode[] {
 
         // The quarry (D-051) — one large, visible, inland outcrop. High-capacity and
         // repeat-minable, unlike the scattered rk1-3 stone outcrops it sits apart from.
-        quarryNode('qr1', -46, 22)
+        quarryNode('qr1', -46, 22),
+
+        //  THE BOULDER FORMATION (Drop 2) — the bedrock bluff that closes the ONLINE half of
+        //  the renewability law. Placed apart from both the scattered outcrops and the
+        //  quarry, so the island's three stone tiers are three visibly different places: you
+        //  pick stone off the ground, you mine the seam until it is gone forever, and you
+        //  work the bluff for as long as you are willing to.
+        node('bo1', 'boulder', 38, -34)
     ];
 }
 

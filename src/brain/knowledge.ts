@@ -268,6 +268,13 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
         case 'rock':        // breaking surface stone — the gap the playtest found
         case 'deadfall':    // same hands, same axe-work
         case 'coconutpalm': // hold-kind: bringing down a palm is real work
+        //  DROP 2 — the boulder formation. Hold-kind and genuinely effortful, so mastery
+        //  SPEEDS it, exactly as the spec asks. What it deliberately does NOT do is train
+        //  anything: `domainForNodeKind` leaves it unmapped, so Ch.2's anti-grind holds by
+        //  construction rather than by tuning — an inexhaustible rock face is the one thing
+        //  in the game that could be ground forever, and it yields near-zero XP because
+        //  there is no channel from it to a score at all.
+        case 'boulder':
             return 'harvestingFabrication';
         //  `crashbox` is hold-kind but deliberately exempt — a one-time story beat with
         //  fixed contents, not a resource. Exactly the exemption regrowth already makes for

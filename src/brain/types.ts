@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -73,6 +73,8 @@ export type NodeKind =
     | 'shellfish'
     | 'crashbox'
     | 'quarry'
+    /** DROP 2 — the bedrock bluff. Effectively inexhaustible, deliberately slow. */
+    | 'boulder'
     | 'salvage';
 
 /** What a beach salvage find turns out to hold, rolled once at spawn (D-051). */

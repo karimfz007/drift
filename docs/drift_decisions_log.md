@@ -3,6 +3,24 @@
 
 ---
 
+**D-112 · 2026-08-03 — THE BOULDER FORMATION SHIPS, AND THE [[D-051]] FIRST AMENDMENT ENTERS FORCE WITH IT.** Effectivity binding honoured exactly: same commit, not before.
+
+**THE THIRD STONE TIER.** The island's geology now reads as three visibly different places. **(a) Scattered surface rock** — depletes in view, restocks out-of-view on the tide. Unchanged. **(b) The quarry seam** — rich, fast, genuinely finite forever. [[D-070]]'s regression stands, untouched. **(c) THE BOULDER FORMATION** — a bedrock bluff, effectively inexhaustible, deliberately slow and effortful: **2 stone per swing against the quarry's 4**, 3.6 energy against 2, and ~2.7x the energy per unit of stone. Always available, never fast, never free.
+
+**THE AMENDMENT'S NEW CLAUSE IS WHAT THIS NODE EXISTS FOR.** D-051's original text stands — no survival-critical resource is globally exhaustible, scarcity is rate and effort, never extinction — and is strengthened by: **the survival floor must be reachable through ACTIVE PLAY ALONE. Absence-restock is a gift, never the only path.** Before the bluff, a present player who had worked the surface stone and emptied the quarry had nothing left to do but wait for the tide, which made absence load-bearing — precisely what the amendment now forbids. **Absent → tide; present → the bluff.**
+
+**D-070 COMPATIBILITY, both directions.** Surface stone's tide restock stays legal because the bluff now supplies the active path. The finite quarry stays legal because it was never the survival floor. Both are asserted in `tests/boulder.test.ts` rather than argued.
+
+**IT NEVER PRETENDS TO DEPLETE, and one line enforces it.** The bluff is exempted from the depletion machinery outright: no pool, never marked unavailable, never queued for regrowth. My first cut stamped `depletedAtGameHours` for the chip-scar clock and the bluff **refused on the second swing** — the scar timestamp travelled straight through the machinery that marks a node dead. Caught by the property test on the first run. It keeps its scar clock; that stamp simply never reaches the depletion branch. **The island's skin heals; its mass never changes.** No blaze-mark either — that mark means "closer to spent", and the bluff never is.
+
+**ANTI-GRIND HOLDS BY CONSTRUCTION, not by tuning.** The bluff is in `masteryDomainForNodeKind` (mastery SPEEDS the work) and deliberately absent from `domainForNodeKind` (it trains nothing). There is no channel from an inexhaustible rock face to a knowledge score, so a thousand swings move no score at all — asserted directly. Getting better makes the job quicker; doing the job forever teaches nothing.
+
+**Class: OPERATIVE**
+
+*This entry is also the [[D-051]] First Amendment's own effectivity record: it enters force here, in the commit that ships the Boulder Formation, and not before.*
+
+*Witness: 794 unit tests across 46 files (12 new). Purity 38 brain files, tune-mirror 47, typecheck, build. Schema v17 → v18: the bluff MERGES into an existing save, because a save that never gains it is a save where the amendment is false.*
+
 **D-111 · 2026-08-02 — DROP 2: the boar's INJURY PROFILE ships; Boulder Formation is BLOCKED on a spec that does not exist.**
 
 **THE INJURY PROFILE.** Drop 1 shipped harm as a bare number on purpose and named this as the other half. Three conditions, each with its own clock and its own answer: **BLEEDING** costs health continuously until bound or clotted — the only one with a treatment, because it is the only one where doing nothing has a price; **LIMP** slows movement and cannot be treated, so it reads as a consequence rather than a chore; **PAIN** feeds `impairmentOf` in the resolver, which means a hurt survivor's whole day gets more expensive *in a currency the game already speaks* — no new machinery was needed for it to be felt. Conditions stack (disengaging after the first hit is correct) and every one is capped (a bad fight stays survivable).

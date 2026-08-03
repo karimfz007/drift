@@ -760,6 +760,7 @@ export const TUNE = {
     /** [TUNE] FIX-1 — one quarry-mining tap. Charged every tap (the quarry is
      *  repeat-minable, D-051) — the pool being large is not a reason mining it is free. */
     energyCostQuarryMine: 2,
+    /** [TUNE] Drop 2 — see `boulderEnergySwing`; the bluff is priced apart from the seam. */
     /** [TUNE] FIX-1 — shaking down a coconut palm. */
     energyCostCoconutGather: 1.5,
     /** [TUNE] FIX-1 — forcing open the sealed crash box (one-time; costed for consistency
@@ -872,6 +873,28 @@ export const TUNE = {
     // ---- The stone quarry (D-051) — one large, repeat-minable outcrop ------
     /** [TUNE] D-051 — total stone the quarry holds before it needs to regrow. */
     quarryStoneCapacity: 220,
+    // ---- THE BOULDER FORMATION (Drop 2) ---------------------------------------------------
+    /** [TUNE] Drop 2 — stone per swing at the bluff. STRICTLY BELOW `quarryYieldPerTap` (4),
+     *  which is the spec's own binding constraint: the inexhaustible tier must never be the
+     *  fast one, or the finite quarry stops being a decision. Two thirds of a quarry swing. */
+    boulderYieldPerSwing: 2,
+    /** [TUNE] Drop 2 — energy per swing. Higher than `energyCostQuarryMine` (2) because you
+     *  are breaking bedrock rather than lifting loose seam. Together with the halved yield
+     *  this makes the bluff cost ~2.7x the quarry's energy per unit of stone — always
+     *  available, never fast, never free. */
+    boulderEnergySwing: 3.6,
+    /** [TUNE] Drop 2 — seconds per swing by hand. Miserable on purpose. */
+    boulderHoldSecondsByHand: 5.5,
+    /** [TUNE] Drop 2 — with the stone hammer. Basis: a little over half the by-hand time, so
+     *  the hammer is the difference between viable and punishing without making it fast. A
+     *  future pick takes this further. */
+    boulderHoldSecondsWithHammer: 3.0,
+    /** [TUNE] Drop 2 — how long a chip scar stays before the rock face weathers smooth. The
+     *  island's SKIN heals; its mass never changes. ~2 game days. */
+    boulderScarFadeGameHours: 48,
+    /** [TUNE] Drop 2 — the bluff's footprint. Larger than `quarryCollisionRadius` because it
+     *  is a bigger thing; you walk around bedrock, you do not squeeze past it. */
+    boulderCollisionRadius: 2.6,
     /** [TUNE] D-051 — stone spent from the pool per successful mining tap. */
     quarryYieldPerTap: 4,
 

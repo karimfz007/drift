@@ -421,6 +421,28 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             m.rotation.y = 0.4;
             return at(m, 0.5, 1.1, TUNE.crashboxCollisionRadius);
         }
+        case 'boulder': {
+            //  THE BEDROCK BLUFF. World-truth distinct from BOTH other stone tiers at a
+            //  glance, which the honesty rules require: the scattered outcrops are small and
+            //  rounded, the quarry is a cluster of loose chunks, and this is ONE massive
+            //  slab — taller than the player, flat-faced, unmistakably part of the island
+            //  rather than sitting on it.
+            //
+            //  It carries NO harvest blaze-mark. That mark means "this has been worked and is
+            //  closer to spent", and the bluff is never closer to spent. Marking it would be
+            //  the same lie as a shrink animation, in a smaller font.
+            const slab = CreateCylinder(`n_${node.id}`, { height: 4.2, diameterTop: 3.1, diameterBottom: 3.9, tessellation: 7 }, scene);
+            slab.material = materials.quarry;
+            slab.rotation.y = index * 0.7;
+            //  A shoulder of bedrock at the base, so it reads as rooted rather than dropped.
+            const shoulder = CreateCylinder(`n_${node.id}_base`, { height: 1.3, diameterTop: 4.4, diameterBottom: 5.2, tessellation: 7 }, scene);
+            shoulder.material = materials.quarry;
+            shoulder.parent = slab;
+            shoulder.position.y = -1.9;
+            shoulder.isPickable = true;
+            shoulder.metadata = { nodeId: node.id };
+            return at(slab, 2.1, 4.2, TUNE.boulderCollisionRadius);
+        }
         case 'quarry': {
             //  One large, visible outcrop — a cluster, not a single boulder, so it reads as
             //  bigger and more substantial than the scattered rk1-3 stone at a glance.
@@ -966,6 +988,6 @@ export class StorageView {
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,
     berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true,
-    quarry: true, salvage: true
+    quarry: true, boulder: true, salvage: true
 };
 void _EXHAUSTIVE;

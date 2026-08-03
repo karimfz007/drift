@@ -173,6 +173,10 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
     shellfish: { interaction: 'tap', needsAxe: false, skill: 'foraging', holdBaseSeconds: 0 },
     crashbox: { interaction: 'hold', needsAxe: true, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
     quarry: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
+    //  DROP 2 — the bluff. No axe (it is stone), no skill (Ch.2's anti-grind: repetition on
+    //  an inexhaustible face must never become an XP faucet), and a hold long enough that
+    //  working it by hand is a real decision rather than a reflex.
+    boulder: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.boulderHoldSecondsByHand },
     salvage: { interaction: 'tap', needsAxe: false, skill: null, holdBaseSeconds: 0 }
 };
 
@@ -207,6 +211,7 @@ export function effortEnergyCostFor(kind: NodeKind): number {
         case 'deadfall': return TUNE.energyCostDeadfallGather;
         case 'rock': return TUNE.energyCostRockMine;
         case 'quarry': return TUNE.energyCostQuarryMine;
+        case 'boulder': return TUNE.boulderEnergySwing;
         case 'coconutpalm': return TUNE.energyCostCoconutGather;
         case 'crashbox': return TUNE.energyCostCrashboxOpen;
         case 'driftwood': return 0;
@@ -278,6 +283,17 @@ export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
         const level = state.skills.woodcutting.level;
         const base = spec.holdBaseSeconds / (1 + (level - 1) * TUNE.skillSpeedBonusPerLevel);
         return base * axeChopMultiplierFor(state.tools.axeGrade) * exhaustion * mastery;
+    }
+    //  THE BLUFF IS MISERABLE BY HAND AND WORKABLE WITH THE HAMMER. The hammer is the only
+    //  tool that touches it today; a pick takes this further later. Note what is NOT here:
+    //  no skill term. Ch.2's anti-grind holds by construction — mastery still speeds the work
+    //  through `mastery` below, but the bluff trains no skill, so an inexhaustible face can
+    //  never become an XP faucet however long you stand at it.
+    if (node.kind === 'boulder') {
+        const base = state.tools.stoneHammer
+            ? TUNE.boulderHoldSecondsWithHammer
+            : TUNE.boulderHoldSecondsByHand;
+        return base * exhaustion * mastery;
     }
     return spec.holdBaseSeconds * exhaustion * mastery;
 }
@@ -403,6 +419,23 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             node.pool = (node.pool ?? 0) - take;
             break;
         }
+        case 'boulder': {
+            //  THE BLUFF. Yields and NEVER depletes — `available` is untouched, there is no
+            //  pool, and nothing about this branch can make the node go away. That absence is
+            //  the mechanic: the D-051 First Amendment requires the survival floor to be
+            //  reachable through ACTIVE PLAY ALONE, and this is the path that asks only for
+            //  time and effort rather than for the tide.
+            //
+            //  It NEVER PRETENDS TO DEPLETE. No shrink, no pool counter, no "exhausted" state
+            //  — a rock face that visibly wore away would be the game lying about its own
+            //  geology, and the honesty rules forbid it. What it does record is a chip SCAR
+            //  (see `boulderScarFadeGameHours`), which weathers smooth again: the island's
+            //  skin heals, its mass never changes.
+            state.inventory.stone += TUNE.boulderYieldPerSwing;
+            gained.stone = TUNE.boulderYieldPerSwing;
+            node.depletedAtGameHours = state.gameHoursElapsed;   // the scar's clock, not a death
+            break;
+        }
         case 'salvage': {
             //  Plain odds, no loot-box dressing (D-051): the reward was rolled once at
             //  spawn time and simply revealed now.
@@ -468,8 +501,18 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
     //  The quarry stays available until its pool is actually spent — every other kind is
     //  single-shot, exactly as before. Either way, depletion is stamped with the game clock
     //  so the renewability law (reconcile.ts) knows when to start counting toward regrowth.
+    //  DROP 2 — THE BLUFF IS NEVER SPENT, and this is the line that enforces it. It has no
+    //  pool to run down and it is never marked unavailable, so there is no state in which the
+    //  survivor arrives to find it gone. That is the D-051 First Amendment in one clause:
+    //  the active-play path cannot be closed by having used it.
+    //
+    //  It keeps a scar timestamp of its own (set in the gather branch) for the cosmetic chip
+    //  marks that weather away — the island's skin heals, its mass never changes — but that
+    //  stamp must never travel through the depletion machinery, which is what marks a node
+    //  dead and queues it for regrowth.
+    const inexhaustible = node.kind === 'boulder';
     const stillHasPool = node.kind === 'quarry' && (node.pool ?? 0) > 0;
-    if (!stillHasPool) {
+    if (!inexhaustible && !stillHasPool) {
         node.available = false;
         node.depletedAtGameHours = state.gameHoursElapsed;
     }
@@ -519,6 +562,13 @@ export function regrowGameHoursFor(kind: NodeKind): number {
         //  survival floor holds while the *rich* seam is genuinely exhaustible. Scarcity of
         //  convenience, not of survival.
         case 'quarry': return Infinity;
+        //  THE BOULDER FORMATION — the third tier, and the one that closes the ONLINE half of
+        //  the renewability law. `Infinity` here does NOT mean "spent forever": the bluff
+        //  never becomes unavailable in the first place, so it never enters the regrow queue.
+        //  It is effectively inexhaustible, which is a different thing from renewable and is
+        //  exactly the distinction the D-051 First Amendment turns on — absence-restock is a
+        //  gift, and this is the path that does not require one.
+        case 'boulder': return Infinity;
         case 'salvage': return Infinity; // claimed and gone; the beach spawns a new one instead
         case 'crashbox': return Infinity; // exempt: a one-time beat, not a resource
     }

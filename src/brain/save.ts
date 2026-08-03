@@ -14,6 +14,7 @@ import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshJournal } from './state';
 import { createBoars } from './fauna';
+import { createNodes } from '../data/world';
 import { freshInjuries } from './injury';
 import { freshMatterWear } from './matter';
 import { createInitialState } from './state';
@@ -102,6 +103,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 14) current = migrateV14toV15(current);
     if (current.schemaVersion === 15) current = migrateV15toV16(current);
     if (current.schemaVersion === 16) current = migrateV16toV17(current);
+    if (current.schemaVersion === 17) current = migrateV17toV18(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -589,6 +591,28 @@ function migrateV16toV17(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         injuries: old.injuries ?? freshInjuries(),
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v17 → v18 (Drop 2, the Boulder Formation). MERGES the bluff into an existing save's node
+ * list — the same shape v3→v4 used for the quarry and v8→v9 for the trees, and necessary for
+ * the same reason: `hydrate` deliberately preserves a save's own nodes, so without this a
+ * returning player would keep an island that has no active-play stone path forever.
+ *
+ * That is not a cosmetic omission. The [[D-051]] FIRST AMENDMENT enters force with this
+ * commit, and its clause is that the survival floor must be reachable through ACTIVE PLAY
+ * ALONE. A save that never gains the bluff is a save where the amendment is false.
+ */
+function migrateV17toV18(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const nodes = Array.isArray(old.nodes) ? [...old.nodes] : [];
+    const hasBluff = nodes.some((n) => n.kind === 'boulder');
+    const state: GameState = {
+        ...old,
+        nodes: hasBluff ? nodes : [...nodes, ...createNodes().filter((n) => n.kind === 'boulder')],
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

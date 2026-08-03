@@ -148,6 +148,12 @@ describe('knowledge — item 4: mapping existing verbs to domains (only what the
             shellfish: null,
             crashbox: null,
             quarry: 'harvestingFabrication',
+            //  DROP 2 — the boulder formation trains NOTHING, deliberately. It is the one
+            //  inexhaustible face in the game, so a channel from it to a domain score would
+            //  be an XP faucet that never runs dry. Mastery still SPEEDS the work (it is in
+            //  `masteryDomainForNodeKind`), which is the asymmetry the anti-grind rule wants:
+            //  getting better makes the job quicker, doing the job forever teaches nothing.
+            boulder: null,
             salvage: 'harvestingFabrication'
         };
         for (const kind of ALL_NODE_KINDS) {
