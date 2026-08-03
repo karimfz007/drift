@@ -416,3 +416,36 @@ describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 c
         expect(s.inventory.fiber).toBe(before - TUNE.spearFiberCost);
     });
 });
+
+describe('EVERY CRAFTABLE HAS A SURFACE — the defect Drop 1 actually shipped', () => {
+    /**
+     * THE REAL BUG, and it was neither a display bug nor a signature collision.
+     * `craftSpear` shipped with **ZERO CALLERS**. The recipe resolved, the blueprint minted,
+     * the ladder reached `demonstrated`, the thrust verb was wired, and there was nowhere in
+     * the game to turn any of that into an object.
+     *
+     * My Drop 1 reachability proof called `craftSpear()` directly, so it proved the materials
+     * were obtainable and the function worked. Neither claim touches the one that matters:
+     * **can a player get there.** This test asserts the missing half — that every craft
+     * function the brain exposes is reachable from a surface the body actually renders.
+     */
+    it('no craft function exists without a caller outside its own module', async () => {
+        const { readFileSync } = await import('node:fs');
+        const state = await import('../src/brain/state');
+        const bodySrc = readFileSync('src/body/game.ts', 'utf8')
+            + readFileSync('src/body/hud.ts', 'utf8');
+
+        const crafts = Object.keys(state).filter((k) => /^(craft|make)[A-Z]/.test(k));
+        expect(crafts.length, 'the sweep found no craft functions at all').toBeGreaterThan(3);
+
+        const stranded = crafts.filter((fn) => !bodySrc.includes(fn));
+        expect(stranded, `craftable(s) with no surface: ${stranded.join(', ')}`).toEqual([]);
+    });
+
+    it('the spear specifically is offered by the Build card', async () => {
+        const { readFileSync } = await import('node:fs');
+        const hud = readFileSync('src/body/hud.ts', 'utf8');
+        expect(hud).toContain('spear-btn');
+        expect(readFileSync('src/body/game.ts', 'utf8')).toContain('craftSpear');
+    });
+});

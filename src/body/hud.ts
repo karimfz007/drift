@@ -386,6 +386,10 @@ export interface BuildCardView {
     storage: BuildItemView;
     /** The stone hammer (Ch.1 v3, D-055) — a fifth, one-time Build-panel entry. */
     stoneHammer: BuildItemView;
+    /** DROP 1 FIX — the spear. It had a recipe, a craft function and a verb, and NO SURFACE. */
+    spear: BuildItemView;
+    /** Item 1 FIX — the backpack, stranded the same way one session later. */
+    backpack: BuildItemView;
     /**
      * The teaching half of the pivot, and the reason subtraction is survivable. An empty
      * panel with no hints is a dead end and a bug report; an empty panel that says *"the dark
@@ -495,6 +499,8 @@ export function showBuildCard(
     onBuildShelter: () => void,
     onBuildStorage: () => void,
     onCraftStoneHammer: () => void,
+    onCraftSpear: () => void,
+    onMakeBackpack: () => void,
     onKnapSharpblade: () => void,
     onClose: () => void,
     onMendShelter: () => void = () => {},
@@ -543,6 +549,10 @@ export function showBuildCard(
                 { wood: TUNE.storageWoodCost, stone: TUNE.storageStoneCost }, 'Set.', 'Set the crate', 'storage-btn')}
             ${buildItemMarkup('Stone hammer', 'Tier 0. Its one job: knapping stone into a blade, below.', view.stoneHammer,
                 { wood: TUNE.stoneHammerWoodCost, stone: TUNE.stoneHammerStoneCost }, 'Owned.', 'Make the hammer', 'stonehammer-btn')}
+            ${buildItemMarkup('Spear', 'A shaft and a knapped edge, lashed tight. The only thing that answers a boar.', view.spear,
+                { wood: TUNE.spearWoodCost, sharpblade: TUNE.spearSharpbladeCost, fiber: TUNE.spearFiberCost }, 'Owned.', 'Make the spear', 'spear-btn')}
+            ${buildItemMarkup('Backpack', 'A frame and a lashing. Carry properly instead of in your arms.', view.backpack,
+                { fiber: TUNE.backpackFiberCost, wood: TUNE.backpackWoodCost }, 'Owned.', 'Make the pack', 'backpack-btn')}
             ${view.mendShelter ? `
             <div class="build-item mend-item">
                 <div class="build-head"><strong>Mend the shelter</strong></div>
@@ -564,6 +574,8 @@ export function showBuildCard(
     bind('.shelter-btn', onBuildShelter);
     bind('.storage-btn', onBuildStorage);
     bind('.stonehammer-btn', onCraftStoneHammer);
+    bind('.spear-btn', onCraftSpear);
+    bind('.backpack-btn', onMakeBackpack);
     bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
 }
@@ -698,6 +710,8 @@ const ZONE_LABEL: Record<string, string> = {
 const TOOL_LABEL: Record<string, string> = {
     axe: 'Axe',
     stoneHammer: 'Stone hammer',
+    spear: 'Spear',
+    backpack: 'Backpack',
     torch: 'Torch',
     flask: 'Flask'
 };

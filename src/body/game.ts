@@ -33,6 +33,8 @@ import {
     canRepairStructure,
     craftAxe,
     craftStoneHammer,
+    craftSpear,
+    makeBackpack,
     craftTorch,
     distance,
     drinkAtPond,
@@ -1625,7 +1627,13 @@ export class Game {
                 mendShelter: canRepairStructure(s, 'shelter')
                     ? { durability: s.shelter.durability, max: TUNE.structureDurabilityMax, gain: TUNE.repairDurabilityPerWood }
                     : null,
-                stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer, revealed: revealedInPanel(s, 'stonehammer') }
+                stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer, revealed: revealedInPanel(s, 'stonehammer') },
+                //  DROP 1 FIX — the spear finally has somewhere to be made. It shipped with a
+                //  recipe, a craft function, a thrust verb and a reachability test, and no
+                //  surface at all: the blueprint minted, the ladder said `demonstrated`, and
+                //  there was nowhere to turn that into an object.
+                spear: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.spear, revealed: revealedInPanel(s, 'spear') },
+                backpack: { have: { fiber: s.inventory.fiber, wood: s.inventory.wood }, done: s.tools.backpack, revealed: true }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {
@@ -1660,6 +1668,33 @@ export class Game {
                     session().markFirstCraft(msSinceControl());
                     session().persist(now());
                     this.showHint('Open Build again to knap a sharp blade.');
+                }
+                this.lastActivityAt = now();
+            },
+            //  DROP 1 FIX — the spear's handler. There was never one: `craftSpear` shipped
+            //  with ZERO callers, so a survivor who discovered the recipe and reached
+            //  `demonstrated` on the ladder had nowhere to turn that into an object.
+            () => {
+                this.endPanel();
+                if (craftSpear(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the spear is yours');
+                    session().persist(now());
+                    this.showHint('Hold a boar to thrust. Wait for the aftermath.');
+                } else {
+                    this.explain('Not enough for a spear yet.');
+                }
+                this.lastActivityAt = now();
+            },
+            () => {
+                this.endPanel();
+                if (makeBackpack(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the pack is yours');
+                    session().persist(now());
+                    this.showHint('You can carry properly now.');
+                } else {
+                    this.explain('Not enough for a pack yet.');
                 }
                 this.lastActivityAt = now();
             },
