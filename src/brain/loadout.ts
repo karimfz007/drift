@@ -133,7 +133,7 @@ export function syncLoadoutToOwnership(state: GameState): void {
 
 export type EquipResult =
     | { ok: true; displaced: ToolId | null }
-    | { ok: false; reason: 'not-owned' | 'already-held' };
+    | { ok: false; reason: 'not-owned' | 'already-held' | 'two-handed' | 'other-hand-full' };
 
 /**
  * Put a tool in the active hand — item 2's equip/switch, expressed as a zone operation
@@ -154,6 +154,35 @@ export function equipToActiveHand(state: GameState, tool: ToolId): EquipResult {
     }
     state.loadout.activeHand = tool;
     return { ok: true, displaced };
+}
+
+/**
+ * THE SUPPORT HAND — item 3's other half, and it reuses `equipToActiveHand`'s exact rules
+ * rather than inventing a second set. Two refusals are specific to this hand and both are
+ * physical facts rather than UI policy:
+ *
+ *   - a TWO-HANDED tool cannot go here at all, because it is already using both hands;
+ *   - and it cannot go here while a two-handed tool is in the active hand, for the same
+ *     reason from the other direction. `supportHand` is modelled precisely so that
+ *     constraint is expressible instead of implied.
+ */
+export function equipToSupportHand(state: GameState, tool: ToolId): EquipResult {
+    if (!ownsTool(state, tool)) return { ok: false, reason: 'not-owned' };
+    if (state.loadout.supportHand === tool) return { ok: false, reason: 'already-held' };
+    if (isTwoHanded(tool)) return { ok: false, reason: 'two-handed' };
+    if (state.loadout.activeHand && isTwoHanded(state.loadout.activeHand)) {
+        return { ok: false, reason: 'other-hand-full' };
+    }
+    clearTool(state.loadout, tool);
+    state.loadout.supportHand = tool;
+    return { ok: true, displaced: null };
+}
+
+/** Empty the support hand. Same contract as `stowActiveHand`. */
+export function stowSupportHand(state: GameState): boolean {
+    if (!state.loadout.supportHand) return false;
+    state.loadout.supportHand = null;
+    return true;
 }
 
 /** Empty the active hand. The tool is not destroyed — it goes back to general carry. */

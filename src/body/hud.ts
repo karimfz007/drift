@@ -742,6 +742,7 @@ export interface LoadoutPanelView {
     /** LAW 126: the Backpack's other two tabs. Both are READ from the brain — this layer
      *  renders them and derives nothing, exactly as the Inventory tab already does. */
     vitals: BodyReportView;
+    vitalsExtra?: VitalsExtraView;
     /** LAW 126: the maker route, now living in the Backpack. Same gate the retired global
      *  button used — the door moved, the lock did not change. */
     maker: { visible: boolean; label: string };
@@ -793,16 +794,51 @@ function tabBar(active: BackpackTab): string {
  * The Vitals tab. Reads `bodyReport` and renders it — the bars already carry the summary, so
  * what this adds is the CAUSE, which is the part a player can act on.
  */
-function vitalsBody(view: BodyReportView): string {
+/** Item 3 — what the Vitals tab now also carries: the wound, and both hands. */
+export interface VitalsExtraView {
+    injuries: { bleeding: number; limp: number; pain: number };
+    injuryNote: string | null;
+    activeHand: string | null;
+    supportHand: string | null;
+    equippable: string[];
+}
+
+function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
     const rows = view.lines.map((l) => `
         <div class="vital-line${l.pressing ? ' pressing' : ''}">
             <div class="build-head"><strong>${l.label}</strong><span class="standing-chip">${l.standing}</span></div>
             ${l.cause ? `<p class="subtitle vital-cause">${l.cause}</p>` : ''}
         </div>`).join('');
+    //  ITEM 3 — THE WOUND, SHOWN HERE AND NOT ONLY AS A HUD LINE. The HUD note is one
+    //  sentence that appears and passes; this is the place a survivor comes to ask "how bad
+    //  is it, actually". Each condition reports its own state in its own units, because
+    //  bleeding, a limp and pain are three different problems with three different answers.
+    const injuryRows = !extra || (!extra.injuries.bleeding && !extra.injuries.limp && !extra.injuries.pain)
+        ? '<div class="vital-line"><div class="build-head"><strong>Injuries</strong><span class="standing-chip">None</span></div></div>'
+        : `
+        <div class="vital-line pressing">
+            <div class="build-head"><strong>Injuries</strong><span class="standing-chip">Hurt</span></div>
+            ${extra.injuries.bleeding > 0 ? '<p class="subtitle vital-cause">Bleeding — bind it with fibre at the shelter.</p>' : ''}
+            ${extra.injuries.limp > 0 ? `<p class="subtitle vital-cause">Limping — about ${Math.ceil(extra.injuries.limp)} more hour(s).</p>` : ''}
+            ${extra.injuries.pain > 0 ? '<p class="subtitle vital-cause">In pain — every job is costing you more.</p>' : ''}
+        </div>`;
+
+    //  BOTH HANDS, equippable from here. Reuses the shipped carriage mechanism rather than a
+    //  second one: `equipToActiveHand` / `equipToSupportHand` enforce the same rules,
+    //  including the two-handed constraint that is why `supportHand` is modelled at all.
+    const handRows = !extra ? '' : `
+        <div class="vital-line">
+            <div class="build-head"><strong>Hands</strong><span class="standing-chip">L: ${extra.supportHand ?? 'empty'} · R: ${extra.activeHand ?? 'empty'}</span></div>
+            ${extra.equippable.length === 0 ? '<p class="subtitle vital-cause">Nothing made yet to hold.</p>' : `
+            <div class="hand-chips">${extra.equippable.map((t) => `
+                <button class="quiet hand-chip" data-hand="left" data-tool="${t}" type="button">L: ${t}</button>
+                <button class="quiet hand-chip" data-hand="right" data-tool="${t}" type="button">R: ${t}</button>`).join('')}</div>`}
+        </div>`;
+
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${rows}</div>`;
+        <div class="build-list">${rows}${injuryRows}${handRows}</div>`;
 }
 
 export function showLoadout(
@@ -815,6 +851,7 @@ export function showLoadout(
     onRepairStorage: () => void = () => {},
     onTryCombine: (materials: string[]) => void = () => {},
     onDrop: (material: string) => void = () => {},
+    onEquipHand: (tool: string, hand: 'left' | 'right') => void = () => {},
     //  `onGrowth` is gone: the growth card is a TAB now, not a separate surface, so the
     //  shortcut switches tabs rather than opening one. Retiring the parameter rather than
     //  leaving it inert — a hook nothing calls is the next reader's false lead.
@@ -895,7 +932,7 @@ export function showLoadout(
         ${dropRow}
         <div class="zones">${zoneRows}</div>`;
 
-    const activeBody = tab === 'vitals' ? vitalsBody(view.vitals)
+    const activeBody = tab === 'vitals' ? vitalsBody(view.vitals, view.vitalsExtra)
         : tab === 'skills' ? growthBody(view.skills)
         : inventoryBody;
 
@@ -906,6 +943,13 @@ export function showLoadout(
     //  already held, and releasing it between tabs would let a world tap through the gap —
     //  the exact class of leak D-063's INPUT SAFETY law exists to prevent.
     //  ITEM 2 — one listener for every drop chip, delegated so a re-render cannot strand it.
+    for (const chip of el.querySelectorAll<HTMLButtonElement>('.hand-chip')) {
+        chip.addEventListener('click', () => {
+            const tool = chip.dataset.tool;
+            const hand = chip.dataset.hand === 'left' ? 'left' : 'right';
+            if (tool) onEquipHand(tool, hand);
+        });
+    }
     for (const chip of el.querySelectorAll<HTMLButtonElement>('.drop-chip')) {
         chip.addEventListener('click', () => {
             const mat = chip.dataset.drop;

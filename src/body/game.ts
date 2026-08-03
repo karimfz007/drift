@@ -54,6 +54,7 @@ import {
     lightTorch,
     carriedWeightKg,
     equipToActiveHand,
+    equipToSupportHand,
     isOverloaded,
     loadoutView,
     ownedTools,
@@ -595,6 +596,13 @@ export class Game {
                 //  Backpack shows exactly what the retired button would have.
                 maker: this.hud.makerEntry(),
                 vitals: bodyReport(s),
+                vitalsExtra: {
+                    injuries: { bleeding: s.injuries.bleeding, limp: s.injuries.limp, pain: s.injuries.pain },
+                    injuryNote: injuryNote(s.injuries),
+                    activeHand: s.loadout.activeHand,
+                    supportHand: s.loadout.supportHand,
+                    equippable: ownedTools(s),
+                },
                 skills: growthReport(s, s.capacities)
             },
             (tool) => {
@@ -619,6 +627,23 @@ export class Game {
                 this.showHint('It keeps for three days. Pick it up to reset that.');
                 session().persist(now());
                 this.lastActivityAt = now();
+            },
+            (tool: string, hand: 'left' | 'right') => {
+                const s2 = session().state;
+                const r = hand === 'right'
+                    ? equipToActiveHand(s2, tool as never)
+                    : equipToSupportHand(s2, tool as never);
+                if (!r.ok) {
+                    //  Nearest-true-reason, same as the circle: say the ONE thing in the way.
+                    this.explain(r.reason === 'two-handed' ? 'That needs both hands.'
+                        : r.reason === 'other-hand-full' ? 'Your other hand is full with something two-handed.'
+                        : r.reason === 'already-held' ? 'Already in that hand.'
+                        : 'You do not have one.');
+                    return;
+                }
+                this.cues.play(CUES.pickup);
+                this.floatText(`${tool} in ${hand} hand`);
+                session().persist(now());
             },
             //  LAW 126: which tab, and how to switch. The lock is NOT released between tabs
             //  — the panel re-renders in place — because releasing it would let a world tap

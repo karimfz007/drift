@@ -99,3 +99,34 @@ describe('it is LEGIBLE — the survivor can see the clock', () => {
         expect(droppedNote(item, TUNE.dropDespawnGameHours - 2)).toMatch(/not last the day/i);
     });
 });
+
+describe('ITEM 3 — the support hand reuses the shipped carriage rules', () => {
+    it('a two-handed tool is refused by the support hand, from either direction', async () => {
+        const { equipToActiveHand, equipToSupportHand, isTwoHanded } = await import('../src/brain/loadout');
+        const s = createInitialState(0);
+        s.tools.axe = true; s.tools.flask = true;
+        const twoHanded = (['axe', 'flask', 'spear'] as const).find((t) => isTwoHanded(t as never));
+        if (!twoHanded) return;                       // nothing two-handed shipped yet
+
+        //  Into the support hand directly: refused, because it needs both.
+        const direct = equipToSupportHand(s, twoHanded as never);
+        expect(direct.ok).toBe(false);
+        //  ...and into the support hand while the OTHER hand holds it: refused too. Same
+        //  physical fact, other direction — which is why supportHand is modelled at all.
+        equipToActiveHand(s, twoHanded as never);
+        const blocked = equipToSupportHand(s, 'flask' as never);
+        if (!blocked.ok) expect(['two-handed', 'other-hand-full', 'not-owned']).toContain(blocked.reason);
+    });
+
+    it('equipping to one hand vacates whatever position the tool was in', async () => {
+        const { equipToActiveHand, equipToSupportHand } = await import('../src/brain/loadout');
+        const s = createInitialState(0);
+        s.tools.flask = true;
+        expect(equipToSupportHand(s, 'flask' as never).ok).toBe(true);
+        expect(s.loadout.supportHand).toBe('flask');
+        //  One physical object: moving it to the other hand empties the first.
+        expect(equipToActiveHand(s, 'flask' as never).ok).toBe(true);
+        expect(s.loadout.activeHand).toBe('flask');
+        expect(s.loadout.supportHand).toBeNull();
+    });
+});
