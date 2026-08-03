@@ -965,20 +965,20 @@ export function craftAxe(state: GameState): boolean {
 export function canMakeBackpack(state: GameState): boolean {
     return !state.tools.backpack
         && state.inventory.fiber >= TUNE.backpackFiberCost
-        && state.inventory.sharpblade >= TUNE.backpackBladeCost;
+        && state.inventory.wood >= TUNE.backpackWoodCost;
 }
 
-export function backpackShortfall(state: GameState): { fiber: number; sharpblade: number } {
+export function backpackShortfall(state: GameState): { fiber: number; wood: number } {
     return {
         fiber: Math.max(0, TUNE.backpackFiberCost - state.inventory.fiber),
-        sharpblade: Math.max(0, TUNE.backpackBladeCost - state.inventory.sharpblade)
+        wood: Math.max(0, TUNE.backpackWoodCost - state.inventory.wood)
     };
 }
 
 export function makeBackpack(state: GameState): boolean {
     if (!canMakeBackpack(state)) return false;
     state.inventory.fiber -= TUNE.backpackFiberCost;
-    state.inventory.sharpblade -= TUNE.backpackBladeCost;
+    state.inventory.wood -= TUNE.backpackWoodCost;
     state.tools.backpack = true;
     recordTrying(state, 'harvestingFabrication');
     return true;

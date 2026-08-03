@@ -141,7 +141,7 @@ describe('THE BACKPACK IS EARNED (item 1)', () => {
         const s = createInitialState(0);
         expect(canMakeBackpack(s)).toBe(false);            // nothing carried yet
         s.inventory.fiber = TUNE.backpackFiberCost;
-        s.inventory.sharpblade = TUNE.backpackBladeCost;
+        s.inventory.wood = TUNE.backpackWoodCost;
         expect(makeBackpack(s)).toBe(true);
         expect(s.tools.backpack).toBe(true);
         expect(s.inventory.fiber).toBe(0);
@@ -154,5 +154,34 @@ describe('THE BACKPACK IS EARNED (item 1)', () => {
         const v18 = { schemaVersion: 18, savedAtMs: 1_700_000_000_000,
             state: { ...s, tools: { ...s.tools, backpack: undefined }, schemaVersion: 18 } };
         expect(migrate(v18 as never)!.state.tools.backpack).toBe(true);
+    });
+});
+
+describe('THE PIVOT LAW HOLDS FOR THE BACKPACK TOO (device-caught regression)', () => {
+    it('a fresh castaway is offered NOTHING — the Backpack row included', async () => {
+        //  I shipped this row as `revealed: true` and the device harness caught it inside one
+        //  run. SLICE 2B's pivot is that the panel starts EMPTY; a hardcoded reveal put a
+        //  Backpack in front of someone four seconds off the beach. Not mine to except.
+        const { revealedInPanel } = await import('../src/brain/reveal');
+        expect(revealedInPanel(createInitialState(0), 'backpack')).toBe(false);
+    });
+
+    it('KNOWN-OPEN: the backpack has no discovery route, so the gated row never appears', async () => {
+        //  Stated as a defect rather than hidden. Gating the row restored SLICE 2B's pivot
+        //  law — the thing the device caught — but `revealedInPanel` needs a DEMONSTRATED
+        //  ladder, which needs a blueprint, which needs a recipe in the discovery table. The
+        //  backpack has none, so the row is now correctly gated and permanently closed.
+        //
+        //  Restoring the recipe is NOT a one-line change: recipe ORDER decides resolution,
+        //  and inserting it ahead of the torch flipped two shipped tests immediately. That is
+        //  matcher work, and I am not tuning list order blind at the end of a session — the
+        //  last three times I pushed on with partial information this session I was wrong.
+        //
+        //  Closed by: the next session, alongside item 5's combination-evidence work, which
+        //  touches the same surface. The craft itself remains reachable directly.
+        const { allRecipes } = await import('../src/brain/recipes');
+        const { revealedInPanel } = await import('../src/brain/reveal');
+        expect(allRecipes().map((r) => r.id)).not.toContain('backpack');
+        expect(revealedInPanel(createInitialState(0), 'backpack')).toBe(false);
     });
 });

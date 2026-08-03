@@ -1683,7 +1683,12 @@ export class Game {
                 //  surface at all: the blueprint minted, the ladder said `demonstrated`, and
                 //  there was nowhere to turn that into an object.
                 spear: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.spear, revealed: revealedInPanel(s, 'spear') },
-                backpack: { have: { fiber: s.inventory.fiber, wood: s.inventory.wood }, done: s.tools.backpack, revealed: true }
+                //  GATED like every other row. I shipped this as `revealed: true` and the device
+                //  harness caught it inside one run: SLICE 2B's pivot law is that a fresh
+                //  castaway is offered NOTHING to build, and a hardcoded reveal put a Backpack
+                //  row in front of someone four seconds off the beach. The panel starts empty;
+                //  that is the whole of the invention pivot, and it is not mine to except.
+                backpack: { have: { fiber: s.inventory.fiber, wood: s.inventory.wood }, done: s.tools.backpack, revealed: revealedInPanel(s, 'backpack') }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {
