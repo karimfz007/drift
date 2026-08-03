@@ -465,6 +465,12 @@
         .gate-hint { font-size: 12px; color: var(--dim); text-align: left; margin: -3px 4px 3px; }
         .death-count { color: var(--dim); font-size: 14px; }
 
+        /* Item 4 — the skill progress bar. Same visual language as a vital bar so a player
+           reads it without being taught: a filled track means "this much of the way". */
+        .skill-bar { height: 6px; background: rgba(255,255,255,0.10); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
+        .skill-fill { height: 100%; background: var(--good); border-radius: 3px; transition: width 220ms ease; }
+        .drop-chips, .hand-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
         /* THE DEATH REVIEW (Slice 3). The panel is now long enough to need scrolling on a
            phone, and the same REACHABILITY rule the Backpack learned the hard way applies:
            the button at the bottom must stay on screen, or the player can read their own

@@ -130,3 +130,31 @@ describe('ITEM 3 — the support hand reuses the shipped carriage rules', () => 
         expect(s.loadout.supportHand).toBeNull();
     });
 });
+
+describe('ITEM 4 — the Skills tab shows the skills', () => {
+    it('the two shipped skills exist with level and XP, and progress is readable', async () => {
+        //  THE GAP: the tab carried §12's capacities and §15's crossings, both of which are
+        //  about what the island has done to the BODY. Neither is a skill. `woodcutting` and
+        //  `foraging` have shipped since Cycle 03 with levels driving real speed multipliers,
+        //  and a survivor had nowhere to see either number.
+        const { levelProgress } = await import('../src/brain/skills');
+        const s = createInitialState(0);
+        expect(Object.keys(s.skills).sort()).toEqual(['foraging', 'woodcutting']);
+        for (const sk of Object.values(s.skills)) {
+            expect(sk.level).toBeGreaterThanOrEqual(1);
+            const p = levelProgress(sk);
+            expect(p).toBeGreaterThanOrEqual(0);
+            expect(p).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('the panel renders them — level and a progress bar per skill', async () => {
+        const { readFileSync } = await import('node:fs');
+        const hud = readFileSync('src/body/hud.ts', 'utf8');
+        expect(hud).toContain('skill-bar');
+        expect(hud).toContain('levelProgress');
+        //  Read from `levelProgress`, the same function the level-up beat uses, so the bar
+        //  and the beat can never disagree about how close you are.
+        expect(hud).toContain('playerSkills');
+    });
+});

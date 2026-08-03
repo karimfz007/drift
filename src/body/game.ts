@@ -603,7 +603,8 @@ export class Game {
                     supportHand: s.loadout.supportHand,
                     equippable: ownedTools(s),
                 },
-                skills: growthReport(s, s.capacities)
+                skills: growthReport(s, s.capacities),
+                playerSkills: s.skills
             },
             (tool) => {
                 const result = equipToActiveHand(session().state, tool as ReturnType<typeof ownedTools>[number]);

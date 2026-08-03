@@ -8,6 +8,9 @@
  */
 
 import { formatClock, levelProgress, type MorningReport, type Skills } from '../brain';
+
+/** Player-facing names for the shipped skills. */
+const SKILL_LABEL: Record<string, string> = { woodcutting: 'Woodcutting', foraging: 'Foraging' };
 import { TUNE } from '../data/tune';
 import { CSS } from './theme';
 
@@ -743,6 +746,8 @@ export interface LoadoutPanelView {
      *  renders them and derives nothing, exactly as the Inventory tab already does. */
     vitals: BodyReportView;
     vitalsExtra?: VitalsExtraView;
+    /** Item 4 — the two shipped skills, which this panel never showed. */
+    playerSkills?: Skills;
     /** LAW 126: the maker route, now living in the Backpack. Same gate the retired global
      *  button used — the door moved, the lock did not change. */
     maker: { visible: boolean; label: string };
@@ -933,7 +938,7 @@ export function showLoadout(
         <div class="zones">${zoneRows}</div>`;
 
     const activeBody = tab === 'vitals' ? vitalsBody(view.vitals, view.vitalsExtra)
-        : tab === 'skills' ? growthBody(view.skills)
+        : tab === 'skills' ? growthBody(view.skills, view.playerSkills)
         : inventoryBody;
 
     el.innerHTML = `${tabBar(tab)}${activeBody}
@@ -1029,7 +1034,7 @@ export function showGrowthCard(
  * The Skills tab's body, extracted so the Backpack hub renders exactly what the standalone
  * card did — the same markup, not a second copy that drifts from it.
  */
-function growthBody(report: GrowthReportView): string {
+function growthBody(report: GrowthReportView, skills?: Skills): string {
     const capacityRows = report.capacities.map((c) => `
         <div class="growth-item standing-${c.standing.replace(/\s+/g, '-')}">
             <div class="build-head"><strong>${c.label}</strong><span class="standing-chip">${c.standing}</span></div>
@@ -1046,10 +1051,34 @@ function growthBody(report: GrowthReportView): string {
             ${x.missing ? `<p class="growth-how">${x.missing}</p>` : ''}
         </div>`).join('');
 
+    //  ITEM 4 — THE ACTUAL SKILLS, which this tab did not show at all.
+    //
+    //  It carried §12's capacities and §15's crossings, both of which are about what the
+    //  island has done to the BODY. Neither is a skill. `woodcutting` and `foraging` have
+    //  shipped since Cycle 03 with levels and XP that drive real speed multipliers, and a
+    //  survivor had nowhere to see either number — so "am I getting better at this" was
+    //  answerable only by feel.
+    //
+    //  Shown FIRST, above the capacities: a skill is the thing the player is deliberately
+    //  practising, and the capacities are what happens to them while they do it. Progress is
+    //  read from `levelProgress`, the same function the level-up beat uses, so the bar and
+    //  the beat can never disagree about how close you are.
+    const skillRows = !skills ? '' : (Object.entries(skills) as Array<[string, { level: number; xp: number }]>)
+        .map(([name, sk]) => {
+            const pct = Math.round(levelProgress(sk) * 100);
+            return `
+        <div class="growth-item skill-item">
+            <div class="build-head"><strong>${SKILL_LABEL[name] ?? name}</strong><span class="standing-chip">Level ${sk.level}</span></div>
+            <div class="skill-bar"><div class="skill-fill" style="width:${pct}%"></div></div>
+            <p class="growth-how">${pct}% toward level ${sk.level + 1}.</p>
+        </div>`;
+        }).join('');
+
     return `
         <h2>What the island has done to you</h2>
         <p class="subtitle growth-summary">${report.summary}</p>
         <div class="build-list">
+            ${skillRows ? `<div class="growth-divider">What you are practising</div>${skillRows}<div class="growth-divider">What it has made of you</div>` : ''}
             ${capacityRows}
             <div class="growth-divider">Where two things meet</div>
             ${crossRows}
