@@ -991,3 +991,141 @@ const _EXHAUSTIVE: Record<NodeKind, true> = {
     quarry: true, boulder: true, salvage: true
 };
 void _EXHAUSTIVE;
+
+/**
+ * THE CAVE (Drop 3 Part 2 item 2) — the body [[D-117]] shipped without, and named as its own
+ * blocker: *"mechanically reachable, not findable"*.
+ *
+ * WHAT WAS ACTUALLY MISSING. The cave had state, a refuge profile, a migration and passing
+ * reachability tests, and nothing on screen. A survivor who happened to walk within 3 m of an
+ * invisible point got shelter; everyone else played a game where it did not exist. That is
+ * D-090 failed on the discovery half — the same shape as the spear, which had a recipe, a
+ * craft function and no surface.
+ *
+ * IT IS BUILT TO BE RECOGNISED FROM FAR AWAY, which is the only requirement that matters here.
+ * The bluff is large and light; the MOUTH is near-black. An opening reads as an opening because
+ * it is darker than what surrounds it, and that holds at any distance, in any light, without a
+ * label. No blaze-mark: that mark means "this is harvestable and getting closer to spent"
+ * (D-051), and a cave is neither.
+ *
+ * IT IS ALWAYS VISIBLE, NEVER GATED ON `found`. Hiding the mesh until the survivor has found it
+ * would make finding it impossible — you cannot walk toward something you cannot see. `found`
+ * records that they HAVE been, which is a different fact and belongs in the brain.
+ */
+export class CaveView {
+    private root: Mesh;
+    private shadow: Mesh;
+
+    constructor(scene: Scene) {
+        //  The bluff: a broad, squat mass. Deliberately not a sphere — a rounded hill reads as
+        //  terrain, and this has to read as rock you could walk into.
+        this.root = CreateCylinder('caveBluff', { height: 7.2, diameterTop: 6.4, diameterBottom: 9.6, tessellation: 7 }, scene);
+        this.root.material = flat(scene, 'caveRockMat', PALETTE.caveRock);
+        this.root.isPickable = true;
+        this.root.metadata = { cave: true };
+
+        //  THE MOUTH. A dark recess set into the face, pushed slightly proud of the bluff so it
+        //  cannot z-fight with the surface it sits on — a renderer nudge, kept in the renderer
+        //  where it is visible, never folded back into the position the game believes (the rule
+        //  `settleOnTerrain` states and D-051's floating-remnant bug earned).
+        const mouth = CreateCylinder('caveMouth', { height: 3.6, diameter: 3.2, tessellation: 6 }, scene);
+        mouth.material = flat(scene, 'caveMouthMat', PALETTE.caveMouth);
+        mouth.parent = this.root;
+        mouth.rotation.x = Math.PI / 2;
+        mouth.position.set(0, -1.6, 3.5);
+        mouth.isPickable = true;
+        mouth.metadata = { cave: true };
+
+        this.shadow = makeShadow(scene, 5.2);
+    }
+
+    /**
+     * The bluff is solid; the MOUTH is not.
+     *
+     * A single collision radius over the whole thing would wall the survivor out of the one
+     * place they are trying to reach, and `updateCavePresence` would then never fire — the
+     * feature would be visible, walkable-to, and impossible to enter. So the obstacle is offset
+     * back into the rock, leaving the mouth side open. Same lesson as the quarry's 2.4 m radius
+     * making it unminable at any legal standing distance (D-051): geometry that looks right and
+     * forbids the verb.
+     */
+    obstacle(state: GameState): Obstacle | null {
+        return { x: state.cave.x, z: state.cave.y - 2.6, radius: TUNE.caveCollisionRadiusM };
+    }
+
+    update(state: GameState, groundY: number): void {
+        this.root.position.set(state.cave.x, groundY + 3.4, state.cave.y);
+        this.shadow.position.set(state.cave.x, groundY + 0.02, state.cave.y);
+    }
+}
+
+/**
+ * THE PLACEMENT GHOST — properties 1, 2 and 5 of the LDOE bar, made real.
+ *
+ * [[D-117]] pinned the bar down and shipped it as a SPECIFICATION: five properties, three
+ * property-tested in the brain, and two — the ghost and the one-tap commit — declared
+ * `witness: 'device'` and not built. This is the ghost.
+ *
+ * PROPERTY 1: it shows BEFORE you commit. It appears the moment the site card opens, at the
+ * point the survivor actually chose, so the question "what will this look like there" is
+ * answered by looking rather than by building and regretting.
+ *
+ * PROPERTY 2: COLOUR IS THE WHOLE VERDICT. Green is good, red is blocked, and no text is
+ * required to know which — the reason lives on the card for anyone who wants it and is never
+ * forced on anyone who does not. The colour is driven by `PlacementPreview.valid`, a real
+ * boolean, which is exactly why the brain keeps the verdict separable from the reason string.
+ *
+ * PROPERTY 5: it settles on the terrain. The position comes straight from `heightAt` with no
+ * offset of its own; the only lift is the mesh's own half-height, which is geometry rather
+ * than a fudge. Every floating-structure bug this project has had came from a well-meant
+ * constant added here (D-051's remnant scale left depleted nodes hanging in the air).
+ *
+ * IT IS NEVER PICKABLE. A ghost that could intercept a tap would eat the very commit gesture
+ * it exists to inform — the spent-node defect (D-049) exactly, where invisible geometry stayed
+ * a live pick target and silently swallowed taps meant for what was behind it.
+ */
+export class GhostView {
+    private root: Mesh;
+    private material: StandardMaterial;
+    private ring: Mesh;
+
+    constructor(scene: Scene) {
+        this.root = CreateBox('placementGhost', { width: 3.4, height: 2.0, depth: 2.4 }, scene);
+        this.material = flat(scene, 'placementGhostMat', PALETTE.ghostValid);
+        this.material.alpha = 0.42;
+        this.root.material = this.material;
+        this.root.isPickable = false;
+
+        //  A footprint ring on the ground. The box says "something this big"; the ring says
+        //  "standing exactly here", which is the half a floating translucent box cannot carry.
+        this.ring = CreateDisc('placementGhostRing', { radius: 1.9, tessellation: 24 }, scene);
+        this.ring.material = this.material;
+        this.ring.rotation.x = Math.PI / 2;
+        this.ring.isPickable = false;
+
+        this.setShown(false);
+    }
+
+    private setShown(shown: boolean): void {
+        this.root.setEnabled(shown);
+        this.ring.setEnabled(shown);
+    }
+
+    /** Show at a settled point, coloured by the verdict alone. */
+    show(x: number, z: number, groundY: number, valid: boolean): void {
+        this.root.position.set(x, groundY + 1.0, z);
+        this.ring.position.set(x, groundY + 0.03, z);
+        this.material.diffuseColor = colour(valid ? PALETTE.ghostValid : PALETTE.ghostBlocked);
+        this.material.emissiveColor = colour(valid ? PALETTE.ghostValid : PALETTE.ghostBlocked).scale(0.35);
+        this.setShown(true);
+    }
+
+    hide(): void {
+        this.setShown(false);
+    }
+
+    /** For the harness: is the ghost genuinely on, and what verdict is it showing? */
+    debugState(): { shown: boolean; valid: boolean } {
+        return { shown: this.root.isEnabled(), valid: this.material.diffuseColor.g > this.material.diffuseColor.r };
+    }
+}

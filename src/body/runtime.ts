@@ -89,6 +89,7 @@ export const runtime = {
     /** Installed by the game; used only by the debug hook. */
     cameraReadout: (() => ({ yaw: 0, pitch: 0 })) as () => { yaw: number; pitch: number },
     projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null,
+    ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
     groundAt: (() => 0) as (x: number, z: number) => number,
     playerFeetY: (() => 0) as () => number,
     //  The direct-world tap intention, for the harness's range-gate regression (D-042/A4).
@@ -308,6 +309,12 @@ function installDebugHook(): void {
         fov: () => runtime.fovReadout(),
         hold: () => runtime.holdReadout(),
         isPlaceable: (x: number, z: number) => isPlaceablePoint(x, z),
+        //  THE PLACEMENT GHOST, for the bar's two device-only properties. It READS the ghost's
+        //  real render state — whether the mesh is enabled and which colour it is actually
+        //  wearing — rather than reporting what the code intended. Hazard #4 (D-075) allows a
+        //  hook to READ; the harness still has to DRIVE the gesture with real taps, and the
+        //  one-tap property is meaningless if a hook could open or commit it.
+        ghost: () => runtime.ghostReadout(),
         //  Helpers the device harness needs to aim a thumb in three dimensions and to
         //  verify grounding (A6): where a world point lands on screen, the camera facing,
         //  the analytic ground height, and the player mesh's feet (D-022).

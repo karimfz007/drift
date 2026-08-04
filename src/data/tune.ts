@@ -606,6 +606,11 @@ export const TUNE = {
     /** [TUNE] How close the survivor must be to a cave mouth to be sheltering in it, metres.
      *  Basis: mirrors `shelterRadiusM` so "am I inside" reads the same for both refuges. */
     caveShelterRadiusM: 3.0,
+    /** [TUNE] The bluff's solid footprint, metres. Basis: 4.2 against a 9.6 m base, offset
+     *  BACK from the mouth so the opening stays walkable — a radius covering the whole mass
+     *  would wall the survivor out of the only place they are trying to get into, which is
+     *  the quarry's own unminable-at-any-legal-distance defect (D-051) wearing new geometry. */
+    caveCollisionRadiusM: 4.2,
 
     // ---- Drop 3 Part 2 item 3: the LDOE placement bar ----
     /** [TUNE] Property 3 — "I can tell if a spot is good from a reasonable distance." Metres at

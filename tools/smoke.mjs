@@ -4929,6 +4929,120 @@ async function main() {
         && sickAfterAway.health >= TUNE.healthOfflineFloor,
         `severity ${sickBeforeAway.illness.severity.toFixed(2)} -> ${sickAfterAway.illness.severity.toFixed(2)}, health ${sickBeforeAway.health.toFixed(1)} -> ${sickAfterAway.health.toFixed(1)}`);
 
+    // ================================================================
+    // CONSTRUCTION II — the cave's body, and the LDOE bar's two device-only properties.
+    // Both were shipped by D-117 as declarations rather than things, and named as such.
+    // ================================================================
+    console.log('\nCONSTRUCTION II — the cave has a body, and the ghost exists');
+
+    //  THE CAVE. D-117 shipped it mechanically reachable and INVISIBLE: a survivor who walked
+    //  within 3 m of an unmarked point got shelter, and everyone else played a game where it
+    //  did not exist. So the check is not "does sheltering work" — the unit suite owns that —
+    //  it is whether the thing is ON SCREEN to be found.
+    const caveAt = (await live()).cave;
+    await editSave(`state.player = { x: ${(caveAt.x + 14).toFixed(2)}, y: ${(caveAt.y + 14).toFixed(2)} };`);
+    await faceNode(caveAt.x, caveAt.y);
+    await sleep(400);
+    const caveSeen = await page.evaluate(({ x, y }) => {
+        const meshes = window.__driftScene.meshes.filter((m) => m.name.startsWith('cave'));
+        const p = window.__drift.screenOf(x, y);
+        return {
+            names: meshes.map((m) => m.name),
+            enabled: meshes.filter((m) => m.isEnabled()).length,
+            onScreen: p ? p.x >= 0 && p.x <= window.innerWidth && p.y >= 0 && p.y <= window.innerHeight : false,
+            at: p,
+        };
+    }, { x: caveAt.x, y: caveAt.y });
+    //  A MOUTH AND A BLUFF, both drawn. Named separately because the mouth is the entire
+    //  recognisability claim — a light mass with no dark opening is a boulder.
+    check('CONSTRUCTION II — the cave has a body on screen: a bluff AND a mouth',
+        caveSeen.names.includes('caveBluff') && caveSeen.names.includes('caveMouth') && caveSeen.enabled >= 2,
+        `meshes [${caveSeen.names.join(', ')}], ${caveSeen.enabled} enabled`);
+    check('CONSTRUCTION II — and it is visible from 14 m away, before you are inside it',
+        caveSeen.onScreen, `projects to ${caveSeen.at ? `${Math.round(caveSeen.at.x)},${Math.round(caveSeen.at.y)}` : 'null'}`);
+
+    //  IT MUST BE ENTERABLE. The bluff is solid and its obstacle is offset back so the mouth
+    //  stays open; if that offset is wrong the feature is visible, walkable-to and impossible
+    //  to enter — the quarry's unminable-at-any-legal-distance defect wearing new geometry.
+    await editSave(`state.player = { x: ${caveAt.x.toFixed(2)}, y: ${caveAt.y.toFixed(2)} }; state.cave.found = false; state.cave.sheltering = false;`);
+    await sleep(900);
+    const inCave = await live();
+    check('CONSTRUCTION II — the mouth is walkable: standing there shelters and FINDS it',
+        inCave.cave.sheltering === true && inCave.cave.found === true,
+        `sheltering ${inCave.cave.sheltering}, found ${inCave.cave.found}`);
+
+    //  THE GHOST (bar property 1). Driven by a REAL hold on real ground — the hook only reads
+    //  the mesh's render state back. A hook that could open or commit the card would make the
+    //  one-tap property below meaningless.
+    await editSave(`
+        state.player = { x: 6, y: 6 };
+        state.inventory.wood = 30; state.inventory.stone = 30; state.inventory.fiber = 30;
+        state.shelter.built = false; state.storage.built = false;
+        state.blueprints = [{ id: 'bp0', name: 'shelter', recipeId: 'shelter', inputs: ['wood'], version: 1, workmanship: 'crude', author: 'you', discoveredAtGameHours: 1 }];
+        state.energy = 100;
+    `);
+    const ghostBefore = await page.evaluate(() => window.__drift.ghost());
+    check('LDOE BAR 1 — no ghost before the gesture (the control)', ghostBefore.shown === false, JSON.stringify(ghostBefore));
+
+    //  CAMERA-AWARE SITE, not hardcoded coordinates. A point the survivor is not facing is a
+    //  perfectly valid world coordinate that projects off-screen, and a hold on it lands
+    //  nothing — D-102's finding, which this project has now re-learned by hand more than
+    //  once. `findHoldableSite` is the yaw-cone scan that already solved it.
+    const ghostSite = await findHoldableSite();
+    let ghostShown = { shown: false, valid: false };
+    let cardOpen = false;
+    let heldGhost = { ok: false, why: 'no holdable site found' };
+    if (ghostSite) {
+        heldGhost = await holdWorld(ghostSite.x, ghostSite.y);
+        await sleep(800);
+        ghostShown = await page.evaluate(() => window.__drift.ghost());
+        cardOpen = await page.evaluate(() => Boolean(document.querySelector('.panel.site')));
+    }
+    await shot('constructionII-ghost');
+    //  PROPERTY 1, and the reason it is device-only: no unit test can witness a translucent
+    //  mesh being enabled in front of a camera.
+    check('LDOE BAR 1 — a ghost appears BEFORE any commit, with the site card',
+        ghostShown.shown === true && cardOpen,
+        `ghost ${JSON.stringify(ghostShown)}, card ${cardOpen}, hold ${heldGhost.ok} (${heldGhost.why})`);
+    //  PROPERTY 2's device half: the colour is actually carried by the mesh, not merely
+    //  computed. Green on a clear site.
+    check('LDOE BAR 2 — colour alone carries the verdict, and reads VALID on clear ground',
+        ghostShown.shown && ghostShown.valid === true, JSON.stringify(ghostShown));
+
+    //  PROPERTY 4 — ONE TAP COMMITS. Counted, not assumed: from ghost-shown to structure
+    //  standing must be exactly one real tap, with no confirmation step in between.
+    const beforeCommit = await live();
+    //  `.site-btn` PRECISELY. `.panel.site button.primary` also matches the card's own
+    //  "Not here" close button, so on a site where nothing is buildable the 'commit' tap
+    //  would land on CANCEL and this check would report a confirm-step failure that never
+    //  happened — a wrong diagnosis is worse than a red check.
+    const commitTap = await realTapDom('.panel.site .site-btn');
+    await sleep(900);
+    const afterCommit = await live();
+    const ghostAfter = await page.evaluate(() => window.__drift.ghost());
+    check('LDOE BAR 4 — ONE tap commits: ghost -> standing structure, no confirm step',
+        commitTap.ok && (afterCommit.shelter.built !== beforeCommit.shelter.built || afterCommit.storage.built !== beforeCommit.storage.built),
+        `tap ${commitTap.ok} ${commitTap.reason ?? ''}, shelter ${beforeCommit.shelter.built}->${afterCommit.shelter.built}, storage ${beforeCommit.storage.built}->${afterCommit.storage.built}`);
+    check('LDOE BAR 4 — and the ghost clears on commit, never outliving its card',
+        ghostAfter.shown === false, JSON.stringify(ghostAfter));
+
+    //  ...AND ONE TAP CANCELS. The other half of property 4, and the half that strands a
+    //  translucent building on the island if it is wrong.
+    await editSave('state.player = { x: -14, y: -14 }; state.shelter.built = false;');
+    const cancelSite = await findHoldableSite();
+    let cancelled = { shown: true };
+    let cancelTap = { ok: false, reason: 'no holdable site found' };
+    if (cancelSite) {
+        await holdWorld(cancelSite.x, cancelSite.y);
+        await sleep(800);
+        cancelTap = await realTapDom('.panel.site .close-btn');
+        await sleep(500);
+        cancelled = await page.evaluate(() => window.__drift.ghost());
+    }
+    check('LDOE BAR 4 — ONE tap cancels, and takes the ghost with it',
+        cancelTap.ok && cancelled.shown === false,
+        `tap ${cancelTap.ok} ${cancelTap.reason ?? ''}, ghost ${JSON.stringify(cancelled)}`);
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

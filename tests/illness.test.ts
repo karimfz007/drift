@@ -184,3 +184,45 @@ describe('ILLNESS — recovery, and sleep as the treatment', () => {
         expect(s.knowledge.domains.foragingMedicine.technique).toBeGreaterThan(before);
     });
 });
+
+describe('THE GOAL LINE — a costless illness may not silence a costing state', () => {
+    /**
+     * CAUGHT ON DEVICE, NOT HERE, and that is the point of writing it down. Shipped, the
+     * illness note returned at ANY stage and sat above exhaustion and severe fatigue — so
+     * `unsettled`, which by its own law costs nothing, replaced "Exhausted to the bone. Rest,
+     * properly, soon." with "It has not taken hold yet." The line that said nothing silenced
+     * the line that said what to do.
+     *
+     * This asserts the ORDERING RULE against the source, because the goal line lives in the
+     * body where no unit test can call it. The rule: the high position is gated on
+     * `illnessCosts`, and the warning rungs still speak from a lower one — dropping them
+     * entirely would trade this defect for its opposite and make the telegraph unfalsifiable.
+     */
+    it('the high slot is gated on illnessCosts, and a warning slot still exists below', async () => {
+        const { readFileSync } = await import('node:fs');
+        const src = readFileSync('src/body/game.ts', 'utf8');
+        const from = src.indexOf('const sick = illnessNote(state.illness);');
+        expect(from, 'lost the anchor — this test can no longer see the goal line').toBeGreaterThan(-1);
+        const window = src.slice(from, from + 1800);
+
+        expect(window, 'the illness note went back to speaking at any stage')
+            .toContain('if (sick && illnessCosts(state.illness)) return sick;');
+        //  ORDER, BY INDEX RATHER THAN BY REGEX. The gated line must come FIRST; the bare one
+        //  is the warning slot and must come after. Written without a single escape on
+        //  purpose — my first version used a multiline pattern, the backslash-n was consumed
+        //  before it reached the file, and the regex literal broke across two lines into a
+        //  syntax error. That is this project's escape-mangling hazard for the seventh time,
+        //  and the standing lesson is to choose a form that has nothing to escape.
+        const gatedAt = window.indexOf('if (sick && illnessCosts(state.illness)) return sick;');
+        const bareAt = window.indexOf('if (sick) return sick;');
+        expect(bareAt, 'the warning rungs lost their lower slot — onset no longer telegraphs').toBeGreaterThan(-1);
+        expect(gatedAt, 'an ungated illness note is back ABOVE the body states').toBeLessThan(bareAt);
+    });
+
+    /** The predicate itself, so the two halves of the rule cannot drift apart. */
+    it('the warning rungs genuinely cost nothing — the gate is meaningful', () => {
+        const nascent = onsetFrom(createInitialState(0), 'chill', 0.05);
+        expect(illnessStage(nascent)).toBe('unsettled');
+        expect(illnessCosts(nascent), 'a warning rung that costs is not a warning').toBe(false);
+    });
+});

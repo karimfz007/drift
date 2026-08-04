@@ -39,6 +39,17 @@ export const PALETTE = {
     thatchDark: [0.38, 0.31, 0.16],
     crateWood: [0.48, 0.36, 0.22],
     disrepair: [0.32, 0.30, 0.28],
+    /** The cave bluff — warmer and lighter than a rock node, so the hillside does not read
+     *  as a giant boulder you failed to mine. */
+    caveRock: [0.46, 0.43, 0.40],
+    /** The MOUTH. Near-black on purpose: an opening reads as an opening because it is darker
+     *  than everything around it, at any distance and any light. This is the whole of the
+     *  "a player can recognise it" requirement, and it costs one colour. */
+    caveMouth: [0.05, 0.05, 0.07],
+    /** The placement ghost. Green/red is the LDOE bar's property 2 verbatim — the director's
+     *  words were "colour is enough", so these two carry the entire verdict. */
+    ghostValid: [0.32, 0.78, 0.38],
+    ghostBlocked: [0.85, 0.26, 0.24],
 
     // ---- World truth (D-051) ----
     /** A small, consistent mark on every harvestable tree/rock — never on the decorative

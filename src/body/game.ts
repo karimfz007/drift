@@ -68,6 +68,7 @@ import {
     writeEntry,
     limpSpeedMultiplierOf,
     injuryNote,
+    illnessCosts,
     illnessNote,
     illnessStage,
     canBrewRemedy,
@@ -89,6 +90,8 @@ import {
     growthReport,
     availableOutcomes,
     siteHasAnything,
+    previewAt,
+    settleOnTerrain,
     bodyReport,
     revealedInPanel,
     makerOffers,
@@ -113,7 +116,7 @@ import { COLD_OPEN, POND, WALKABLE_RADIUS } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { FireView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
+import { CaveView, FireView, GhostView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -188,6 +191,8 @@ export class Game {
     private nodes: NodeViews;
     private fire: FireView;
     private shelter: ShelterView;
+    private cave: CaveView;
+    private ghost: GhostView;
     private storage: StorageView;
     private hud: Hud;
     private controls: Controls;
@@ -282,6 +287,9 @@ export class Game {
         this.player = new PlayerView(this.scene);
         this.fire = new FireView(this.scene);
         this.shelter = new ShelterView(this.scene);
+        this.cave = new CaveView(this.scene);
+        this.ghost = new GhostView(this.scene);
+        runtime.ghostReadout = () => this.ghost.debugState();
         this.storage = new StorageView(this.scene);
 
         const state = session().state;
@@ -936,13 +944,32 @@ export class Game {
         if (runtime.panelOpen) { this.explain('Something else is open. Close it first.'); return; }
         this.beginPanel();
         const s = session().state;
+        const offers = availableOutcomes(s, x, z);
+
+        //  THE GHOST (bar property 1). It goes up the instant the card opens, at the point the
+        //  survivor chose — BEFORE any commit, which is the whole property. Its colour is the
+        //  verdict and nothing else (property 2): `previewAt` returns a real boolean, and the
+        //  reason it also returns stays on the card for anyone who wants it.
+        //
+        //  The site is valid when SOMETHING can go up here. Asking `previewAt` for a blanket
+        //  answer and ignoring the offers would paint green over a spot where every outcome is
+        //  refused for want of materials, which is a ghost that lies.
+        const settled = settleOnTerrain(x, z, (px, pz) => this.island.heightAt(px, pz));
+        const preview = previewAt(s, x, z, (px, pz) => this.island.heightAt(px, pz),
+            offers.find((o) => o.buildable) ?? offers[0] ?? null);
+        this.ghost.show(settled.x, settled.y, settled.groundY, preview.valid);
+
         showSiteCard(
             this.overlay,
-            availableOutcomes(s, x, z).map((o) => ({
+            offers.map((o) => ({
                 outcome: o.outcome, label: o.label, buildable: o.buildable, reason: o.reason,
             })),
-            (outcome) => { this.endPanel(() => this.placeAtSite(outcome, x, z)); },
-            () => this.endPanel(),
+            //  ONE TAP COMMITS (property 4). This tap IS the build — there is no confirm step
+            //  between them, and adding one is the specific thing the bar forbids.
+            (outcome) => { this.ghost.hide(); this.endPanel(() => this.placeAtSite(outcome, x, z)); },
+            //  ...and ONE TAP CANCELS, clearing the ghost with it. A ghost that outlived its
+            //  card would be a translucent building the player cannot dismiss.
+            () => { this.ghost.hide(); this.endPanel(); },
         );
     }
 
@@ -1425,6 +1452,9 @@ export class Game {
         if (fireObstacle) out.push(fireObstacle);
         const shelterObstacle = this.shelter.obstacle(state);
         if (shelterObstacle) out.push(shelterObstacle);
+        //  The bluff is solid; its obstacle is offset back so the MOUTH stays walkable.
+        const caveObstacle = this.cave.obstacle(state);
+        if (caveObstacle) out.push(caveObstacle);
         const storageObstacle = this.storage.obstacle(state);
         if (storageObstacle) out.push(storageObstacle);
         //  DROP 1 FIX — the boar is SOLID. It shipped as a ghost: the player walked straight
@@ -1870,6 +1900,7 @@ export class Game {
         const groundAtFire = state.fire.built ? this.island.heightAt(state.fire.x, state.fire.y) : 0;
         this.fire.update(state, groundAtFire, this.nightFactor(state.gameHoursElapsed));
         this.shelter.update(state, this.island.heightAt(state.shelter.x, state.shelter.y));
+        this.cave.update(state, this.island.heightAt(state.cave.x, state.cave.y));
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
 
         this.nodes.sync(state);
@@ -2296,8 +2327,19 @@ export class Game {
         //  DROP 3 — sickness reads out for the same reason a wound does, and it sits just
         //  BELOW the wound: a bleed is acute and an illness is not, so when a survivor has
         //  both, the one with the shorter fuse speaks first.
+        //
+        //  IT ONLY OUTRANKS THE BODY STATES BELOW WHEN IT IS ACTUALLY COSTING SOMETHING, and
+        //  that gate is a defect fix, caught on device. Shipped without it, a NASCENT illness
+        //  — `unsettled`, which by its own law costs nothing — displaced "Exhausted to the
+        //  bone. Rest, properly, soon." with "It has not taken hold yet.": the line that told
+        //  the player nothing silenced the line telling them what to do about a real problem.
+        //  That is the priority-starvation class D-040/D-042 already fixed once, where the
+        //  fire starved behind the axe in a stack.
+        //
+        //  `illnessCosts` is reused rather than re-tested here, so the fair-challenge line and
+        //  the speaking order can never drift apart.
         const sick = illnessNote(state.illness);
-        if (sick) return sick;
+        if (sick && illnessCosts(state.illness)) return sick;
         if (isExhausted(state)) {
             return state.shelter.built ? 'Exhausted — tap the shelter to sleep.' : 'Exhausted. A shelter would give you somewhere to rest.';
         }
@@ -2312,6 +2354,11 @@ export class Game {
             const text = fatigueStatusText('severe');
             if (text) return state.shelter.built ? `${text} Tap the shelter to sleep.` : text;
         }
+        //  ...and the WARNING rungs speak here, below the states that are actively hurting.
+        //  Still surfaced, because the five-stage grammar's whole promise is that onset
+        //  telegraphs before it bites — dropping it entirely would trade one defect for the
+        //  opposite one and make the warning unfalsifiable.
+        if (sick) return sick;
         if (!state.tools.axe && !canCraftAxe(state)) {
             const s = axeShortfall(state);
             const needs = [s.wood && `${s.wood} wood`, s.sharpblade && `${s.sharpblade} sharp blade`, s.fiber && `${s.fiber} fibre`].filter(Boolean).join(', ');
