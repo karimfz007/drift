@@ -11,7 +11,7 @@ import { realSecondsFromGameHours } from './clock';
 import { recordTrying } from './knowledge';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
-import { canSleep, createInitialState, isFireLit, isShelteredSleep } from './state';
+import { canSleep, createInitialState, isFireLit, isShelteredSleep, updateCavePresence } from './state';
 import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
 import { injuriesFromCharge, stepInjuries } from './injury';
 import { onsetFrom, stepIllness } from './illness';
@@ -293,6 +293,12 @@ export class Session {
         //  `groundSleepRecoveryMultiplier` on the bare ground — the exact term reconcile
         //  already uses to recover energy. A warm dry bed heals an illness faster because it
         //  is already the better bed, in the number the game already keeps.
+        //  THE CAVE (Drop 3 Part 2 item 2). Read BEFORE the illness step, because sheltering
+        //  in one changes the night the body is living through and the chill test below reads
+        //  that night. Ordering these the other way would let a survivor who just walked into
+        //  a cave accrue one more span of exposure they were no longer in.
+        updateCavePresence(s);
+
         const restQuality = s.resting ? (isShelteredSleep(s) ? 1 : TUNE.groundSleepRecoveryMultiplier) : 0;
         const sickened = stepIllness(s.illness, gameHours, restQuality);
         if (sickened.healthLost > 0 || sickened.next !== s.illness) {

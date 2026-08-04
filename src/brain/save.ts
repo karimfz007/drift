@@ -7,6 +7,7 @@
  */
 
 import { TUNE } from '../data/tune';
+import { CAVE_SITE } from '../data/world';
 import { freshDomainScores } from './knowledge';
 import { freshLoadout } from './loadout';
 import { freshIllness } from './illness';
@@ -108,6 +109,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 18) current = migrateV18toV19(current);
     if (current.schemaVersion === 19) current = migrateV19toV20(current);
     if (current.schemaVersion === 20) current = migrateV20toV21(current);
+    if (current.schemaVersion === 21) current = migrateV21toV22(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -667,6 +669,29 @@ function migrateV20toV21(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         illness: isObject(old.illness) ? old.illness : freshIllness(),
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v21 -> v22, THE CAVE. It MERGES, because the cave is terrain.
+ *
+ * Illness migrated in fresh at v21 because a condition is a fact about a body and we have no
+ * record of this one. Geology is the opposite: the cave has been in that hillside since before
+ * the survivor washed ashore, and a save that never gains it is a save on a different island.
+ * This is the shape v17->v18 used for the Boulder Formation, for the same reason.
+ *
+ * It merges UNFOUND, though. The rock is real whether or not anyone has seen it; the KNOWING
+ * is the survivor's, and handing it over would skip the only part of this that is theirs.
+ */
+function migrateV21toV22(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        cave: isObject(old.cave)
+            ? (old.cave as GameState['cave'])
+            : { found: false, x: CAVE_SITE.x, y: CAVE_SITE.y, sheltering: false },
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

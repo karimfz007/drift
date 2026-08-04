@@ -33,7 +33,17 @@
  * into heat strain. `thermalStrain` names that, so warmth stops reading as a score to maximise.
  */
 import { TUNE } from '../data/tune';
+import { EXPOSED, builtShelterProfile, type RefugeProfile } from './vulnerability';
 import type { ItemGrade } from './types';
+
+/**
+ * An answer is a fraction of a threat removed. It may go NEGATIVE — a bare cave floor is
+ * worse than open ground — but it may never exceed 1, because a refuge that removed more than
+ * all of a loss would turn that loss into a gain and let the night warm you up.
+ */
+function clampAnswer(v: number): number {
+    return Math.min(1, v);
+}
 
 /** What a body is lying on, and under. The single biggest term on a cold night. */
 export type Bedding = 'bare-ground' | 'ground-cover' | 'dry-bedding';
@@ -63,6 +73,12 @@ export interface ThermalContext {
     nutrition: number;
     /** Enclosed with no ventilation — the fifth scenario's precondition. */
     enclosed: boolean;
+    /**
+     * THE VULNERABILITY MAP, optional by design. Absent means "derive the shipped flat factor
+     * from `sheltered`/`shelterGrade`", so every caller that predates the map keeps its exact
+     * numbers. A caller that knows about refuges passes one and gets per-threat answers.
+     */
+    refuge?: RefugeProfile;
 }
 
 export interface HeatFlow {
@@ -106,9 +122,17 @@ export function netHeatFlowPerGameHour(ctx: ThermalContext): HeatFlow {
     //  AMBIENT. A baseline loss a fed awake body exactly cancels — that is what makes a mild
     //  day net zero without handing metabolism a free ride — plus, at night, an extra term a
     //  roof reduces. A better roof reduces it more.
-    const roofFactor = ctx.sheltered && ctx.shelterGrade
-        ? TUNE.shelterGradeWarmthMultiplier[ctx.shelterGrade]
-        : 1;
+    //  THE VULNERABILITY MAP (Drop 3 Part 2 item 1). `refuge` answers each threat separately;
+    //  when it is ABSENT this derives the shipped flat factor, so all three existing call
+    //  sites keep their exact arithmetic and a caller that has not been taught about the map
+    //  cannot silently get a different night. Safe direction: unknown means unchanged.
+    const refuge = ctx.refuge ?? (ctx.sheltered && ctx.shelterGrade
+        ? builtShelterProfile(ctx.shelterGrade)
+        : EXPOSED);
+    //  Kept as `1 - answered` rather than reading a multiplier, so the two vocabularies meet
+    //  in exactly one place instead of at every term below.
+    const coldFactor = 1 - clampAnswer(refuge.cold);
+    const windFactor = 1 - clampAnswer(refuge.wind);
     //  WIND is part of the exposure a roof mitigates, not a separate insult stacked outside
     //  it. My first cut applied it OUTSIDE the roof factor, which made an unsheltered night
     //  cost 15 instead of the shipped 12 and pushed F3's certified reduction from 45% to 56%
@@ -122,18 +146,27 @@ export function netHeatFlowPerGameHour(ctx: ThermalContext): HeatFlow {
         ? -TUNE.thermalWindLoss * (1 - clamp01(ctx.clothing) * TUNE.thermalClothingWindShield)
         : 0;
     const nightRaw = ctx.isNight ? -TUNE.thermalNightLoss : 0;
-    const exposure = (nightRaw + windRaw) * roofFactor;
-    const ambient = -TUNE.thermalBaselineLoss + nightRaw * roofFactor;
-    const windLoss = windRaw * roofFactor;
+    //  Wind and cold now scale by their OWN answers. For the built lean-to the two are equal
+    //  by construction, which is why this reproduces the shipped night exactly; for the cave
+    //  they differ, which is the whole point of the map.
+    const exposure = nightRaw * coldFactor + windRaw * windFactor;
+    const ambient = -TUNE.thermalBaselineLoss + nightRaw * coldFactor;
+    const windLoss = windRaw * windFactor;
 
     //  GROUND. Conduction — and ONLY while actually lying on it. My first cut charged this
     //  to a survivor standing up, which made a calm afternoon cool you through your boots.
-    const groundLoss = ctx.resting ? -BEDDING_LOSS[ctx.bedding] : 0;
+    //
+    //  The refuge's `groundDamp` answer applies here and may be NEGATIVE: a bare cave floor
+    //  conducts worse than open ground. `1 - answered` is therefore allowed above 1, and that
+    //  is deliberate — it is the term that makes moving into a cave a trade rather than an
+    //  upgrade. Bedding still multiplies it, so the survivor's own fix still works.
+    const groundLoss = ctx.resting ? -BEDDING_LOSS[ctx.bedding] * (1 - clampAnswer(refuge.groundDamp)) : 0;
 
     //  EVAPORATIVE. Being wet, scaled to how wet. Independent of everything else, which is
-    //  why a wet night under a good roof can still cool you.
+    //  why a wet night under a good roof can still cool you — but a refuge that answers RAIN
+    //  keeps the weather off you in the first place, which the flat factor could not express.
     const wetness = clamp01(ctx.wet / TUNE.wetMax);
-    const evaporativeLoss = -TUNE.thermalWetLoss * wetness;
+    const evaporativeLoss = -TUNE.thermalWetLoss * wetness * (1 - clampAnswer(refuge.rain));
 
     //  Clothing insulates against the passive losses, never against being wet.
     const insulation = 1 - clamp01(ctx.clothing) * TUNE.thermalClothingInsulation;

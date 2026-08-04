@@ -13,7 +13,7 @@ import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshMatterWear, transformationFor } from './matter';
-import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
+import { CAVE_SITE, POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
 
 import { applyEffect, demandFor, resolveActivity } from './resolver';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, masteryForNodeKind } from './knowledge';
@@ -96,6 +96,10 @@ export function createInitialState(nowMs: number): GameState {
         meatFreshUntilGameHours: null,
         injuries: freshInjuries(),
         illness: freshIllness(),
+        //  The cave is TERRAIN: it is on the island from the first second, unfound. Placed
+        //  from the same seeded constants the island uses so every survivor's cave is in the
+        //  same place across a succession — the island persists, and so does its geology.
+        cave: { found: false, x: CAVE_SITE.x, y: CAVE_SITE.y, sheltering: false },
         dropped: [],
         dropCount: 0
     };
@@ -135,6 +139,7 @@ export function cloneState(state: GameState): GameState {
         },
         fire: { ...state.fire },
         shelter: { ...state.shelter },
+        cave: { ...state.cave },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
         torch: { ...state.torch },
         player: { ...state.player },
@@ -1229,6 +1234,28 @@ export function lightTorch(state: GameState): boolean {
 
 export function isNearShelter(state: GameState): boolean {
     return state.shelter.built && distance(state.player.x, state.player.y, state.shelter.x, state.shelter.y) <= TUNE.shelterRadius;
+}
+
+/**
+ * THE CAVE, FOUND AND ENTERED (Drop 3 Part 2 item 2).
+ *
+ * Two facts, kept apart on purpose. Finding it is KNOWLEDGE and it is permanent — once you
+ * have seen the mouth in the hillside you know it is there, and walking away does not unknow
+ * it. Sheltering in it is POSITION and it is momentary. Collapsing the two would mean a
+ * survivor who found the cave in daylight loses it the instant they leave, which is not how
+ * finding somewhere works.
+ *
+ * Discovery is proximity rather than a verb, because a cave is not a thing you operate — the
+ * human outcome is *somewhere out of the weather*, and you get it by going there. That is the
+ * same framing the Maker's construction flow uses, and it is why there is no "enter cave"
+ * button: standing in it IS entering it.
+ */
+export function updateCavePresence(state: GameState): void {
+    const inside = distance(state.player.x, state.player.y, state.cave.x, state.cave.y) <= TUNE.caveShelterRadiusM;
+    state.cave.sheltering = inside;
+    //  Never un-found. Knowledge does not switch off when you walk out (the same rule the
+    //  Build panel's ladder already holds: the scaffold is a floor, never a ceiling).
+    if (inside) state.cave.found = true;
 }
 
 export function isNearStorage(state: GameState): boolean {

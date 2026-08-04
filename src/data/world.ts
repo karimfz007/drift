@@ -50,6 +50,15 @@ export const SPAWN = { x: 0, y: 104 } as const;
 /** The freshwater pond, inland and slightly west. The first answer to the first demand. */
 export const POND = { x: -22, y: 8, radius: 9 } as const;
 
+/**
+ * THE CAVE (Drop 3 Part 2 item 2) — inland and east, deliberately AWAY from the pond.
+ *
+ * Placed so the two things a survivor most needs at night are not in the same place. Putting
+ * the cave beside the water would make one walk solve everything and the map's whole question
+ * — where do I settle, and what do I give up — would answer itself.
+ */
+export const CAVE_SITE = { x: 48, y: -34 } as const;
+
 /** The wreck offshore: visible from the spawn beach, unreachable, unexplained (§I.18 r5). */
 export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 

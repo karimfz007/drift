@@ -21,6 +21,7 @@ import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
 import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
 import { netHeatFlowPerGameHour } from './thermal';
+import { activeProfile } from './vulnerability';
 import { settleOffline } from './fauna';
 import { settleInjuriesOffline } from './injury';
 import { settleIllnessOffline } from './illness';
@@ -164,7 +165,14 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             atFire: sheltered,
             wet: wetNow,
             //  Bedding is the term the shelter buys you. On open ground you are on the ground.
+            //  A CAVE BUYS YOU NOTHING HERE (Drop 3 Part 2 item 1) — it is a roof, not a bed,
+            //  and its floor is stone. Sheltering in one leaves you on `bare-ground` until you
+            //  bring bedding, which is exactly the trade the vulnerability map exists to make
+            //  legible. Note this is BEFORE the profile's negative `groundDamp` is applied.
             bedding: shelterActive ? 'dry-bedding' : restingNow ? 'ground-cover' : 'bare-ground',
+            //  THE MAP ITSELF. One refuge wins — never a sum — and when it is the built
+            //  shelter this reproduces the flat factor the two lines above already assumed.
+            refuge: activeProfile(state, shelterActive),
             clothing: 0,
             resting: restingNow,
             activity: 1,

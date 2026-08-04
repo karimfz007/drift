@@ -585,6 +585,35 @@ export const TUNE = {
      *  it there, and lands just below the line where illness costs anything. D-011 in a
      *  number: never worse, never fatal, and deliberately NOT a cure. */
     illnessOfflineCeiling: 0.4,
+
+    // ---- Drop 3 Part 2: the vulnerability map and the cave ----
+    /** [TUNE] The cave answers wind almost fully. Basis: stone across the entrance's flank —
+     *  0.9 rather than 1.0 because an open mouth still funnels, and because a refuge with no
+     *  weakness on a threat gives the map nothing to say about it. */
+    caveWindAnswered: 0.9,
+    /** [TUNE] Rain, fully. Basis: stone does not leak, and this is the one threat where a cave
+     *  is unambiguously better than anything buildable at this tier — it is why you would move. */
+    caveRainAnswered: 1.0,
+    /** [TUNE] Cold, well but short of the best built shelter. Basis: 0.6 sits between `crude`
+     *  (0.45) and `refined` (0.65) — a cave is a windbreak and a heat sink at once, so it beats
+     *  the first thing you can build and loses to a shelter you worked for. */
+    caveColdAnswered: 0.6,
+    /** [TUNE] NEGATIVE, and the reason the map exists. Basis: -0.5 makes bare cave floor cost
+     *  1.5x open ground (4.0 -> 6.0/game-hour), so moving in without bedding trades a windy
+     *  night for a colder back. Dry bedding (0.6 base) still fixes it, at 0.9 — the survivor's
+     *  existing answer keeps working, which is what stops this being a punishment. */
+    caveGroundDampAnswered: -0.5,
+    /** [TUNE] How close the survivor must be to a cave mouth to be sheltering in it, metres.
+     *  Basis: mirrors `shelterRadiusM` so "am I inside" reads the same for both refuges. */
+    caveShelterRadiusM: 3.0,
+
+    // ---- Drop 3 Part 2 item 3: the LDOE placement bar ----
+    /** [TUNE] Property 3 — "I can tell if a spot is good from a reasonable distance." Metres at
+     *  which a site must already be readable. Basis: 12 m is roughly two shelter-lengths and
+     *  comfortably beyond `interactRadiusM`, so the bar is only met if the read genuinely does
+     *  NOT require walking there. The director set the property; this number is C2's and is
+     *  the first thing to move at playtest. */
+    placementReadableFromM: 12.0,
     /** [TUNE] Floor of the resistance ladder — how vulnerable a survivor in perfect condition
      *  still is. Basis: 0.25, so being well-rested, warm, whole and fed cuts onset to a
      *  quarter but never to zero. The charter's own line: highly capable, never immune. */

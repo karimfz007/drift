@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -533,6 +533,14 @@ export interface GameState {
     injuries: InjuryState;
     /** DROP 3, the Medicine Slice. Caused, never rolled; held on absence, never worsened. */
     illness: IllnessState;
+    /**
+     * THE CAVE (Drop 3 Part 2 item 2) — a refuge made of terrain rather than materials.
+     *
+     * `found` is knowledge, `sheltering` is position, and they are separate because a survivor
+     * who knows where the cave is has something even when they are nowhere near it: somewhere
+     * to run to. Collapsing them into one flag would lose that.
+     */
+    cave: { found: boolean; x: number; y: number; sheltering: boolean };
     /**
      * Item 2 — stacks the survivor has set down. Each carries its OWN drop timestamp, so
      * picking one up and dropping it again resets that stack alone. The timer runs on the
