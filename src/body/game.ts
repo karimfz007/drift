@@ -68,6 +68,10 @@ import {
     writeEntry,
     limpSpeedMultiplierOf,
     injuryNote,
+    illnessNote,
+    illnessStage,
+    canBrewRemedy,
+    brewRemedy,
     droppedWithinReach,
     previewFor,
     pickUpDropped,
@@ -601,6 +605,7 @@ export class Game {
                 vitalsExtra: {
                     injuries: { bleeding: s.injuries.bleeding, limp: s.injuries.limp, pain: s.injuries.pain },
                     injuryNote: injuryNote(s.injuries),
+                    illness: { stage: illnessStage(s.illness), note: illnessNote(s.illness) },
                     activeHand: s.loadout.activeHand,
                     supportHand: s.loadout.supportHand,
                     equippable: ownedTools(s),
@@ -1052,6 +1057,7 @@ export class Game {
             case 'bind-wound': this.doBindWound(); break;
             case 'pick-up': this.doPickUpDropped(); break;
             case 'make-journal': this.doMakeJournal(); break;
+            case 'brew-remedy': this.doBrewRemedy(); break;
             case 'store-journal': this.doSetJournalCarried(false); break;
             case 'take-journal': this.doSetJournalCarried(true); break;
             default: this.explain('Nothing to do there.'); break;
@@ -1538,6 +1544,24 @@ export class Game {
         this.cues.play(CUES.craft);
         this.floatText('bound');
         this.explain('You wrap it tight. The bleeding stops.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * DROP 3 — the remedy. Costs an hour at the fire through `spendGameHours`, the same
+     * path writing the journal uses, so the world moves while it steeps: the fire burns
+     * down and the night gets later while you sit with it. A cure that cost nothing but a
+     * tap would make the recovery clock — which is the actual system — meaningless.
+     */
+    private doBrewRemedy(): void {
+        const s = session().state;
+        if (!canBrewRemedy(s)) { this.explain('You have nothing to steep, or nothing to steep it over.'); return; }
+        if (!brewRemedy(s)) { this.explain('You have nothing to steep, or nothing to steep it over.'); return; }
+        session().spendGameHours(TUNE.remedyGameHours, now());
+        this.cues.play(CUES.craft);
+        this.floatText('a bitter cup');
+        this.explain(illnessNote(session().state.illness) ?? 'It passes. You feel like yourself again.');
         session().persist(now());
         this.lastActivityAt = now();
     }
@@ -2269,6 +2293,11 @@ export class Game {
         //  impairment term reads as the game getting harder at random.
         const wound = injuryNote(state.injuries);
         if (wound) return wound;
+        //  DROP 3 — sickness reads out for the same reason a wound does, and it sits just
+        //  BELOW the wound: a bleed is acute and an illness is not, so when a survivor has
+        //  both, the one with the shorter fuse speaks first.
+        const sick = illnessNote(state.illness);
+        if (sick) return sick;
         if (isExhausted(state)) {
             return state.shelter.built ? 'Exhausted — tap the shelter to sleep.' : 'Exhausted. A shelter would give you somewhere to rest.';
         }

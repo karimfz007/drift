@@ -828,9 +828,20 @@ function tabBar(active: BackpackTab): string {
  * what this adds is the CAUSE, which is the part a player can act on.
  */
 /** Item 3 — what the Vitals tab now also carries: the wound, and both hands. */
+/** The five rungs in the player's words. No severity number ever reaches the screen. */
+const ILLNESS_LABEL: Record<string, string> = {
+    well: 'Well',
+    unsettled: 'Off-colour',
+    ailing: 'Sickening',
+    feverish: 'Feverish',
+    'gravely-ill': 'Gravely ill',
+};
+
 export interface VitalsExtraView {
     injuries: { bleeding: number; limp: number; pain: number };
     injuryNote: string | null;
+    /** DROP 3 — the illness, on the same surface as the wound and in the same shape. */
+    illness: { stage: string; note: string | null };
     activeHand: string | null;
     supportHand: string | null;
     equippable: string[];
@@ -856,6 +867,19 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
             ${extra.injuries.pain > 0 ? '<p class="subtitle vital-cause">In pain — every job is costing you more.</p>' : ''}
         </div>`;
 
+    //  DROP 3 — SICKNESS, beside the wound rather than anywhere new. A survivor asking
+    //  'how bad is it' means both, and the standing chip carries the rung by NAME so the
+    //  five-stage grammar is legible here and not only in the passing HUD line. No
+    //  severity number reaches the screen: the stage word and the cause sentence are the
+    //  whole readout, exactly as the growth panel's standings are.
+    const illnessRow = !extra ? '' : extra.illness.stage === 'well'
+        ? '<div class="vital-line"><div class="build-head"><strong>Sickness</strong><span class="standing-chip">Well</span></div></div>'
+        : `
+        <div class="vital-line pressing">
+            <div class="build-head"><strong>Sickness</strong><span class="standing-chip">${ILLNESS_LABEL[extra.illness.stage] ?? extra.illness.stage}</span></div>
+            ${extra.illness.note ? `<p class="subtitle vital-cause">${extra.illness.note}</p>` : ''}
+        </div>`;
+
     //  BOTH HANDS, equippable from here. Reuses the shipped carriage mechanism rather than a
     //  second one: `equipToActiveHand` / `equipToSupportHand` enforce the same rules,
     //  including the two-handed constraint that is why `supportHand` is modelled at all.
@@ -871,7 +895,7 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${rows}${injuryRows}${handRows}</div>`;
+        <div class="build-list">${rows}${injuryRows}${illnessRow}${handRows}</div>`;
 }
 
 export function showLoadout(

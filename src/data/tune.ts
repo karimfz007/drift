@@ -547,6 +547,86 @@ export const TUNE = {
     /** [TUNE] Drop 2 — fibre to bind a wound. Cheap on purpose: the decision is whether to
      *  stop and do it under pressure, not whether you can afford it. */
     injuryBindFiberCost: 1,
+
+    // ---- DROP 3, THE MEDICINE SLICE ----------------------------------------------------
+    //  Every number below is derived from a shipped one, per the tune law. The anchor is
+    //  `healthRegenPerGameHour` (4) throughout, the same anchor bleeding priced itself
+    //  against, so the two condition systems sit on one scale rather than two.
+
+    /** [TUNE] Severity ceiling. 1.0 so severity reads as a fraction and
+     *  `illnessImpairmentShare` needs no rescaling — the resolver's impairment terms are all
+     *  0..1 shares and this joins them as one. */
+    illnessSeverityMax: 1,
+    /** [TUNE] Rung 2 of 5. Basis: a fifth of the range, so the pure-telegraph band
+     *  (`unsettled`) is wide enough to be noticed and acted on before `ailing`. */
+    illnessAilingAt: 0.2,
+    /** [TUNE] Rung 3 → 4, AND THE FAIR-CHALLENGE LINE: health starts moving here. Basis: 45%
+     *  of the range, so nearly half of an illness is spent being warned rather than harmed.
+     *  Two full rungs of plain-language notice before the first point of health is lost. */
+    illnessFeverishAt: 0.45,
+    /** [TUNE] Rung 5. Basis: the top quarter is the grave band. */
+    illnessGraveAt: 0.75,
+    /** [TUNE] Health per game hour at full severity. Basis: `healthRegenPerGameHour` (4) —
+     *  set just BELOW it, unlike `injuryBleedHealthPerGameHour` (5) which sits just above.
+     *  A bleed outruns a resting body; a fever does not. Illness is the slow one: it wears
+     *  you down over a night, and a survivor who stops and rests is genuinely winning. */
+    illnessHealthPerGameHour: 3.5,
+    /** [TUNE] Severity shed per game hour awake. Basis: an untreated illness runs its course
+     *  in ~14 game hours, a little over one night — long enough to reshape a day's plans,
+     *  short enough that it is an event and not a condition you live with. */
+    illnessRecoveryPerGameHour: 0.07,
+    /** [TUNE] How much resting multiplies recovery, scaled by sleep quality. Basis: a proper
+     *  sheltered sleep (quality 1) makes recovery 3x, so a full night genuinely answers an
+     *  illness; sleeping rough (`groundSleepRecoveryMultiplier`, 0.55) gives ~2.1x, which is
+     *  help but visibly worse. The gap IS item 4 — one rest model, two outcomes. */
+    illnessRestRecoveryBonus: 2,
+    /** [TUNE] The floor an absence eases the worst cases to. Basis: `illnessFeverishAt`
+     *  (0.45) minus a margin — a survivor who closes the game at death's door does not open
+     *  it there, and lands just below the line where illness costs anything. D-011 in a
+     *  number: never worse, never fatal, and deliberately NOT a cure. */
+    illnessOfflineCeiling: 0.4,
+    /** [TUNE] Floor of the resistance ladder — how vulnerable a survivor in perfect condition
+     *  still is. Basis: 0.25, so being well-rested, warm, whole and fed cuts onset to a
+     *  quarter but never to zero. The charter's own line: highly capable, never immune. */
+    illnessBaseSusceptibility: 0.25,
+    /** [TUNE] Converts an exposure magnitude into severity. Basis: one full-strength cause
+     *  (`exposure` 1) on a perfectly-conditioned survivor lands at 0.25 * 0.5 = 0.125 —
+     *  inside `unsettled`, the free warning band. You always get told first. */
+    illnessOnsetScale: 0.5,
+    /** [TUNE] How wet counts as wet enough to chill you. Basis: over half of `wetMax`,
+     *  so a light splash is not an illness risk and a night in the rain is. */
+    wetIllnessThreshold: 55,
+    /** [TUNE] Exposure per game hour spent hypothermic AND wet. Basis: ~4 game hours of
+     *  it to cross into `ailing` on an average body — a bad night, not a bad minute. */
+    chillExposurePerGameHour: 0.22,
+    /** [TUNE] Fatigue at which the body starts losing the argument. Basis: the severe
+     *  fatigue band — the stage the survivor is already being told about in words. */
+    fatigueIllnessThreshold: 75,
+    /** [TUNE] Exposure per game hour at or past that threshold. Basis: deliberately
+     *  gentler than a chill — running yourself down is a slower way to get sick than
+     *  sleeping in a storm, and it takes most of a day to reach `ailing`. */
+    exhaustionExposurePerGameHour: 0.09,
+    /** [TUNE] Exposure from one drink of untreated pond water. Basis: a single sip on a
+     *  well-conditioned survivor stays inside the free warning band; drinking it all day
+     *  while cold and tired is what actually makes you ill. */
+    badWaterExposurePerDrink: 0.30,
+    /** [TUNE] Exposure from eating spoiled matter. Basis: sharper than water — you can
+     *  see that it has turned, so eating it anyway is a real decision. */
+    spoiledFoodExposure: 0.55,
+    /** [TUNE] Fibre for one remedy. Basis: `injuryBindFiberCost` (1) — a remedy is steeped,
+     *  so it costs the same fibre plus something to steep. */
+    remedyFiberCost: 1,
+    /** [TUNE] Berries for one remedy. Basis: the cheapest forage on the island, so the
+     *  medicine shelf opens to anyone who has walked a beach, not just a specialist. */
+    remedyBerryCost: 2,
+    /** [TUNE] Game hours spent steeping one remedy. Basis: `journalWriteGameHours` — the
+     *  same hour writing costs, through the same `spendGameHours` path, because both are
+     *  things you sit at a fire and do rather than tap. */
+    remedyGameHours: 1,
+    /** [TUNE] Severity a remedy removes. Basis: `illnessFeverishAt` (0.45) minus
+     *  `illnessAilingAt` (0.2) — one brew reliably drops a fever back below the line where
+     *  it costs health. Relief, not a cure: the recovery clock is the system. */
+    remedySeverityRelief: 0.25,
     /** [TUNE] Drop 2 — game hours of limp from one full charge. ~6 real minutes: long enough
      *  to change how you plan the next errand, short enough not to become the game. */
     injuryLimpFromCharge: 2.5,

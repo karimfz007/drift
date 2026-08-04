@@ -14,6 +14,7 @@ export * from './resolver';
 export * from './affordance';
 export * from './discovery';
 export * from './reveal';
+export * from './illness';
 export * from './confidence';
 export * from './growth';
 export * from './matter';

@@ -63,6 +63,9 @@ const LOOK_KEY = 'drift.look.v1';
 //  bundle — but it converts the silent failure into a loud one, which is the half that
 //  actually costs sessions.
 const TUNE = new Proxy({
+    //  DROP 3 — D-011's own floor, mirrored so the Medicine Slice's absence check can cite
+    //  the real constant instead of a hardcoded 25 that would silently drift away from it.
+    healthOfflineFloor: 25,
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
@@ -4824,6 +4827,107 @@ async function main() {
     check('MAKER — tapping it makes a real spear, and it costs real matter',
         madeSpear.ok && withSpear.tools.spear === true && withSpear.inventory.wood < afterCombine.inventory.wood,
         `tap ${madeSpear.ok} ${madeSpear.reason ?? ''}, spear ${withSpear.tools.spear}, wood ${afterCombine.inventory.wood} -> ${withSpear.inventory.wood}`);
+
+    // ================================================================
+    // DROP 3 — THE MEDICINE SLICE. Illness is a condition the player can READ and ANSWER.
+    // ================================================================
+    console.log('\nDROP 3 — the Medicine Slice: sickness reads out, and the fire answers it');
+
+    //  A survivor already past the warning band, so the readout is under load. Severity is set
+    //  directly because the CAUSES are unit-tested exhaustively; what no unit test can reach is
+    //  whether a sick survivor can SEE it and DO anything about it on a real screen.
+    await editSave(`
+        state.illness = { severity: 0.6, cause: 'bad-water', gameHoursSick: 5 };
+        state.inventory.fiber = 5; state.inventory.berries = 5; state.inventory.wood = 10;
+        state.energy = 100; state.hunger = 90; state.thirst = 90; state.health = 80;
+    `);
+
+    const packSick = await realTapDom('.carried-button');
+    await sleep(450);
+    const toVitalsSick = await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(450);
+    await shot('drop3-01-vitals-sickness');
+    const sickTab = await page.evaluate(() => {
+        const p = document.querySelector('.panel.vitals') ?? document.querySelector('.panel.backpack');
+        const text = p ? p.textContent : '';
+        return {
+            reached: Boolean(p),
+            text,
+            hasRow: /Sickness/.test(text ?? ''),
+            chip: Array.from(document.querySelectorAll('.standing-chip')).map((n) => n.textContent.trim()),
+        };
+    });
+    check('DROP 3 — the Vitals tab carries a Sickness row, with the rung in plain words',
+        packSick.ok && toVitalsSick.ok && sickTab.reached && sickTab.hasRow
+        && sickTab.chip.some((c) => ['Off-colour', 'Sickening', 'Feverish', 'Gravely ill'].includes(c)),
+        `pack ${packSick.ok}, tab ${toVitalsSick.ok}, row ${sickTab.hasRow}, chips [${sickTab.chip.join(', ')}]`);
+    //  NO SEVERITY NUMBER. Same law the growth panel is held to, and the planted value (0.6)
+    //  plus its percentage form (60) are looked for by name rather than banning all digits —
+    //  the tab legitimately prints hour counts for a limp.
+    const sickDigits = (sickTab.text ?? '').match(/[0-9]+/g) ?? [];
+    check('DROP 3 — and NOT ONE severity number reaches the player',
+        sickTab.reached && !sickDigits.includes('60') && !(sickTab.text ?? '').includes('0.6')
+        && !(sickTab.text ?? '').includes('%'),
+        `digits [${sickDigits.join(', ')}]`);
+    await realTapDom('.panel.backpack .close-btn');
+    await sleep(400);
+
+    //  THE ANSWER, ON THE FIRE. Fifth verb on one object — the load the radial circle exists
+    //  to carry, and a precedence order could not arbitrate it.
+    const fireSpot = await findHoldableSite();
+    if (fireSpot) {
+        await editSave(`state.fire = { built: true, fuel: 6, x: ${fireSpot.x.toFixed(2)}, y: ${fireSpot.y.toFixed(2)} };
+            state.player = { x: ${(fireSpot.x - 1.5).toFixed(2)}, y: ${fireSpot.y.toFixed(2)} };
+            state.illness = { severity: 0.6, cause: 'bad-water', gameHoursSick: 5 };
+            state.inventory.fiber = 5; state.inventory.berries = 5;`);
+        await faceNode(fireSpot.x, fireSpot.y);
+        const at = await page.evaluate(({ x, y }) => window.__drift.screenOf(x, y), { x: fireSpot.x, y: fireSpot.y });
+        const held = at ? await holdWorld(at.x, at.y) : null;
+        await sleep(1400);
+        const ring = await page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.verb-seg'));
+            return {
+                open: segs.length > 0,
+                verbs: segs.map((b) => b.dataset.verb),
+                ready: segs.filter((b) => b.classList.contains('ready')).map((b) => b.dataset.verb),
+            };
+        });
+        check('DROP 3 — "Brew a remedy" is offered at the fire, and feeding it is still ready',
+            ring.open && ring.verbs.includes('brew-remedy') && ring.ready.includes('feed-fire'),
+            `hold ${held?.ok ?? 'n/a'} ${held?.why ?? ''}, ${ring.verbs.length} verb(s): ${ring.verbs.join(' | ')} — ready: ${ring.ready.join(' | ')}`);
+
+        const beforeBrew = await live();
+        const brewed = await realTapDom('.verb-seg[data-verb="brew-remedy"]');
+        await sleep(1100);
+        const afterBrew = await live();
+        //  RELIEF, NOT A CURE, and it cost real matter and a real hour — the recovery clock IS
+        //  the system, so a one-tap cure would delete it.
+        check('DROP 3 — brewing relieves the illness, costs matter and an hour, and does NOT cure',
+            brewed.ok
+            && afterBrew.illness.severity < beforeBrew.illness.severity
+            && afterBrew.illness.severity > 0
+            && afterBrew.inventory.berries < beforeBrew.inventory.berries
+            && afterBrew.gameHoursElapsed > beforeBrew.gameHoursElapsed,
+            `tap ${brewed.ok} ${brewed.reason ?? ''}, severity ${beforeBrew.illness.severity.toFixed(2)} -> ${afterBrew.illness.severity.toFixed(2)}, berries ${beforeBrew.inventory.berries} -> ${afterBrew.inventory.berries}, hours +${(afterBrew.gameHoursElapsed - beforeBrew.gameHoursElapsed).toFixed(2)}`);
+    } else {
+        check('DROP 3 — "Brew a remedy" is offered at the fire, and feeding it is still ready',
+            false, 'setup failed: findHoldableSite returned nothing');
+        check('DROP 3 — brewing relieves the illness, costs matter and an hour, and does NOT cure',
+            false, 'setup failed: findHoldableSite returned nothing');
+    }
+
+    //  D-011, ON A REAL DEVICE. The law the whole slice is gated by, driven through the real
+    //  absence path rather than asserted from the brain: a gravely ill survivor who closes the
+    //  game for three days comes back alive, and no worse.
+    await editSave("state.illness = { severity: 1, cause: 'chill', gameHoursSick: 30 }; state.health = 45;");
+    const sickBeforeAway = await live();
+    await goAway(3 * 24 * 60);
+    const sickAfterAway = await live();
+    check('DROP 3 — D-011: three days away with a grave illness costs NOTHING and never worsens',
+        sickAfterAway.health > 0
+        && sickAfterAway.illness.severity <= sickBeforeAway.illness.severity + 1e-6
+        && sickAfterAway.health >= TUNE.healthOfflineFloor,
+        `severity ${sickBeforeAway.illness.severity.toFixed(2)} -> ${sickAfterAway.illness.severity.toFixed(2)}, health ${sickBeforeAway.health.toFixed(1)} -> ${sickAfterAway.health.toFixed(1)}`);
 
     // ---- Hygiene ----
     console.log('\nHygiene');

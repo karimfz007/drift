@@ -52,7 +52,7 @@
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
  */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -531,6 +531,8 @@ export interface GameState {
      * All three clot to zero the moment a span counts as an absence ([[D-011]]).
      */
     injuries: InjuryState;
+    /** DROP 3, the Medicine Slice. Caused, never rolled; held on absence, never worsened. */
+    illness: IllnessState;
     /**
      * Item 2 — stacks the survivor has set down. Each carries its OWN drop timestamp, so
      * picking one up and dropping it again resets that stack alone. The timer runs on the
@@ -565,6 +567,30 @@ export interface InjuryState {
 
 /** The five-stage grammar of the fair-challenge contract. See `fauna.ts`. */
 export type BoarStage = 'unaware' | 'alert' | 'warning' | 'charge' | 'aftermath';
+
+/**
+ * The same five-stage grammar on a slower clock — the Medicine Slice. See `illness.ts`.
+ * The first two rungs cost NOTHING and say something: the contract is that the game tells
+ * you twice, in plain language, before an illness starts taking health.
+ */
+export type IllnessStage = 'well' | 'unsettled' | 'ailing' | 'feverish' | 'gravely-ill';
+
+/**
+ * Every illness in this game has one of exactly four causes, and it keeps the one that
+ * started it. There is no random source anywhere in `illness.ts`: if a survivor is ill,
+ * something they did or failed to do put them there, and the readout says which.
+ */
+export type IllnessCause = 'chill' | 'bad-water' | 'spoiled-food' | 'exhaustion';
+
+/** One illness. Deliberately the same size as `InjuryState` — see `illness.ts`. */
+export interface IllnessState {
+    /** 0..illnessSeverityMax. Drives the stage; only costs health from `feverish` up. */
+    severity: number;
+    /** What started it. Sticks to the FIRST cause, so the readout cannot lie about origin. */
+    cause: IllnessCause | null;
+    /** How long this survivor has been carrying it — for the death review and the report. */
+    gameHoursSick: number;
+}
 
 /**
  * One boar. A FIXED individual with a territory and a rhythm — never a spawn-wave unit.

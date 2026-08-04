@@ -23,6 +23,7 @@ import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
 import { netHeatFlowPerGameHour } from './thermal';
 import { settleOffline } from './fauna';
 import { settleInjuriesOffline } from './injury';
+import { settleIllnessOffline } from './illness';
 import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
@@ -425,6 +426,12 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         //  precisely the mechanic that would kill an absent player. Same structural shape as
         //  the boars — the guarantee is impossible to break rather than merely checked for.
         next.injuries = settleInjuriesOffline(next.injuries);
+        //  DROP 3 — and illness is HELD. Not cured: closing the game would otherwise be
+        //  the best medicine on the island and the whole slice optional. Never worse,
+        //  never costly, and the grave cases ease to a ceiling below the line where an
+        //  illness takes health. `stepIllness` is the only function that can cost
+        //  anything, and this path cannot reach it.
+        next.illness = settleIllnessOffline(next.illness);
     }
 
     return {

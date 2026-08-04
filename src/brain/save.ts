@@ -9,6 +9,7 @@
 import { TUNE } from '../data/tune';
 import { freshDomainScores } from './knowledge';
 import { freshLoadout } from './loadout';
+import { freshIllness } from './illness';
 import { SCHEMA_VERSION, type Blueprint, type GameState, type MaterialKind } from './types';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
@@ -106,6 +107,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 17) current = migrateV17toV18(current);
     if (current.schemaVersion === 18) current = migrateV18toV19(current);
     if (current.schemaVersion === 19) current = migrateV19toV20(current);
+    if (current.schemaVersion === 20) current = migrateV20toV21(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -647,6 +649,24 @@ function migrateV19toV20(envelope: SaveEnvelope): SaveEnvelope {
         ...old,
         dropped: Array.isArray(old.dropped) ? old.dropped : [],
         dropCount: num((old as Partial<GameState>).dropCount, 0),
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v20 -> v21, THE MEDICINE SLICE. A returning survivor arrives WELL.
+ *
+ * The same honesty every prior condition migration used: we have no record of how this
+ * body has been living, and inventing an illness for a survivor who was never told they
+ * were at risk would be absence making them worse — which is the one thing D-011 forbids
+ * outright. Fatigue took exactly this route at v7->v8, for exactly this reason.
+ */
+function migrateV20toV21(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        illness: isObject(old.illness) ? old.illness : freshIllness(),
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

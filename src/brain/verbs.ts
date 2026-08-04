@@ -19,6 +19,7 @@
  * less than nothing, because the player invents a wrong rule and plays against it.
  */
 import { TUNE } from '../data/tune';
+import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
 import { canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall } from './state';
 import { canBindWound } from './injury';
@@ -362,6 +363,18 @@ function fireVerbs(state: GameState): VerbOption[] {
             //  The journal's own reader already computes the ONE truest obstacle in D-068's
             //  order; re-deriving it here would be a second opinion that eventually disagrees.
             reason: notBuilt ?? (!lit ? 'The fire is out. You cannot write in the dark.' : readWrite(state).reason),
+        },
+        {
+            //  DROP 3 — THE REMEDY, on the fire for the same reason the journal is: it has
+            //  to be steeped, so it needs a PLACE and an hour rather than a menu entry.
+            //  This is the fifth verb on the fire, which is exactly the load the radial
+            //  circle was built to carry — a precedence order could not arbitrate it.
+            id: 'brew-remedy',
+            label: 'Brew a remedy',
+            available: built && lit && canBrewRemedy(state),
+            reason: notBuilt ?? (!lit ? 'The fire is out — nothing to steep it over.'
+                : !isIll(state.illness) ? 'You are well. Nothing to treat.'
+                    : `You need ${TUNE.remedyFiberCost} fibre and ${TUNE.remedyBerryCost} berries.`),
         },
     ];
 }

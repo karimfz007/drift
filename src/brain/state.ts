@@ -7,11 +7,12 @@ import { gameHoursFromRealSeconds } from './clock';
 import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
 import { freshInjuries } from './injury';
+import { freshIllness, onsetFrom } from './illness';
 import { TUNE } from '../data/tune';
 import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
-import { freshMatterWear } from './matter';
+import { freshMatterWear, transformationFor } from './matter';
 import { POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
 
 import { applyEffect, demandFor, resolveActivity } from './resolver';
@@ -94,6 +95,7 @@ export function createInitialState(nowMs: number): GameState {
         boars: createBoars(),
         meatFreshUntilGameHours: null,
         injuries: freshInjuries(),
+        illness: freshIllness(),
         dropped: [],
         dropCount: 0
     };
@@ -863,6 +865,12 @@ export function canDrinkAtPond(state: GameState): boolean {
 export function drinkAtPond(state: GameState): boolean {
     if (!canDrinkAtPond(state)) return false;
     state.thirst = applyDrink(state.thirst);
+    //  DROP 3 — BAD WATER, priced at the moment of swallowing rather than accrued. The
+    //  pond is untreated standing water; a sip on a healthy body stays inside the free
+    //  warning band, and drinking it all day while cold and tired is what makes you ill.
+    //  The flask is deliberately NOT a cause: it is what you filled and carried, and
+    //  giving the player one water source with a cost and one without is the decision.
+    state.illness = onsetFrom(state, 'bad-water', TUNE.badWaterExposurePerDrink);
     recordTrying(state, 'survivalcraft');
     return true;
 }
@@ -907,6 +915,14 @@ export function eat(state: GameState, food: Food): boolean {
     state.inventory[food] -= 1;
     state.hunger = applied.hunger;
     state.thirst = applied.thirst;
+    //  DROP 3 — SPOILED FOOD. Reuses Law 128's matter model rather than inventing a second
+    //  spoilage clock. Berries and meat both transform to `contaminated` when an attempt on
+    //  them fails, and `matterWear` already counts how far gone a kind is — so the food that
+    //  can make you ill is exactly the food the game has already been describing as crushed
+    //  and spoiled. Nothing new is stored, and the warning was on screen before the bite.
+    if (transformationFor(food) === 'contaminated' && (state.matterWear[food] ?? 0) > 0) {
+        state.illness = onsetFrom(state, 'spoiled-food', TUNE.spoiledFoodExposure);
+    }
     recordTrying(state, 'survivalcraft');
     return true;
 }

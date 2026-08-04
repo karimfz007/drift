@@ -11,9 +11,11 @@ import { realSecondsFromGameHours } from './clock';
 import { recordTrying } from './knowledge';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
-import { canSleep, createInitialState, isFireLit } from './state';
+import { canSleep, createInitialState, isFireLit, isShelteredSleep } from './state';
 import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
 import { injuriesFromCharge, stepInjuries } from './injury';
+import { onsetFrom, stepIllness } from './illness';
+import { thermalStrain } from './thermal';
 import { pruneDropped } from './dropped';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
@@ -282,6 +284,29 @@ export class Session {
         if (bled.healthLost > 0 || bled.next !== s.injuries) {
             s.injuries = bled.next;
             if (bled.healthLost > 0) s.health = Math.max(0, s.health - bled.healthLost);
+        }
+
+        //  DROP 3 — ILLNESS, ONLINE ONLY, for the same reason and by the same shape.
+        //
+        //  SLEEP IS THE TREATMENT (item 4), and it is the SHIPPED rest model doing the work
+        //  rather than a second one: `restQuality` is 0 awake, 1 in a proper shelter, and
+        //  `groundSleepRecoveryMultiplier` on the bare ground — the exact term reconcile
+        //  already uses to recover energy. A warm dry bed heals an illness faster because it
+        //  is already the better bed, in the number the game already keeps.
+        const restQuality = s.resting ? (isShelteredSleep(s) ? 1 : TUNE.groundSleepRecoveryMultiplier) : 0;
+        const sickened = stepIllness(s.illness, gameHours, restQuality);
+        if (sickened.healthLost > 0 || sickened.next !== s.illness) {
+            s.illness = sickened.next;
+            if (sickened.healthLost > 0) s.health = Math.max(0, s.health - sickened.healthLost);
+        }
+
+        //  ONSET, from the two causes that accrue over TIME rather than at a moment. Bad water
+        //  and spoiled food land where they are swallowed (see `drinkAtPond`/`eat`); these two
+        //  are conditions the survivor is living in, so they are read each span.
+        const chill = thermalStrain(s.warmth) === 'hypothermic' && s.wet > TUNE.wetIllnessThreshold;
+        if (chill) s.illness = onsetFrom(s, 'chill', gameHours * TUNE.chillExposurePerGameHour);
+        if (s.fatigue >= TUNE.fatigueIllnessThreshold) {
+            s.illness = onsetFrom(s, 'exhaustion', gameHours * TUNE.exhaustionExposurePerGameHour);
         }
     }
 

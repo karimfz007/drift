@@ -42,6 +42,7 @@
  */
 import { TUNE } from '../data/tune';
 import { loadEnergyMultiplierOf } from './body';
+import { illnessImpairmentShare } from './illness';
 import { netHeatFlowPerGameHour, thermalStrain, type HeatFlow, type ThermalContext } from './thermal';
 import {
     channelsFor, healthHarmFrom, workloadOf,
@@ -105,7 +106,12 @@ export function impairmentOf(state: GameState): number {
     //  which is why an injury is FELT without new machinery: a hurt survivor's whole day gets
     //  more expensive, in the currency the game already speaks.
     const painShare = clamp01(state.injuries?.pain ?? 0);
-    const worst = Math.max(fatigueShare, woundShare, coldShare, painShare);
+    //  DROP 3 — ILLNESS, through the same door pain uses. A fever taxes the whole day in
+    //  the currency the game already speaks, and it contributes NOTHING below the
+    //  fair-challenge line: `illnessImpairmentShare` returns 0 until `feverish`, so the
+    //  two warning rungs really are free.
+    const illShare = illnessImpairmentShare(state.illness ?? { severity: 0, cause: null, gameHoursSick: 0 });
+    const worst = Math.max(fatigueShare, woundShare, coldShare, painShare, illShare);
     return 1 + worst * (TUNE.impairmentMaxMultiplier - 1);
 }
 
