@@ -2679,6 +2679,46 @@ async function main() {
         const freeTo = (await live()).player;
         const freeSpeed = Math.hypot(freeTo.x - freeFrom.x, freeTo.y - freeFrom.y) / 1.5;
 
+        //  THE SAME BASELINE AGAIN, IN THE SLIDE'S OWN CADENCE. This is the diagnostic that
+        //  finally explains five runs of 37/41/33/28/32% against a 35% bar, and it is
+        //  ARITHMETIC rather than a fourth theory:
+        //
+        //  `moveAccelMps2` is 14 m/s^2 and there is no instant velocity, so a press from rest
+        //  covers 0.5*14*t^2. The slide is sampled as EIGHT 0.30 s presses, each starting from
+        //  a standstill because `walkToward` releases the stick between samples — and 0.30 s
+        //  at 14 m/s^2 reaches 4.2 m/s having averaged 2.1. It never gets near walking pace.
+        //  The old ratio then divided that by a baseline measured with ONE 1.5 s press, which
+        //  pays the ramp once and spends the rest at full speed. Eight cold starts over one
+        //  long press is ~36% before the obstacle is even involved, and the bar was 35%.
+        //
+        //  So the gate was reading the ACCELERATOR, not the slide, and sat so close to the
+        //  value the physics produces that it flipped on press-timing noise. Frame rate was
+        //  correctly refuted — the variable was never frame time, it was press duration.
+        //
+        //  Measured here rather than asserted: the same eight-press cadence on OPEN GROUND.
+        //  If this lands near the slide's own number, the deficit is the accelerator and not
+        //  the wall, and the honest ratio is slide-over-THIS.
+        //  THE TARGET MUST STAY UNREACHABLE. First cut aimed at `shelterAt.y + 20 + i` while
+        //  the free walk had ALREADY carried the survivor to ~y+20, so every press aimed at
+        //  the ground under their own feet, the stick barely left the deadzone, and the
+        //  baseline read 0.08 m/s. A baseline that measures walking to where you already are
+        //  is not a baseline. Aimed 60 m out along a fixed heading instead, so all eight
+        //  presses deflect fully and the mover never arrives.
+        const burstFrom = (await live()).player;
+        const burstTx = burstFrom.x + 60;
+        const burstTz = burstFrom.y + 60;
+        let burstDist = 0;
+        let burstPrev = burstFrom;
+        for (let i = 0; i < 8; i++) {
+            await walkToward(burstTx, burstTz, 0.30);
+            const now = (await live()).player;
+            burstDist += Math.hypot(now.x - burstPrev.x, now.y - burstPrev.y);
+            burstPrev = now;
+        }
+        const burstFreeSpeed = burstDist / (8 * 0.30);
+        console.log(`  (slide diagnostic: free walk one long press ${freeSpeed.toFixed(2)} m/s, `
+            + `same ground in the slide's own 8x0.30s cadence ${burstFreeSpeed.toFixed(2)} m/s)`);
+
         //  STAGE AGAINST AN ISOLATED OBSTACLE. This pressed into the shelter while the
         //  storage box sat ~2.2 m away, and those two expanded by the player's radius OVERLAP
         //  — a passage width of MINUS 0.80 m. There is no way around that pair, so
@@ -2790,9 +2830,18 @@ async function main() {
 
         //  (3) The slide carries real pace. Judged against THIS run's own free-walk speed:
         //      a slide at a crawl is technically unstuck and still feels like being stuck.
+        //  JUDGED LIKE FOR LIKE. Against `burstFreeSpeed` — the same eight-press cadence on
+        //  open ground — so the accelerator appears in BOTH sides of the ratio and cancels,
+        //  and what is left is the only thing this gate ever meant to ask: how much of its
+        //  travel does the mover keep when a wall is in the way. The bar rises from 0.35 to
+        //  0.70 because it is now a fraction of the right quantity; a mover that pins dead
+        //  still scores 0, and the four sibling checks below (continuity, perpendicular
+        //  travel, camera, the ruler's own audit) are untouched.
         check('FEEL COURT — sliding keeps a real fraction of walking pace',
-            freeSpeed > 0.5 && slideSpeed > freeSpeed * 0.35,
-            `slide ${slideSpeed.toFixed(2)} m/s vs free walk ${freeSpeed.toFixed(2)} m/s (${(slideSpeed / (freeSpeed || 1) * 100).toFixed(0)}%)`);
+            burstFreeSpeed > 1.0 && slideSpeed > burstFreeSpeed * 0.70,
+            `slide ${slideSpeed.toFixed(2)} m/s vs same-cadence free walk ${burstFreeSpeed.toFixed(2)} m/s `
+            + `(${(slideSpeed / (burstFreeSpeed || 1) * 100).toFixed(0)}%) — one-long-press walk was `
+            + `${freeSpeed.toFixed(2)} m/s, and the gap between those two IS the accelerator`);
 
         //  (4) The character goes SOMEWHERE — lateral travel along the surface, which is what
         //      the eye reads as sliding rather than vibrating in place.

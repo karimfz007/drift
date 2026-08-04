@@ -3,6 +3,24 @@
 
 ---
 
+**D-120 · 2026-08-05 — THE SLIDE GATE WAS MEASURING THE ACCELERATOR. Five runs, four published causes, and the mover was never impaired.**
+
+**THE FOURTH CAUSE, AND THIS ONE IS ARITHMETIC.** `FEEL COURT — sliding keeps a real fraction of walking pace` read 37 / 41 / 33 / 28 / 32% against a 35% bar across five runs. Three earlier root causes were published for this gate and all three were wrong; [[D-116]] refuted the fourth (frame rate) using the runs' own data — the failing run had the HIGHEST frame rate. The actual mechanism was in the instrument's own sampling:
+
+**`moveAccelMps2` is 14 m/s² and there is no instant velocity.** The slide is sampled as EIGHT 0.30 s presses, and `walkToward` releases the stick between samples — so every sample starts **from rest**. A 0.30 s press from rest covers `0.5 * 14 * 0.30² = 0.63 m`, averaging 2.1 m/s, and never approaches walking pace at all. The ratio then divided that by a baseline measured with **ONE 1.5 s press**, which pays the ramp once and spends the rest at full speed. **Eight cold starts over one long press is ~36% before an obstacle is involved**, and the bar was 35%. The gate sat on the value the physics produces and flipped on press-timing noise.
+
+**MEASURED, NOT ARGUED.** The same eight-press cadence was run on OPEN GROUND in the same pass: **1.82 m/s, against 5.77 m/s for one long press on the same ground with the same stick.** The only difference is cadence. That 68% deficit is the accelerator, and it was sitting in the denominator of a ratio that blamed the wall for it.
+
+**THE MOVER WAS NEVER IMPAIRED.** Judged like for like, the slide reads **2.35 m/s against 1.82 — 129%.** A survivor pressing into a wall covers MORE ground than one crossing open beach at the same cadence, because tangential velocity survives across presses while in contact and a fresh press in open air does not. The gate now compares slide to same-cadence walking and the bar is 0.70 of the right quantity; a mover that pins dead still scores 0, and the five sibling checks are untouched.
+
+**MY FIRST BASELINE WAS BROKEN AND SAID SO.** It aimed at `shelterAt.y + 20 + i` while the free walk had already carried the survivor to ~y+20 — so every press aimed at the ground under their own feet, the stick barely left the deadzone, and it read **0.08 m/s**. A baseline that measures walking to where you already are is not a baseline. Re-aimed 60 m out along a fixed heading so all eight presses deflect fully, and the sanity guard raised from `> 0.5` to `> 1.0` so a collapsed baseline FAILS rather than producing a flattering ratio — at 0.5 a partly-collapsed baseline would have passed on a 3000% reading.
+
+**A SECOND CHECK SHARES [[D-116]]'s ARRIVAL-PROFILE DEFECT.** `SLICE 3 — nobody wakes` failed at health 66.59 against a profile of 65, for the same reason the boot check does: health regenerates at `healthRegenPerGameHour` from the moment of arrival, and both checks read it against a tight band with no time control. **Two checks, one cause**, now recorded together rather than separately.
+
+**Class: OPERATIVE**
+
+*Witness: the diagnostic and its fix are device-measured in the same run — 322/329, no crash. The gate passes at 129%. Harness-only change; the served bundle was byte-identical across both runs (`index-BVqGvRRb.js`), so nothing here can be a product regression. The remaining failures are timing-sensitive on a 1.17 GB machine and vary run to run — `FIX 5` carried, the two arrival-profile checks above, and three that passed in the immediately prior run on the same bundle.*
+
 **D-119 · 2026-08-04 — THE CONFIRMING RUN. All three owed legs closed at 327/329 — and the fifth fire verb had broken the circle.**
 
 **THE RUN COMPLETED, AND THE BLOCKER WAS NEVER THE PRODUCT.** Five previous attempts died in `editSave` navigation timeouts. The mechanism, per [[D-072]], is memory starvation on `page.goto` — and the fix was to widen the bench's PATIENCE, not any assertion: the navigation budget went 90s → 240s, the same adjustment this harness already made once (30s → 90s) for this same machine. **No check was loosened.** A green run bought by relaxing a check would be worthless; this widened how long the bench waits for a page to exist, which is [[D-084]]'s distinction between a flaky check and a flaky machine.
