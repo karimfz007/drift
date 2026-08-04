@@ -1233,7 +1233,12 @@ export function showVerbCircle(
     onPick: (id: string) => void,
     onCancel: () => void,
 ): void {
-    const el = panel(overlay, 'verb-circle');
+    //  FIVE VERBS IS CROWDED. At the certified arc, adjacent centres sit ~75px apart with a
+    //  116px segment, so from five onward they overlap and hit-testing returns the neighbour
+    //  rather than the button under the thumb. The class narrows the segments; the ARC is
+    //  untouched, because SLICE 2's ONE-THUMB REACH gate certifies that geometry and a fix
+    //  that moved it would be trading a certified property for an uncertified one.
+    const el = panel(overlay, `verb-circle${options.length >= 5 ? ' crowded' : ''}`);
 
     //  The arc opens upward and inward. `inward` flips the sweep when the tap is on the right
     //  half, so segments always fall toward the middle of the screen where a thumb can reach.

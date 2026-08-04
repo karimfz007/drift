@@ -229,6 +229,19 @@
             align-items: center; justify-content: center; padding: 6px 8px;
             border-radius: 14px; border: 1px solid var(--line);
             background: rgba(18, 20, 24, 0.92); color: var(--fg); font: inherit; }
+        /*  CROWDED ARC. The circle's geometry is FIXED — the arc, the radius and the sweep
+            are certified by SLICE 2's ONE-THUMB REACH gate, so nothing here moves them.
+            What changed is the count: DROP 3 made brewing a remedy the FIFTH verb on the
+            fire, and at five the arc puts adjacent centres ~75px apart while a segment is
+            116px wide. They overlapped, elementFromPoint returned the neighbour, and every
+            fire verb — feed, light torch, make journal, write, brew — became unpickable.
+            The device caught it as four separate failures with one cause.
+            Narrowing the segment fixes the overlap without touching the arc, so the reach
+            gate is unaffected by construction rather than by re-measurement. 68px still
+            clears the ~48px minimum a thumb needs.  */
+        .panel.verb-circle.crowded .verb-seg { width: 68px; margin-left: -34px; padding: 5px 4px; }
+        .panel.verb-circle.crowded .verb-label { font-size: 12px; line-height: 1.15; }
+        .panel.verb-circle.crowded .verb-reason { display: none; }
         .panel.verb-circle .verb-seg.ready { border-color: var(--good); }
         .panel.verb-circle .verb-seg.blocked { opacity: 0.55; }
         .panel.verb-circle .verb-label { font-weight: 600; }

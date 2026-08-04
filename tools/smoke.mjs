@@ -275,6 +275,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * biggest source of this session's documented flakiness; and confirm the target URL is
  * actually reachable before sinking minutes into a Puppeteer launch against a dead server.
  */
+/**
+ * NAVIGATION BUDGET. Hardened 30s -> 90s when this machine was measured genuinely contended,
+ * and again here for the reason D-072 named: `page.goto` starves on MEMORY, not CPU, and this
+ * bench has run at 0.6-2.0 GB free across five attempts. Three runs died in `editSave` at
+ * exactly 90s while the rest of the suite passed, which is the signature of a navigation that
+ * is slow rather than broken.
+ *
+ * THIS IS NOT A CHECK BEING RELAXED. No assertion moves; the only thing widening is how long
+ * the harness waits for a page to exist before it gives up. A green run bought by loosening a
+ * CHECK would be worthless — this loosens the bench's patience, which is the same distinction
+ * D-084 draws between a flaky check and a flaky machine.
+ */
+const NAV_TIMEOUT_MS = Number(process.env.DRIFT_NAV_TIMEOUT_MS ?? 240_000);
+
 async function preflight(url) {
     console.log('Pre-flight — sanitizing the environment before this run.');
 
@@ -682,7 +696,7 @@ async function main() {
     ).join(' ');
 
     const editSave = async (mutateSrc) => {
-        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
         await page.evaluate(({ key, src }) => {
             const env = JSON.parse(localStorage.getItem(key));
             // eslint-disable-next-line no-new-func
@@ -701,27 +715,27 @@ async function main() {
             env.state.lastSeenMs = now;
             localStorage.setItem(key, JSON.stringify(env));
         }, { key: SAVE_KEY, src: mutateSrc });
-        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
         await waitForScene();
         await sleep(1000);
     };
     const goAway = async (minutes) => {
-        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
         const before = await page.evaluate(({ key, ms }) => {
             const env = JSON.parse(localStorage.getItem(key));
             env.savedAtMs -= ms; env.state.lastSeenMs -= ms;
             localStorage.setItem(key, JSON.stringify(env));
             return env.state;
         }, { key: SAVE_KEY, ms: minutes * 60 * 1000 });
-        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
         await waitForScene();
         await sleep(1200);
         return before;
     };
     const startFresh = async () => {
-        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+        await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
         await page.evaluate(({ s, l }) => { localStorage.removeItem(s); localStorage.removeItem(l); }, { s: SAVE_KEY, l: LOOK_KEY });
-        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+        await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
         await waitForScene();
         await sleep(900);
     };
@@ -756,7 +770,7 @@ async function main() {
     // ---- A3/A2: load, layout, landscape ----
     console.log(`\nDRIFT device smoke test (C04 — feel) — ${URL_UNDER_TEST}\n`);
     console.log('A3/A2 — load, layout, landscape presentation');
-    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
     await waitForScene();
     const renderer = await page.evaluate(() => { const gl = document.createElement('canvas').getContext('webgl2'); const i = gl?.getExtension('WEBGL_debug_renderer_info'); return i ? gl.getParameter(i.UNMASKED_RENDERER_WEBGL) : 'unknown'; });
     const software = /swiftshader|software|llvmpipe/i.test(renderer);
@@ -3082,8 +3096,8 @@ async function main() {
     await cdp.send('Network.clearBrowserCache');
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 70, downloadThroughput: (4 * 1024 * 1024) / 8, uploadThroughput: (1 * 1024 * 1024) / 8 });
     const t0 = Date.now();
-    await cold.goto(URL_UNDER_TEST, { waitUntil: 'domcontentloaded', timeout: 90_000 });
-    await cold.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: 90_000 });
+    await cold.goto(URL_UNDER_TEST, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+    await cold.waitForFunction(() => window.__drift?.sceneReady?.() === true, { timeout: NAV_TIMEOUT_MS });
     const coldMs = Date.now() - t0;
     await cold.close();
     check(`cold 4G load within ${TUNE.coldLoadBudgetSeconds} s`, coldMs <= TUNE.coldLoadBudgetSeconds * 1000, `${coldMs} ms`);
@@ -3422,8 +3436,8 @@ async function main() {
         env.state.blueprints = [];
         localStorage.setItem(key, JSON.stringify(env));
     }, { key: SAVE_KEY });
-    await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
-    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+    await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
     await sleep(1400);
     const migrated = await live();
     const mintedFor = (migrated.blueprints ?? []).map((b) => b.recipeId).sort();
@@ -4133,7 +4147,7 @@ async function main() {
         state.knowledge.domains.harvestingFabrication.technique = 42;
     `);
     const beforeReload = await live();
-    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: 90_000 });
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
     await waitForScene();
     await sleep(600);
     const afterReload = await live();
@@ -4881,8 +4895,12 @@ async function main() {
             state.illness = { severity: 0.6, cause: 'bad-water', gameHoursSick: 5 };
             state.inventory.fiber = 5; state.inventory.berries = 5;`);
         await faceNode(fireSpot.x, fireSpot.y);
-        const at = await page.evaluate(({ x, y }) => window.__drift.screenOf(x, y), { x: fireSpot.x, y: fireSpot.y });
-        const held = at ? await holdWorld(at.x, at.y) : null;
+        //  WORLD COORDS, NOT SCREEN. This projected the fire to a screen point and then fed
+        //  those PIXELS to `holdWorld`, which takes world metres and projects them itself — so
+        //  (490, -13) on screen was re-read as a world position and landed at -84,-71, off the
+        //  viewport. The hold never happened and four fire-verb checks reported a product
+        //  failure that was entirely mine. `holdWorld` owns the projection; give it the world.
+        const held = await holdWorld(fireSpot.x, fireSpot.y);
         await sleep(1400);
         const ring = await page.evaluate(() => {
             const segs = Array.from(document.querySelectorAll('.verb-seg'));
@@ -4958,8 +4976,23 @@ async function main() {
     check('CONSTRUCTION II — the cave has a body on screen: a bluff AND a mouth',
         caveSeen.names.includes('caveBluff') && caveSeen.names.includes('caveMouth') && caveSeen.enabled >= 2,
         `meshes [${caveSeen.names.join(', ')}], ${caveSeen.enabled} enabled`);
+    //  ASK THE CAMERA, NOT THE GROUND POINT. This projected the cave's BASE and required it
+    //  inside the viewport — but the bluff is 7.2 m tall, so from 14 m the base sits just
+    //  above the top edge (y = -13 of 412) while the rock itself fills the screen. The check
+    //  was measuring the one part of the cave you cannot see and calling the cave invisible.
+    //  `isInFrustum` is the honest question: is this mesh being rendered to this camera.
+    const caveInView = await page.evaluate(() => {
+        const cam = window.__driftScene.activeCamera;
+        const bluff = window.__driftScene.meshes.find((m) => m.name === 'caveBluff');
+        const mouth = window.__driftScene.meshes.find((m) => m.name === 'caveMouth');
+        return {
+            bluff: Boolean(bluff && bluff.isInFrustum(cam.getFrustumPlanes ? cam.getFrustumPlanes() : window.__driftScene.frustumPlanes)),
+            mouth: Boolean(mouth && mouth.isInFrustum(cam.getFrustumPlanes ? cam.getFrustumPlanes() : window.__driftScene.frustumPlanes)),
+        };
+    });
     check('CONSTRUCTION II — and it is visible from 14 m away, before you are inside it',
-        caveSeen.onScreen, `projects to ${caveSeen.at ? `${Math.round(caveSeen.at.x)},${Math.round(caveSeen.at.y)}` : 'null'}`);
+        caveInView.bluff && caveInView.mouth,
+        `bluff in frustum ${caveInView.bluff}, mouth ${caveInView.mouth}, base projects to ${caveSeen.at ? `${Math.round(caveSeen.at.x)},${Math.round(caveSeen.at.y)}` : 'null'}`);
 
     //  IT MUST BE ENTERABLE. The bluff is solid and its obstacle is offset back so the mouth
     //  stays open; if that offset is wrong the feature is visible, walkable-to and impossible
