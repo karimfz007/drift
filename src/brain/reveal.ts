@@ -31,6 +31,7 @@
  */
 import { atLeast, ladderFor } from './ladder';
 import { suspicionFor } from './discovery';
+import { allRecipes } from './recipes';
 import type { GameState } from './types';
 
 /**
@@ -54,6 +55,56 @@ export function revealedInPanel(state: GameState, recipeId: string): boolean {
     if (atLeast(ladderFor(state, recipeId), 'demonstrated')) return true;
     if (!SURVIVAL_BASIC.has(recipeId)) return false;
     return suspicionFor(state, recipeId)?.suspected === true;
+}
+
+/**
+ * Is this recipe's product already made or standing?
+ *
+ * `knap` is deliberately absent: it is repeatable and has no "done" state (D-055), so it is
+ * never satisfied and never stops being an offer.
+ */
+function satisfied(state: GameState, recipeId: string): boolean {
+    switch (recipeId) {
+        case 'torch': return state.torch.owned;
+        case 'axe': return state.tools.axe;
+        case 'spear': return state.tools.spear;
+        case 'backpack': return state.tools.backpack;
+        case 'stonehammer': return state.tools.stoneHammer;
+        case 'shelter': return state.shelter.built;
+        case 'storage': return state.storage.built;
+        default: return false;
+    }
+}
+
+/**
+ * WHAT THE MAKER PANEL HAS TO OFFER — the door's own gate, derived rather than enumerated.
+ *
+ * THE DEFECT THIS REPLACES, which is [[D-053]]'s for the THIRD time. The body decided this
+ * with a hardcoded list of product flags: *"show the button if the axe OR the shelter OR the
+ * storage OR the torch OR the hammer is still unmade."* Every clause goes false on a
+ * long-running save — which is exactly the save a real player has — and the button vanished
+ * outright with live rows still inside it. D-053 found it when the torch shipped and fixed it
+ * by APPENDING the torch. The spear and the backpack then shipped and were not appended, so
+ * a fully-equipped survivor had no route to either. **A gate you have to remember to extend
+ * is a defect with a delay on it**, and appending a sixth clause would only set the timer
+ * again.
+ *
+ * So the door is derived from the room. `rest` is unconditional and is listed as a real
+ * offer, not a fudge to force the result true: the panel is the ONLY entry point to sleeping
+ * rough — the circle's `sleep` verb refuses unless you are standing at a shelter — so a
+ * survivor with nothing left to make still has something in there they cannot reach any
+ * other way. That is a fact about the game, and it is why this predicate is total.
+ *
+ * Returned as a LIST rather than a boolean on purpose: a caller that wants to know *why* the
+ * door is open can see it, and a test can assert the spear is genuinely among the offers
+ * instead of inferring it from a `true` that a dozen other things would also produce.
+ */
+export function makerOffers(state: GameState): string[] {
+    const offers = allRecipes()
+        .map((r) => r.id)
+        .filter((id) => revealedInPanel(state, id) && !satisfied(state, id));
+    offers.push('rest');
+    return offers;
 }
 
 /** A thought the survivor is having but cannot yet act on — the teaching half of the pivot. */

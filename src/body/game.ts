@@ -87,6 +87,7 @@ import {
     siteHasAnything,
     bodyReport,
     revealedInPanel,
+    makerOffers,
     panelHints,
     announcementFor,
     loadSpeedMultiplierOf,
@@ -2239,10 +2240,17 @@ export class Game {
         //  device harness never caught it because every harness scenario opens the Build
         //  panel EARLY, before all three older items are built — it never exercised the
         //  "everything but the torch" state a real long session reaches.
-        let secondary = { label: '', visible: false };
-        if (!state.tools.axe || !state.shelter.built || !state.storage.built || !state.torch.owned || !state.tools.stoneHammer) {
-            secondary = { label: 'Build', visible: true };
-        }
+        //
+        //  AND IT HAPPENED AGAIN, TWICE, because that fix APPENDED a clause instead of
+        //  removing the reason a clause was needed. The spear (Drop 1) and the backpack
+        //  (D-113) both shipped without being appended, so the director — who owns all five
+        //  of the enumerated products — opened the Backpack after the spear's zero-callers
+        //  defect was fixed and STILL found nothing: the row was revealed, the handler was
+        //  bound, and the door to the room was gone. The list is deleted rather than
+        //  extended; `makerOffers` derives the gate from what the panel actually holds, so
+        //  the eighth craftable cannot repeat this.
+        const offers = makerOffers(state);
+        const secondary = { label: 'Build', visible: offers.length > 0 };
 
         this.hud.update({
             warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health, energy: state.energy,

@@ -3299,20 +3299,55 @@ async function main() {
     check('REGRESSION — the Build button stays visible with axe/shelter/storage all done, while the torch is still uncrafted', withTorchOwedInfo.visible, JSON.stringify(withTorchOwedInfo));
     const withTorchOwedShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
 
-    //  The other half: once EVERYTHING (including the torch) is done, the button should
-    //  correctly disappear — proving this isn't just "always show it" overcorrection.
+    //  MIGRATED — THIS CHECK ASSERTED THE DEFECT. It used to require the button to DISAPPEAR
+    //  once everything enumerated was done, and called that "proving this isn't just always
+    //  show it". That was the D-053 model: a door gated on the catalogue being incomplete.
+    //  It is exactly the state a long-running save reaches, and hiding there is what left the
+    //  director unable to find the spear — the row revealed, the handler bound, and no way in.
+    //  The door is derived from the room now (`makerOffers`), and the room is never empty:
+    //  rest is unconditional and the maker panel is its ONLY entry point when you have no
+    //  shelter to stand at. So the claim inverts, and it is the same claim as its sibling
+    //  above rather than its opposite.
     await editSave("state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4, grade: 'serviceable' };");
     const allDoneInfo = await makerVisible();
-    check('the Build button correctly hides once axe/shelter/storage/torch are ALL done', !allDoneInfo.visible, JSON.stringify(allDoneInfo));
-    const allDoneShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
+    check('MIGRATED — the Build button STAYS visible once axe/shelter/storage/torch are ALL done',
+        allDoneInfo.visible, JSON.stringify(allDoneInfo));
 
-    //  Screenshot diff: the same fixed action-row region, in two different states,
-    //  actually renders different pixels — not just two different DOM claims.
-    if (withTorchOwedShot && allDoneShot) {
-        check('REGRESSION — the visibility change is real on screen, not just a DOM flag (screenshot diff)', !withTorchOwedShot.equals(allDoneShot));
-    } else {
-        check('REGRESSION — the visibility change is real on screen, not just a DOM flag (screenshot diff)', false, 'setup failed: .action-row not found');
-    }
+    //  MIGRATED — AND SO DOES ITS SCREENSHOT DIFF, whose premise went with it. It compared
+    //  the action-row region across the visible and hidden states and asserted the pixels
+    //  differed. There is no hidden state any more, so it was left comparing two frames that
+    //  differ only by the clock — and it PASSED on that, which is a vacuous pass reporting
+    //  a visibility change that no longer exists.
+    //
+    //  What still needs pixels is the thing `isVisible()` cannot see: that the button is
+    //  genuinely PAINTED and not a transparent hole with a correct bounding box. So the
+    //  control is manufactured rather than waited for — hide it by style, shoot, restore,
+    //  shoot, and require the two to differ. A diff against a control I created is evidence;
+    //  a diff against a state the game no longer has is not.
+    //
+    //  IT ALSO SHOOTS THE RIGHT ELEMENT NOW. The old diff clipped `.action-row` — the HUD
+    //  row where the RETIRED global button used to sit. Post-Law-126 the maker lives on
+    //  `.make-btn` inside the pack, so that region had not contained the subject of its own
+    //  claim since Slice 2C. It was measuring the HUD and reporting on the Backpack.
+    const packForPaint = await realTapDom('.carried-button');
+    await sleep(420);
+    const makeRect = await page.evaluate(() => {
+        const b = document.querySelector('.make-btn');
+        if (!b) return null;
+        const r = b.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
+    });
+    const paintedShot = makeRect ? await shotOfRect(makeRect) : null;
+    await page.evaluate(() => { const b = document.querySelector('.make-btn'); if (b) b.style.visibility = 'hidden'; });
+    await sleep(220);
+    const blankedShot = makeRect ? await shotOfRect(makeRect) : null;
+    await page.evaluate(() => { const b = document.querySelector('.make-btn'); if (b) b.style.visibility = ''; });
+    await sleep(180);
+    check('MIGRATED — the door is really PAINTED, not a transparent hole (pixels, against a forced control)',
+        Boolean(paintedShot && blankedShot) && !paintedShot.equals(blankedShot),
+        makeRect ? `${paintedShot?.length} vs ${blankedShot?.length} bytes` : `setup failed: pack ${packForPaint.ok}, .make-btn rect null`);
+    await realTapDom('.panel.backpack .close-btn');
+    await sleep(400);
 
     // ---- Ch.1 v3: the crafting tree — the stone hammer, knapping, grades, the journal (D-055) ----
     console.log('\nD-055 — Ch.1 v3: the stone hammer + knapping, grades, the null-outcome journal');
@@ -3441,12 +3476,19 @@ async function main() {
 
 
 
-    //  The Build button's visibility gate now also covers the stone hammer (extending
-    //  D-053's own fix) — force axe/shelter/storage/torch AND the hammer all done, confirm
-    //  the button correctly disappears; this run's shelter/storage/torch were already
-    //  built earlier in the suite, so the hammer (just crafted above) is the last gate.
+    //  MIGRATED — THE SIXTH CLAUSE, ASSERTED. This check was written when D-053's fix was
+    //  APPENDED to rather than removed: it added the stone hammer to the enumerated gate and
+    //  then required the button to disappear once that last item was done. Appending is what
+    //  made the defect recur — the spear and the backpack shipped after it and were never
+    //  added, so this check went on passing while the door was shut on a fully-equipped save.
+    //  A green check on a broken door, for two whole slices.
+    //
+    //  Now the strongest form of the claim: EVERYTHING enumerated is done, and the door is
+    //  still there. This run's shelter/storage/torch were already built earlier in the suite,
+    //  so the hammer just crafted above makes it the complete set.
     const finalVisible = await makerVisible();
-    check('the Build button correctly hides once EVERYTHING, including the stone hammer, is done', !finalVisible.visible, JSON.stringify(finalVisible));
+    check('MIGRATED — the door STAYS open once EVERYTHING, including the stone hammer, is done',
+        finalVisible.visible, JSON.stringify(finalVisible));
 
     //  The null-outcome journal: holding a material that satisfies nothing (berries) and
     //  opening the Build panel journals every (slot, kind) pair as "doesn't combine" —
@@ -3455,10 +3497,10 @@ async function main() {
     //  berries were very likely already held (and the panel opened) earlier in this long
     //  run (the berry bush check, well before this point), so trusting incidental leftover
     //  state here would be exactly the mistake this file's own lessons already warn against.
-    //  ALSO force the torch back to unowned: by this point axe/shelter/storage/torch/hammer
-    //  are ALL done, so the Build button itself is correctly hidden (just confirmed above)
-    //  — with nothing left to build, `.secondary-action` cannot be tapped at all. Needs at
-    //  least one open item for the button (and so the panel) to be reachable.
+    //  The torch is forced back to unowned so the panel has a buildable row to journal
+    //  against. It no longer has to be done to make the panel REACHABLE — that was the old
+    //  reasoning here, and it was reasoning from the defect: "with nothing left to build the
+    //  button cannot be tapped at all" described a door that should never have shut.
     await editSave(`
         state.inventory.berries = 1;
         state.knowledge = { nullPairs: [], events: [] };
@@ -4642,6 +4684,146 @@ async function main() {
         treeProbe.tried > 0 && treeProbe.canopy === treeProbe.tried,
         `${treeProbe.canopy}/${treeProbe.tried} canopy taps resolved${treeProbe.misses.length ? ' — misses: ' + treeProbe.misses.join(' | ') : ''}`);
 
+
+    // ================================================================
+    // THE MAKER DOOR, AND THE SPEAR THE DIRECTOR STILL COULD NOT FIND.
+    //
+    // Two purposes in one pass. (1) Re-witness the two growth-panel laws that were caught on
+    // device and fixed in the unit suite only — a fix whose witness sits one layer below the
+    // layer that caught it is not closed. (2) The director's exact case, end to end.
+    // ================================================================
+    console.log('\nTHE MAKER DOOR — the spear end to end, and the growth panel re-witnessed');
+
+    //  PURPOSE 1. The two laws are asserted on the SKILLS TAB, which is the surface that
+    //  renders skill rows at all: the standalone `.growth-btn` card calls `growthBody(report)`
+    //  with no skills argument, so it draws none and could never have witnessed either
+    //  defect. Levels are planted conspicuously — the panel shipped printing "Level 3" and
+    //  "45% toward level 4" verbatim.
+    await editSave(`
+        state.skills = { woodcutting: { level: 3, xp: 45 }, foraging: { level: 2, xp: 20 } };
+        state.capacities = { strength: 78, endurance: 45, loadTolerance: 12, mobilityBalance: 10,
+            coordinationDexterity: 10, breathWaterConfidence: 10, acclimatization: 10, generalResilience: 10 };
+        state.energy = 100; state.hunger = 90; state.thirst = 90;
+    `);
+    const packForSkills = await realTapDom('.carried-button');
+    await sleep(480);
+    const toSkillsTab = await realTapDom('.backpack-tab[data-tab="skills"]');
+    await sleep(480);
+    await shot('maker-01-skills-tab');
+    const skillTab = await page.evaluate(() => {
+        const p = document.querySelector('.panel.growth');
+        return {
+            reached: Boolean(p),
+            skillRows: document.querySelectorAll('.skill-row').length,
+            capacities: document.querySelectorAll('.growth-item:not(.cross-item)').length,
+            crossings: document.querySelectorAll('.growth-item.cross-item').length,
+            bars: document.querySelectorAll('.skill-fill').length,
+            text: p ? p.textContent : '',
+        };
+    });
+    //  ITEM 4's FEATURE ITSELF, which no device check has ever looked at. The two laws below
+    //  are about how these rows behave; without this one they could both pass on a tab that
+    //  renders no skills at all, which is the vacuity that would make the re-witness a lie.
+    check('MAKER — the Skills tab actually renders the two shipped skills',
+        packForSkills.ok && toSkillsTab.ok && skillTab.reached && skillTab.skillRows === 2 && skillTab.bars === 2,
+        `pack ${packForSkills.ok}, tab ${toSkillsTab.ok}, ${skillTab.skillRows} skill row(s), ${skillTab.bars} bar(s)`);
+    //  LAW (b), RE-WITNESSED: the skill rows reused `growth-item` and the harness counted TEN
+    //  capacities where §12 has eight. A shared class is a shared identity to any check.
+    check('MAKER — re-witness: EIGHT capacities, not ten — skill rows keep their own class',
+        skillTab.capacities === 8 && skillTab.crossings === 3,
+        `${skillTab.capacities} capacities, ${skillTab.crossings} crossings, ${skillTab.skillRows} skills`);
+    //  LAW (a), RE-WITNESSED: no raw score reaches the player. Planted values are looked for
+    //  by name, and the bare '%' is checked separately because the percentage was the leak.
+    const skillDigits = (skillTab.text ?? '').match(/[0-9]+/g) ?? [];
+    const skillLeaks = skillDigits.filter((d) => ['78', '45', '12', '20'].includes(d));
+    check('MAKER — re-witness: NOT ONE raw score on the Skills tab, and no percentage',
+        skillTab.reached && (skillTab.text ?? '').length > 200
+        && skillLeaks.length === 0 && !(skillTab.text ?? '').includes('%') && !(skillTab.text ?? '').includes('Level '),
+        skillTab.reached
+            ? `${(skillTab.text ?? '').length} chars, digits [${skillDigits.join(', ')}], leaked [${skillLeaks.join(', ')}]`
+            : 'skills tab never opened');
+    await realTapDom('.panel.growth .close-btn');
+    await sleep(420);
+
+    //  PURPOSE 2 — THE DIRECTOR'S EXACT STATE. Everything the retired gate enumerated is
+    //  already owned, which is what a long-running save looks like and what no scenario in
+    //  this harness had ever built. Blueprints wiped, so the spear is genuinely undiscovered
+    //  and has to be earned through the combine surface rather than granted.
+    await editSave(`
+        state.tools.axe = true; state.tools.stoneHammer = true; state.tools.backpack = true;
+        state.tools.spear = false;
+        state.torch.owned = true; state.shelter.built = true; state.storage.built = true;
+        state.blueprints = []; state.experimentCount = 0;
+        state.knowledge.nullPairs = [];
+        state.inventory = { wood: 20, stone: 10, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 5, meat: 0 };
+        state.energy = 100; state.hunger = 95; state.thirst = 95;
+    `);
+
+    //  THE REGRESSION ITSELF. Pre-fix this is the state where every clause of
+    //  `!axe || !shelter || !storage || !torch || !hammer` is false and the button is not
+    //  drawn at all — the door to the room, missing, with the spear's row inside it.
+    const doorOnFullSave = await makerVisible();
+    check('MAKER — the door is still there on a fully-equipped save (D-053, third occurrence)',
+        doorOnFullSave.visible === true,
+        `visible ${doorOnFullSave.visible}${doorOnFullSave.reason ? ` — ${doorOnFullSave.reason}` : ''}`);
+
+    const buildBefore = await openBuild();
+    await sleep(400);
+    const spearBefore = await page.evaluate(() => ({
+        panel: Boolean(document.querySelector('.panel.build')),
+        spearRow: Boolean(document.querySelector('.spear-btn')),
+        rows: document.querySelectorAll('.build-item').length,
+    }));
+    //  UNDISCOVERED MEANS ABSENT, not greyed out — the invention pivot, still holding on the
+    //  surface the spear is about to appear on. This is also the control for the check after
+    //  the combine: without it, "the row is there" proves nothing about whether it was earned.
+    check('MAKER — before the combine, the spear row is ABSENT from the panel',
+        buildBefore.ok && spearBefore.panel && !spearBefore.spearRow,
+        `open ${buildBefore.ok} ${buildBefore.reason ?? ''}, panel ${spearBefore.panel}, spear row ${spearBefore.spearRow}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(420);
+
+    //  THE COMBINE, THROUGH THE PLAYER PATH — pack, two chips, the button. Driving
+    //  `tryCombine` directly here would repeat the exact mistake that let the spear ship
+    //  with no surface: it proves the brain, and says nothing about whether a thumb arrives.
+    const spearCombine = await combineViaPlayerPath('wood', 'sharpblade');
+    await sleep(600);
+    const afterCombine = await live();
+    const mintedSpear = afterCombine.blueprints.some((b) => b.recipeId === 'spear');
+    check('MAKER — knapped blade + wood RESOLVES to the spear and MINTS its plan',
+        spearCombine.ok && mintedSpear,
+        `combine ${spearCombine.ok}${spearCombine.reason ? ` (${spearCombine.reason})` : ''}, plans [${afterCombine.blueprints.map((b) => b.recipeId).join(', ')}]`);
+
+    const stillOpen = await page.evaluate(() => Boolean(document.querySelector('.panel')));
+    if (stillOpen) { await realTapDom('.panel .close-btn'); await sleep(420); }
+
+    const buildAfter = await openBuild();
+    await sleep(450);
+    await shot('maker-02-spear-row');
+    const spearAfter = await page.evaluate(() => {
+        const btn = document.querySelector('.spear-btn');
+        const r = btn ? btn.getBoundingClientRect() : null;
+        return {
+            panel: Boolean(document.querySelector('.panel.build')),
+            spearRow: Boolean(btn),
+            enabled: btn ? !btn.disabled : false,
+            onScreen: r ? r.width > 0 && r.height > 0 : false,
+            label: btn ? btn.textContent.trim() : '',
+        };
+    });
+    //  THE WHOLE CLAIM, ON A SCREEN. Resolved, minted, revealed — and DRAWN, which is the
+    //  link every prior proof skipped and the only one the director could ever see.
+    check('MAKER — and the spear now APPEARS in the Build panel, ready to make',
+        buildAfter.ok && spearAfter.panel && spearAfter.spearRow && spearAfter.onScreen && spearAfter.enabled,
+        `open ${buildAfter.ok} ${buildAfter.reason ?? ''}, row ${spearAfter.spearRow}, drawn ${spearAfter.onScreen}, enabled ${spearAfter.enabled}, "${spearAfter.label}"`);
+
+    const madeSpear = await realTapDom('.spear-btn');
+    await sleep(700);
+    const withSpear = await live();
+    //  D-090: reachable means the OBJECT exists at the end of it, not that a button was there.
+    check('MAKER — tapping it makes a real spear, and it costs real matter',
+        madeSpear.ok && withSpear.tools.spear === true && withSpear.inventory.wood < afterCombine.inventory.wood,
+        `tap ${madeSpear.ok} ${madeSpear.reason ?? ''}, spear ${withSpear.tools.spear}, wood ${afterCombine.inventory.wood} -> ${withSpear.inventory.wood}`);
 
     // ---- Hygiene ----
     console.log('\nHygiene');
