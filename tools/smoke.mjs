@@ -5488,7 +5488,7 @@ async function main() {
     await editSave(`
         state.player = { x: 40, y: 240 };
         state.raft = { built: true, x: 40, y: 240, grade: 'serviceable', aboard: true };
-        state.wreck = { reached: true, reachedAtGameHours: 4, instability: ${TUNE.wreckGroaningAt}, lastDisturbedAtGameHours: 4 };
+        state.wreck = { reached: true, reachedAtGameHours: 4, instability: ${TUNE.wreckGroaningAt + 8}, lastDisturbedAtGameHours: 4 };
         state.health = 100; state.energy = 100;
     `);
     await sleep(700);
@@ -5504,7 +5504,7 @@ async function main() {
     await editSave(`
         state.player = { x: 40, y: 240 };
         state.raft = { built: true, x: 40, y: 240, grade: 'serviceable', aboard: true };
-        state.wreck = { reached: true, reachedAtGameHours: 4, instability: ${TUNE.wreckGivingWayAt}, lastDisturbedAtGameHours: 4 };
+        state.wreck = { reached: true, reachedAtGameHours: 4, instability: ${TUNE.wreckGivingWayAt + 6}, lastDisturbedAtGameHours: 4 };
         state.health = 100; state.energy = 100;
     `);
     await sleep(700);
@@ -5557,7 +5557,7 @@ async function main() {
     const sickBefore = await live();
     const packTap = await realTapDom('.carried-button');
     await sleep(450);
-    const vitalsTap = await realTapDom('.tab-vitals');
+    const vitalsTap = await realTapDom('.backpack-tab[data-tab="vitals"]');
     await sleep(450);
     const medVisible = await isVisible('.medicine-btn');
     await shot('wreck-06-medicine');

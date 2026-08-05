@@ -79,6 +79,34 @@ export function isDryLand(x: number, z: number): boolean {
     return waterDepthAt(x, z) <= 0;
 }
 
+/**
+ * THE HEIGHT OF WHATEVER SURFACE A THING AT THIS POINT RESTS ON — the terrain, or the sea
+ * when the terrain is below it.
+ *
+ * THE DEFECT THIS CLOSES ([[D-124]]), and it was an INSTRUMENT defect that made a working
+ * game look broken. `runtime.projectToScreen` aimed at `groundHeight(x, z) + 0.4`, which is
+ * correct for every object that stands on the ground and wrong for every object that floats.
+ * The Maritime Slice introduced the first floating objects; the wreck parts are the first
+ * floating things that must be picked AS NODES. At the wreck the seabed is −8 m, so the
+ * projection returned a point roughly seven metres BELOW the visible hull and every aimed tap
+ * landed in open water. Five device checks reported the wreck unworkable; the wreck was fine.
+ *
+ * It lives HERE, in the pure data layer, rather than as a line inside `game.ts`, for the
+ * reason this project keeps re-learning: the body has no unit coverage by construction, so a
+ * rule that lives there can only ever be witnessed on a device — which is exactly how this one
+ * survived two full device passes unnoticed. As a pure function of the terrain it is testable
+ * in milliseconds, and `tests/wreck.test.ts` proves it reaches wreck-height objects directly
+ * rather than inferring it from a green check downstream.
+ *
+ * NOT the same question as "where is the SURVIVOR drawn" (`drawHeightFor` in `game.ts`), and
+ * deliberately not shared with it: a wading survivor stands on the seabed with their feet
+ * down, while an object in the same water floats. Two different questions that agree
+ * everywhere except the shallows, which is precisely where merging them would be wrong.
+ */
+export function surfaceHeightAt(x: number, z: number): number {
+    return Math.max(groundHeight(x, z), WORLD.seaLevel);
+}
+
 
 
 /** Washed ashore on the south beach, facing inland (toward −Z / the treeline). */

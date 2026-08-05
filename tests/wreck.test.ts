@@ -25,7 +25,8 @@ import { allRecipes } from '../src/brain/recipes';
 import { deserialize } from '../src/brain/save';
 import { nodeSpec, regrowGameHoursFor } from '../src/brain/state';
 import { SCHEMA_VERSION } from '../src/brain/types';
-import { WRECK } from '../src/data/world';
+import { WRECK, WORLD, groundHeight, surfaceHeightAt } from '../src/data/world';
+import { waterZoneAt } from '../src/brain/water';
 import { TUNE } from '../src/data/tune';
 import { fullBody } from './_baseline';
 import type { GameState, MaterialKind } from '../src/brain/types';
@@ -107,6 +108,70 @@ describe('the wreck is EXPLORABLE — through the shipped verb, not a new mechan
         //  ...and NOT the island's harvesting domain. Working a wreck is not felling a tree.
         expect(s.knowledge.domains.harvestingFabrication.technique)
             .toBe(fresh().knowledge.domains.harvestingFabrication.technique);
+    });
+});
+
+// ---------------------------------------------------------------------------
+describe('AIMING at a floating object — the defect that made a working wreck look broken', () => {
+    /**
+     * [[D-124]]'s device leg reported five WRECK checks red. The wreck was fine; the INSTRUMENT
+     * was wrong. `runtime.projectToScreen` aimed at `groundHeight(x, z) + 0.4` — correct for
+     * anything standing on the ground, and metres underwater for anything afloat. At the wreck
+     * the seabed is −8 m, so every aimed tap landed in open water and `pickNode`'s mesh ray
+     * struck nothing.
+     *
+     * PROVEN AGAINST THE PRE-FIX RULE, not merely asserted green ([[D-066]] b). The old
+     * behaviour is `groundHeight` itself, so the fail-then-pass is exact and needs no branch
+     * to be checked out: `groundHeight` at the wreck is the number that broke it, and
+     * `surfaceHeightAt` is the number that fixes it. Both are asserted below.
+     */
+    const PRE_FIX = groundHeight;
+
+    it('THE DEFECT: the old rule aimed metres below anything floating at the wreck', () => {
+        const under = PRE_FIX(WRECK.x, WRECK.y);
+        expect(under, 'the seabed at the wreck is not deep — the premise is gone').toBeLessThan(-5);
+        //  How far under the hull the harness was aiming. Roughly seven metres.
+        expect(WORLD.seaLevel - under).toBeGreaterThan(5);
+    });
+
+    it('THE FIX: aiming now lands on the SURFACE, where a floating thing actually is', () => {
+        expect(surfaceHeightAt(WRECK.x, WRECK.y)).toBe(WORLD.seaLevel);
+        //  ...and within reach of the drawn hull part, which floats just above the water.
+        //  This is the assertion that proves the fix REACHES wreck-height objects rather than
+        //  merely being different from the old one.
+        for (const id of WRECK_PART_IDS) {
+            const n = createInitialState(0).nodes.find((x) => x.id === id)!;
+            const aim = surfaceHeightAt(n.x, n.y);
+            expect(Math.abs(aim - WORLD.seaLevel), `${id} is not aimed at the waterline`)
+                .toBeLessThan(0.001);
+        }
+    });
+
+    it('...and it changes NOTHING on land, so no existing aimed check moves', () => {
+        //  The whole island is above sea level, so the fix is a no-op everywhere a check has
+        //  ever aimed before. If this ever fails, the fix has reached further than its defect.
+        for (const node of createInitialState(0).nodes) {
+            if (node.kind === 'wreckpart') continue;
+            expect(surfaceHeightAt(node.x, node.y), `${node.id} moved`)
+                .toBe(PRE_FIX(node.x, node.y));
+        }
+        for (const [x, z] of [[0, 0], [0, 104], [-22, 8], [48, -34], [0, 100]]) {
+            expect(surfaceHeightAt(x, z)).toBe(PRE_FIX(x, z));
+        }
+    });
+
+    it('it is the SURFACE rule, not the survivor rule — they differ in the shallows', () => {
+        //  Deliberately not shared with `drawHeightFor`: a wading survivor stands on the
+        //  seabed with their feet down, while an object in the same water floats. Merging them
+        //  would be wrong in exactly the band where wading happens.
+        let wading: { x: number; y: number } | null = null;
+        for (let r = WORLD.islandRadius; r < WORLD.islandRadius + WORLD.seabedFalloff; r += 0.1) {
+            if (waterZoneAt(0, r) === 'wading') { wading = { x: 0, y: r }; break; }
+        }
+        expect(wading, 'no wading band exists to test the distinction').not.toBeNull();
+        //  An object here floats at the waterline; the ground beneath it is genuinely lower.
+        expect(surfaceHeightAt(wading!.x, wading!.y)).toBe(WORLD.seaLevel);
+        expect(PRE_FIX(wading!.x, wading!.y)).toBeLessThan(WORLD.seaLevel);
     });
 });
 

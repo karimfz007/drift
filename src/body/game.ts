@@ -130,7 +130,7 @@ import {
     type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
-import { COLD_OPEN, POND, WORLD } from '../data/world';
+import { COLD_OPEN, POND, WORLD, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
@@ -414,7 +414,11 @@ export class Game {
             };
         };
         runtime.projectToScreen = (worldX: number, worldZ: number) => {
-            const y = this.island.heightAt(worldX, worldZ) + 0.4;
+            //  [[D-124]] — the SURFACE, not the terrain. This read `heightAt(worldX, worldZ)`,
+            //  which is the seabed once you are past the shelf, so aiming at anything afloat
+            //  pointed metres underwater. See `surfaceHeightAt`'s header for the whole defect.
+            //  On land the two are identical, so every existing aimed check is untouched.
+            const y = surfaceHeightAt(worldX, worldZ) + 0.4;
             const projected = Vector3.Project(
                 new Vector3(worldX, y, worldZ),
                 Matrix.Identity(),
