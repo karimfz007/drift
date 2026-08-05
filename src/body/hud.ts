@@ -381,7 +381,7 @@ function ordinal(n: number): string {
 }
 
 /** A material key the Build panel can gate a recipe on (Ch.1 v3, D-055 adds sharpblade). */
-type BuildMaterial = 'wood' | 'stone' | 'fiber' | 'sharpblade';
+type BuildMaterial = 'wood' | 'stone' | 'fiber' | 'sharpblade' | 'coconut';
 
 /** One buildable's cost and current holdings, for the Build panel. */
 /** Mirrors `GrowthReport` from the brain. This layer renders it and derives nothing. */
@@ -421,6 +421,9 @@ export interface BuildCardView {
     spear: BuildItemView;
     /** Item 1 FIX — the backpack, stranded the same way one session later. */
     backpack: BuildItemView;
+    /** THE MARITIME SLICE — the raft. Carries the one blocker a cost list cannot express:
+     *  the site. Null when there is nothing standing in the way but materials. */
+    raft: BuildItemView & { siteBlocker: string | null };
     /**
      * The teaching half of the pivot, and the reason subtraction is survivable. An empty
      * panel with no hints is a dead end and a bug report; an empty panel that says *"the dark
@@ -464,7 +467,8 @@ const MATERIAL_SOURCE: Record<string, string> = {
     Wood: 'driftwood on the sand, deadfall by the trees',
     Stone: 'grey rock outcrops on the beach',
     Fibre: 'reeds at the pond, or a coconut palm',
-    'Sharp blade': 'knap raw stone with a stone hammer, below'
+    'Sharp blade': 'knap raw stone with a stone hammer, below',
+    Coconut: 'the coconut palms in the scrub'
 };
 
 function buildItemMarkup(
@@ -482,7 +486,7 @@ function buildItemMarkup(
     if (item.done) {
         return `<div class="build-item done"><h2>${title}</h2><p class="subtitle">${doneLabel}</p></div>`;
     }
-    const labels: Record<BuildMaterial, string> = { wood: 'Wood', stone: 'Stone', fiber: 'Fibre', sharpblade: 'Sharp blade' };
+    const labels: Record<BuildMaterial, string> = { wood: 'Wood', stone: 'Stone', fiber: 'Fibre', sharpblade: 'Sharp blade', coconut: 'Coconut' };
     const rows = (Object.keys(need) as BuildMaterial[]).map((key) => {
         const n = need[key] ?? 0;
         const h = item.have[key] ?? 0;
@@ -498,6 +502,49 @@ function buildItemMarkup(
             <p class="subtitle">${subtitle}</p>
             <div class="gates">${rows}</div>
             <button class="primary ${buttonClass}" type="button" ${ready ? '' : 'disabled'}>${ready ? buttonLabel : 'Not enough yet'}</button>
+        </div>`;
+}
+
+/**
+ * THE RAFT'S OWN MARKUP (the Maritime Slice), and it needs one because it is the only
+ * craftable whose gate is not a cost.
+ *
+ * Every other row here answers "have you got enough". The raft additionally answers "are you
+ * standing in the right place" — and that has to be said BEFORE the button is pressed, not
+ * discovered after. Fourteen wood is the most expensive thing in the game; a survivor who
+ * spends it and gets a raft they cannot move has been robbed by a silent rule. So the site
+ * blocker is rendered as its own line, and the button is disabled with the reason on it.
+ */
+function raftMarkup(view: BuildItemView & { siteBlocker: string | null }): string {
+    if (!view.revealed) return '';
+    if (view.done) {
+        return `<div class="build-item done raft-item"><h2>Raft</h2>`
+            + `<p class="subtitle">Moored at the water's edge. Walk to it and climb aboard.</p></div>`;
+    }
+    const need: Partial<Record<BuildMaterial, number>> = {
+        wood: TUNE.raftWoodCost, fiber: TUNE.raftFiberCost, coconut: TUNE.raftCoconutCost,
+    };
+    const labels: Record<string, string> = { wood: 'Wood', fiber: 'Fibre', coconut: 'Coconut' };
+    const rows = (Object.keys(need) as BuildMaterial[]).map((key) => {
+        const n = need[key] ?? 0;
+        const h = view.have[key] ?? 0;
+        const met = h >= n;
+        const hint = met ? '' : `<div class="gate-hint">from ${MATERIAL_SOURCE[labels[key]]}</div>`;
+        return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${labels[key]}</span><span>${h} / ${n}</span></div>${hint}`;
+    }).join('');
+    const stocked = (Object.keys(need) as BuildMaterial[]).every((k) => (view.have[k] ?? 0) >= (need[k] ?? 0));
+    const siteLine = view.siteBlocker
+        ? `<p class="subtitle raft-site">${view.siteBlocker}</p>`
+        : '';
+    const ready = stocked && !view.siteBlocker;
+    const label = !stocked ? 'Not enough yet' : view.siteBlocker ? 'Not here' : 'Build the raft';
+    return `
+        <div class="build-item raft-item">
+            <h2>Raft</h2>
+            <p class="subtitle">A deck of logs, coir lashing, and husks underneath to float it. It goes where the island cannot.</p>
+            <div class="gates">${rows}</div>
+            ${siteLine}
+            <button class="primary raft-btn" type="button" ${ready ? '' : 'disabled'}>${label}</button>
         </div>`;
 }
 
@@ -532,6 +579,7 @@ export function showBuildCard(
     onCraftStoneHammer: () => void,
     onCraftSpear: () => void,
     onMakeBackpack: () => void,
+    onCraftRaft: () => void,
     onKnapSharpblade: () => void,
     onClose: () => void,
     onMendShelter: () => void = () => {},
@@ -584,6 +632,7 @@ export function showBuildCard(
                 { wood: TUNE.spearWoodCost, sharpblade: TUNE.spearSharpbladeCost, fiber: TUNE.spearFiberCost }, 'Owned.', 'Make the spear', 'spear-btn')}
             ${buildItemMarkup('Backpack', 'A frame and a lashing. Carry properly instead of in your arms.', view.backpack,
                 { fiber: TUNE.backpackFiberCost, wood: TUNE.backpackWoodCost }, 'Owned.', 'Make the pack', 'backpack-btn')}
+            ${raftMarkup(view.raft)}
             ${view.mendShelter ? `
             <div class="build-item mend-item">
                 <div class="build-head"><strong>Mend the shelter</strong></div>
@@ -607,6 +656,7 @@ export function showBuildCard(
     bind('.stonehammer-btn', onCraftStoneHammer);
     bind('.spear-btn', onCraftSpear);
     bind('.backpack-btn', onMakeBackpack);
+    bind('.raft-btn', onCraftRaft);
     bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
 }

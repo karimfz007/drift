@@ -12,7 +12,7 @@ import type { MaterialKind } from './types';
 
 export type MaterialFamily = 'organic' | 'mineral';
 
-export type MaterialTag = 'fuel' | 'woodwork' | 'textile' | 'masonry' | 'blade' | 'food';
+export type MaterialTag = 'fuel' | 'woodwork' | 'textile' | 'masonry' | 'blade' | 'food' | 'buoyant';
 
 export interface MaterialProfile {
     primary: MaterialFamily;
@@ -25,7 +25,18 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     stone: { primary: 'mineral', tags: ['masonry'] },
     fiber: { primary: 'organic', tags: ['textile'] },
     berries: { primary: 'organic', tags: ['food'] },
-    coconut: { primary: 'organic', tags: ['food'] },
+    //  THE MARITIME SLICE — `buoyant`, and it is a SECOND tag rather than a reuse of `food`.
+    //
+    //  My first cut gave the raft's float slot `{ tag: 'food' }`, on the reasoning that
+    //  coconut is the only food you would lash to anything. That immediately broke a real
+    //  standing law, and its own test caught it in one run: *"berries go with nothing — food
+    //  satisfies no structural slot."* Under a food slot, wood + fibre + berries resolved to a
+    //  RAFT. The law is right and the recipe was wrong: a coconut husk floats and a berry does
+    //  not, and that difference is a property of the material, not of the recipe that wants it.
+    //
+    //  So the property gets named. `food` stays structurally inert exactly as it was, and the
+    //  raft's signature ({woodwork, textile, buoyant}) is unique because the tag is.
+    coconut: { primary: 'organic', tags: ['food', 'buoyant'] },
     shellfish: { primary: 'organic', tags: ['food'] },
     /** Knapped from raw stone (Ch.1 v3) — a refined material, not gathered directly. */
     sharpblade: { primary: 'mineral', tags: ['blade'] },

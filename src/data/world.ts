@@ -24,7 +24,11 @@ export const WORLD = {
     shelfHeight: 1.4,
     shoreFalloff: 12,
     seaLevel: -1.0,
-    seaRadius: 900
+    seaRadius: 900,
+    /** How far past the island's edge the seabed takes to reach its floor, in metres. */
+    seabedFalloff: 28,
+    /** How deep the seabed gets, in metres below the island's own zero. */
+    seabedDepth: 8
 } as const;
 
 /** Where the castaway can walk: anywhere on land, kept just clear of the waterline. */
@@ -37,9 +41,42 @@ export const WALKABLE_RADIUS = WORLD.islandRadius - WORLD.shoreFalloff - 2;
  * raw disc math, but inside the shore falloff, in or at the waterline. A general-purpose
  * check, not a one-off patch, so any future procedural placement (not just salvage) has a
  * single source of truth for "can the castaway actually stand here."
+ *
+ * WHAT THE MARITIME SLICE CHANGES ABOUT IT: nothing, and that is the point. This constant
+ * has always done two jobs at once — *where things may be placed* and *where the world ends*
+ * — and only the second one was ever a wall. Swimming lifts the wall; the placement rule
+ * keeps its exact numbers, so no salvage spawn, no node, and no certified feel-court reading
+ * moves by a millimetre. A survivor may now walk PAST `WALKABLE_RADIUS`, onto the outer
+ * beach, into the shallows, and off the shelf. Nothing may be SPAWNED there.
+ *
+ * The predicate for "is this person standing on dry ground" is `isDryLand` below, and it is
+ * read from the terrain itself rather than from a radius, so the rule and the picture cannot
+ * drift apart.
  */
 export function isWalkablePoint(x: number, z: number): boolean {
     return Math.hypot(x, z) <= WALKABLE_RADIUS;
+}
+
+/**
+ * HOW DEEP THE WATER IS HERE, in metres. Zero or below means dry ground.
+ *
+ * Derived from `groundHeight` and `WORLD.seaLevel` and from nothing else — there is no water
+ * radius constant anywhere, on purpose. D-064 made the walkable edge diegetic by drawing the
+ * rule; this makes it structural by deleting the second copy: the shore is wherever the land
+ * happens to be lower than the sea, so a change to either one moves both the shoreline and
+ * the swimming rule in the same breath.
+ *
+ * The pond is NOT sea and can never read as it: its basin bottoms out around +5 m, far above
+ * `seaLevel`, so `waterDepthAt` at the pond is comfortably negative. Fresh water has its own
+ * system (`isAtPond`) and keeps it.
+ */
+export function waterDepthAt(x: number, z: number): number {
+    return WORLD.seaLevel - groundHeight(x, z);
+}
+
+/** Dry ground you can stand on — the honest replacement for "inside the walkable disc". */
+export function isDryLand(x: number, z: number): boolean {
+    return waterDepthAt(x, z) <= 0;
 }
 
 
@@ -59,7 +96,16 @@ export const POND = { x: -22, y: 8, radius: 9 } as const;
  */
 export const CAVE_SITE = { x: 48, y: -34 } as const;
 
-/** The wreck offshore: visible from the spawn beach, unreachable, unexplained (§I.18 r5). */
+/**
+ * THE WRECK OFFSHORE. Visible from the spawn beach since Cycle 03, unexplained, and — for
+ * five cycles — unreachable, because the world ended 135 metres short of it.
+ *
+ * The Maritime Slice does not move it, redress it, or explain it. It removes the only reason
+ * it was unreachable. It is 243 m from the island's centre and roughly 115 m of open water
+ * past the shore, which is the number the whole crossing is measured against: far enough that
+ * swimming it is a decision with a body count, near enough that a raft turns it into a
+ * journey rather than a fantasy.
+ */
 export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 
 /**
@@ -70,7 +116,23 @@ export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
  */
 export function groundHeight(x: number, z: number): number {
     const r = Math.hypot(x, z);
-    if (r >= WORLD.islandRadius) return WORLD.seaLevel - 0.6;
+    //  THE SEABED HAS A BODY (the Maritime Slice). What stood here was a flat
+    //  `WORLD.seaLevel - 0.6` for every point outside the island — a cliff at exactly
+    //  `islandRadius`, from ground ≈ 0 to −1.6 in no distance at all.
+    //
+    //  That was correct while the island's edge was also the world's edge: nobody could ever
+    //  stand on it, so its shape did not matter. Swimming makes it matter — a survivor wading
+    //  out needs the ground to fall away UNDER them, or "wading" and "swimming" are two words
+    //  for the same instant. So the seabed now shelves.
+    //
+    //  BIT-FOR-BIT UNCHANGED INSIDE `islandRadius`, deliberately: every node, every spawn,
+    //  every placement rule and the whole certified feel court live at r ≤ 112, and none of
+    //  them may move because the water got a floor. The ramp starts at 0 to meet the inner
+    //  surface, which itself reaches ≈ 0 there, so the two halves join without a step.
+    if (r >= WORLD.islandRadius) {
+        const out = Math.min(1, (r - WORLD.islandRadius) / WORLD.seabedFalloff);
+        return -WORLD.seabedDepth * smoothstep(0, 1, out);
+    }
 
     const shelf = WORLD.shelfHeight * smoothstep(WORLD.islandRadius, WORLD.islandRadius - WORLD.shoreFalloff, r);
 
@@ -315,10 +377,30 @@ export function isPlaceablePoint(x: number, z: number): boolean {
 }
 
 /**
- * The diegetic boundary (D-064). The walkable edge is now something the player can SEE —
- * a surf line drawn at `WALKABLE_RADIUS`, where the water starts breaking — rather than an
- * invisible wall they discover by walking into it. This is the radius the body draws that
- * band at, kept here so the rule and its picture cannot drift apart: the thing you see is
- * literally the thing that stops you.
+ * THE DIEGETIC SHORELINE (D-064, corrected by the Maritime Slice).
+ *
+ * D-064's law was *the thing you see is literally the thing that stops you*, and its
+ * mechanism was `SURF_LINE_RADIUS = WALKABLE_RADIUS` — one constant, two uses, no way for the
+ * picture and the wall to disagree.
+ *
+ * Swimming retires the wall, so keeping the surf drawn at 108 m would have made that line a
+ * LIE in the most literal way available: a band of breaking water painted across dry sand,
+ * eighteen metres inland of the sea, with nothing behind it. The law survives; its mechanism
+ * moves one step outward. The surf is now drawn where `waterDepthAt` first reaches zero — so
+ * *the thing you see is literally the thing that gets you wet*, and it is still derived, still
+ * single-source, and still incapable of drifting from the rule it pictures.
+ *
+ * Solved numerically rather than written down, for exactly that reason: a hand-tuned 128.3
+ * would be a second source of truth the moment anyone touched the seabed.
  */
-export const SURF_LINE_RADIUS = WALKABLE_RADIUS;
+export const SURF_LINE_RADIUS = (() => {
+    //  The seabed beyond `islandRadius` is purely radial (no dunes term), so one bearing
+    //  answers for every bearing. Bisection: land inside, water outside.
+    let lo: number = WORLD.islandRadius;
+    let hi: number = WORLD.islandRadius + WORLD.seabedFalloff;
+    for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        if (waterDepthAt(mid, 0) <= 0) lo = mid; else hi = mid;
+    }
+    return Math.round(((lo + hi) / 2) * 100) / 100;
+})();

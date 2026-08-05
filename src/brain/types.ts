@@ -51,8 +51,13 @@
  *      player gets an empty loadout with nothing positioned and no plans yet — their tools
  *      are all still owned and simply sit in general carry, which is exactly where they
  *      effectively were before positions existed.
+ * v23 — THE MARITIME SLICE: the raft (`raft`) and the crossing's one recorded fact
+ *      (`wreck.reached`). A returning player has neither — no raft, and a wreck they have
+ *      still only ever looked at. Merging in a raft nobody built would hand over the exact
+ *      thing this slice exists to make someone earn, and marking the wreck reached would be
+ *      the game telling a player they went somewhere they have never been.
  */
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -550,6 +555,48 @@ export interface GameState {
     dropped: DroppedItem[];
     /** The id counter for drops — "counter as seed", no clock read and no RNG. */
     dropCount: number;
+    /**
+     * THE RAFT (the Maritime Slice). The first thing this game has built that MOVES, and the
+     * first structure whose position is not decided once and then frozen.
+     */
+    raft: RaftState;
+    /**
+     * THE CROSSING'S one recorded fact. Deliberately the smallest possible record: whether
+     * anyone has ever come alongside the wreck, and when.
+     *
+     * It is a fact about the ISLAND'S history, not about the current survivor's knowledge, so
+     * it survives a death the same way the memorial and the standing shelter do — a successor
+     * washes ashore knowing someone got out there, which is exactly the `found-intact` shape
+     * of inheritance [[D-069]] already allows: matter and evidence, never technique.
+     */
+    wreck: WreckState;
+}
+
+/**
+ * The raft. Shaped like `ShelterState`/`StorageState` where it can be — built, sited, graded
+ * — and different in the one way that matters: `x`/`y` change while you are standing on it.
+ */
+export interface RaftState {
+    built: boolean;
+    /** Where it is floating right now. Follows the survivor while `aboard`. */
+    x: number;
+    y: number;
+    /** Rolled once at build, like every other made thing (D-055). Moves its speed only. */
+    grade: ItemGrade;
+    /**
+     * Standing on it. SAVED rather than transient, unlike `resting`: a player may close the
+     * tab in the middle of the sea, and waking them in the water they left is the truthful
+     * answer. It costs nothing while they are gone — no swim cost exists in `reconcile` at
+     * all — so this cannot become an offline hazard.
+     */
+    aboard: boolean;
+}
+
+/** What the island remembers about the wreck. See `GameState.wreck`. */
+export interface WreckState {
+    reached: boolean;
+    /** The island clock when someone first came alongside. Null until they do. */
+    reachedAtGameHours: number | null;
 }
 
 /** One stack on the ground. See `dropped.ts`. */

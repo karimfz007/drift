@@ -19,6 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { canExperimentWith, recipesMatching, resolveRecipe, tryCombineWith } from '../src/brain/experiment';
 import { DISCOVERY_ROUTES } from '../src/brain/discovery';
+import { ALL_MATERIAL_KINDS } from '../src/brain/materials';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 import type { GameState, MaterialKind } from '../src/brain/types';
@@ -31,14 +32,30 @@ function capable(): GameState {
     return s;
 }
 
+/**
+ * DERIVED, not tabulated — the correction the Maritime Slice forced.
+ *
+ * This stocked four material kinds by name and probed six hand-written sets. The raft's route
+ * needs coconut, which the probe never held and never tried, so a test whose whole claim is
+ * *"every recipe with a discovery route can be arrived at"* reported the raft unreachable
+ * while the raft was fine. **The probe was the thing that was wrong**, and it would have been
+ * wrong silently for any future route too.
+ *
+ * Stocking every kind and probing every route's own `makings` means a new route cannot be
+ * added without this test actually covering it — which is what the test always claimed.
+ */
 function restock(s: GameState): void {
-    s.inventory.wood = 50; s.inventory.stone = 50; s.inventory.fiber = 50; s.inventory.sharpblade = 50;
+    for (const k of ALL_MATERIAL_KINDS) s.inventory[k] = 50;
     s.energy = 100; s.hunger = 100; s.thirst = 100;
 }
 
 const SETS: MaterialKind[][] = [
+    //  The original six, kept verbatim: they encode the specific ties this file exists to
+    //  pin down (storage vs stonehammer, spear vs axe) and deriving them away would lose that.
     ['wood', 'stone'], ['wood', 'fiber'], ['wood', 'sharpblade'], ['stone', 'fiber'],
     ['wood', 'stone', 'fiber'], ['wood', 'sharpblade', 'fiber'],
+    //  ...plus whatever every route actually asks for.
+    ...DISCOVERY_ROUTES.map((r) => r.makings),
 ];
 
 describe('REACHABILITY — everything with a discovery route can actually be arrived at', () => {

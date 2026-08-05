@@ -28,6 +28,7 @@ import '@babylonjs/core/Particles/particleSystemComponent';
 
 import { isFireLit, regrowProgress, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
+import { WORLD } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
 
@@ -981,6 +982,67 @@ export class StorageView {
 
         const inRepair = state.storage.durability > 0;
         this.crateMaterial.diffuseColor = colour(inRepair ? PALETTE.crateWood : PALETTE.disrepair);
+    }
+}
+
+/**
+ * THE RAFT (the Maritime Slice) — the first built thing in this game whose position moves.
+ *
+ * Everything else `update`s from a fixed site: the shelter, the crate, the fire and the cave
+ * are placed once and then only ever recoloured. The raft's whole point is that its position
+ * IS the survivor's while they are standing on it, so this view reads `state.raft.x/y` every
+ * frame like the boars do, rather than freezing a world matrix like the crate does.
+ *
+ * It floats at the SEA SURFACE, never at the terrain height — a deck that tracked the seabed
+ * would sink out of sight the moment it left the shelf.
+ */
+export class RaftView {
+    private deck: Mesh;
+    private built = false;
+
+    constructor(scene: Scene) {
+        this.deck = CreateBox('raftDeck', { width: 2.4, height: 0.22, depth: 2.8 }, scene);
+        this.deck.material = flat(scene, 'raftDeckMat', PALETTE.deadfall);
+        this.deck.isPickable = true;
+        //  Tapped like every other object in the world — the metadata key is what routes a
+        //  pick to the raft's verb circle (D-042: tap the thing to use the thing).
+        this.deck.metadata = { raft: true };
+
+        //  Three lashed logs across the deck, so it reads as a made thing rather than a
+        //  floating plank. Children of the deck, so they move with it for free.
+        for (let i = 0; i < 3; i++) {
+            const log = CreateCylinder(`raftLog${i}`, { height: 2.6, diameter: 0.34, tessellation: 6 }, scene);
+            log.material = this.deck.material;
+            log.parent = this.deck;
+            log.rotation.x = Math.PI / 2;
+            log.position.set(-0.8 + i * 0.8, 0.16, 0);
+            log.isPickable = true;
+            log.metadata = { raft: true };
+        }
+        this.setBuilt(false);
+    }
+
+    private setBuilt(built: boolean): void {
+        this.built = built;
+        this.deck.setEnabled(built);
+        //  D-049's lesson: disabling a mesh does not stop it eating taps. Clear pickability
+        //  on the whole hierarchy, or an unbuilt raft's invisible deck intercepts a tap meant
+        //  for the water behind it.
+        this.deck.isPickable = built;
+        for (const child of this.deck.getChildMeshes()) child.isPickable = built;
+    }
+
+    update(state: GameState): void {
+        const built = state.raft.built;
+        if (built !== this.built) this.setBuilt(built);
+        if (!built) return;
+        this.deck.position.set(state.raft.x, WORLD.seaLevel + RENDER.raftFloatM, state.raft.y);
+    }
+
+    /** Matches the signature the craft handler calls; the height source is unused because a
+     *  raft floats on the sea, not on the ground under it. */
+    sync(state: GameState, _heightAt: (x: number, z: number) => number): void {
+        this.update(state);
     }
 }
 

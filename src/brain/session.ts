@@ -17,6 +17,7 @@ import { injuriesFromCharge, stepInjuries } from './injury';
 import { onsetFrom, stepIllness } from './illness';
 import { thermalStrain } from './thermal';
 import { pruneDropped } from './dropped';
+import { developFromPaddling, developFromSwimming, isAtWreck, waterCostsFor } from './water';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -45,6 +46,23 @@ export class Session {
      */
     private pendingReview: DeathReview | null = null;
     private pendingArrival: string[] = [];
+
+    /**
+     * WHAT LAST TOOK HEALTH OUTSIDE `reconcile`, if anything.
+     *
+     * `deathCauseFrom` reads the three vitals and answers `'your wounds'` when none of them is
+     * empty — a defensive fallback written when nothing else could kill you. Everything that
+     * has landed since (the boar, bleeding, illness, and now the water) takes health AFTER
+     * reconcile has already decided the span's cause, so all of them inherit that fallback.
+     *
+     * Drowning is the case where the fallback becomes an outright lie — "you died of your
+     * wounds", said to a survivor who went under a hundred metres offshore — so this slice
+     * gives the online tick a way to name what it did. It is deliberately GENERAL, and just as
+     * deliberately adopted by one caller: the water. The boar, bleeding and illness paths have
+     * the same gap and are not this slice's to change, but the mechanism they would use now
+     * exists rather than being described.
+     */
+    private lastOnlineHarmCause: string | null = null;
 
     /**
      * Load the save (or start a fresh run) and fold in the absence.
@@ -116,6 +134,12 @@ export class Session {
         //  structure rather than as a check: there is no code path by which a boar escalates
         //  while the game is closed.
         this.advanceBoars(nowMs, outcome.result.elapsedGameHours);
+        //  THE MARITIME SLICE — the water lives on the ONLINE tick and nowhere else, for the
+        //  same reason and by the same shape as the boars, the injuries and the illness. This
+        //  is [[D-011]] enforced as STRUCTURE rather than as a check: there is no code path by
+        //  which an absence charges a swim stroke, so no absence can drown anybody and no
+        //  rescue-teleport has to exist to make sure of it. See `water.ts`'s header.
+        this.advanceWater(outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -189,7 +213,11 @@ export class Session {
      */
     private handleDeath(outcome: ReconcileOutcome, nowMs: number): boolean {
         if (!outcome.result.diedDuringSpan) return false;
-        const cause = outcome.result.deathCause ?? 'your wounds';
+        //  A named online cause outranks the fallback and NEVER outranks a real vital reading:
+        //  a survivor who genuinely ran out of warmth while swimming died of the cold, and the
+        //  water is what put them where the cold could reach them. `deathCause` is null only
+        //  when reconcile found no empty vital at all, which is exactly the fallback's case.
+        const cause = outcome.result.deathCause ?? this.lastOnlineHarmCause ?? 'your wounds';
 
         //  (1) Read the dying body while it still exists.
         this.pendingReview = reviewDeath(this.state, cause);
@@ -314,6 +342,73 @@ export class Session {
         if (s.fatigue >= TUNE.fatigueIllnessThreshold) {
             s.illness = onsetFrom(s, 'exhaustion', gameHours * TUNE.exhaustionExposurePerGameHour);
         }
+    }
+
+    /**
+     * THE WATER, ONE SPAN. Online only — see the call site and `water.ts`'s header.
+     *
+     * Everything charged here is charged the way the rest of the online tick charges things:
+     * a rate times elapsed game hours, clamped, with nothing that reads a wall clock or rolls
+     * a die. So a 30 fps client and a 60 fps client swim the same distance for the same cost,
+     * and a stalled frame is a longer span rather than a lost one.
+     *
+     * ORDER MATTERS ONCE, and only once: the stage is read BEFORE the energy is spent. Read
+     * afterwards, a swimmer who crossed the labouring threshold during this very span would
+     * be charged the harsher stage's price for a span they began in the gentler one, and the
+     * "two warnings before harm" contract would quietly become "one and a half".
+     */
+    private advanceWater(gameHours: number): void {
+        const s = this.state;
+        if (!(gameHours > 0)) return;
+
+        if (s.raft.aboard) {
+            //  ABOARD. Paddling is work, and it is the only thing out here that costs
+            //  anything — no immersion, so no wetness, so nothing extra reaches warmth. That
+            //  gap between 70/h in the water and 9/h on a deck IS the raft.
+            s.energy = Math.max(0, s.energy - TUNE.raftEnergyDrainPerGameHour * gameHours);
+            s.capacities = developFromPaddling(s.capacities, gameHours);
+            //  The raft is under the survivor, so it goes where they go. One assignment, and
+            //  it is what makes the thing a vehicle rather than a platform.
+            s.raft.x = s.player.x;
+            s.raft.y = s.player.y;
+            this.markWreckIfReached();
+            return;
+        }
+
+        const costs = waterCostsFor(s);
+        if (costs.stage === 'ashore') return;
+
+        s.energy = Math.max(0, s.energy - costs.energyPerGameHour * gameHours);
+        //  §12: health may move for `unsafe-continued`, and swimming on after two spoken
+        //  warnings is precisely that. Every gentler stage returns 0 here, so ordinary
+        //  swimming is never "a general price paid for ordinary work" — the boundary
+        //  `capacities.ts` states and `healthMayChangeFrom` guards.
+        if (costs.healthPerGameHour > 0) {
+            s.health = Math.max(0, s.health - costs.healthPerGameHour * gameHours);
+            this.lastOnlineHarmCause = 'the water';
+        }
+        //  IMMERSION IS WETNESS. The whole cold-water channel, in one line, reusing the term
+        //  `thermal.ts` already evaporates heat through. `Math.max` rather than an assignment
+        //  so wading a survivor who is already soaked cannot DRY them.
+        if (costs.wetTarget !== null) s.wet = Math.max(s.wet, costs.wetTarget);
+        s.capacities = developFromSwimming(s.capacities, costs.stage, gameHours);
+        this.markWreckIfReached();
+    }
+
+    /**
+     * THE CROSSING'S ONE RECORDED FACT. Monotonic by construction — nothing anywhere sets
+     * `reached` back to false — because arriving is a thing that happened, and a world that
+     * can forget it would make the journey retractable.
+     */
+    private markWreckIfReached(): void {
+        const s = this.state;
+        if (s.wreck.reached || !isAtWreck(s)) return;
+        s.wreck.reached = true;
+        s.wreck.reachedAtGameHours = s.gameHoursElapsed;
+        //  Reaching it is the only genuine seamanship lesson in the game: you read the water,
+        //  chose a moment, and got somewhere. Recorded through the shipped channel, not a new
+        //  one.
+        recordTrying(s, 'navigationSeamanship');
     }
 
     /** Clear the death overlay once the player has read it. */

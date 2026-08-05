@@ -931,6 +931,115 @@ export const TUNE = {
      *  the fire's regen — wet makes the cold worse; it does not cancel the fire. */
     wetWarmthDrainMultiplierAtMaxWet: 1.5,
 
+    // ---- THE WATER (the Maritime Slice) ------------------------------------
+    //
+    //  COLD-WATER EXPOSURE HAS NO CONSTANTS HERE, and that absence is the design. Immersion
+    //  reuses `wet` — swimming is simply maximal wetness — so it arrives at warmth through
+    //  `thermalWetLoss` and the existing heat balance, exactly like rain would. A parallel
+    //  "water chill" rate would have been a second thermal system for one situation, and the
+    //  first time it disagreed with `netHeatFlowPerGameHour` the panel would be lying about
+    //  which loss to fix. What swimming adds that rain does not is WORK, and that is below.
+
+    /** [TUNE] Maritime — water this deep or deeper takes your feet off the bottom. Basis:
+     *  chest-deep on a standing adult. Below it you are wading; at it you are swimming, and
+     *  the difference is the whole of what the shore-shelf ramp exists to make gradual. */
+    swimDepthM: 1.35,
+    /** [TUNE] Maritime — fraction of `walkSpeedMps` a swimmer makes. Basis: 3.5 × 0.29 =
+     *  1.02 m/s, an unhurried but real front crawl, against a brisk walk. Slow enough that
+     *  distance is felt as time rather than read off a map. */
+    swimSpeedMultiplier: 0.29,
+    /** [TUNE] Maritime — fraction of `walkSpeedMps` while wading. Basis: water to the thigh
+     *  roughly halves a walking pace, and the band is only a few metres wide, so this is a
+     *  transition the body feels rather than a zone it lives in. */
+    wadeSpeedMultiplier: 0.5,
+    /** [TUNE] Maritime — a spent swimmer's speed, as a fraction of the swimming speed. Not
+     *  zero: a swimmer who cannot move at all is a swimmer who is already drowning, and the
+     *  stage that takes health is named separately and comes after this one. */
+    swimSpentSpeedMultiplier: 0.55,
+
+    /** [TUNE] Maritime — energy per game hour spent swimming, before capacity and load.
+     *  Basis, and this is the number the whole crossing balances on: at 70/h a full 100
+     *  energy buys 1.43 game hours = 214 real seconds = **~218 m of swimming**. The wreck is
+     *  ~115 m off the shore, so a round trip is ~230 m — just past what a rested survivor can
+     *  pay for. **Swimming to the wreck is meant to be very nearly survivable and not quite**;
+     *  the raft is what turns "nearly" into "there and back". The `energyDrainPerGameHour`
+     *  ambient of 2 is left alone underneath it — this is work on top of living. */
+    swimEnergyDrainPerGameHour: 70,
+    /** [TUNE] Maritime — energy per game hour while wading. Real effort, a fraction of the
+     *  swim: you are still walking, against water. */
+    wadeEnergyDrainPerGameHour: 12,
+    /** [TUNE] Maritime — energy per game hour paddling a raft. Basis: work you do with your
+     *  arms while your body is out of the water and carrying nothing. An order below the
+     *  swim, which is exactly why the raft is the answer to the crossing. */
+    raftEnergyDrainPerGameHour: 9,
+
+    /** [TUNE] Maritime — energy at or below which a swimmer is LABOURING. The first of the
+     *  two warnings owed before the water may take anything (the same fair-challenge contract
+     *  the boar's five stages and illness's five stages already keep). */
+    swimLabouringEnergy: 35,
+    /** [TUNE] Maritime — energy at or below which a swimmer is SPENT. The second warning:
+     *  speed drops, the sentence changes, and health is still untouched. */
+    swimSpentEnergy: 12,
+    /** [TUNE] Maritime — health per game hour once a swimmer is GOING UNDER (energy at 0 and
+     *  still in deep water). §12's `unsafe-continued`, which is one of the six causes health
+     *  is allowed to move for; ordinary work is not, and swimming below this stage is not.
+     *  Basis: 40/h leaves ~2.5 game hours from full health, so even the last stage is a long,
+     *  loud, survivable-if-you-turn-now emergency rather than a trapdoor. */
+    swimGoingUnderHealthPerGameHour: 40,
+
+    /** [TUNE] Maritime — how much of the swim's energy cost a fully developed
+     *  breath/water confidence removes. Capped well short of free: §12's own boundary for
+     *  this capacity is "does not extend human physiology without limit". */
+    swimConfidenceEnergyRelief: 0.35,
+    /** [TUNE] Maritime — game hours of swimming that count as one training bout, feeding
+     *  `capacityGainPerBout`. Basis: 0.15 gh = ~22 real seconds of continuous swimming, so a
+     *  capacity worth ~30 points of development is ~11 game hours in the water spread over a
+     *  run — a long-term capacity, developed the way §12 says it is developed. */
+    swimBoutGameHours: 0.15,
+
+    // ---- THE RAFT (the Maritime Slice) -------------------------------------
+    /** [TUNE] Maritime — logs for a deck. Basis: the largest wood cost in the game by some
+     *  way (the shelter's is 8), because a raft is the largest thing anyone has built here
+     *  and the cost is most of what makes the crossing a decision rather than an errand. */
+    raftWoodCost: 14,
+    /** [TUNE] Maritime — coir to lash it. Basis: proportional to the deck; a raft is mostly
+     *  rope by count of hands' work. */
+    raftFiberCost: 10,
+    /** [TUNE] Maritime — coconut husks lashed underneath for buoyancy. Basis: this is also
+     *  what gives the recipe its OWN tag signature ({woodwork, textile, food}), so the raft
+     *  is discovered by its own gesture instead of becoming a third contender for the
+     *  wood+fibre one ([[D-114]]: sharing a signature costs an attempt, never access — but
+     *  three recipes on one gesture is a lottery, and a lottery is not a discovery). */
+    raftCoconutCost: 4,
+    /** [TUNE] Maritime — fraction of `walkSpeedMps` a paddled raft makes. Basis: 3.5 × 0.46
+     *  = 1.61 m/s, comfortably above a swim (1.02) and well below a walk. The ~115 m open
+     *  crossing is then ~71 real seconds each way: long enough to be a passage, short enough
+     *  that a phone session contains one. */
+    raftSpeedMultiplier: 0.46,
+    /** [TUNE] Maritime — how close to the waterline you must stand to build a raft, in
+     *  metres. Basis: a raft built inland is a raft you cannot move; the siting rule is the
+     *  §9.6 lesson (the site IS the decision) applied to the one object that must be at the
+     *  edge of the world to be worth anything. */
+    raftBuildMaxShoreDistanceM: 12,
+    /** [TUNE] Maritime — how far OUTSIDE the waterline a newly built raft is moored, in
+     *  metres. Basis: far enough to be unambiguously afloat (`steerRaft` refuses dry ground,
+     *  so a raft moored on the line itself could be un-steerable), near enough to board from
+     *  the sand without swimming for it. */
+    raftMooringOffsetM: 2.5,
+    /** [TUNE] Maritime — how far back toward the island stepping off a raft may reach for dry
+     *  ground, in metres. Basis: a little over the shore band's own width, so nosing into the
+     *  shallows lands you on the beach — and no wider, or stepping off would teleport a
+     *  survivor across water they should have had to paddle. */
+    raftStepAshoreReachM: 8,
+    /** [TUNE] Maritime — how close to the wreck counts as having reached it. Basis: the hull
+     *  silhouette is ~6.5 m across and listing; this is arriving alongside, not threading a
+     *  hatch, and the crossing's beat should not hinge on pixel steering. */
+    wreckArrivalRadiusM: 14,
+    /** [TUNE] Maritime — tap forgiveness around the raft, in metres. Basis: the deck is
+     *  2.4 × 2.8 m, so half its diagonal is ~1.85; this is that plus the ~1.5 m of slack the
+     *  shelter and the crate already get, on a phone, over water, from a moving camera. */
+    raftTapRadiusM: 3.4,
+
     // ---- Shelter (C05) — the lean-to, one tier this cycle ------------------
     /** [TUNE] C05 — build cost: a meaningful step up from the axe, matching "construction". */
     shelterWoodCost: 8,

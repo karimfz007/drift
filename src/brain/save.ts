@@ -110,6 +110,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 19) current = migrateV19toV20(current);
     if (current.schemaVersion === 20) current = migrateV20toV21(current);
     if (current.schemaVersion === 21) current = migrateV21toV22(current);
+    if (current.schemaVersion === 22) current = migrateV22toV23(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -697,6 +698,42 @@ function migrateV21toV22(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v22 -> v23, THE MARITIME SLICE. A returning survivor gets a sea they can now swim in, no
+ * raft, and a wreck they have still only ever looked at.
+ *
+ * BOTH DIRECTIONS OF THIS ARE DELIBERATE, and they are opposite to each other on purpose —
+ * this file has both precedents and they answer different questions.
+ *
+ *   - **The seabed MERGES, without appearing here at all.** The shelf outside the island is
+ *     geology, computed by `groundHeight`, stored nowhere — so every existing save gains a
+ *     swimmable sea for free, the same way v17->v18's Boulder Formation and v21->v22's cave
+ *     merged in as facts about the island rather than about the body. A save on a different
+ *     island is a save on a different island.
+ *   - **The raft does NOT merge, and the wreck stays unreached.** Both are achievements.
+ *     Handing over a raft nobody built would give away the single most expensive craft in the
+ *     game, and marking the wreck reached would be the game telling a player they have been
+ *     somewhere they have never been — which is the honest-systems line, not a balance one.
+ *     Fatigue (v7->v8) and illness (v20->v21) took this same route for the same reason.
+ */
+function migrateV22toV23(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        raft: isObject(old.raft)
+            ? (old.raft as GameState['raft'])
+            //  `aboard: false` is not merely the default — nobody can be standing on a raft
+            //  that does not exist, and a save that somehow claimed otherwise would put a
+            //  survivor at sea on nothing.
+            : { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false },
+        wreck: isObject(old.wreck)
+            ? (old.wreck as GameState['wreck'])
+            : { reached: false, reachedAtGameHours: null },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -735,6 +772,8 @@ function hydrate(state: GameState): GameState {
         shelter: { ...base.shelter, ...state.shelter },
         storage: { ...base.storage, ...state.storage, stored: { ...base.storage.stored, ...state.storage?.stored } },
         torch: { ...base.torch, ...state.torch },
+        raft: { ...base.raft, ...state.raft },
+        wreck: { ...base.wreck, ...state.wreck },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },

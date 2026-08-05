@@ -136,6 +136,36 @@ export function allRecipes(): Recipe[] {
             ]
         },
         {
+            //  THE RAFT (the Maritime Slice). Three positions, and the third one is the
+            //  reason there are three.
+            //
+            //  Wood + fibre is already the busiest gesture in the game: the torch holds it
+            //  and the backpack holds it. [[D-114]] settled that sharing a tag signature is
+            //  legal — stage four of `resolveRecipe` rotates rather than crowning a winner,
+            //  so sharing costs an attempt and never access — but THREE recipes on one
+            //  gesture is not a discovery, it is a lottery, and a lottery teaches a player
+            //  that the world is arbitrary. So the raft gets a signature nobody else has.
+            //
+            //  It gets it honestly rather than by decoration: coconut husks lashed under a
+            //  log deck are what actually floats a raft on an island that has coconut palms
+            //  and no barrels, and this island has had coconut palms since Cycle 03 as the
+            //  pre-axe fibre source. The signature is unique because `buoyant` is a real
+            //  material property nothing else here has — see `materials.ts`, where the first
+            //  cut of this slot used `food` instead and the standing "berries go with nothing"
+            //  law caught it inside one test run.
+            id: 'raft',
+            //  Not `construction`. A raft is the first thing this game makes that goes
+            //  somewhere, and reading the sea is the domain that governs it — which also
+            //  gives §15's `sustained-expedition` crossing (endurance × navigationSeamanship)
+            //  the knowledge leg it has never had a producer for.
+            domain: 'navigationSeamanship',
+            slots: [
+                { id: 'raft-deck', require: { tag: 'woodwork' }, amount: TUNE.raftWoodCost },
+                { id: 'raft-lashing', require: { tag: 'textile' }, amount: TUNE.raftFiberCost },
+                { id: 'raft-float', require: { tag: 'buoyant' }, amount: TUNE.raftCoconutCost }
+            ]
+        },
+        {
             id: 'knap',
             //  "Knapping" is one of the ruling's own four named Harvesting & fabrication verbs.
             domain: 'harvestingFabrication',

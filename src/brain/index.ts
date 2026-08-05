@@ -35,6 +35,7 @@ export * from './skills';
 export * from './materials';
 export * from './knowledge';
 export * from './body';
+export * from './water';
 export * from './loadout';
 export * from './experiment';
 export * from './recipes';

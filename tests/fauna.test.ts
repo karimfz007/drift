@@ -380,6 +380,7 @@ describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 c
         const { allRecipes } = await import('../src/brain/recipes');
         const { resolveRecipe } = await import('../src/brain/experiment');
         const { createInitialState: fresh } = await import('../src/brain/state');
+        const { ALL_MATERIAL_KINDS, materialSatisfies } = await import('../src/brain/materials');
 
         for (const r of allRecipes()) {
             const s = fresh(0);
@@ -389,10 +390,20 @@ describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 c
                 id: `bp${i}`, name: o.id, recipeId: o.id, inputs: ['wood'], version: 1,
                 workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 1,
             })) as never;
-            const mats = r.slots.map((sl) => (
-                sl.require.tag === 'textile' ? 'fiber'
-                    : sl.require.tag === 'masonry' ? 'stone'
-                        : sl.require.tag === 'blade' ? 'sharpblade' : 'wood'));
+            //  DERIVED, not tabulated. This was a hand-written switch over four tags with
+            //  `wood` as its else-branch — so the Maritime Slice's `buoyant` slot silently
+            //  mapped to wood, the raft staged as wood+fibre, and the test reported the raft
+            //  unreachable when the raft was fine and the PROBE was wrong.
+            //
+            //  Same lesson `ALL_MATERIAL_KINDS` already banked in `materials.ts`: a list that
+            //  merely happens to match is not derived, and it drifts the first time anyone
+            //  adds a row. Asking `materialSatisfies` means a new tag cannot be added without
+            //  this probe finding a material for it — or failing loudly, below, if none exists.
+            const mats = r.slots.map((sl) => {
+                const kind = ALL_MATERIAL_KINDS.find((k) => materialSatisfies(k, sl.require));
+                expect(kind, `no material satisfies ${r.id}'s ${sl.id}`).toBeDefined();
+                return kind as string;
+            });
             expect(resolveRecipe(s, [...new Set(mats)] as never)?.id,
                 `${r.id} is unreachable even when it is the only thing left to discover`).toBe(r.id);
         }

@@ -157,6 +157,14 @@ export const RENDER = {
      *  the edge is something the player sees rather than an invisible wall they discover by
      *  walking into it. Thin and translucent — a shoreline, not a fence. */
     surfLineThickness: 2.2,
+    /** [Maritime] How high the raft's deck rides above the sea surface, in metres. Enough
+     *  that the deck is clearly ON the water rather than in it, and low enough that a
+     *  castaway standing on it does not look stilted. */
+    raftFloatM: 0.22,
+    /** [Maritime] How deep in the water a swimmer's origin sits relative to the sea surface,
+     *  in metres. The castaway capsule is drawn from its centre, so a negative offset here
+     *  is what puts shoulders and head above the waterline and the rest under it. */
+    swimSubmergeM: -0.55,
     surfLineRiseM: 0.35,
     surfLineAlpha: 0.5,
     /** Terrain grid resolution across the island's full diameter. */

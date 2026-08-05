@@ -21,7 +21,7 @@
 import { TUNE } from '../data/tune';
 import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
-import { canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall } from './state';
+import { canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater } from './state';
 import { canBindWound } from './injury';
 import { nearestBoar } from './fauna';
 import { droppedWithinReach } from './dropped';
@@ -42,7 +42,7 @@ export interface VerbOption {
     reason: string | null;
 }
 
-export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped';
+export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft';
 
 /**
  * Does the survivor know how to fish? A capability, not an inventory item — Slice 2's
@@ -68,6 +68,7 @@ export function verbsFor(state: GameState, target: VerbTarget): VerbOption[] {
         case 'fire': return fireVerbs(state);
         case 'boar': return boarVerbs(state);
         case 'dropped': return droppedVerbs(state);
+        case 'raft': return raftVerbs(state);
     }
 }
 
@@ -109,6 +110,12 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     boar: 'thrust',
     //  A stack on the ground has exactly one thing you want from it.
     dropped: 'pick-up',
+    //  THE MARITIME SLICE. `board` and `leave` are DISJOINT — you are either standing on it
+    //  or you are not, and exactly one is ever available — so this circle can never reach
+    //  two segments, let alone the five that broke the fire's ([[D-119]]'s verb-count
+    //  ceiling). The same disjoint shape the shelter's sleep/mend and the store's
+    //  deposit/withdraw already use, and the reason the raft costs the radial nothing.
+    raft: 'board-raft',
 };
 
 /**
@@ -152,6 +159,37 @@ export function declaredDefaultVerbId(target: VerbTarget): string {
  * The canonical acceptance case. No flask and no line: drink only, no circle. Add a flask:
  * drink or fill, the circle divides in two. Add a fishing line: three segments.
  */
+/**
+ * THE RAFT'S CIRCLE. Two verbs that can never both be available, so it is a one-segment
+ * circle that changes which segment it is — see `DEFAULT_VERB` above for why that matters
+ * against [[D-119]]'s ceiling.
+ *
+ * `leave` states where you would land, because stepping off a hundred metres out is a
+ * decision and it must never be a surprise. The reason field is doing its Ch.2
+ * nearest-true-reason job in the one case that can actually block: too far to climb on.
+ */
+function raftVerbs(state: GameState): VerbOption[] {
+    const built = state.raft.built;
+    const near = canBoardRaft(state);
+    const aboard = state.raft.aboard;
+    return [
+        {
+            id: 'board-raft',
+            label: 'Climb aboard',
+            available: built && !aboard && near,
+            reason: !built ? 'You have no raft.'
+                : aboard ? 'You are already on it.'
+                    : 'Too far — get alongside it first.',
+        },
+        {
+            id: 'leave-raft',
+            label: leaveRaftIsIntoWater(state) ? 'Slip into the water' : 'Step ashore',
+            available: aboard,
+            reason: aboard ? null : 'You are not on the raft.',
+        },
+    ];
+}
+
 function pondVerbs(state: GameState): VerbOption[] {
     const atPond = isAtPond(state);
     const notThere = atPond ? null : 'You are not at the water.';

@@ -132,6 +132,16 @@ export function closeSurvivor(state: GameState, cause: string): {
         boars: state.boars.map((b) => ({ ...b })),
         salvageSpawnCount: state.salvageSpawnCount,
         nextSalvageSpawnAtGameHours: state.nextSalvageSpawnAtGameHours,
+        //  THE RAFT IS MATTER, so it stays — a successor finds it moored wherever the last
+        //  survivor left it, exactly like the store box. `aboard` is forced FALSE rather than
+        //  copied: it describes a body standing on a deck, and that body is dead. Inheriting
+        //  it would wake a new castaway already at sea, aboard something they have never seen,
+        //  which is the personal/worldly line this whole module is built on.
+        raft: { ...state.raft, aboard: false },
+        //  Someone got out there. That is a fact about this island's history and it is exactly
+        //  the `found-intact` grade of inheritance [[D-069]] permits: the successor knows the
+        //  crossing is possible and has no idea how it was done.
+        wreck: { ...state.wreck },
         //  The journal is matter, and it obeys matter's rule: carried, it goes with the body;
         //  set down, it waits. `succeedJournal` owns that asymmetry.
         journal: succeedJournal(state.journal),

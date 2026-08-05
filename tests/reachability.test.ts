@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ROCKS, SURF_LINE_RADIUS, TREES, WALKABLE_RADIUS, isPlaceablePoint, isWalkablePoint } from '../src/data/world';
+import { ROCKS, SURF_LINE_RADIUS, TREES, WALKABLE_RADIUS, isDryLand, isPlaceablePoint, isWalkablePoint } from '../src/data/world';
 import { salvageCandidatePoint, spawnSalvageNode } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 
@@ -129,8 +129,30 @@ describe('reachability — every salvage spawn is genuinely collectable (D-064)'
 });
 
 describe('reachability — the boundary is diegetic, not an invisible wall (D-064)', () => {
-    it('the surf line is drawn at exactly the walkable radius — seen IS enforced', () => {
-        expect(SURF_LINE_RADIUS).toBe(WALKABLE_RADIUS);
+    /**
+     * D-064'S LAW SURVIVES ITS OWN MECHANISM BEING REPLACED (the Maritime Slice).
+     *
+     * The law is *the thing you see is literally the thing that acts on you*, and its
+     * mechanism was one constant used twice: `SURF_LINE_RADIUS = WALKABLE_RADIUS`. Swimming
+     * retires the wall at 108 m, so keeping the surf drawn there would have painted breaking
+     * water across eighteen metres of dry sand with nothing behind it — the law broken by the
+     * very line written to keep it.
+     *
+     * So the mechanism moves outward and the law holds: the surf is drawn where the water
+     * actually starts, solved from `waterDepthAt` rather than written down. What this asserts
+     * is the property, not the number — that the drawn line is the waterline to within a
+     * centimetre on both sides, so no hand-tuned constant can drift from the terrain.
+     */
+    it('the surf line is drawn at exactly the WATERLINE — seen IS what gets you wet', () => {
+        expect(isDryLand(SURF_LINE_RADIUS - 0.01, 0), 'just inside the surf is dry').toBe(true);
+        expect(isDryLand(SURF_LINE_RADIUS + 0.01, 0), 'just outside the surf is water').toBe(false);
+    });
+
+    it('...and it is genuinely outside the old wall, so the beach beyond it is real ground', () => {
+        //  The 108 m disc is now a placement rule and nothing else. If these ever collapse
+        //  back together, either the seabed lost its shelf or the wall came back.
+        expect(SURF_LINE_RADIUS).toBeGreaterThan(WALKABLE_RADIUS);
+        expect(isDryLand(WALKABLE_RADIUS + 5, 0), 'the outer beach is walkable ground').toBe(true);
     });
 
     it('decorative trees are too slim to strand anything, and are not over-rejected', () => {

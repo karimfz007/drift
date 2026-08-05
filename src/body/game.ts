@@ -109,14 +109,28 @@ import {
     type MorningReport,
     type NodeKind,
     type RepairTarget,
-    isShelteredSleep
+    isShelteredSleep,
+    //  ---- THE MARITIME SLICE ----
+    boardRaft,
+    canBoardRaft,
+    craftRaft,
+    leaveRaft,
+    leaveRaftIsIntoWater,
+    nearShoreForRaft,
+    raftBlocker,
+    steerRaft,
+    swimNote,
+    swimStageOf,
+    waterSpeedMultiplierOf,
+    waterZoneOf,
+    type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
-import { COLD_OPEN, POND, WALKABLE_RADIUS } from '../data/world';
+import { COLD_OPEN, POND, WORLD } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { CaveView, FireView, GhostView, NodeViews, PlayerView, ShelterView, StorageView, type NodeView } from './entities';
+import { CaveView, FireView, GhostView, NodeViews, PlayerView, RaftView, ShelterView, StorageView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -146,6 +160,10 @@ type Pending =
     | { kind: 'shelter' }
     | { kind: 'boar'; id: string }
     | { kind: 'storage' }
+    //  THE MARITIME SLICE. Routed through exactly the same tap/hold/circle machinery as the
+    //  four above — a vehicle does not get a bespoke input path, because a bespoke path is
+    //  where the Default-Verb Law quietly stops applying.
+    | { kind: 'raft' }
     | null;
 
 /** One entry in the debug tap log (D-050) — what a tap resolved to, and where. */
@@ -194,6 +212,7 @@ export class Game {
     private cave: CaveView;
     private ghost: GhostView;
     private storage: StorageView;
+    private raftView: RaftView;
     private hud: Hud;
     private controls: Controls;
     private cues = new Cues();
@@ -291,6 +310,7 @@ export class Game {
         this.ghost = new GhostView(this.scene);
         runtime.ghostReadout = () => this.ghost.debugState();
         this.storage = new StorageView(this.scene);
+        this.raftView = new RaftView(this.scene);
 
         const state = session().state;
         this.nodes = new NodeViews(this.scene, state.nodes, (x, z) => this.island.heightAt(x, z));
@@ -805,6 +825,10 @@ export class Game {
             const st = session().state.storage;
             return { x: st.x, z: st.y, unexpectedMesh: null };
         }
+        if (hit?.hit && hit.pickedMesh?.metadata?.raft) {
+            const rf = session().state.raft;
+            return { x: rf.x, z: rf.y, unexpectedMesh: null };
+        }
         if (!hit?.hit || !hit.pickedPoint) return null;
         const meshName = hit.pickedMesh?.name ?? null;
         return { x: hit.pickedPoint.x, z: hit.pickedPoint.z, unexpectedMesh: meshName === 'terrain' ? null : meshName };
@@ -851,9 +875,9 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft'; d: number };
         const candidates: Candidate[] = [];
         if (s.fire.built) {
             const d = distance(point.x, point.z, s.fire.x, s.fire.y);
@@ -870,6 +894,10 @@ export class Game {
         if (s.storage.built) {
             const d = distance(point.x, point.z, s.storage.x, s.storage.y);
             if (d <= TUNE.storageCollisionRadius + 1.5) candidates.push({ kind: 'storage', d });
+        }
+        if (s.raft.built) {
+            const d = distance(point.x, point.z, s.raft.x, s.raft.y);
+            if (d <= TUNE.raftTapRadiusM) candidates.push({ kind: 'raft', d });
         }
         candidates.sort((a, b) => a.d - b.d);
         return candidates[0]?.kind ?? null;
@@ -1077,6 +1105,8 @@ export class Game {
             case 'mend': this.tryRepair('shelter'); break;
             case 'open-store': this.openLoadout(true); break;
             case 'mend-store': this.tryRepair('storage'); break;
+            case 'board-raft': this.doBoardRaft(); break;
+            case 'leave-raft': this.doLeaveRaft(); break;
             case 'feed-fire': this.doFeedFire(); break;
             case 'light-torch': this.doLightTorch(); break;
             case 'write-journal': this.doWriteJournal(); break;
@@ -1157,6 +1187,10 @@ export class Game {
             const st = session().state.storage;
             return st.built ? { x: st.x, z: st.y } : null;
         }
+        if (this.pending.kind === 'raft') {
+            const rf = session().state.raft;
+            return rf.built ? { x: rf.x, z: rf.y } : null;
+        }
         return { x: POND.x, z: POND.y }; // pond: aim at the centre; the reach check uses the bank
     }
 
@@ -1220,7 +1254,8 @@ export class Game {
         }
 
         if (this.pending.kind === 'pond' || this.pending.kind === 'shelter'
-            || this.pending.kind === 'storage' || this.pending.kind === 'fire') {
+            || this.pending.kind === 'storage' || this.pending.kind === 'fire'
+            || this.pending.kind === 'raft') {
             const target = this.pending.kind;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
             //  which gesture set this intention, so arriving after a hold opens the circle and
@@ -1558,6 +1593,34 @@ export class Game {
      */
     /** Bind a bleeding wound with fibre. The one treatment injury has. */
     /** Pick up the nearest dropped stack. Its entry is gone, so a re-drop restarts its clock. */
+    /**
+     * CLIMB ABOARD. The one verb in this game that changes what MOVING means, so it says so —
+     * a survivor who steps on and then presses the stick expecting to walk needs to know why
+     * they are suddenly slow and why the beach refuses them.
+     */
+    private doBoardRaft(): void {
+        const state = session().state;
+        if (!canBoardRaft(state)) {
+            this.explain(state.raft.built ? 'Too far — get alongside it first.' : 'You have no raft.');
+            return;
+        }
+        boardRaft(state);
+        session().persist(now());
+        this.cues.play(CUES.craft);
+        this.showHint('Paddle with the stick. It will not go up onto dry land.');
+        this.lastActivityAt = now();
+    }
+
+    /** Step off — and the label already told them which of the two this was going to be. */
+    private doLeaveRaft(): void {
+        const state = session().state;
+        const intoWater = leaveRaftIsIntoWater(state);
+        if (!leaveRaft(state)) return;
+        session().persist(now());
+        this.explain(intoWater ? 'You slip into the water beside it.' : 'You step onto solid ground.');
+        this.lastActivityAt = now();
+    }
+
     private doPickUpDropped(): void {
         const s = session().state;
         const near = droppedWithinReach(s)[0];
@@ -1746,7 +1809,22 @@ export class Game {
                 //  castaway is offered NOTHING to build, and a hardcoded reveal put a Backpack
                 //  row in front of someone four seconds off the beach. The panel starts empty;
                 //  that is the whole of the invention pivot, and it is not mine to except.
-                backpack: { have: { fiber: s.inventory.fiber, wood: s.inventory.wood }, done: s.tools.backpack, revealed: revealedInPanel(s, 'backpack') }
+                backpack: { have: { fiber: s.inventory.fiber, wood: s.inventory.wood }, done: s.tools.backpack, revealed: revealedInPanel(s, 'backpack') },
+                //  THE MARITIME SLICE. Gated by the same ladder reading as every row above —
+                //  the pivot law is not excepted for the biggest craft in the game — and
+                //  carrying one extra thing no other row needs: the SITE. `raftBlocker`
+                //  returns the first thing in the way in the player's own words, and the
+                //  panel shows it before the button is pressed rather than after the wood is
+                //  gone. Material shortfalls are already covered by the cost rows, so only a
+                //  genuine siting refusal is surfaced here.
+                raft: {
+                    have: { wood: s.inventory.wood, fiber: s.inventory.fiber, coconut: s.inventory.coconut },
+                    done: s.raft.built,
+                    revealed: revealedInPanel(s, 'raft'),
+                    siteBlocker: !s.raft.built && !nearShoreForRaft(s)
+                        ? 'You are too far from the water. A raft has to be built where it can float.'
+                        : null,
+                }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {
@@ -1808,6 +1886,29 @@ export class Game {
                     this.showHint('You can carry properly now.');
                 } else {
                     this.explain('Not enough for a pack yet.');
+                }
+                this.lastActivityAt = now();
+            },
+            //  THE MARITIME SLICE — the raft's handler. Written in the same breath as the
+            //  craft function, because the one thing this project has now shipped twice is a
+            //  craftable with no caller (`craftSpear`, then `makeBackpack`), and the sweep in
+            //  `tests/fauna.test.ts` fails the build until this exists.
+            () => {
+                this.endPanel();
+                const state = session().state;
+                const blocker = raftBlocker(state);
+                if (craftRaft(state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the raft is built');
+                    session().markFirstCraft(msSinceControl());
+                    session().persist(now());
+                    this.raftView.sync(state, (x, z) => this.island.heightAt(x, z));
+                    this.showHint('It is moored at the water. Walk to it and climb aboard.');
+                } else {
+                    //  Fail-loud (D-042/D-049): the exact reason, never a shrug. `raftBlocker`
+                    //  is read BEFORE the attempt because a successful craft changes the state
+                    //  it would be read from.
+                    this.explain(blocker ?? 'You cannot build a raft here.');
                 }
                 this.lastActivityAt = now();
             },
@@ -1902,6 +2003,7 @@ export class Game {
         this.shelter.update(state, this.island.heightAt(state.shelter.x, state.shelter.y));
         this.cave.update(state, this.island.heightAt(state.cave.x, state.cave.y));
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
+        this.raftView.update(state);
 
         this.nodes.sync(state);
         this.nodes.highlight(this.highlightTarget());
@@ -1948,7 +2050,11 @@ export class Game {
             //  D-059: weight-aware, not band-aware. The banded form saturated at the Heavy
             //  threshold, so 100 stone moved exactly as fast as 16 — the director's report.
             //  Floored inside `loadSpeedMultiplierOf` so no load can approach a soft-lock.
-            loadSpeedMultiplierOf(state);
+            loadSpeedMultiplierOf(state) *
+            //  THE MARITIME SLICE, on the same line and for the same reason as every
+            //  multiplier above it: water scales `walkSpeedMps` at use and never mutates the
+            //  constant. Dry land returns exactly 1, so nothing about walking changes.
+            waterSpeedMultiplierOf(state);
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
@@ -2087,8 +2193,36 @@ export class Game {
         if (step.contacted) this.contactFrames++;
         if (step.deflected) this.deflectFrames++;
 
-        const radius = Math.hypot(x, z);
-        if (radius > WALKABLE_RADIUS) { const k = WALKABLE_RADIUS / radius; x *= k; z *= k; }
+        //  ---- THE WALL IS GONE (the Maritime Slice) --------------------------------------
+        //
+        //  What stood here was two lines: measure the radius, and if it exceeds
+        //  `WALKABLE_RADIUS` scale the position back onto the 108 m circle. That WAS the edge
+        //  of the world for five cycles — a hard clamp with a surf ring drawn on it so at
+        //  least the wall was visible (D-064).
+        //
+        //  It is replaced by two rules, both of which live in the brain where they can be
+        //  tested, and neither of which is a wall:
+        //
+        //    - ABOARD: the raft grounds rather than climbing the beach. `steerRaft` refuses a
+        //      step onto dry land and returns the current position, so pressing shoreward
+        //      noses the deck into the shallows and stops. A raft that could be steered onto
+        //      grass would be a boat used as a car.
+        //    - SWIMMING or ASHORE: nothing stops the castaway at all. The cost is the wall —
+        //      energy, cold, and the distance back — and it is charged by `advanceWater` on
+        //      the online tick, which is why an absence cannot collect it.
+        if (state.raft.aboard) {
+            const steered = steerRaft(state.player.x, state.player.y, x, z);
+            x = steered.x;
+            z = steered.y;
+        } else {
+            //  The outer bound, and it is deliberately far past anything: the open ocean is
+            //  900 m of sea disc and there is nothing out there. Held so a stuck stick cannot
+            //  walk a castaway into un-rendered space, not to gate the crossing — the wreck
+            //  is at 243 m, comfortably inside.
+            const radius = Math.hypot(x, z);
+            const limit = WORLD.seaRadius * 0.5;
+            if (radius > limit) { const k = limit / radius; x *= k; z *= k; }
+        }
 
         state.player.x = x;
         state.player.y = z;
@@ -2174,7 +2308,10 @@ export class Game {
         this.placePlayerFromState();
 
         const state = session().state;
-        const groundY = this.island.heightAt(state.player.x, state.player.y);
+        //  The camera's reference is the height the castaway is DRAWN at, not the ground
+        //  beneath them — otherwise a swimmer a hundred metres out drags the view down onto
+        //  an eight-metre seabed and the horizon disappears.
+        const groundY = this.drawHeightFor(state);
         const desiredTarget = new Vector3(state.player.x, groundY + this.player.eyeHeight, state.player.y);
 
         const horizontal = Math.cos(this.pitch) * TUNE.cameraDistanceM;
@@ -2233,11 +2370,33 @@ export class Game {
         return new Vector3(target.x + dir.x * dist, target.y + dir.y * dist, target.z + dir.z * dist);
     }
 
+    /**
+     * WHERE THE CASTAWAY IS DRAWN, VERTICALLY (the Maritime Slice).
+     *
+     * Three answers, not one, and the split is the difference between a survivor who is
+     * swimming and one who is walking along the seabed with their head underwater.
+     *
+     *   - ashore, they stand on the ground, exactly as they always have;
+     *   - aboard, they stand on the deck;
+     *   - in the water, they float at the SURFACE, submerged by a fixed offset.
+     *
+     * The ground is not consulted at all in the last two cases. That matters past the shelf,
+     * where the seabed falls to eight metres: reading `heightAt` there would sink the
+     * castaway out of frame and the camera with them.
+     */
     private placePlayerFromState(): void {
         const s = session().state;
-        this.player.place(s.player.x, this.island.heightAt(s.player.x, s.player.y), s.player.y, this.facing);
+        this.player.place(s.player.x, this.drawHeightFor(s), s.player.y, this.facing);
         this.player.syncTools(s.tools.axe, s.tools.axeGrade);
         this.player.syncTorch(s.torch.owned, s.torch.lit, this.nightFactor(s.gameHoursElapsed), s.torch.grade);
+    }
+
+    /** See `placePlayerFromState`. Also the camera's own reference height, so the view rides
+     *  the water with the swimmer instead of following the seabed down. */
+    private drawHeightFor(s: GameState): number {
+        if (s.raft.aboard) return WORLD.seaLevel + RENDER.raftFloatM;
+        if (waterZoneOf(s) === 'swimming') return WORLD.seaLevel + RENDER.swimSubmergeM;
+        return this.island.heightAt(s.player.x, s.player.y);
     }
 
     /** The node to highlight: the pending one, else the nearest in reach. */
@@ -2322,6 +2481,22 @@ export class Game {
         //  DROP 2 — a wound outranks the ordinary goal line. It must be LEGIBLE, not merely
         //  felt: a survivor paying more for every job needs to be told why, or the resolver's
         //  impairment term reads as the game getting harder at random.
+        //  THE MARITIME SLICE — the water speaks FIRST, above a wound, and only from
+        //  `labouring` up. That ordering is the fair-challenge contract, not a preference:
+        //  the deep stages are the only situation in this game that can take a survivor from
+        //  alive to dead inside a couple of minutes with no object on screen to blame it on,
+        //  and the two spoken warnings are the whole reason the last stage is allowed to
+        //  exist at all. A line that could be displaced by a limp would not be a warning.
+        //
+        //  `swimming` deliberately says NOTHING here. A game that narrates every ordinary
+        //  moment has no way left to raise its voice, and these two warnings only work
+        //  because the stage before them is quiet — the same reasoning that keeps a nascent
+        //  illness from displacing exhaustion, three paragraphs down.
+        const swim = swimStageOf(state);
+        if (swim === 'labouring' || swim === 'spent' || swim === 'going-under') {
+            const note = swimNote(swim);
+            if (note) return note;
+        }
         const wound = injuryNote(state.injuries);
         if (wound) return wound;
         //  DROP 3 — sickness reads out for the same reason a wound does, and it sits just

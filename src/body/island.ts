@@ -160,7 +160,19 @@ export class Island {
      */
     private buildTerrain(): void {
         const segments = RENDER.terrainSegments;
-        const span = WORLD.islandRadius * 2.2;
+        //  THE MESH HAS TO REACH THE SEABED NOW (the Maritime Slice). This was
+        //  `islandRadius * 2.2` — a half-span of 134 m, which was ample while the terrain
+        //  outside the island was a flat slab nobody could stand on. The shelf runs to
+        //  `islandRadius + seabedFalloff` (150 m), so at 2.2 the mesh ended part-way down the
+        //  ramp and the shore stopped existing mid-slope.
+        //
+        //  SEGMENT COUNT IS DELIBERATELY UNCHANGED, so this costs exactly zero extra vertices
+        //  and the `fpsFloorMedian` watch item is untouched. The price is paid in sampling
+        //  density instead: 3.20 m per vertex becomes 3.63 m, about 14% coarser. The waterline
+        //  ring is the one place that shows, and the surf torus is drawn along it at 96
+        //  tessellation — the picture the player actually reads at the shore is the surf, not
+        //  the vertices under it.
+        const span = (WORLD.islandRadius + WORLD.seabedFalloff) * 2.03;
         const step = span / segments;
         const origin = -span / 2;
 
@@ -182,8 +194,13 @@ export class Island {
 
                 const r = Math.hypot(x, z);
                 //  Blend grass → sand across the beach line, then darken below the tide.
+                //  THE TIDE LINE MOVED OUT with the shore (the Maritime Slice): the wet-sand
+                //  band used to darken toward `islandRadius`, which was where the world
+                //  ended. It is now anchored to `SURF_LINE_RADIUS` — the actual waterline —
+                //  so the sand that LOOKS wet is the sand the surf is breaking on, and the
+                //  seabed beyond it stays the darkest tone rather than fading back to dry.
                 const beachBlend = smoothstep(WORLD.beachRadius - 6, WORLD.beachRadius + 4, r);
-                const wet = smoothstep(WORLD.islandRadius - 5, WORLD.islandRadius, r);
+                const wet = smoothstep(SURF_LINE_RADIUS - 5, SURF_LINE_RADIUS, r);
                 const shade = 0.88 + 0.12 * Math.sin(x * 0.35) * Math.cos(z * 0.31);
 
                 const grassMix = mix(grassDark, grass, smoothstep(0, 2.4, y));

@@ -43,7 +43,7 @@ export interface DiscoveryRoute {
 }
 
 /**
- * The five routes, one per currently-pre-listed item.
+ * The routes, one per craftable that would otherwise need a catalogue row.
  *
  * Each need is a real reading of state, not a flag. That matters: a need the player does not
  * feel is a tutorial prompt wearing a mechanic's clothes, and it would put the catalogue back
@@ -79,6 +79,26 @@ export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
         need: (s) => !s.tools.stoneHammer && s.inventory.stone > 0,
         makings: ['wood', 'stone'],
         prompt: 'Stone does not yield to fingers. Something heavier, swung.',
+    },
+    {
+        //  THE RAFT (the Maritime Slice). The need is the hardest one in this file to state
+        //  honestly, because the pressure a raft answers is not a vital falling — it is
+        //  wanting to be somewhere the water will not let you get to.
+        //
+        //  So the need is READ FROM THE BODY, not from a flag and not from a quest: the
+        //  survivor has been IN the sea. `breathWaterConfidence` above its innate floor means
+        //  they have swum far enough, often enough, to have developed something — which means
+        //  they have felt exactly how far 115 metres of open water is with only their arms.
+        //  A castaway who has never been past their knees has no reason to think about a
+        //  raft, and telling them to would be the catalogue coming back one sentence at a
+        //  time (see this file's header).
+        //
+        //  The route deliberately does NOT fire merely for standing on the beach looking at
+        //  the wreck. Looking is not a pressure; being out of breath halfway to something is.
+        recipeId: 'raft',
+        need: (s) => s.capacities.breathWaterConfidence > TUNE.capacityInnateFloor,
+        makings: ['wood', 'fiber', 'coconut'],
+        prompt: 'You have felt how far that water is. Wood floats, and you are holding the cord to bind it.',
     },
     {
         //  More than you can carry. The most physical need in the game, and the one a player

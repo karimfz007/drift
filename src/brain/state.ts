@@ -13,7 +13,10 @@ import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshMatterWear, transformationFor } from './matter';
-import { CAVE_SITE, POND, SPAWN, WALKABLE_RADIUS, WORLD, createNodes, isPlaceablePoint } from '../data/world';
+import {
+    CAVE_SITE, POND, SPAWN, SURF_LINE_RADIUS, WALKABLE_RADIUS, WORLD,
+    createNodes, isDryLand, isPlaceablePoint, waterDepthAt
+} from '../data/world';
 
 import { applyEffect, demandFor, resolveActivity } from './resolver';
 import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, masteryForNodeKind } from './knowledge';
@@ -101,7 +104,12 @@ export function createInitialState(nowMs: number): GameState {
         //  same place across a succession — the island persists, and so does its geology.
         cave: { found: false, x: CAVE_SITE.x, y: CAVE_SITE.y, sheltering: false },
         dropped: [],
-        dropCount: 0
+        dropCount: 0,
+        //  THE MARITIME SLICE. No raft — it is the largest thing in the game to make and the
+        //  only one that leaves the island, so it is earned like everything else post-pivot.
+        raft: { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false },
+        //  The wreck has been on the horizon since Cycle 03 and nobody has ever been to it.
+        wreck: { reached: false, reachedAtGameHours: null }
     };
 }
 
@@ -142,6 +150,8 @@ export function cloneState(state: GameState): GameState {
         cave: { ...state.cave },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
         torch: { ...state.torch },
+        raft: { ...state.raft },
+        wreck: { ...state.wreck },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
         knowledge: {
@@ -1003,6 +1013,164 @@ export function makeBackpack(state: GameState): boolean {
     state.tools.backpack = true;
     recordTrying(state, 'harvestingFabrication');
     return true;
+}
+
+// ---- THE MARITIME SLICE: the raft ----------------------------------------
+
+/**
+ * THE RAFT. The first made thing in this game that carries you somewhere, and the first with
+ * a site rule of its own.
+ *
+ * WHY THE SITE RULE EXISTS. §9.6's claim — *the site IS the decision* — was built for
+ * shelters, where a bad site is merely worse. For a raft it is absolute: one built in the
+ * treeline is fourteen wood and ten fibre spent on scenery, because nothing in this game can
+ * drag it. So the shore requirement is not flavour, it is the difference between a craft that
+ * works and a trap, and it is stated to the player BEFORE they spend anything
+ * (`raftBlocker`), never discovered afterwards.
+ */
+export function nearShoreForRaft(state: GameState): boolean {
+    return Math.hypot(state.player.x, state.player.y)
+        >= SURF_LINE_RADIUS - TUNE.raftBuildMaxShoreDistanceM;
+}
+
+export function canCraftRaft(state: GameState): boolean {
+    return raftBlocker(state) === null;
+}
+
+/**
+ * The first thing standing in the way, in the player's own terms — the order the §9.6 site
+ * reading uses, and for the same reason: a survivor should be told the thing to fix, not
+ * handed a checklist of everything that is not yet true.
+ */
+export function raftBlocker(state: GameState): string | null {
+    if (state.raft.built) return 'You already have a raft.';
+    const missing: string[] = [];
+    if (state.inventory.wood < TUNE.raftWoodCost) missing.push(`${TUNE.raftWoodCost - state.inventory.wood} more wood`);
+    if (state.inventory.fiber < TUNE.raftFiberCost) missing.push(`${TUNE.raftFiberCost - state.inventory.fiber} more fibre`);
+    if (state.inventory.coconut < TUNE.raftCoconutCost) missing.push(`${TUNE.raftCoconutCost - state.inventory.coconut} more coconut`);
+    if (missing.length > 0) return `Not enough to build with — you need ${missing.join(', ')}.`;
+    if (!nearShoreForRaft(state)) return 'Too far from the water. A raft has to be built where it can float.';
+    return null;
+}
+
+export function raftShortfall(state: GameState): { wood: number; fiber: number; coconut: number } {
+    return {
+        wood: Math.max(0, TUNE.raftWoodCost - state.inventory.wood),
+        fiber: Math.max(0, TUNE.raftFiberCost - state.inventory.fiber),
+        coconut: Math.max(0, TUNE.raftCoconutCost - state.inventory.coconut)
+    };
+}
+
+/**
+ * Build it, here, at the water's edge. Grade rolls once from the shipped seeded-hash
+ * technique (D-055) and moves exactly one stat — speed — like every other graded item.
+ *
+ * It is moored at the WATERLINE rather than at the survivor's feet: they may be standing a
+ * few metres up the sand, and a raft resting on dry ground is the exact thing the site rule
+ * exists to prevent. Pushed straight out along their own bearing, so it lands in front of
+ * them rather than somewhere they have to go looking for.
+ */
+export function craftRaft(state: GameState): boolean {
+    if (!canCraftRaft(state)) return false;
+    state.inventory.wood -= TUNE.raftWoodCost;
+    state.inventory.fiber -= TUNE.raftFiberCost;
+    state.inventory.coconut -= TUNE.raftCoconutCost;
+
+    const r = Math.hypot(state.player.x, state.player.y);
+    //  A survivor standing exactly on the island's centre has no bearing to push along. It
+    //  cannot happen (the shore rule is 116 m out) but a NaN moored raft would be a silent,
+    //  permanent loss of fourteen wood, so the degenerate case gets an answer rather than a
+    //  division.
+    const bearingX = r > 1e-6 ? state.player.x / r : 0;
+    const bearingY = r > 1e-6 ? state.player.y / r : 1;
+    const moorRadius = SURF_LINE_RADIUS + TUNE.raftMooringOffsetM;
+
+    state.raft = {
+        built: true,
+        x: bearingX * moorRadius,
+        y: bearingY * moorRadius,
+        grade: rollGrade(nextGradeSeed(state)),
+        aboard: false
+    };
+    recordTrying(state, recipeDomain('raft'));
+    return true;
+}
+
+/** Near enough to climb onto. The same reach every other object in this game uses. */
+export function canBoardRaft(state: GameState): boolean {
+    if (!state.raft.built || state.raft.aboard) return false;
+    return Math.hypot(state.raft.x - state.player.x, state.raft.y - state.player.y)
+        <= TUNE.interactRadiusM;
+}
+
+export function boardRaft(state: GameState): boolean {
+    if (!canBoardRaft(state)) return false;
+    state.raft.aboard = true;
+    //  You stand ON it. Position and raft are the same point from here until you step off,
+    //  which is what makes `steerRaft` able to move a player at all.
+    state.player.x = state.raft.x;
+    state.player.y = state.raft.y;
+    recordTrying(state, 'navigationSeamanship');
+    return true;
+}
+
+/**
+ * Step off. Onto dry land if there is any within reach, otherwise into the water — and being
+ * TOLD which is about to happen is `leaveRaftIsIntoWater`'s job, because stepping off a raft
+ * a hundred metres out is a decision and it must never be a surprise.
+ */
+export function leaveRaftIsIntoWater(state: GameState): boolean {
+    return nearestDryPointTo(state.raft.x, state.raft.y) === null;
+}
+
+export function leaveRaft(state: GameState): boolean {
+    if (!state.raft.aboard) return false;
+    state.raft.aboard = false;
+    const dry = nearestDryPointTo(state.raft.x, state.raft.y);
+    if (dry) {
+        state.player.x = dry.x;
+        state.player.y = dry.y;
+    }
+    return true;
+}
+
+/**
+ * The nearest dry ground within stepping distance of a floating raft, or null when there is
+ * none — which, anywhere but the shore, is the answer.
+ *
+ * Walks INWARD along the raft's own bearing rather than searching, because the shoreline is a
+ * circle and "towards the middle" is always the way to land. Half-metre steps out to the
+ * shore band's own width; nothing wider, or stepping off would teleport a survivor across
+ * water they should have had to paddle.
+ */
+function nearestDryPointTo(x: number, y: number): { x: number; y: number } | null {
+    const r = Math.hypot(x, y);
+    if (r <= 1e-6) return null;
+    const ux = x / r;
+    const uy = y / r;
+    for (let back = 0; back <= TUNE.raftStepAshoreReachM; back += 0.5) {
+        const px = ux * (r - back);
+        const py = uy * (r - back);
+        if (isDryLand(px, py)) return { x: px, y: py };
+    }
+    return null;
+}
+
+/**
+ * WHERE A PADDLED RAFT MAY ACTUALLY GO. Returns the position to take, which is the requested
+ * one when it is over water and the current one when it is not.
+ *
+ * A raft that could be steered onto grass would be a boat used as a car, and it would let a
+ * player cross the island faster than walking. Refusing the step rather than clamping to the
+ * shoreline is deliberate: it GROUNDS — the raft noses into the shallows and stops, exactly
+ * as it would — and the player, who is holding the stick, feels a beach rather than a wall.
+ *
+ * Wading depth counts as water, so a raft can be nosed right up to the sand and stepped off.
+ */
+export function steerRaft(
+    fromX: number, fromY: number, toX: number, toY: number,
+): { x: number; y: number } {
+    return waterDepthAt(toX, toY) > 0 ? { x: toX, y: toY } : { x: fromX, y: fromY };
 }
 
 export function canCraftSpear(state: GameState): boolean {
