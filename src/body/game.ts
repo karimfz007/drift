@@ -351,6 +351,10 @@ export class Game {
         runtime.intend = (id: string) => { this.pending = { kind: 'node', id }; };
         runtime.debugInfo = () => this.debugInfoText();
         runtime.cameraReadout = () => ({ yaw: this.yaw, pitch: this.pitch });
+        //  THE MARITIME SLICE — the camera's live world position, read-only. `camPos` is what
+        //  the camera was actually placed at this frame, so a swimmer whose view had followed
+        //  the seabed down would show up here rather than being argued about.
+        runtime.cameraPositionReadout = () => ({ x: this.camPos.x, y: this.camPos.y, z: this.camPos.z });
         runtime.groundAt = (x, z) => this.island.heightAt(x, z);
         runtime.playerFeetY = () => this.player.feetY;
         //  D-059: live render cost, so tree parity's price is a reported number rather than

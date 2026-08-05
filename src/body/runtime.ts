@@ -92,6 +92,12 @@ export const runtime = {
     ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
     groundAt: (() => 0) as (x: number, z: number) => number,
     playerFeetY: (() => 0) as () => number,
+    //  THE MARITIME SLICE. The camera's own world height, READ ONLY. Added because a swimmer
+    //  is drawn at the sea surface over an eight-metre seabed, and "the camera rides the
+    //  water rather than following the floor down" is a claim about a rendered position that
+    //  yaw and pitch cannot answer. A harness check written against a hook that did not exist
+    //  silently skipped — which is [[D-066]] (a) exactly, in my own section.
+    cameraPositionReadout: (() => ({ x: 0, y: 0, z: 0 })) as () => { x: number; y: number; z: number },
     //  The direct-world tap intention, for the harness's range-gate regression (D-042/A4).
     pendingReadout: (() => null) as () => { kind: string; id?: string } | null,
     intend: (() => {}) as (id: string) => void,
@@ -322,6 +328,7 @@ function installDebugHook(): void {
         screenOf: (worldX: number, worldZ: number) => runtime.projectToScreen(worldX, worldZ),
         groundAt: (worldX: number, worldZ: number) => runtime.groundAt(worldX, worldZ),
         playerFeetY: () => runtime.playerFeetY(),
+        cameraPosition: () => runtime.cameraPositionReadout(),
         //  Read/inject the direct-world tap intention (the range-gate regression, A4).
         pending: () => runtime.pendingReadout(),
         intend: (nodeId: string) => runtime.intend(nodeId),

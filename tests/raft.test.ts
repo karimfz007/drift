@@ -23,6 +23,7 @@ import { resolveRecipe, tryCombineWith } from '../src/brain/experiment';
 import { materialSatisfies } from '../src/brain/materials';
 import { closeSurvivor } from '../src/brain/succession';
 import { verbsFor, availableVerbs, defaultVerb, holdOpensCircle } from '../src/brain/verbs';
+import { makerOffers, panelHints, revealedInPanel } from '../src/brain/reveal';
 import { Session } from '../src/brain/session';
 import { deserialize, serialize, type SaveRepository } from '../src/brain/save';
 import { realSecondsPerGameHour } from '../src/brain/clock';
@@ -465,5 +466,66 @@ describe('matter, memory, and the save', () => {
         const back = deserialize(serialize(s, 1_700_000_000_000));
         expect(back!.state.raft.x).toBe(WRECK.x);
         expect(back!.state.raft.y).toBe(WRECK.y);
+    });
+});
+
+// ---------------------------------------------------------------------------
+describe('the raft reaches the SURFACE — two hardcoded lists found by reading', () => {
+    /**
+     * Neither of these came from a bug report. Both were found by reading `reveal.ts` while
+     * the device harness was mid-run, and both are the same class the file's own comments
+     * warn about twice: **a gate you have to remember to extend is a defect with a delay on
+     * it.** They are regression-locked here rather than merely fixed, because that is the
+     * third and fourth time a hardcoded list in that one file has gone stale.
+     */
+    it('REGRESSION — a built raft stops being an offer (it fell to `default: false`)', () => {
+        const s = stocked(atShore(fresh()));
+        s.blueprints = [{
+            id: 'bp-raft', name: 'raft', recipeId: 'raft', inputs: ['wood'], version: 1,
+            workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 1,
+        }] as never;
+        //  WITNESS: before it is built the raft IS genuinely on offer, or the assertion below
+        //  passes for the wrong reason — an offer that was never there cannot go away.
+        expect(makerOffers(s)).toContain('raft');
+        expect(craftRaft(s)).toBe(true);
+        //  Pre-fix this still contained 'raft': `satisfied()` had no case for it, so the maker
+        //  door went on citing a raft that was already moored at the shore.
+        expect(makerOffers(s)).not.toContain('raft');
+    });
+
+    it('REGRESSION — the raft\'s suspicion can actually REACH the panel as a hint', () => {
+        const s = stocked(atShore(fresh()));
+        s.capacities.breathWaterConfidence = TUNE.capacityInnateFloor + 5;
+        //  WITNESS: the suspicion is genuinely live, so a missing hint below is the SURFACE
+        //  failing rather than the route.
+        expect(suspicionFor(s, 'raft')?.suspected).toBe(true);
+        //  Pre-fix `panelHints` walked a hardcoded ['torch','shelter','axe','stonehammer',
+        //  'storage'], so this returned nothing for the raft — the route was real, tested,
+        //  and invisible. [[D-114]]'s class exactly.
+        const hint = panelHints(s).find((h) => h.recipeId === 'raft');
+        expect(hint, 'the raft has a live suspicion and no way to say so').toBeDefined();
+        expect(hint!.prompt.toLowerCase()).not.toContain('raft');
+    });
+
+    it('...and the hints are DERIVED, so a future route cannot be invisible either', () => {
+        //  The durable half. Every routed recipe must be capable of producing a hint; if a
+        //  seventh route ships and this file is not touched, this still holds.
+        const routed = DISCOVERY_ROUTES.map((r) => r.recipeId);
+        const s = fresh();
+        //  Hold everything and feel every need, so every route that CAN fire does.
+        for (const k of Object.keys(s.inventory) as Array<keyof typeof s.inventory>) s.inventory[k] = 30;
+        s.capacities.breathWaterConfidence = TUNE.capacityInnateFloor + 5;
+        s.warmth = 1;
+        const reachable = new Set(panelHints(s).map((h) => h.recipeId));
+        //  A suspected recipe that is ALREADY REVEALED correctly gets a row instead of a hint
+        //  — "once the row is there, the hint has done its work". The torch is the live case
+        //  (Law 113's scaffold reveals it on suspicion alone), and excluding it here is the
+        //  difference between asserting the rule and asserting a misreading of it.
+        const live = routed.filter((id) =>
+            suspicionFor(s, id)?.suspected === true && !revealedInPanel(s, id));
+        expect(live.length, 'no unrevealed route fired at all — the fixture is wrong').toBeGreaterThan(1);
+        for (const id of live) {
+            expect(reachable.has(id), `${id} is suspected, unrevealed, and cannot say so`).toBe(true);
+        }
     });
 });

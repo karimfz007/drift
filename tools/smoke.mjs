@@ -114,6 +114,12 @@ const TUNE = new Proxy({
     torchWoodCost: 2,
     torchFiberCost: 2,
     torchBurnGameHours: 4,
+    //  THE MARITIME SLICE (D-121) — mirrors src/data/tune.ts, same duplication convention.
+    swimLabouringEnergy: 35,
+    swimSpentEnergy: 12,
+    raftWoodCost: 14,
+    raftFiberCost: 10,
+    raftCoconutCost: 4,
     //  Mirrors src/data/world.ts's WALKABLE_RADIUS (islandRadius 122 - shoreFalloff 12 - 2).
     walkableRadiusM: 108,
     //  Ch.1 v3, D-055 — mirrors src/data/tune.ts, same duplication convention as above.
@@ -5125,6 +5131,293 @@ async function main() {
         cancelTap.ok && cancelled.shown === false,
         `tap ${cancelTap.ok} ${cancelTap.reason ?? ''}, ghost ${JSON.stringify(cancelled)}`);
 
+    // ---- THE MARITIME SLICE (D-121) ------------------------------------------------
+    //
+    //  THE OWED LEG. D-121 shipped with 936/936 unit tests and ZERO device coverage, and
+    //  recorded that at the top of the state doc rather than burying it. Every claim below is
+    //  one a unit test structurally cannot make, because every one of them is about what is
+    //  RENDERED or what the player can REACH:
+    //
+    //    1. the wall is gone      — a real stick walk past the old 108 m clamp
+    //    2. the swim draw height  — where the castaway's mesh actually IS over an 8 m seabed
+    //    3. the two warnings      — the sentence read off the live page, before health moves
+    //    4. the raft's surface    — crafted through the Build panel's own button
+    //    5. the raft carries      — boarded by tapping the deck, and the deck moves with you
+    //
+    //  D-075's player-path law governs throughout: `editSave` STAGES a situation (materials,
+    //  a reserve, a position) exactly as every other section here does, and every claim under
+    //  test is then driven by a real gesture — the stick, a tap on the world, a tap on a
+    //  button. No `__drift` hook drives anything; they only ever read.
+    console.log('\nTHE MARITIME SLICE (D-121)');
+
+    //  ---- 1. THE WALL IS GONE -------------------------------------------------------
+    //
+    //  For five cycles `game.ts` scaled the player back onto a 108 m circle. The unit suite
+    //  can prove `isDryLand(0, 113)` is true; it cannot prove a thumb on a stick gets there.
+    await startFresh();
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 100;
+        state.gameHoursElapsed = 8;
+    `);
+    //  Walk seaward on the +Z bearing, which is the wreck's own side of the island.
+    let outward = await live();
+    for (let i = 0; i < 14 && Math.hypot(outward.player.x, outward.player.y) < TUNE.walkableRadiusM + 6; i++) {
+        await walkToward(0, 300, 1.1);
+        outward = await live();
+    }
+    const outRadius = Math.hypot(outward.player.x, outward.player.y);
+    await shot('maritime-outer-beach');
+    check('MARITIME 1 — a real stick walk goes PAST the old 108 m wall',
+        outRadius > TUNE.walkableRadiusM + 2,
+        `reached ${outRadius.toFixed(2)} m against a wall that used to hold at ${TUNE.walkableRadiusM}`);
+
+    //  ...and the ground out there is real ground, not a rendering accident: the castaway's
+    //  own feet are ON it. `playerFeetY` is the RENDERED mesh, `groundAt` the terrain under
+    //  it — if the outer beach were below sea level these would diverge.
+    const beachFeet = await page.evaluate(() => window.__drift.playerFeetY());
+    const beachGround = await page.evaluate(([x, z]) => window.__drift.groundAt(x, z), [outward.player.x, outward.player.y]);
+    check('MARITIME 1b — the outer beach is real ground and the castaway stands ON it',
+        Math.abs(beachFeet - beachGround) < 0.6 && beachGround > -1.0,
+        `feet ${beachFeet.toFixed(2)}, ground ${beachGround.toFixed(2)}`);
+
+    //  ---- 2. THE SWIM DRAW HEIGHT ---------------------------------------------------
+    //
+    //  THE CLAIM NO UNIT TEST CAN MAKE, and the one most likely to be silently wrong. Past
+    //  the shelf the seabed falls to −8 m. If `placePlayerFromState` read the ground the way
+    //  it did for five cycles, a swimmer would be drawn on the seabed — underwater, out of
+    //  frame, with the camera following them down. The fix draws them at the SEA SURFACE, and
+    //  the only way to witness it is to read the rendered mesh.
+    await editSave(`
+        state.player = { x: 0, y: 150 };
+        state.energy = 100; state.health = 100; state.warmth = 100;
+        state.gameHoursElapsed = 8;
+    `);
+    const swimState = await live();
+    const swimFeet = await page.evaluate(() => window.__drift.playerFeetY());
+    const swimGround = await page.evaluate(([x, z]) => window.__drift.groundAt(x, z), [swimState.player.x, swimState.player.y]);
+    await shot('maritime-swimming');
+    check('MARITIME 2 — WITNESS: the seabed out here is genuinely deep',
+        swimGround < -3, `ground ${swimGround.toFixed(2)} m at r=150`);
+    check('MARITIME 2b — a swimmer is drawn at the SURFACE, not on the seabed',
+        swimFeet > swimGround + 2 && Math.abs(swimFeet - (-1.0)) < 1.5,
+        `feet ${swimFeet.toFixed(2)} against seabed ${swimGround.toFixed(2)}, sea level -1.0`);
+    //  The camera rides the swimmer rather than following the floor down. Its own height is
+    //  derived from the same draw height, so a regression here reads as "the horizon vanished".
+    //  UNCONDITIONAL. My first cut guarded this with `if (swimCam)` against a hook that did
+    //  not exist, so it skipped silently and reported nothing — D-066 (a) in my own section,
+    //  and the exact failure mode this project tracks as standing hazard 2. A check that
+    //  cannot run must FAIL, not vanish.
+    const swimCam = await page.evaluate(() => window.__drift.cameraPosition?.() ?? null);
+    check('MARITIME 2c — the camera rides the water, not the seabed',
+        swimCam !== null && swimCam.y > -1.0,
+        swimCam === null ? 'NO cameraPosition hook — the check could not run' : `camera y ${swimCam.y.toFixed(2)}`);
+
+    //  ---- 3. THE TWO WARNINGS, READ OFF THE PAGE ------------------------------------
+    //
+    //  The fair-challenge contract says three stages and two SPOKEN warnings happen before
+    //  the water may take health. `swimNote` returning a string is a unit fact; that the
+    //  sentence reaches the survivor's eyes is not. Staged just above the labouring
+    //  threshold, then swum — the tick is what moves the stage, so this needs real elapsed
+    //  time in the water rather than a state edit that jumps straight to it.
+    await editSave(`
+        state.player = { x: 0, y: 150 };
+        state.energy = ${TUNE.swimLabouringEnergy + 2}; state.health = 100; state.warmth = 100;
+        state.gameHoursElapsed = 8;
+    `);
+    const beforeSwim = await live();
+    //  Hold the stick seaward so the survivor is genuinely swimming while the tick runs.
+    await walkToward(0, 300, 3.0);
+    await sleep(400);
+    const labouring = await live();
+    const goalText = await page.evaluate(() => document.querySelector('.goal')?.textContent ?? '');
+    await shot('maritime-labouring');
+    check('MARITIME 3 — WITNESS: swimming actually spends the reserve',
+        labouring.energy < beforeSwim.energy,
+        `energy ${beforeSwim.energy.toFixed(1)} -> ${labouring.energy.toFixed(1)}`);
+    check('MARITIME 3b — the LABOURING warning reaches the page, in words',
+        /arms are getting heavy/i.test(goalText), `goal line read: "${goalText}"`);
+    //  ...and it is a WARNING, which means health is still untouched at this stage. A warning
+    //  that arrives alongside the damage is not a warning.
+    check('MARITIME 3c — and health has NOT moved — the warning comes before the cost',
+        labouring.health >= beforeSwim.health - 0.05,
+        `health ${beforeSwim.health.toFixed(2)} -> ${labouring.health.toFixed(2)}`);
+    //  The second warning, at the second threshold. Same route, lower reserve.
+    await editSave(`
+        state.player = { x: 0, y: 150 };
+        state.energy = ${TUNE.swimSpentEnergy - 2}; state.health = 100; state.warmth = 100;
+        state.gameHoursElapsed = 8;
+    `);
+    await walkToward(0, 300, 1.6);
+    await sleep(400);
+    const spent = await live();
+    const spentText = await page.evaluate(() => document.querySelector('.goal')?.textContent ?? '');
+    check('MARITIME 3d — the SPENT warning is a different sentence, and health is still whole',
+        /nothing left/i.test(spentText) && spent.health > 95,
+        `goal "${spentText}", health ${spent.health.toFixed(2)}`);
+    //  Immersion is wetness — the whole cold-water channel, visible in the live state.
+    check('MARITIME 3e — immersion soaks you to the ceiling (the one thermal channel)',
+        spent.wet >= 99, `wet ${spent.wet}`);
+
+    //  ---- 4. THE RAFT HAS A SURFACE -------------------------------------------------
+    //
+    //  This project has shipped a craftable with no caller TWICE (`craftSpear`, then
+    //  `makeBackpack`), both times with a green unit suite. The sweep in `fauna.test.ts`
+    //  proves the function is MENTIONED in the body; only a device run proves the button is
+    //  on screen and does something.
+    //
+    //  First the refusal, because the expensive half of the rule is the one that must never
+    //  be silent: inland, holding everything, the row must SAY the site is wrong.
+    await editSave(`
+        state.player = { x: 0, y: 20 };
+        state.inventory.wood = ${TUNE.raftWoodCost}; state.inventory.fiber = ${TUNE.raftFiberCost};
+        state.inventory.coconut = ${TUNE.raftCoconutCost};
+        state.capacities.breathWaterConfidence = 20;
+        state.energy = 100; state.health = 100;
+        ${grantBlueprints('raft')}
+    `);
+    const inlandOpen = await openBuild();
+    //  REACHABLE, not merely in-viewport — and this is a CORRECTION, made after the check
+    //  failed on device reading `row off-screen`.
+    //
+    //  `isVisible` is documented in this file for PRIMARY HUD BUTTONS, where a stale
+    //  visibility gate could hide something entirely (D-053's vanishing Build button). It
+    //  demands in-viewport WITHOUT scrolling. The Build panel is not that: `.panel` is
+    //  `overflow-y: auto` by explicit design, and index.html says why in its own comment —
+    //  *"flex-start plus overflow-y:auto guarantees the button is always reachable, scrolled
+    //  to if need be, on any viewport height"*. The raft is the eleventh row in that list, so
+    //  on a ~412px landscape viewport it sits below the fold, exactly as the torch or the
+    //  spear would in its place.
+    //
+    //  So the standard is the one a FINGER meets: `realTapDom` scrolls the target into view,
+    //  confirms it is genuinely topmost at its own centre, and only then dispatches. That is
+    //  the player's real route through a scrollable panel.
+    //
+    //  AND IT IS NOT LOWERED FOR THE NEW THING. The raft is measured against an already
+    //  shipped row in the same panel, so if the panel's scrolling ever breaks, both fail
+    //  together and this still catches it. Weakening a check to go green would be worthless;
+    //  what changed is which property is being asserted, not how hard it is to satisfy.
+    const raftRowPresent = await page.evaluate(() => Boolean(document.querySelector('.raft-item')));
+    const raftRowInland = await realTapDom('.raft-item');
+    const shippedRowReach = await realTapDom('.build-item.done, .build-item');
+    const inlandSiteText = await page.evaluate(() => document.querySelector('.raft-item .raft-site')?.textContent ?? '');
+    const inlandBtnDisabled = await page.evaluate(() => document.querySelector('.raft-btn')?.disabled ?? null);
+    await shot('maritime-raft-refused');
+    check('MARITIME 4 — the raft row EXISTS and a real finger can reach it in the panel',
+        inlandOpen.ok && raftRowPresent && raftRowInland.ok
+            && raftRowInland.ok === shippedRowReach.ok,
+        `open ${inlandOpen.ok} ${inlandOpen.reason ?? ''}, present ${raftRowPresent}, `
+        + `raft ${raftRowInland.ok ? 'reachable' : raftRowInland.reason}, `
+        + `shipped sibling ${shippedRowReach.ok ? 'reachable' : shippedRowReach.reason}`);
+    check('MARITIME 4b — inland, the SITE refusal is shown and the button refuses',
+        /water/i.test(inlandSiteText) && inlandBtnDisabled === true,
+        `site line "${inlandSiteText}", disabled ${inlandBtnDisabled}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(400);
+
+    //  ...then the build, at the shore, through the button itself.
+    await editSave(`
+        state.player = { x: 0, y: 122 };
+        state.inventory.wood = ${TUNE.raftWoodCost}; state.inventory.fiber = ${TUNE.raftFiberCost};
+        state.inventory.coconut = ${TUNE.raftCoconutCost};
+        state.capacities.breathWaterConfidence = 20;
+        state.energy = 100; state.health = 100;
+        ${grantBlueprints('raft')}
+    `);
+    const shoreOpen = await openBuild();
+    const raftTap = await realTapDom('.raft-btn');
+    await sleep(700);
+    const raftBuilt = await live();
+    await shot('maritime-raft-built');
+    check('MARITIME 4c — the Build panel button BUILDS the raft (no stranded craftable)',
+        shoreOpen.ok && raftTap.ok && raftBuilt.raft.built === true,
+        `open ${shoreOpen.ok}, tap ${raftTap.ok} ${raftTap.reason ?? ''}, built ${raftBuilt.raft.built}`);
+    check('MARITIME 4d — it spent the recipe and moored AFLOAT',
+        raftBuilt.inventory.wood === 0 && raftBuilt.inventory.coconut === 0
+            && Math.hypot(raftBuilt.raft.x, raftBuilt.raft.y) > TUNE.walkableRadiusM,
+        `wood ${raftBuilt.inventory.wood}, coconut ${raftBuilt.inventory.coconut}, moored at ${Math.hypot(raftBuilt.raft.x, raftBuilt.raft.y).toFixed(1)} m`);
+
+    //  ---- 5. IT BOARDS, AND IT CARRIES ----------------------------------------------
+    //
+    //  Boarded by TAPPING THE DECK — the real world-tap route through `worldCandidateAt` and
+    //  the verb circle, not a hook. If the raft's mesh metadata or its tap radius were wrong
+    //  the deck would be untappable and the whole vehicle unreachable, exactly the way
+    //  D-119's fifth fire verb made the fire unpickable.
+    await approach(raftBuilt.raft.x, raftBuilt.raft.y, 16);
+    await faceNode(raftBuilt.raft.x, raftBuilt.raft.y);
+    const raftTapTarget = await page.evaluate(async ([x, z]) => {
+        const p = window.__drift.screenOf(x, z);
+        return p ? window.__drift.tapTargetAt(p.x, p.y) : null;
+    }, [raftBuilt.raft.x, raftBuilt.raft.y]);
+    await tapWorld(raftBuilt.raft.x, raftBuilt.raft.y, 55);
+    await sleep(900);
+    const boarded = await live();
+    await shot('maritime-aboard');
+    check('MARITIME 5 — a real tap on the deck RESOLVES to the raft',
+        raftTapTarget === 'raft', `tapTargetAt read "${raftTapTarget}"`);
+    check('MARITIME 5b — and it puts the survivor aboard',
+        boarded.raft.aboard === true, `aboard ${boarded.raft.aboard}`);
+
+    //  THE VEHICLE CLAIM. Drive the stick seaward and the DECK must come too — this is the
+    //  difference between a raft and a very expensive prop, and it is one assignment in
+    //  `advanceWater` that nothing else in the game does.
+    const beforePaddle = await live();
+    await walkToward(0, 300, 2.4);
+    await sleep(400);
+    const afterPaddle = await live();
+    const movedM = Math.hypot(afterPaddle.player.x - beforePaddle.player.x, afterPaddle.player.y - beforePaddle.player.y);
+    const deckGap = Math.hypot(afterPaddle.raft.x - afterPaddle.player.x, afterPaddle.raft.y - afterPaddle.player.y);
+    check('MARITIME 5c — THE RAFT MOVES THE PLAYER, and the deck stays under them',
+        movedM > 1.5 && deckGap < 0.5,
+        `travelled ${movedM.toFixed(2)} m, deck ${deckGap.toFixed(3)} m from the survivor`);
+    //  ...and a paddler is out of the water: not soaked, and paying the paddle rate.
+    check('MARITIME 5d — aboard is OUT of the water — no immersion, no soaking',
+        afterPaddle.wet <= beforePaddle.wet + 0.01,
+        `wet ${beforePaddle.wet} -> ${afterPaddle.wet}`);
+    //  The raft draws at the surface too, and the survivor stands ON it.
+    const deckFeet = await page.evaluate(() => window.__drift.playerFeetY());
+    check('MARITIME 5e — the survivor is drawn standing on the deck, above the water',
+        deckFeet > -1.0, `feet ${deckFeet.toFixed(2)}`);
+
+    //  IT GROUNDS. Steer hard shoreward: `steerRaft` refuses dry land, so the deck noses into
+    //  the shallows and stops rather than driving up the beach and becoming a car.
+    for (let i = 0; i < 6; i++) await walkToward(0, 0, 1.2);
+    await sleep(400);
+    const grounded = await live();
+    const groundedDepth = await page.evaluate(([x, z]) => window.__drift.groundAt(x, z), [grounded.raft.x, grounded.raft.y]);
+    await shot('maritime-grounded');
+    check('MARITIME 5f — it GROUNDS at the shallows instead of driving onto the beach',
+        groundedDepth < -1.0,
+        `raft at r=${Math.hypot(grounded.raft.x, grounded.raft.y).toFixed(1)} m, ground under it ${groundedDepth.toFixed(2)} (sea level -1.0)`);
+
+    //  ---- 6. THE CROSSING -----------------------------------------------------------
+    //
+    //  Staged near the wreck and PADDLED the last stretch, rather than teleported to it: the
+    //  claim under test is that arriving is recorded by the shipped online tick through real
+    //  movement, not that a field can be set.
+    await editSave(`
+        state.raft = { built: true, x: 40, y: 200, grade: 'serviceable', aboard: true };
+        state.player = { x: 40, y: 200 };
+        state.energy = 100; state.health = 100; state.warmth = 100;
+        state.wreck = { reached: false, reachedAtGameHours: null };
+        state.gameHoursElapsed = 8;
+    `);
+    const beforeCrossing = await live();
+    let crossing = beforeCrossing;
+    for (let i = 0; i < 16 && !crossing.wreck.reached; i++) {
+        await walkToward(40, 240, 1.4);
+        crossing = await live();
+    }
+    const closedM = Math.hypot(beforeCrossing.player.x - 40, beforeCrossing.player.y - 240)
+        - Math.hypot(crossing.player.x - 40, crossing.player.y - 240);
+    await shot('maritime-wreck');
+    check('MARITIME 6 — paddling genuinely closes on the wreck',
+        closedM > 10, `closedM ${closedM.toFixed(1)} m of open water under the stick`);
+    check('MARITIME 6b — reaching it is RECORDED by the shipped tick',
+        crossing.wreck.reached === true && crossing.wreck.reachedAtGameHours !== null,
+        `reached ${crossing.wreck.reached} at ${crossing.wreck.reachedAtGameHours}`);
+
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
@@ -5160,7 +5453,7 @@ ${openDefects.length} KNOWN-OPEN defect(s) — measured, not fixed, each owned b
         for (const d of openDefects) {
             console.log(`  OPEN  ${d.name}`);
             console.log(`        ${d.detail}`);
-            console.log(`        closed by: ${d.closedBy}`);
+            console.log(`        closedM by: ${d.closedBy}`);
         }
     }
     console.log('');

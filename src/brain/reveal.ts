@@ -30,7 +30,7 @@
  * the trying is theirs. That is the fair-challenge contract this stage exists to honour.
  */
 import { atLeast, ladderFor } from './ladder';
-import { suspicionFor } from './discovery';
+import { DISCOVERY_ROUTES, suspicionFor } from './discovery';
 import { allRecipes } from './recipes';
 import type { GameState } from './types';
 
@@ -72,6 +72,12 @@ function satisfied(state: GameState, recipeId: string): boolean {
         case 'stonehammer': return state.tools.stoneHammer;
         case 'shelter': return state.shelter.built;
         case 'storage': return state.storage.built;
+        //  THE MARITIME SLICE. Without this the raft falls to `default: false` and stays a
+        //  live offer forever — so `makerOffers` keeps citing it as a reason to open the
+        //  door after it is moored at the shore. Exactly the "gate you have to remember to
+        //  extend" this function's own header names, caught by reading rather than by a
+        //  bug report, which is the only reason it is not a fourth occurrence.
+        case 'raft': return state.raft.built;
         default: return false;
     }
 }
@@ -124,10 +130,23 @@ export interface PanelHint {
  */
 export function panelHints(state: GameState): PanelHint[] {
     const hints: PanelHint[] = [];
-    for (const recipeId of ['torch', 'shelter', 'axe', 'stonehammer', 'storage']) {
-        if (revealedInPanel(state, recipeId)) continue;
-        const sus = suspicionFor(state, recipeId);
-        if (sus?.suspected && sus.prompt) hints.push({ recipeId, prompt: sus.prompt });
+    //  DERIVED FROM THE ROUTES, not from a list typed out here.
+    //
+    //  THE DEFECT THIS CLOSES, found by reading during the Maritime Slice and not by a bug
+    //  report. This iterated a hardcoded five — torch, shelter, axe, stonehammer, storage —
+    //  so the raft's discovery route fired correctly in the brain and its prompt could never
+    //  reach the screen. The route would have been real, tested, and invisible: [[D-114]]'s
+    //  exact class, *a reachability proof that bypasses the discovery surface*, and the
+    //  third hardcoded list in this one file to have gone stale the moment something shipped.
+    //
+    //  `DISCOVERY_ROUTES` is the single source of what a survivor can come to suspect, so a
+    //  future route cannot be added without its prompt being able to appear. It changes
+    //  nothing for anything already shipped: only recipes WITH a route can produce a
+    //  suspicion at all, and the five that had one are the five that were listed.
+    for (const route of DISCOVERY_ROUTES) {
+        if (revealedInPanel(state, route.recipeId)) continue;
+        const sus = suspicionFor(state, route.recipeId);
+        if (sus?.suspected && sus.prompt) hints.push({ recipeId: route.recipeId, prompt: sus.prompt });
     }
     return hints;
 }
