@@ -392,7 +392,75 @@ async function preflight(url) {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// SECTION FILTERING (D-126) — iterate on one section without re-witnessing 350.
+//
+// THE COST THIS EXISTS TO REMOVE. The Wreck Slice spent FOUR ~2-hour attempts to witness
+// fifteen new checks, each one re-running every check that already passed. That is the
+// dominant cost of one-pass-per-item, and it compounds every session.
+//
+// WHAT IT IS NOT. A filtered run is NOT a confirming pass and can never be mistaken for one:
+// the summary says FILTERED in capitals, names how many sections were skipped, and exits
+// non-zero on `--only` unless every requested section actually matched something. Shipping
+// to main still requires the full sweep, unchanged.
+//
+// THE HONEST HAZARD, stated rather than hidden. Sections share `main()`'s scope, so a section
+// that reads a variable another section declared will throw a ReferenceError when run alone.
+// That is deliberate: the alternative is a filtered run that quietly produces a different
+// answer than the full run would, which is exactly the vacuity this project keeps finding.
+// A loud crash naming the missing binding is the correct failure.
+const SECTION_ARGS = process.argv.slice(2).filter((a) => a.startsWith('--'));
+const ONLY = (SECTION_ARGS.find((a) => a.startsWith('--only=')) ?? '').replace('--only=', '');
+const FROM = (SECTION_ARGS.find((a) => a.startsWith('--from=')) ?? '').replace('--from=', '');
+const LIST = SECTION_ARGS.includes('--list');
+const ONLY_TERMS = ONLY ? ONLY.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+
+const sectionLog = { seen: [], ran: [], skipped: [], matched: new Set() };
+let fromReached = !FROM;
+
+/**
+ * Should this section run? Prints its header when it does, so a filtered log reads exactly
+ * like a full one for the sections it contains.
+ */
+function section(name) {
+    sectionLog.seen.push(name);
+    const lower = name.toLowerCase();
+    if (FROM && !fromReached && lower.includes(FROM.toLowerCase())) fromReached = true;
+
+    let run = true;
+    if (ONLY_TERMS.length > 0) {
+        const hit = ONLY_TERMS.filter((t) => lower.includes(t));
+        run = hit.length > 0;
+        for (const t of hit) sectionLog.matched.add(t);
+    } else if (FROM) {
+        run = fromReached;
+    }
+
+    if (run) { sectionLog.ran.push(name); console.log('\n' + name); }
+    else sectionLog.skipped.push(name);
+    return run;
+}
+
+/** True when this run saw a filter at all — the summary reads differently if so. */
+function isFilteredRun() {
+    return ONLY_TERMS.length > 0 || Boolean(FROM);
+}
+
 async function main() {
+    //  --list answers from the source itself and exits. No preflight, no browser, no bench
+    //  lock — naming a section must be free, or nobody will look it up.
+    if (LIST) {
+        const selfSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+        names = [...selfSrc.matchAll(/^ {4}if \(section\((".*?")\)\) \{\s*$/gm)]
+            .map((m) => { try { return JSON.parse(m[1]); } catch { return m[1]; } });
+        console.log(`\n${names.length} sections:\n`);
+        for (const n of names) console.log('  ' + n);
+        console.log('\nOne section:  node tools/smoke.mjs <url> --only=WRECK');
+        console.log('Several:      --only=WRECK,MARITIME      From a point on:  --from=SLICE 3');
+        console.log('The FULL sweep is the default, and is what ships to main.\n');
+        process.exit(0);
+    }
     await preflight(URL_UNDER_TEST);
     mkdirSync(SHOT_DIR, { recursive: true });
     const browser = await puppeteer.launch({
@@ -471,7 +539,7 @@ async function main() {
     const findHoldableSite = async (minClear = 7) => page.evaluate(({ minClear: mc }) => {
         const live = window.__drift.state();
         const yaw = window.__drift.camera().yaw;
-        const nodes = live.nodes ?? [];
+        nodes = live.nodes ?? [];
         const clearanceOf = (x, y) => {
             let d = Infinity;
             for (const n of nodes) d = Math.min(d, Math.hypot(n.x - x, n.y - y));
@@ -823,11 +891,19 @@ async function main() {
     await shot('c04-02-island');
 
     // ---- A6: grounding + colliders ----
-    console.log('\nA6 — ground truth (grounding + colliders + camera never clips)');
+    //  ---- CROSS-SECTION SNAPSHOTS (D-126) ----------------------------------------
+    //  Hoisted out of their sections so the blocks that `--only` skips do not take these
+    //  bindings with them. In a FULL run the behaviour is identical to before wrapping. In
+    //  a FILTERED run a reader gets `undefined` and fails loudly at the first property
+    //  access, which is the correct answer: that section genuinely depends on another and
+    //  cannot be run alone.
+    let ground, camMinAboveGround, felled, lines, growth, leaked, chips, fired, vitals, skills, returned, reach, switched, close, emptyGround, siteClearUsed, drift, names, afterShelter, afterStorage, failedTapsAfter, quarry, quarryOk, quarryTaps, inReach, approachTrail, dying, revived, moving, frame, still, afterReach, gained, afterHammer, afterKnap, afterAxe, beforeJournal, afterJournal, beforeFellKnowledge, felledForKnowledge, promoted, woodBefore, style, combineViaPlayerPath, opened, armed, mintedBlueprints, attempt, nodes, walkTarget, firstMoveMs, tapResolvedTo, panel, circle, treeProbe, meshes, ghostShown, cardOpen, heldGhost, outward, wreckStart, worked, quarryStillAvailable;
+
+    if (section("A6 — ground truth (grounding + colliders + camera never clips)")) {
     const grounding = await page.evaluate(() => {
         const s = window.__drift.state();
         const feetY = window.__drift.playerFeetY();
-        const ground = window.__drift.groundAt(s.player.x, s.player.y);
+        ground = window.__drift.groundAt(s.player.x, s.player.y);
         const hasShadow = !!window.__driftScene.meshes.find((m) => m.name.startsWith('shadow_') && m.isEnabled());
         return { feetY, ground, gap: feetY - ground, hasShadow };
     });
@@ -843,7 +919,7 @@ async function main() {
     check('a tree collider stops the player (cannot walk through it)', gap > 0.6, `${gap.toFixed(2)} m from the trunk`);
 
     //  Camera never dives under the ground while orbiting (A6, D-040 #1 territory).
-    let camMinAboveGround = Infinity;
+    camMinAboveGround = Infinity;
     for (let i = 0; i < 6; i++) {
         const rect = await canvasRect();
         const cx = rect.left + rect.width * 0.72;
@@ -862,7 +938,8 @@ async function main() {
     // ================================================================
     // C04 REGRESSIONS — one per director defect in D-040
     // ================================================================
-    console.log('\nD-040 — the five director defects, root-caused and locked');
+    }
+    if (section("D-040 — the five director defects, root-caused and locked")) {
 
     //  #3/#4 THE FIRE: broad DAYLIGHT, no axe, exactly the wood for a fire. In C03 this hid
     //  Build-fire behind Craft-axe, and it must not, ever again.
@@ -976,7 +1053,8 @@ async function main() {
     // ================================================================
     // PERFECT PASS (2026-07-23) — FIX 1 and FIX 2, root-caused and locked
     // ================================================================
-    console.log('\nPERFECT pass — FIX 1 (stick-held tap) and FIX 2 (pond fill starved by drink)');
+    }
+    if (section("PERFECT pass — FIX 1 (stick-held tap) and FIX 2 (pond fill starved by drink)")) {
 
     //  FIX 1 root cause: `stepMovement` cleared ANY pending interaction every frame the
     //  movement stick had nonzero magnitude — so the natural two-thumb gesture (walk toward
@@ -1000,7 +1078,7 @@ async function main() {
         await sleep(50);
         await firePointer('pointerup', sp.x, sp.y, 102);
         await sleep(200);
-        let felled = false;
+        felled = false;
         for (let i = 0; i < 12; i++) { const av = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'tr1')?.available); if (av === false) { felled = true; break; } await sleep(400); }
         check('FIX 1 — a tap on a standing tree fells it EVEN WHILE the movement stick is still held', felled);
         await firePointer('pointerup', stickX + 15, stickY, 101); // release the stick
@@ -1093,7 +1171,8 @@ async function main() {
     // ================================================================
     // SLICE 2B STAGE 2b — THE INVENTION PIVOT. The Build panel is a RECORD, not a catalogue.
     // ================================================================
-    console.log('\nSLICE 2B (Stage 2b) — the invention pivot: an empty panel, and the way back in');
+    }
+    if (section("SLICE 2B (Stage 2b) — the invention pivot: an empty panel, and the way back in")) {
 
     //  THE SENTENCE THIS WHOLE STAGE EXISTS FOR: a castaway who has just washed ashore is
     //  offered nothing. Warm, midday, empty-handed, nothing built, no blueprints — the state
@@ -1180,7 +1259,7 @@ async function main() {
     await sleep(400);
     await shot('slice2b-03-hints');
     const hinted = await page.evaluate(() => {
-        const lines = Array.from(document.querySelectorAll('.hint-line'));
+        lines = Array.from(document.querySelectorAll('.hint-line'));
         return {
             count: lines.length,
             ids: lines.map((n) => n.getAttribute('data-hint')),
@@ -1227,7 +1306,8 @@ async function main() {
     // ================================================================
     // PLAYTEST FIX BATCH — the growth panel, the combine arity, the float timing.
     // ================================================================
-    console.log('\nPLAYTEST FIXES — growth panel reachable, combine at 3, float text readable');
+    }
+    if (section("PLAYTEST FIXES — growth panel reachable, combine at 3, float text readable")) {
 
     //  FIX 1 — THE ENTRY POINT, FIRST. This project has now shipped three whole systems with
     //  no way for a player to reach them: the Build button (D-053), the loadout panel (D-065)
@@ -1248,7 +1328,7 @@ async function main() {
     const growthOpen = await realTapDom('.growth-btn');
     await sleep(500);
     await shot('fix1-growth-card');
-    const growth = await page.evaluate(() => {
+    growth = await page.evaluate(() => {
         const p = document.querySelector('.panel.growth');
         const rows = Array.from(document.querySelectorAll('.growth-item'));
         const text = p ? p.textContent : '';
@@ -1286,7 +1366,7 @@ async function main() {
     //  most likely value to leak. Safe against the summary's counts, which never exceed 8.
     const PLANTED_SCORES = ['78', '45', '12', '10'];
     const digitRuns = (growth.text ?? '').match(/[0-9]+/g) ?? [];
-    const leaked = digitRuns.filter((d) => PLANTED_SCORES.includes(d));
+    leaked = digitRuns.filter((d) => PLANTED_SCORES.includes(d));
     check('FIX 1 — and NOT ONE raw score leaks to the player',
         growth.open && (growth.text ?? '').length > 200
         && leaked.length === 0 && !(growth.text ?? '').includes('%'),
@@ -1321,7 +1401,7 @@ async function main() {
     await realTapDom('.carried-button');
     await sleep(500);
     const pick3 = await page.evaluate(() => {
-        const chips = Array.from(document.querySelectorAll('.combine-chip'));
+        chips = Array.from(document.querySelectorAll('.combine-chip'));
         const want = ['wood', 'stone', 'fiber'];
         const got = [];
         for (const w of want) {
@@ -1337,7 +1417,7 @@ async function main() {
     });
     check('FIX 2 — a THIRD chip can be picked, and the button stays armed',
         pick3.picked === 3 && pick3.armed, `picked ${pick3.picked} (${pick3.got.join(', ')}), armed ${pick3.armed}`);
-    const fired = await realTapDom('.panel.loadout .try-combine-btn');
+    fired = await realTapDom('.panel.loadout .try-combine-btn');
     await sleep(900);
     check('FIX 2 — and a three-material attempt really fires',
         fired.ok, fired.reason ?? 'ok');
@@ -1369,7 +1449,8 @@ async function main() {
     // ================================================================
     // SLICE 2C BOUNDARY 1 — THE BACKPACK HUB (Law 126: three primary tabs, and only three).
     // ================================================================
-    console.log('\nSLICE 2C — the Backpack hub: Inventory / Vitals / Skills, all reachable');
+    }
+    if (section("SLICE 2C — the Backpack hub: Inventory / Vitals / Skills, all reachable")) {
 
     //  ENTRY POINT FIRST, per the standing corollary. This project has shipped four whole
     //  systems with no way for a thumb to reach them; the hub is the surface every one of
@@ -1412,8 +1493,8 @@ async function main() {
     const toVitals = await realTapDom('.backpack-tab[data-tab="vitals"]');
     await sleep(450);
     await shot('slice2c-02-hub-vitals');
-    const vitals = await page.evaluate(() => {
-        const lines = Array.from(document.querySelectorAll('.vital-line'));
+    vitals = await page.evaluate(() => {
+        lines = Array.from(document.querySelectorAll('.vital-line'));
         return {
             reached: Boolean(document.querySelector('.panel.vitals')),
             lines: lines.length,
@@ -1440,7 +1521,7 @@ async function main() {
     const toSkills = await realTapDom('.backpack-tab[data-tab="skills"]');
     await sleep(450);
     await shot('slice2c-03-hub-skills');
-    const skills = await page.evaluate(() => ({
+    skills = await page.evaluate(() => ({
         reached: Boolean(document.querySelector('.panel.growth')),
         capacities: document.querySelectorAll('.growth-item:not(.cross-item)').length,
         crossings: document.querySelectorAll('.growth-item.cross-item').length,
@@ -1455,7 +1536,7 @@ async function main() {
     //  BACK to Inventory, because a tab you can leave but not return to is half a hub.
     const backToInv = await realTapDom('.backpack-tab[data-tab="inventory"]');
     await sleep(450);
-    const returned = await page.evaluate(() => ({
+    returned = await page.evaluate(() => ({
         loadout: Boolean(document.querySelector('.panel.loadout')),
         chips: document.querySelectorAll('.combine-chip').length,
     }));
@@ -1508,12 +1589,12 @@ async function main() {
     //  that does not exist, however correct the thing behind it.
     await realTapDom('.carried-button');
     await sleep(450);
-    const reach = [];
+    reach = [];
     for (const t of ['inventory', 'vitals', 'skills']) {
-        const switched = await realTapDom(`.backpack-tab[data-tab="${t}"]`);
+        switched = await realTapDom(`.backpack-tab[data-tab="${t}"]`);
         await sleep(400);
         const box = await page.evaluate(() => {
-            const close = document.querySelector('.panel.backpack .close-btn');
+            close = document.querySelector('.panel.backpack .close-btn');
             const tabs = document.querySelector('.backpack-tabs');
             const vh = window.innerHeight;
             const c = close ? close.getBoundingClientRect() : null;
@@ -1534,7 +1615,7 @@ async function main() {
 
     const reachClose = await realTapDom('.panel.backpack .close-btn');
     await sleep(450);
-    const afterReach = await page.evaluate(() => ({
+    afterReach = await page.evaluate(() => ({
         panel: Boolean(document.querySelector('.panel')),
         locked: window.__drift?.panelOpen?.() === true,
     }));
@@ -1561,7 +1642,8 @@ async function main() {
     // ================================================================
     // SLICE 2C BOUNDARY 2 — CONTEXTUAL CONSTRUCTION (§9.6). The site is a decision.
     // ================================================================
-    console.log('\nSLICE 2C — contextual construction: hold open ground, choose the outcome, build there');
+    }
+    if (section("SLICE 2C — contextual construction: hold open ground, choose the outcome, build there")) {
 
     //  ENTRY POINT FIRST. A hold on open ground is the new construction surface; a TAP must
     //  stay exactly what it was — the player's "never mind" look-around — because changing
@@ -1586,8 +1668,8 @@ async function main() {
     //  is claimed by a node instead of the ground. On a deliberately dense island a guess
     //  that strict can be unsatisfiable everywhere, which reports "no site" when the real
     //  answer is "not that much room, but enough". Relax in steps and say which one held.
-    let emptyGround = null;
-    let siteClearUsed = 0;
+    emptyGround = null;
+    siteClearUsed = 0;
     for (const c of [7, 5, 4, 3]) {
         emptyGround = await findHoldableSite(c);
         if (emptyGround) { siteClearUsed = c; break; }
@@ -1761,7 +1843,8 @@ async function main() {
 
     // CYCLE 05 PERFECT PASS — tap-to-fell, 3rd report, root-caused fresh
     // ================================================================
-    console.log('\nPERFECT pass (C05) — FIX 3: tap-to-fell, root-caused fresh (3rd report)');
+    }
+    if (section("PERFECT pass (C05) — FIX 3: tap-to-fell, root-caused fresh (3rd report)")) {
 
     //  Neither prior diagnosis (stick-clears-pending; cache staleness) was wrong, but neither
     //  was the WHOLE story either. Root cause, found by reproducing with NO stick ever
@@ -1792,7 +1875,8 @@ async function main() {
     check('FIX 3 — the tree fells on the session\'s first real tap (no stick ever touched)', fix3Felled);
 
     // ---- A4/A7: the pressure loop, through the new direct-world verbs ----
-    console.log('\nA4/A7 — the pressure loop (tap the thing to use the thing)');
+    }
+    if (section("A4/A7 — the pressure loop (tap the thing to use the thing)")) {
 
     await startFresh();
     await realTapDom('.cold-open button');
@@ -1814,7 +1898,7 @@ async function main() {
     //  the gather mechanism, not the harness's incidental walk budget across whatever distance
     //  the coconut-palm check above happened to leave the player at.
     await editSave('state.player = { x: 0, y: 90 };');
-    const drift = await harvest('driftwood');
+    drift = await harvest('driftwood');
     check('driftwood gives wood by a plain tap', drift.ok, drift.reason ?? '');
     await editSave('state.player = { x: 0, y: 101 };');
     const shell = await harvest('shellfish');
@@ -1842,7 +1926,7 @@ async function main() {
 
     //  #5 — fell a standing tree with the axe (the verb the axe unlocks, made discoverable).
     const woodBeforeFell = (await live()).inventory.wood;
-    const felled = await harvest('tree', 34);
+    felled = await harvest('tree', 34);
     check('REGRESSION #5 — a standing tree can be felled with the axe (the axe DOES something)', felled.ok, felled.reason ?? '');
     const afterFell = await live();
     //  Mastery (D-073) means a practised survivor takes MORE from the same tree, so the
@@ -1906,7 +1990,8 @@ async function main() {
     // ================================================================
     // CYCLE 05 "Foundations" — shelter, storage, upkeep, energy, sleep
     // ================================================================
-    console.log('\nA1–A4 (C05) — construction: shelter, storage, upkeep, sleep');
+    }
+    if (section("A1–A4 (C05) — construction: shelter, storage, upkeep, sleep")) {
 
     //  Build the shelter through the (now five-item, D-055 adds the stone hammer) Build
     //  panel. The knap action isn't counted here — it only renders once the hammer is
@@ -1924,7 +2009,7 @@ async function main() {
     const buildItems = await page.evaluate(() => {
         //  Craftable rows title with <h2> in BOTH states (done and buildable); Rest and
         //  Mend use .build-head, so this naturally counts craftables only.
-        const names = Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim());
+        names = Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim());
         const wanted = ['Torch', 'Crude axe', 'Shelter', 'Storage', 'Stone hammer'];
         return { found: wanted.filter((w) => names.includes(w)), all: names };
     });
@@ -1938,7 +2023,7 @@ async function main() {
     const shelterBuildTap = await realTapDom('.shelter-btn');
     check('the shelter builds via a real, reachable tap', shelterBuildTap.ok, shelterBuildTap.reason ?? '');
     await sleep(400);
-    const afterShelter = await live();
+    afterShelter = await live();
     //  Durability decays continuously (even the ~400ms since building has shaved a hair off
     //  it), so this checks "built, effectively full" rather than an exact 100.
     check('the shelter is built, full durability', afterShelter.shelter.built && afterShelter.shelter.durability > 99.9, `durability ${afterShelter.shelter.durability}`);
@@ -1949,7 +2034,7 @@ async function main() {
     const storageBuildTap = await realTapDom('.storage-btn');
     check('storage builds via a real, reachable tap', storageBuildTap.ok, storageBuildTap.reason ?? '');
     await sleep(400);
-    const afterStorage = await live();
+    afterStorage = await live();
     const shelterStorageGap = Math.hypot(afterStorage.shelter.x - afterStorage.storage.x, afterStorage.shelter.y - afterStorage.storage.y);
     check('REGRESSION — storage does not overlap the shelter (degenerate same-offset placement)', shelterStorageGap > 1, `${shelterStorageGap.toFixed(2)} m apart`);
 
@@ -2149,7 +2234,8 @@ async function main() {
     // ================================================================
     // C1 DIAGNOSTIC RULING — D-045 lineage: sequential interactions after a fell
     // ================================================================
-    console.log('\nD-045 lineage — sequential interactions (a felled node must not block the NEXT tap)');
+    }
+    if (section("D-045 lineage — sequential interactions (a felled node must not block the NEXT tap)")) {
 
     //  REPRODUCE FIRST (the ruling's own order): the director's live re-test found tap-to-fell
     //  breaking in a NEW shape — fell one tree, then tap a second, unrelated object, and get
@@ -2295,14 +2381,15 @@ async function main() {
     const failedTapsBefore = (await live()).trace.failedInteractionTaps;
     await tapWorld(failLoudTree.x, failLoudTree.y, 55);
     await sleep(600);
-    const failedTapsAfter = (await live()).trace.failedInteractionTaps;
+    failedTapsAfter = (await live()).trace.failedInteractionTaps;
     check('fail-loud — a tap that reaches something real but has nothing to do explains why and traces it, never silently', failedTapsAfter > failedTapsBefore, `${failedTapsBefore} → ${failedTapsAfter}`);
     await editSave('state.tools.axe = true;'); // the axe is a precondition for later sections
 
     // ================================================================
     // D-050 — the 5th live report: an emptied world, not a defect, plus the debug-export tool
     // ================================================================
-    console.log('\nD-050 — resource exhaustion looks like silence; the debug-export tool');
+    }
+    if (section("D-050 — resource exhaustion looks like silence; the debug-export tool")) {
 
     //  C1 diagnostic ruling: the director's 5th consecutive live "tap-to-fell does nothing"
     //  report — true silence, not even the in-range affordance circle, across every tree
@@ -2428,18 +2515,19 @@ async function main() {
     // ================================================================
     // D-051 — the gathering-layer audit: renewability, the quarry, salvage, fast movement
     // ================================================================
-    console.log('\nD-051 — renewability law, the quarry, beach salvage, fast movement (testing)');
+    }
+    if (section("D-051 — renewability law, the quarry, beach salvage, fast movement (testing)")) {
 
     //  The quarry: repeat-minable via real taps — it must NOT go silent/unavailable after
     //  one tap the way every other node kind does. Several real taps in a row, each one
     //  landing and growing the stone count, is the regression that actually matters here
     //  (a single successful tap wouldn't catch a "goes unavailable after the first hit").
     await editSave('state.tools.axe = false; state.inventory.stone = 0;');
-    const quarry = (await live()).nodes.find((n) => n.kind === 'quarry');
+    quarry = (await live()).nodes.find((n) => n.kind === 'quarry');
     check('setup — the quarry exists, one large outcrop', !!quarry, quarry ? `${quarry.id} at ${quarry.x},${quarry.y}, pool ${quarry.pool}` : 'missing');
     await approach(quarry.x, quarry.y, 20);
     await faceNode(quarry.x, quarry.y);
-    let quarryOk = true, quarryStillAvailable = true;
+    quarryOk = true, quarryStillAvailable = true;
     //  PER-TAP DIAGNOSTIC (Gate 0 Part 2). This check fails byte-identically across runs —
     //  always exactly one of three taps lands (`pool 220 -> 216`) — with the player in range,
     //  no panel, not exhausted and the node available. That is deterministic, so it is a
@@ -2447,7 +2535,7 @@ async function main() {
     //  at whatever `screenOf` returns WITHOUT checking the point is on the canvas, so a
     //  target whose centre projects off-screen (easy at ~2 m from a large outcrop) is tapped
     //  into nowhere and fails silently. Recording where each tap actually went settles it.
-    const quarryTaps = [];
+    quarryTaps = [];
     //  ITEM 6 ROOT CAUSE (D-072 corollary, the last amnestied defect). The hold trail
     //  settled it: tap #2 set a real pending intention and the hold NEVER STARTED, six
     //  samples idle; tap #3 started instantly and finished in 1.4 s. The screen points show
@@ -2465,8 +2553,8 @@ async function main() {
     //  pinning found earlier this batch: a radial push-out cancels motion exactly when you
     //  press straight into an obstacle, so a straight-line approach can park against
     //  whatever lies between. A player would sidestep; so does this now.
-    let inReach = false;
-    let approachTrail = [];
+    inReach = false;
+    approachTrail = [];
     for (let attempt = 0; attempt < 4 && !inReach; attempt++) {
         const d = await approach(quarry.x, quarry.y, 25);
         approachTrail.push(`try${attempt + 1}:${d.toFixed(1)}m`);
@@ -2944,7 +3032,7 @@ async function main() {
         for (const dy of [0, 20, 40, 70, 120]) {
             await tapAt(meAt.x, meAt.y - dy, 55);
             await sleep(450);
-            const opened = await page.evaluate(() => {
+            opened = await page.evaluate(() => {
                 const el = document.querySelector('.panel.loadout');
                 if (el) el.querySelector('.close-btn')?.click();
                 return Boolean(el);
@@ -3050,17 +3138,18 @@ async function main() {
     await sleep(300);
 
     // ---- A4: death and respawn ----
-    console.log('\nA4 — death and respawn (active play can kill)');
+    }
+    if (section("A4 — death and respawn (active play can kill)")) {
     await editSave('state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.5; state.player = { x: 20, y: -20 }; state.inventory.wood = 4;');
     await sleep(3200); // the render loop ticks health from a sliver to zero — give it room
     const deathShowing = await panelOpen();
     await shot('c04-08-death');
     check('a death overlay appears when health runs out in play', deathShowing);
-    const dying = await live();
+    dying = await live();
     check('the death was counted and a cause recorded', dying.trace.deaths >= 1 && dying.lastDeathCause !== null, `cause: ${dying.lastDeathCause}`);
     if (deathShowing) await realTapDom('.death button');
     await sleep(500);
-    const revived = await live();
+    revived = await live();
     //  FIX-2 (Living Island Track A, D-052): a death is no longer a full refill. Health
     //  wakes at respawnHealthFraction of max, not 100 — this assertion used to encode the
     //  exploit as correct behavior; it now encodes the fix.
@@ -3091,7 +3180,8 @@ async function main() {
     check('FIX-2 — every death is logged with a cause and a game-clock timestamp', Array.isArray(revived.trace.deathLog) && revived.trace.deathLog.length >= 1 && typeof revived.trace.deathLog[revived.trace.deathLog.length - 1].cause === 'string', JSON.stringify(revived.trace.deathLog?.slice(-1)));
 
     // ---- A4: absence and the morning report ----
-    console.log('\nA4 — absence and the vitals report');
+    }
+    if (section("A4 — absence and the vitals report")) {
     await editSave('state.thirst = 60; state.hunger = 55;');
     const beforeAway = await goAway(4);
     await shot('c04-09-report');
@@ -3124,11 +3214,12 @@ async function main() {
     check('REGRESSION FIX 1 — the real tap actually dismisses the report', !(await panelOpen()));
 
     // ---- A3: FPS + tab switch + cold load ----
-    console.log('\nA3 — frame rate, tab-switch, cold load');
-    const moving = await live();
+    }
+    if (section("A3 — frame rate, tab-switch, cold load")) {
+    moving = await live();
     await walkToward(moving.player.x + 8, moving.player.y - 8, 2.0);
     await walkToward(moving.player.x - 8, moving.player.y + 6, 2.0);
-    const frame = await fps();
+    frame = await fps();
     if (software && !SOFTWARE) {
         check('the frame-rate check ran on a real GPU', false, `renderer is ${renderer} — pass --software to accept a meaningless number`);
     } else if (software) {
@@ -3161,7 +3252,8 @@ async function main() {
     check(`cold 4G load within ${TUNE.coldLoadBudgetSeconds} s`, coldMs <= TUNE.coldLoadBudgetSeconds * 1000, `${coldMs} ms`);
 
     // ---- Living Island Track A FIX package (D-052) ----
-    console.log('\nD-052 — Living Island Track A: energy cost, salvage reachability, the torch');
+    }
+    if (section("D-052 — Living Island Track A: energy cost, salvage reachability, the torch")) {
 
     //  FIX-1: an effortful (hold) gather now visibly costs energy; an instant tap costs
     //  (essentially) nothing. Proven with real taps, not editSave — the same gatherNode()
@@ -3266,13 +3358,13 @@ async function main() {
         let collected = false;
         for (let i = 0; i < 15; i++) {
             const st = await live();
-            const still = st.nodes.find((n) => n.id === spawnedForReach.id);
+            still = st.nodes.find((n) => n.id === spawnedForReach.id);
             if (!still || !still.available) { collected = true; break; }
             await sleep(400);
         }
         await sleep(300);
-        const afterReach = await live();
-        const gained = (afterReach.inventory.stone + afterReach.inventory.wood + afterReach.inventory.fiber)
+        afterReach = await live();
+        gained = (afterReach.inventory.stone + afterReach.inventory.wood + afterReach.inventory.fiber)
             - (beforeReach.inventory.stone + beforeReach.inventory.wood + beforeReach.inventory.fiber);
         const stoodAt = Math.hypot(afterReach.player.x - spawnedForReach.x, afterReach.player.y - spawnedForReach.y);
         check('D-064 — the castaway can genuinely WALK to the find (not just "a path exists")', stoodAt <= TUNE.interactRadiusM + 1.5, `stood ${stoodAt.toFixed(2)} m from it (reach ${TUNE.interactRadiusM} m)`);
@@ -3335,7 +3427,7 @@ async function main() {
             litTorch.torch.lit === true,
             `pick ${torchSeg?.ok ?? 'n/a'} ${torchSeg?.reason ?? ''} — ${JSON.stringify(litTorch.torch)}`);
         //  ...and the tap it displaced still does the ordinary thing, undiminished.
-        const woodBefore = (await live()).inventory.wood;
+        woodBefore = (await live()).inventory.wood;
         await tapWorld(fireForTorch.x, fireForTorch.y, 55);
         await sleep(600);
         const fedState = await live();
@@ -3348,7 +3440,8 @@ async function main() {
     }
 
     // ---- Missing Build button: a stale HUD visibility gate (D-053) ----
-    console.log('\nD-053 — the Build button vanishing on a real, long-running save');
+    }
+    if (section("D-053 — the Build button vanishing on a real, long-running save")) {
 
     //  REGRESSION, root cause: paintHud()'s secondary.visible condition gated on
     //  axe/shelter/storage only — it was never updated when D-052 added the torch as a
@@ -3425,7 +3518,8 @@ async function main() {
     await sleep(400);
 
     // ---- Ch.1 v3: the crafting tree — the stone hammer, knapping, grades, the journal (D-055) ----
-    console.log('\nD-055 — Ch.1 v3: the stone hammer + knapping, grades, the null-outcome journal');
+    }
+    if (section("D-055 — Ch.1 v3: the stone hammer + knapping, grades, the null-outcome journal")) {
 
     //  The full tier, via real taps only: gather is already proven elsewhere in this file;
     //  here we prove the axe now genuinely needs a knapped blade, and that the whole chain
@@ -3445,7 +3539,7 @@ async function main() {
     const hammerCraftTap = await realTapDom('.stonehammer-btn');
     check('D-055 — the stone hammer can be made via a real, reachable tap on the Build panel', hammerCraftTap.ok, hammerCraftTap.reason ?? '');
     await sleep(400);
-    const afterHammer = await live();
+    afterHammer = await live();
     check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.tools.stoneHammer === true, JSON.stringify(afterHammer.tools.stoneHammer));
 
     await openBuild();
@@ -3454,7 +3548,7 @@ async function main() {
     const knapTap = await realTapDom('.knap-btn');
     check('D-055 — knapping is reachable via a real tap on the Build panel', knapTap.ok, knapTap.reason ?? '');
     await sleep(400);
-    const afterKnap = await live();
+    afterKnap = await live();
     check('D-055 — knapping spends raw stone for a sharp blade', afterKnap.inventory.sharpblade >= TUNE.knapSharpbladeYield && afterKnap.inventory.stone === stoneBeforeKnap - TUNE.knapStoneCost, `sharpblade ${afterKnap.inventory.sharpblade}, stone ${stoneBeforeKnap}->${afterKnap.inventory.stone}`);
 
     //  REGRESSION — the axe cannot be made from raw stone alone anymore; it genuinely
@@ -3467,7 +3561,7 @@ async function main() {
     const axeCraftTap = await realTapDom('.axe-btn');
     check('D-055 — with a knapped blade in hand, the axe crafts via a real tap', axeCraftTap.ok, axeCraftTap.reason ?? '');
     await sleep(400);
-    const afterAxe = await live();
+    afterAxe = await live();
     check('D-055 — the crafted axe rolled a real grade', afterAxe.tools.axe === true && ['crude', 'serviceable', 'refined', 'exceptional'].includes(afterAxe.tools.axeGrade), JSON.stringify(afterAxe.tools.axeGrade));
 
     // ---- SLICE 2B STAGE 2d — the migration, against a REALLY PLAYED save ----------------
@@ -3581,19 +3675,20 @@ async function main() {
         state.knowledge = { nullPairs: [], events: [] };
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
     `);
-    const beforeJournal = (await live()).knowledge;
+    beforeJournal = (await live()).knowledge;
     check('setup — the null-outcome journal is empty (forced, not assumed)', beforeJournal.nullPairs.length === 0, `${beforeJournal.nullPairs.length} pairs`);
     const journalOpenTap = await openBuild();
     check('setup — the Build panel is reachable to exercise the journal', journalOpenTap.ok, journalOpenTap.reason ?? '');
     await sleep(300);
     await clickDom('.close-btn');
     await sleep(300);
-    const afterJournal = (await live()).knowledge;
+    afterJournal = (await live()).knowledge;
     check('REGRESSION — opening the Build panel while holding an unmatched material (berries) journals it as a null combination', afterJournal.nullPairs.some((p) => p.endsWith('|berries')), `${afterJournal.nullPairs.length} pairs`);
     check('the null-outcome journal recorded a knowledge event for Ch.2 (stubbed, not wired further this pass)', afterJournal.events.some((e) => e.kind === 'combination-tried' && e.detail.includes('berries')));
 
     // ---- Ch.2, "The Knowledge Model" — domain scores wired for real (MAJOR artifact) ----
-    console.log('\nCh.2 — the knowledge model: domain scores trained by real taps, the null-outcome journal wired for real');
+    }
+    if (section("Ch.2 — the knowledge model: domain scores trained by real taps, the null-outcome journal wired for real")) {
 
     //  Reuses the hammer/knap/axe taps already exercised in the D-055 section above — zero
     //  new taps needed to prove Harvesting & fabrication genuinely moves with real
@@ -3610,10 +3705,10 @@ async function main() {
         state.tools.axe = true;
         state.player = { x: -10, y: 45.7 };
     `);
-    const beforeFellKnowledge = await live();
+    beforeFellKnowledge = await live();
     await faceNode(-10, 44);
     await tapWorld(-10, 44, 55); // arms the auto-hold; the update loop progresses it in real time
-    let felledForKnowledge = false;
+    felledForKnowledge = false;
     for (let i = 0; i < 15; i++) {
         const av = await page.evaluate(() => window.__drift.state().nodes.find((n) => n.id === 'tr1')?.available);
         if (av === false) { felledForKnowledge = true; break; }
@@ -3698,7 +3793,8 @@ async function main() {
     measuredIntermittent('Ch.2 item 6 — hammer owned but no blade: the reason updates to name the blade specifically, not the same flat message', /blade/i.test(hintNoBlade), `"${hintNoBlade}"`, BLADE_REASON_RECORD);
 
     // ---- Ch.6, "The Body Model" — carry weight, the rest redesign, the death cost ----
-    console.log('\nCh.6 — the body model: carry weight bands, sleep as a rate, the death cost');
+    }
+    if (section("Ch.6 — the body model: carry weight bands, sleep as a rate, the death cost")) {
 
     //  CARRY WEIGHT. Proven through real state reads on a real running build: an empty
     //  castaway is Light and moves at exactly the base speed; a loaded one drops a band and
@@ -3881,7 +3977,8 @@ async function main() {
     check('Ch.6 — the death log records the cause-specific lesson and exactly what was lost', Boolean(lastDeath && lastDeath.message && lastDeath.lost), JSON.stringify(lastDeath));
 
     // ---- D-059: tree parity, exhaustion teeth, carry weight at scale ----
-    console.log('\nD-059 — tree parity, exhaustion with teeth, carry weight that scales');
+    }
+    if (section("D-059 — tree parity, exhaustion with teeth, carry weight that scales")) {
 
     //  FIX-1 — TREE PARITY. The director's report: nearly every tree was decorative, the
     //  same disease D-051 cured once for the original five. Proven on the live island by
@@ -3900,10 +3997,10 @@ async function main() {
     check('D-059 — 14 of them are the promoted treeline spots', promotedTrees.length === 14, promotedTrees.map((n) => n.id).join(','));
 
     //  A promoted tree must be genuinely harvestable — not merely present in the node list.
-    const promoted = promotedTrees.find((n) => n.available);
+    promoted = promotedTrees.find((n) => n.available);
     if (promoted) {
         await editSave(`state.player = { x: ${promoted.x - 1.5}, y: ${promoted.y} }; state.tools.axe = true; state.energy = 100;`);
-        const woodBefore = (await live()).inventory.wood;
+        woodBefore = (await live()).inventory.wood;
         await faceNode(promoted.x, promoted.y);
         await tapWorld(promoted.x, promoted.y, 55);
         let promotedFelled = false;
@@ -3968,7 +4065,7 @@ async function main() {
     //  before this fix, so the player had no readout to notice any of it.
     await sleep(600);
     const overloadChip = await page.evaluate(() => {
-        const chips = Array.from(document.querySelectorAll('.chip'));
+        chips = Array.from(document.querySelectorAll('.chip'));
         const hit = chips.find((c) => /overload/i.test(c.textContent || ''));
         return hit ? hit.textContent.trim() : null;
     });
@@ -3977,13 +4074,14 @@ async function main() {
     await editSave('state.inventory.stone = 0;');
     await sleep(600);
     const chipGoneWhenLight = await page.evaluate(() => {
-        const chips = Array.from(document.querySelectorAll('.chip'));
+        chips = Array.from(document.querySelectorAll('.chip'));
         return chips.some((c) => /overload/i.test(c.textContent || ''));
     });
     check('D-059 — and NOT told so when carrying nothing (the readout is honest, not decorative)', chipGoneWhenLight === false);
 
     // ---- D-063: embodied inventory, equip/switch, Try-Combining, input safety ----
-    console.log('\nD-063 — the loadout panel, equip/switch, experimentation, and input safety');
+    }
+    if (section("D-063 — the loadout panel, equip/switch, experimentation, and input safety")) {
 
     //  ITEM 1 — the panel opens from the carried row and shows all six zones with mass+bulk.
     await editSave(`
@@ -4010,7 +4108,7 @@ async function main() {
     const freezeProbe = await page.evaluate(() => {
         const el = document.querySelector('.panel.loadout');
         if (!el) return null;
-        const style = getComputedStyle(el);
+        style = getComputedStyle(el);
         const rect = el.getBoundingClientRect();
         return {
             opacity: parseFloat(style.opacity),
@@ -4064,7 +4162,7 @@ async function main() {
     const panelProbe = await page.evaluate(() => {
         const el = document.querySelector('.panel.loadout');
         if (!el) return null;
-        const names = Array.from(el.querySelectorAll('.zone-name')).map((n) => n.textContent.trim());
+        names = Array.from(el.querySelectorAll('.zone-name')).map((n) => n.textContent.trim());
         const load = el.querySelector('.load-line');
         return { zones: names, load: load ? load.textContent.trim() : '', hasClose: Boolean(el.querySelector('.close-btn')) };
     });
@@ -4120,14 +4218,14 @@ async function main() {
     //  feature had **no player entry point at all**. The hook proved the brain worked and
     //  said nothing about whether a human could reach it. It is now driven the way a player
     //  drives it: open the pack, pick two chips, press the button.
-    const combineViaPlayerPath = async (a, b) => {
-        const opened = await realTapDom('.carried-button');
+    combineViaPlayerPath = async (a, b) => {
+        opened = await realTapDom('.carried-button');
         if (!opened.ok) return { ok: false, reason: `could not open the pack: ${opened.reason}` };
         await sleep(500);
         const pickA = await realTapDom(`.combine-chip[data-mat="${a}"]`);
         const pickB = await realTapDom(`.combine-chip[data-mat="${b}"]`);
         if (!pickA.ok || !pickB.ok) return { ok: false, reason: `chips unreachable: ${pickA.reason ?? ''} ${pickB.reason ?? ''}` };
-        const armed = await page.evaluate(() => {
+        armed = await page.evaluate(() => {
             const btn = document.querySelector('.try-combine-btn');
             return btn ? { present: true, disabled: btn.disabled } : { present: false };
         });
@@ -4147,10 +4245,10 @@ async function main() {
 
     //  ...and a real relationship, minted the same way. Each attempt is a full player
     //  interaction, so this is deliberately fewer rounds than the old hook loop's 30.
-    let mintedBlueprints = 0;
+    mintedBlueprints = 0;
     for (let i = 0; i < 12 && mintedBlueprints === 0; i++) {
         await editSave('state.energy = 100; state.inventory.wood = 20; state.inventory.fiber = 20;');
-        const attempt = await combineViaPlayerPath('wood', 'fiber');
+        attempt = await combineViaPlayerPath('wood', 'fiber');
         if (!attempt.ok) break;
         mintedBlueprints = (await live()).blueprints.length;
     }
@@ -4162,7 +4260,8 @@ async function main() {
     // GATE 0 SWEEP (automated half). The Android half is the director's own concurrent
     // playtest per C1's ruling — not attempted here, and not implied anywhere below.
     // ================================================================
-    console.log("\nGATE 0 SWEEP -- camera, FOV, readability, save/reload");
+    }
+    if (section("GATE 0 SWEEP -- camera, FOV, readability, save/reload")) {
 
     //  1. THE CAMERA MUST NEVER LATCH. A look-drag that leaves the camera spinning, or
     //  stuck mid-rotation, is the single most disorienting failure on a touch device.
@@ -4187,7 +4286,7 @@ async function main() {
     //  3. READABILITY floor: 11px is the smallest this project will ship.
     const tinyText = await page.evaluate(() => {
         const bad = [];
-        const nodes = document.querySelectorAll('.hud *, .carried-button *, .settings-button, .goal, .clock, .vital-label, .chip');
+        nodes = document.querySelectorAll('.hud *, .carried-button *, .settings-button, .goal, .clock, .vital-label, .chip');
         for (const el of nodes) {
             if (!el.textContent || !el.textContent.trim()) continue;
             const cs = getComputedStyle(el);
@@ -4262,7 +4361,8 @@ async function main() {
     //    F2, expedition loop -> every leg of go-out / gather / come-back / deposit makes real
     //                          progress, and none of them contains dead time where the player
     //                          is holding an input and nothing is happening.
-    console.log('\nF1/F2 — the regression lock on the director\'s passed verdicts');
+    }
+    if (section("F1/F2 — the regression lock on the director's passed verdicts")) {
 
     //  --- F1a: tap-to-response latency. The tap sets an intention; the castaway must start
     //  moving promptly enough that the tap reads as the cause of the movement.
@@ -4275,9 +4375,9 @@ async function main() {
     //  A tap on a NODE is what sets a walk intention, so that is what latency means here. The
     //  tap's own resolution is asserted first — via the breadcrumb the real tap wrote — so
     //  this can never again silently drift back onto empty ground and blame the game for it.
-    const walkTarget = await nodeOf('tree');
-    let firstMoveMs = -1;
-    let tapResolvedTo = 'no tree available';
+    walkTarget = await nodeOf('tree');
+    firstMoveMs = -1;
+    tapResolvedTo = 'no tree available';
     let beforeTap = null;
     if (walkTarget) {
         await editSave(`state.player = { x: ${walkTarget.x + 9}, y: ${walkTarget.y + 9} };`);
@@ -4429,7 +4529,8 @@ async function main() {
     //  reconcile. What no unit test can reach is whether the player is ever SHOWN it: F3's
     //  whole complaint was that the exposure model was honest and invisible. So this opens
     //  the real construction surface through a real tap and reads what is actually rendered.
-    console.log('\nF3 — the refuge line is on the screen, and says why');
+    }
+    if (section("F3 — the refuge line is on the screen, and says why")) {
     const shelterForF3 = (await live()).shelter;
     if (shelterForF3.built) {
         //  Stand at the shelter, dry, so the working case is the one under test.
@@ -4444,10 +4545,10 @@ async function main() {
         //  regardless of whether it is on-screen or covered — the exact gap that once let a
         //  real bug past 57/57 checks — so it cannot tell "the card did not open" from "the
         //  row is missing". This settles which, by reporting BOTH separately.
-        const opened = await openBuild();
+        opened = await openBuild();
         await sleep(500);
         const dom = await page.evaluate(() => {
-            const panel = document.querySelector('.panel');
+            panel = document.querySelector('.panel');
             const el = document.querySelector('.panel .refuge-item .refuge-line');
             const head = document.querySelector('.panel .refuge-item .build-head');
             const item = document.querySelector('.panel .refuge-item');
@@ -4532,7 +4633,8 @@ async function main() {
     // ================================================================
     // SLICE 3 — THE CASTAWAY CYCLE. Die, wash ashore as someone else, read the book.
     // ================================================================
-    console.log('\nSLICE 3 — the castaway cycle: permadeath, succession, the journal');
+    }
+    if (section("SLICE 3 — the castaway cycle: permadeath, succession, the journal")) {
 
     //  THE FIRE'S CIRCLE, on the real device. Slice 3 retires the fourth priority hack, so
     //  the first thing to witness is that the fire opens a circle at all — and that feeding
@@ -4570,7 +4672,7 @@ async function main() {
         //  — so they have to walk there first. 600ms was the gesture landing and the walk
         //  being cut off, not the circle failing to open.
         await sleep(3000);
-        const circle = await page.evaluate(() => {
+        circle = await page.evaluate(() => {
             const el = document.querySelector('.panel.verb-circle');
             const segs = Array.from(el ? el.querySelectorAll('.verb-seg') : []);
             return {
@@ -4700,7 +4802,8 @@ async function main() {
     // ================================================================
     // FINDING 4 — "upper-screen tree taps read no-hit". JUDGED, not assumed.
     // ================================================================
-    console.log('\nFINDING 4 — do taps on a tree CANOPY resolve to the tree?');
+    }
+    if (section("FINDING 4 — do taps on a tree CANOPY resolve to the tree?")) {
 
     //  THE DIRECTOR'S REPORT, reproduced as a measurement. Eight consecutive upper-screen
     //  tree taps read no-hit in his export, and the reading offered was "rays missing
@@ -4716,7 +4819,7 @@ async function main() {
         state.tools.axe = true;
         state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
     `);
-    const treeProbe = { ground: 0, canopy: 0, tried: 0, misses: [] };
+    treeProbe = { ground: 0, canopy: 0, tried: 0, misses: [] };
     const treeList = (await live()).nodes.filter((n) => n.kind === 'tree' && n.available).slice(0, 6);
     for (const t of treeList) {
         //  STAND NEXT TO IT FIRST. The first cut probed from wherever the previous section
@@ -4767,7 +4870,8 @@ async function main() {
     // device and fixed in the unit suite only — a fix whose witness sits one layer below the
     // layer that caught it is not closed. (2) The director's exact case, end to end.
     // ================================================================
-    console.log('\nTHE MAKER DOOR — the spear end to end, and the growth panel re-witnessed');
+    }
+    if (section("THE MAKER DOOR — the spear end to end, and the growth panel re-witnessed")) {
 
     //  PURPOSE 1. The two laws are asserted on the SKILLS TAB, which is the surface that
     //  renders skill rows at all: the standalone `.growth-btn` card calls `growthBody(report)`
@@ -4903,7 +5007,8 @@ async function main() {
     // ================================================================
     // DROP 3 — THE MEDICINE SLICE. Illness is a condition the player can READ and ANSWER.
     // ================================================================
-    console.log('\nDROP 3 — the Medicine Slice: sickness reads out, and the fire answers it');
+    }
+    if (section("DROP 3 — the Medicine Slice: sickness reads out, and the fire answers it")) {
 
     //  A survivor already past the warning band, so the readout is under load. Severity is set
     //  directly because the CAUSES are unit-tested exhaustively; what no unit test can reach is
@@ -5009,7 +5114,8 @@ async function main() {
     // CONSTRUCTION II — the cave's body, and the LDOE bar's two device-only properties.
     // Both were shipped by D-117 as declarations rather than things, and named as such.
     // ================================================================
-    console.log('\nCONSTRUCTION II — the cave has a body, and the ghost exists');
+    }
+    if (section("CONSTRUCTION II — the cave has a body, and the ghost exists")) {
 
     //  THE CAVE. D-117 shipped it mechanically reachable and INVISIBLE: a survivor who walked
     //  within 3 m of an unmarked point got shelter, and everyone else played a game where it
@@ -5020,7 +5126,7 @@ async function main() {
     await faceNode(caveAt.x, caveAt.y);
     await sleep(400);
     const caveSeen = await page.evaluate(({ x, y }) => {
-        const meshes = window.__driftScene.meshes.filter((m) => m.name.startsWith('cave'));
+        meshes = window.__driftScene.meshes.filter((m) => m.name.startsWith('cave'));
         const p = window.__drift.screenOf(x, y);
         return {
             names: meshes.map((m) => m.name),
@@ -5080,9 +5186,9 @@ async function main() {
     //  nothing — D-102's finding, which this project has now re-learned by hand more than
     //  once. `findHoldableSite` is the yaw-cone scan that already solved it.
     const ghostSite = await findHoldableSite();
-    let ghostShown = { shown: false, valid: false };
-    let cardOpen = false;
-    let heldGhost = { ok: false, why: 'no holdable site found' };
+    ghostShown = { shown: false, valid: false };
+    cardOpen = false;
+    heldGhost = { ok: false, why: 'no holdable site found' };
     if (ghostSite) {
         heldGhost = await holdWorld(ghostSite.x, ghostSite.y);
         await sleep(800);
@@ -5151,7 +5257,8 @@ async function main() {
     //  a reserve, a position) exactly as every other section here does, and every claim under
     //  test is then driven by a real gesture — the stick, a tap on the world, a tap on a
     //  button. No `__drift` hook drives anything; they only ever read.
-    console.log('\nTHE MARITIME SLICE (D-121)');
+    }
+    if (section("THE MARITIME SLICE (D-121)")) {
 
     //  ---- 1. THE WALL IS GONE -------------------------------------------------------
     //
@@ -5164,7 +5271,7 @@ async function main() {
         state.gameHoursElapsed = 8;
     `);
     //  Walk seaward on the +Z bearing, which is the wreck's own side of the island.
-    let outward = await live();
+    outward = await live();
     for (let i = 0; i < 14 && Math.hypot(outward.player.x, outward.player.y) < TUNE.walkableRadiusM + 6; i++) {
         await walkToward(0, 300, 1.1);
         outward = await live();
@@ -5431,7 +5538,8 @@ async function main() {
     //  blueprints. What is NOT faked is everything this section is about: the parts are
     //  tapped for real, the warnings are read off the page, and the medicine is taken through
     //  the Backpack's own button.
-    console.log('\nTHE WRECK (D-124)');
+    }
+    if (section("THE WRECK (D-124)")) {
     await editSave(`
         state.player = { x: 40, y: 240 };
         state.raft = { built: true, x: 40, y: 240, grade: 'serviceable', aboard: true };
@@ -5440,7 +5548,7 @@ async function main() {
         state.injuries = { bleeding: 0, limp: 0, pain: 0 };
     `);
 
-    const wreckStart = await live();
+    wreckStart = await live();
     const wreckParts = wreckStart.nodes.filter((n) => n.kind === 'wreckpart');
     check('WRECK 1 — the wreck has real, workable parts in the served build',
         wreckParts.length >= 4, `${wreckParts.length} parts`);
@@ -5455,7 +5563,7 @@ async function main() {
     const firstPart = wreckParts.slice().sort((a, b) =>
         Math.hypot(a.x - wreckStart.player.x, a.y - wreckStart.player.y)
         - Math.hypot(b.x - wreckStart.player.x, b.y - wreckStart.player.y))[0];
-    let worked = { ok: false, reason: 'no part found' };
+    worked = { ok: false, reason: 'no part found' };
     if (firstPart) {
         await approach(firstPart.x, firstPart.y, 18);
         await faceNode(firstPart.x, firstPart.y);
@@ -5579,6 +5687,7 @@ async function main() {
         `severity ${sickAfter.illness.severity.toFixed(2)}, cause ${sickAfter.illness.cause}`);
 
 
+    }
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
@@ -5587,8 +5696,29 @@ async function main() {
     await browser.close();
     const openCount = results.filter((r) => r.knownOpen).length;
     const graded = results.length - openCount;
-    console.log(`
+    if (isFilteredRun()) {
+        //  LOUD ON PURPOSE. A filtered run's number is not comparable to a full run's, and
+        //  the failure that would matter is somebody pasting "363/366" from a run that only
+        //  executed one section. So the count never appears without the word FILTERED beside
+        //  it, and the skipped total is always named.
+        console.log(`
+=== FILTERED RUN — NOT A CONFIRMING PASS ===
+${graded - failures}/${graded} checks passed, across ${sectionLog.ran.length} of ${sectionLog.seen.length} sections.
+${sectionLog.skipped.length} section(s) were SKIPPED — neither passing nor failing here.
+Shipping to main requires the full sweep: node tools/smoke.mjs <url>`);
+        const unmatched = ONLY_TERMS.filter((t) => !sectionLog.matched.has(t));
+        if (unmatched.length > 0) {
+            //  A filter that matched nothing is a typo, and silently running zero sections
+            //  while printing "0/0 passed" is exactly the vacuity this tool must not add.
+            console.log(`
+NO SECTION MATCHED: ${unmatched.join(', ')} — check --list.`);
+            await browser.close();
+            process.exit(2);
+        }
+    } else {
+        console.log(`
 ${graded - failures}/${graded} checks passed. Screenshots in .smoke/`);
+    }
     //  Known-open defects are reprinted here, every run, so a scheduled defect can never
     //  quietly become a forgotten one. They are NOT counted as passes and NOT counted as
     //  failures — a run that reads "all green" while carrying an unmeasured pin is exactly
