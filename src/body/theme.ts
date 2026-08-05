@@ -42,6 +42,9 @@ export const PALETTE = {
     /** The cave bluff — warmer and lighter than a rock node, so the hillside does not read
      *  as a giant boulder you failed to mine. */
     caveRock: [0.46, 0.43, 0.40],
+    /** THE WRECK SLICE — corroded steel. Deliberately darker and colder than any island
+     *  material, so a workable hull part cannot be mistaken for driftwood at a glance. */
+    wreckHull: [0.26, 0.28, 0.31],
     /** The MOUTH. Near-black on purpose: an opening reads as an opening because it is darker
      *  than everything around it, at any distance and any light. This is the whole of the
      *  "a player can recognise it" requirement, and it costs one colour. */

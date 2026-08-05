@@ -1040,6 +1040,85 @@ export const TUNE = {
      *  shelter and the crate already get, on a phone, over water, from a moving camera. */
     raftTapRadiusM: 3.4,
 
+    // ---- THE WRECK (the Wreck Slice) ---------------------------------------
+    //
+    //  WHAT THE CROSSING BUYS. Six workable parts, each yielding once and shifting back into
+    //  reach as the sea moves the wreckage. Yields are deliberately SMALL per part: v0_10's
+    //  ruling on what a wreck is — *"a worksite, not a treasure room"* — and a haul that
+    //  filled the pack in one visit would make the second crossing pointless.
+
+    /** [TUNE] Wreck — hull plating, per worked part. Basis: enough that a crossing returns
+     *  with something that reads as a haul, small enough that the wreck is a place you go
+     *  BACK to. Six parts at these yields is roughly one pack-load per full visit. */
+    wreckMetalYield: 3,
+    /** [TUNE] Wreck — salt-stiff cable from the run where the mast came down. */
+    wreckWiringYield: 2,
+    /** [TUNE] Wreck — port glass and instrument faces. Scarcer: most of it broke on impact. */
+    wreckGlassYield: 2,
+    /** [TUNE] Wreck — the ship's medical store. **One.** It is the single most valuable thing
+     *  out there and the only salvage that answers a shipped problem, so it is the one a
+     *  survivor decides whether to spend now or carry home. */
+    wreckMedicineYield: 1,
+    /** [TUNE] Wreck — game hours before a worked part shifts back into reach. Basis: longer
+     *  than a tree's 96 h, because the sea does the work rather than the season, and because
+     *  the crossing should not become a commute. */
+    wreckPartRegrowGameHours: 120,
+    /** [TUNE] Wreck — energy a single worked part costs, before the resolver's own load,
+     *  impairment and environment terms. Basis: above the deadfall's effort — this is prying
+     *  metal apart in open water — and it stacks on the paddle out. */
+    wreckPartEffortEnergy: 9,
+
+    //  ---- THE HULL'S OWN STAKES ----
+    //
+    //  The crossing is tuned so a full reserve gets you there and NOT back. The wreck needs a
+    //  reason to be careful that matches, and it is the hull itself: every part you take
+    //  shifts what is left. Lingering is a real choice rather than a free harvest.
+    //
+    //  IT RISES ONLY ON AN ACTION, never over time — that is what makes [[D-011]] structural
+    //  here rather than checked. It SETTLES over elapsed hours, which is absence making things
+    //  better, and is therefore always legal.
+
+    /** [TUNE] Wreck — the instability ceiling; the scale every threshold below reads against. */
+    wreckInstabilityMax: 100,
+    /** [TUNE] Wreck — how much working one part shifts the hull.
+     *
+     *  **RETUNED FROM 22, AND ITS OWN TEST CAUGHT WHY.** At 22 the arithmetic in this comment
+     *  was simply wrong: three parts is 66, `wreckGroaningAt` is 66, and `hullStageOf`
+     *  compares with `>=` — so the THIRD part warned, not the fourth, and a survivor could not
+     *  take half the wreck in a sitting the way this line claimed. The check that found it
+     *  asserts the BEHAVIOUR ("half the wreck, unwarned"), not the number, which is why it
+     *  could catch a number that disagreed with its own stated intent.
+     *
+     *  At 18 the whole six-part visit reads: 18 / 36 / 54 quiet, **72 groaning (warning 1)**,
+     *  **90 giving way (warning 2)**, and only the SIXTH part — worked after both warnings —
+     *  is charged. Three quiet, two spoken, then a price. */
+    wreckInstabilityPerPart: 18,
+    /** [TUNE] Wreck — instability shed per game hour left alone. Basis: 8/h means a fully
+     *  destabilised hull is settled again in ~12 game hours — long enough that a survivor
+     *  cannot simply wait out a warning on the spot, short enough that a return trip a day
+     *  later finds the wreck sound. */
+    wreckSettlePerGameHour: 8,
+    /** [TUNE] Wreck — instability at or above which the hull is GROANING: the first spoken
+     *  warning. Costs nothing. */
+    wreckGroaningAt: 66,
+    /** [TUNE] Wreck — instability at or above which it is GIVING WAY: the second spoken
+     *  warning, and the last stage that costs nothing. */
+    wreckGivingWayAt: 88,
+    /** [TUNE] Wreck — bleeding severity from a shift that catches the survivor. Reuses the
+     *  SHIPPED injury model ([[D-111]]) rather than inventing a wreck-specific harm: torn on
+     *  sharp metal is a wound, and this game already knows what a wound does. */
+    wreckShiftBleeding: 0.5,
+    /** [TUNE] Wreck — health taken outright by the shift that causes the wound. Basis: well
+     *  under the boar's charge — the danger out here is the WOUND plus the 115 m back, not the
+     *  hit itself, and a one-shot kill at the far end of the crossing would be a trapdoor. */
+    wreckShiftHealth: 10,
+
+    /** [TUNE] Wreck — how much illness severity one medical store removes. Basis: comfortably
+     *  more than `remedySeverityRelief` (the brewed remedy) — it is a real medicine rather
+     *  than a poultice, and it is the payoff for a crossing. Still RELIEF, never a cure: it
+     *  cannot take severity below zero and it does not touch the cause. */
+    medicineSeverityRelief: 0.75,
+
     // ---- Shelter (C05) — the lean-to, one tier this cycle ------------------
     /** [TUNE] C05 — build cost: a meaningful step up from the axe, matching "construction". */
     shelterWoodCost: 8,
@@ -1258,7 +1337,14 @@ export const TUNE = {
         sharpblade: 0.4,
         //  DROP 1 — a unit of boar meat. Between shellfish (0.3) and coconut (1.4): heavy
         //  enough that carrying a whole kill home is a real load decision.
-        meat: 0.5
+        meat: 0.5,
+        //  THE WRECK SLICE. Metal is the heaviest thing in the game — heavier per unit than
+        //  stone — and that is the point: a full haul off the wreck is a real load to paddle
+        //  home, so what you take is a decision made 115 m out with a load band watching.
+        metal: 3.0,
+        wiring: 0.6,
+        glass: 0.5,
+        medicine: 0.2
     },
     /** [TUNE] Ch.6 — fixed mass in kg of each owned tool. Charged once when owned, not per
      *  use — a carried axe weighs the same whether or not you are swinging it. The flask's
@@ -1336,7 +1422,14 @@ export const TUNE = {
         shellfish: 0.5,
         sharpblade: 0.2,
         //  DROP 1 — bulky for its weight, the way meat is.
-        meat: 0.9
+        meat: 0.9,
+        //  THE WRECK SLICE. Cable is the BULKIEST thing here without being the heaviest —
+        //  a coil eats a pack. Metal plate is dense but stacks flat, which is the honest
+        //  inversion: the heavy thing and the awkward thing are not the same thing.
+        metal: 1.5,
+        wiring: 2.2,
+        glass: 0.8,
+        medicine: 0.3
     },
     /** [TUNE] §9 — bulk per tool, same units. */
     toolBulk: { axe: 5, flask: 1.5, stoneHammer: 4, torch: 2.5 },

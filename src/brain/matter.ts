@@ -70,6 +70,14 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     coconut: 'cracked',
     shellfish: 'spilled',
     berries: 'contaminated',
+    //  THE WRECK SLICE. Each fails the way that material actually fails: plate BENDS before
+    //  it breaks, cable comes LOOSE at the terminal, glass CRACKS, and a breached sterile
+    //  store is CONTAMINATED — which is the one that matters, because it is the difference
+    //  between a spoiled medicine and a lost one.
+    metal: 'bent',
+    wiring: 'loosened',
+    glass: 'cracked',
+    medicine: 'contaminated',
     //  DROP 1 — a failed attempt on meat spoils it. Matter comes out CHANGED (Law 128).
     meat: 'contaminated',
 };
@@ -133,6 +141,7 @@ const LABEL: Record<MaterialKind, string> = {
     wood: 'The wood', stone: 'The stone', fiber: 'The fibre', sharpblade: 'The blade',
     coconut: 'The coconut', shellfish: 'The shell', berries: 'The berries',
     meat: 'The meat',
+    metal: 'The plate', wiring: 'The cable', glass: 'The glass', medicine: 'The medicine',
 };
 
 const VERB: Record<Transformation, string> = {

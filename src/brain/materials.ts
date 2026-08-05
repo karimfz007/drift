@@ -12,7 +12,15 @@ import type { MaterialKind } from './types';
 
 export type MaterialFamily = 'organic' | 'mineral';
 
-export type MaterialTag = 'fuel' | 'woodwork' | 'textile' | 'masonry' | 'blade' | 'food' | 'buoyant';
+export type MaterialTag =
+    | 'fuel' | 'woodwork' | 'textile' | 'masonry' | 'blade' | 'food' | 'buoyant'
+    //  THE WRECK SLICE. `salvaged` marks the wreck-era family as a family — the one thing
+    //  every one of them has in common is that it came from out there, and no recipe on this
+    //  island can ask for it until someone crosses.
+    | 'salvaged'
+    /** A sealed medical store. Deliberately its own tag: medicine is not food, and the one
+     *  thing that must never happen is a survivor eating it by accident through a shared tag. */
+    | 'remedy';
 
 export interface MaterialProfile {
     primary: MaterialFamily;
@@ -42,7 +50,35 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     sharpblade: { primary: 'mineral', tags: ['blade'] },
     //  DROP 1 — meat is food and nothing else: no tag lets it be built with, so it can
     //  never be lashed into a shelter by a Try-Combining accident.
-    meat: { primary: 'organic', tags: ['food'] }
+    meat: { primary: 'organic', tags: ['food'] },
+
+    //  ---- THE WRECK-ERA FAMILY (the Wreck Slice) --------------------------------------
+    //
+    //  MINERAL, all but one, and that is not decoration: it is what stops them being fuel.
+    //  A survivor who could burn hull plate would never need to fell another tree.
+    //
+    //  THEY CARRY `salvaged` AND NOTHING STRUCTURAL, and that is a correction I made to my
+    //  own first cut rather than a default.
+    //
+    //  I first gave metal `blade` + `masonry`, wiring `textile`, glass `blade` — on the
+    //  reasoning that the [[D-055]] tag schema exists precisely so a later material can share
+    //  a tag, and this is the moment to spend it. That reasoning is right about the schema and
+    //  wrong about THIS pass, because the cost gates in `state.ts` are still exact-kind:
+    //  `canCraftAxe` asks for `sharpblade` by name. So a survivor holding hull plate would
+    //  Try-Combine wood + metal + fibre, `resolveRecipe` would answer AXE on the `blade` tag,
+    //  a blueprint would mint — and the Build panel would then demand a knapped stone blade
+    //  they do not have. Discovery promising what the craft gate refuses is [[D-114]]'s exact
+    //  defect shape, and I would have been inventing a fresh one.
+    //
+    //  So they are structurally inert this pass, exactly as `food` is, and their recipes
+    //  arrive WITH their tags. The plumbing is not spent by tagging; it is spent by a recipe
+    //  asking for `salvaged`, and that is the next pass's job.
+    metal: { primary: 'mineral', tags: ['salvaged'] },
+    wiring: { primary: 'mineral', tags: ['salvaged'] },
+    glass: { primary: 'mineral', tags: ['salvaged'] },
+    //  NOT `food`. A shared tag is how a survivor ends up eating the medical supplies by
+    //  accident, and `remedy` exists so that can never resolve.
+    medicine: { primary: 'organic', tags: ['salvaged', 'remedy'] }
 };
 
 /** What a recipe slot requires: a family, a tag, or both (either one satisfies it). */

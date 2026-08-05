@@ -111,6 +111,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 20) current = migrateV20toV21(current);
     if (current.schemaVersion === 21) current = migrateV21toV22(current);
     if (current.schemaVersion === 22) current = migrateV22toV23(current);
+    if (current.schemaVersion === 23) current = migrateV23toV24(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -728,7 +729,48 @@ function migrateV22toV23(envelope: SaveEnvelope): SaveEnvelope {
             : { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false },
         wreck: isObject(old.wreck)
             ? (old.wreck as GameState['wreck'])
-            : { reached: false, reachedAtGameHours: null },
+            : { reached: false, reachedAtGameHours: null, instability: 0, lastDisturbedAtGameHours: null },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
+/**
+ * v23 -> v24, THE WRECK SLICE. The wreck gains a body; the survivor gains nothing.
+ *
+ * Both halves are the split this file has drawn before, most recently at v21->v22 for the
+ * cave: **matter merges, achievement does not.**
+ *
+ *   - The six `wreckpart` nodes MERGE into an existing save's node list, because the wreck
+ *     has been in that water since before anyone washed ashore. A save that never gained them
+ *     would be a save on a different sea. `hydrate` deliberately preserves a save's own nodes,
+ *     so without this a returning player would paddle out to a marker forever.
+ *   - The four wreck-era materials arrive at ZERO, and `instability` at zero with a null
+ *     disturbance clock. Stock is a fact about a body; crediting a returning survivor with
+ *     metal they never crossed for would hand over the entire point of the crossing.
+ */
+function migrateV23toV24(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const merged = [...(Array.isArray(old.nodes) ? old.nodes : [])];
+    const have = new Set(merged.map((n) => n.id));
+    for (const authored of createNodes()) {
+        if (authored.kind === 'wreckpart' && !have.has(authored.id)) merged.push({ ...authored });
+    }
+    const state: GameState = {
+        ...old,
+        nodes: merged,
+        inventory: {
+            ...old.inventory,
+            metal: num((old.inventory as unknown as Record<string, unknown>)?.metal, 0),
+            wiring: num((old.inventory as unknown as Record<string, unknown>)?.wiring, 0),
+            glass: num((old.inventory as unknown as Record<string, unknown>)?.glass, 0),
+            medicine: num((old.inventory as unknown as Record<string, unknown>)?.medicine, 0),
+        },
+        wreck: {
+            ...old.wreck,
+            instability: num((old.wreck as unknown as Record<string, unknown>)?.instability, 0),
+            lastDisturbedAtGameHours: null,
+        },
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };

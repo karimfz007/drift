@@ -6,6 +6,7 @@
 import { gameHoursFromRealSeconds } from './clock';
 import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
+import { disturb, harmFromWorking } from './wreck';
 import { freshInjuries } from './injury';
 import { freshIllness, onsetFrom } from './illness';
 import { TUNE } from '../data/tune';
@@ -31,6 +32,7 @@ import {
     type ItemGrade,
     type JournalState,
     type NodeKind,
+    type MaterialKind,
     type SalvageLoot,
     type Skills,
     type StorageInventory,
@@ -109,7 +111,7 @@ export function createInitialState(nowMs: number): GameState {
         //  only one that leaves the island, so it is earned like everything else post-pivot.
         raft: { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false },
         //  The wreck has been on the horizon since Cycle 03 and nobody has ever been to it.
-        wreck: { reached: false, reachedAtGameHours: null }
+        wreck: { reached: false, reachedAtGameHours: null, instability: 0, lastDisturbedAtGameHours: null }
     };
 }
 
@@ -129,7 +131,12 @@ export function freshJournal(): JournalState {
 }
 
 export function emptyInventory(): Inventory {
-    return { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
+    return {
+        wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0,
+        //  THE WRECK SLICE. Zero, and a fresh castaway can never gain one on the island —
+        //  every gram of these exists 115 m offshore.
+        metal: 0, wiring: 0, glass: 0, medicine: 0
+    };
 }
 
 export function emptySkills(): Skills {
@@ -196,7 +203,13 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
     //  an inexhaustible face must never become an XP faucet), and a hold long enough that
     //  working it by hand is a real decision rather than a reflex.
     boulder: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.boulderHoldSecondsByHand },
-    salvage: { interaction: 'tap', needsAxe: false, skill: null, holdBaseSeconds: 0 }
+    salvage: { interaction: 'tap', needsAxe: false, skill: null, holdBaseSeconds: 0 },
+    //  THE WRECK SLICE. A HOLD, and no axe: prying a hull apart is effortful and needs
+    //  hands and leverage, not an edge. No skill trains — `woodcutting`/`foraging` are both
+    //  island verbs and neither describes working a wreck; the domain that DOES describe it
+    //  (`navigationSeamanship`) is trained through `recordTrying` at the call site, the same
+    //  way the raft and the crossing already do.
+    wreckpart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds }
 };
 
 export function nodeSpec(kind: NodeKind): NodeSpec {
@@ -238,6 +251,7 @@ export function effortEnergyCostFor(kind: NodeKind): number {
         case 'reed': return 0;
         case 'shellfish': return 0;
         case 'salvage': return 0;
+        case 'wreckpart': return TUNE.wreckPartEffortEnergy;
     }
 }
 
@@ -455,6 +469,44 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             node.depletedAtGameHours = state.gameHoursElapsed;   // the scar's clock, not a death
             break;
         }
+        case 'wreckpart': {
+            //  ---- THE WRECK SLICE: what the crossing buys, and what lingering costs -------
+            //
+            //  THE HARM IS READ AND DEALT BEFORE THE YIELD, and the order is the contract.
+            //  `harmFromWorking` reads the hull the survivor was WARNED about — the state
+            //  before this action's own disturbance. Reading it after would charge them for a
+            //  stage they were never told of, which is precisely what the five-stage grammar
+            //  exists to prevent. They still get the salvage: the wreck shifting does not
+            //  cancel the work, it costs you for doing it anyway.
+            const harm = harmFromWorking(state.wreck);
+            if (harm.health > 0) {
+                state.health = Math.max(0, state.health - harm.health);
+                //  Torn on sharp metal is a WOUND, through the shipped injury model — not a
+                //  wreck-specific harm invented beside it. Bleeding out here is the real
+                //  danger, because the shore is 115 m away.
+                state.injuries = {
+                    ...state.injuries,
+                    bleeding: Math.min(TUNE.injuryBleedMax, state.injuries.bleeding + harm.bleeding),
+                };
+            }
+
+            //  Which part this is decides what it yields — authored per part, so the medical
+            //  store is a PLACE on the wreck rather than a lucky roll. `wr6` is the ship's
+            //  medical store; see `WRECK_PARTS` in world.ts.
+            const yieldFor = wreckPartYield(node.id);
+            for (const [kind, amount] of Object.entries(yieldFor) as Array<[MaterialKind, number]>) {
+                state.inventory[kind] += amount;
+                gained[kind] = amount;
+            }
+
+            //  ...and only NOW does the hull shift. Rises on an action, never over time —
+            //  which is what makes D-011 structural here (see `wreck.ts`).
+            state.wreck = disturb(state.wreck, state.gameHoursElapsed);
+            //  Working a wreck is seamanship, and it is the third producer for a domain that
+            //  had none before the Maritime Slice.
+            recordTrying(state, 'navigationSeamanship');
+            break;
+        }
         case 'salvage': {
             //  Plain odds, no loot-box dressing (D-051): the reward was rolled once at
             //  spawn time and simply revealed now.
@@ -564,6 +616,28 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
 // beat (the flask), not a resource, and never regrows.
 
 /** How long, in game hours, a spent node of this kind takes to regrow. Infinity = exempt. */
+/**
+ * What each part of the wreck gives up. Authored per part rather than rolled, so the wreck is
+ * a place with a layout a survivor can LEARN — the medical store is off the stern quarter and
+ * stays there. A roll would make every visit a fresh lottery over the same water, which is the
+ * "treasure room" shape v0_10 explicitly rules out.
+ *
+ * Unknown ids fall back to plating rather than throwing: a save whose node list predates a
+ * future re-authoring should hand over metal, not crash.
+ */
+export function wreckPartYield(nodeId: string): Partial<Record<MaterialKind, number>> {
+    switch (nodeId) {
+        case 'wr1': return { metal: TUNE.wreckMetalYield };
+        case 'wr2': return { metal: TUNE.wreckMetalYield };
+        case 'wr3': return { glass: TUNE.wreckGlassYield, wiring: 1 };
+        case 'wr4': return { metal: 1, glass: TUNE.wreckGlassYield };
+        case 'wr5': return { wiring: TUNE.wreckWiringYield };
+        //  The ship's medical store. ONE, and it is the reason to come back.
+        case 'wr6': return { medicine: TUNE.wreckMedicineYield, glass: 1 };
+        default: return { metal: TUNE.wreckMetalYield };
+    }
+}
+
 export function regrowGameHoursFor(kind: NodeKind): number {
     switch (kind) {
         case 'driftwood': return TUNE.driftwoodRegrowGameHours;
@@ -574,6 +648,11 @@ export function regrowGameHoursFor(kind: NodeKind): number {
         case 'coconutpalm': return TUNE.coconutpalmRegrowGameHours;
         case 'reed': return TUNE.reedRegrowGameHours;
         case 'shellfish': return TUNE.shellfishRegrowGameHours;
+        //  THE WRECK SLICE. The sea shifts the wreckage back into reach — v0_10's Zone U0 is
+        //  "the boundary where waves, tide and wreckage repeatedly move", so this is the tide
+        //  doing the work rather than a season. Slower than a tree, so the crossing stays a
+        //  journey rather than becoming a commute.
+        case 'wreckpart': return TUNE.wreckPartRegrowGameHours;
         //  GEOLOGY V2 (Gate 0 item 7): the quarry is the FINITE tier. A rich deposit is a
         //  real, spent thing — it visibly empties as you work it and it does not come back.
         //  This does NOT breach D-051's renewability law, because stone itself stays

@@ -73,6 +73,9 @@ import {
     illnessStage,
     canBrewRemedy,
     brewRemedy,
+    canTakeMedicine,
+    medicineBlocker,
+    takeMedicine,
     droppedWithinReach,
     previewFor,
     pickUpDropped,
@@ -123,6 +126,7 @@ import {
     swimStageOf,
     waterSpeedMultiplierOf,
     waterZoneOf,
+    wreckNoteFor,
     type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
@@ -641,6 +645,13 @@ export class Game {
                     activeHand: s.loadout.activeHand,
                     supportHand: s.loadout.supportHand,
                     equippable: ownedTools(s),
+                    //  THE WRECK SLICE. Read from the brain — held count, whether it can be
+                    //  spent right now, and the ONE truest reason when it cannot.
+                    medicine: {
+                        held: s.inventory.medicine,
+                        usable: canTakeMedicine(s),
+                        blocker: medicineBlocker(s),
+                    },
                 },
                 skills: growthReport(s, s.capacities),
                 playerSkills: s.skills
@@ -684,6 +695,18 @@ export class Game {
                 this.cues.play(CUES.pickup);
                 this.floatText(`${tool} in ${hand} hand`);
                 session().persist(now());
+            },
+            //  THE WRECK SLICE — spending the medical store. Fail-loud on every refusal
+            //  (D-042/D-049): the button is already disabled with its reason, and this is the
+            //  second guard for the case where state moved between render and tap.
+            () => {
+                const s2 = session().state;
+                const why = medicineBlocker(s2);
+                if (!takeMedicine(s2)) { this.explain(why ?? 'You cannot use that now.'); return; }
+                this.cues.play(CUES.craft);
+                this.floatText('the medicine takes hold');
+                session().persist(now());
+                this.lastActivityAt = now();
             },
             (materials: string[]) => previewFor(session().state, materials as never).lines.join(' '),
             //  LAW 126: which tab, and how to switch. The lock is NOT released between tabs
@@ -2496,6 +2519,12 @@ export class Game {
         //  moment has no way left to raise its voice, and these two warnings only work
         //  because the stage before them is quiet — the same reasoning that keeps a nascent
         //  illness from displacing exhaustion, three paragraphs down.
+        //  THE WRECK SLICE — the hull speaks ABOVE the water's own warnings, and only at the
+        //  wreck. It is the more acute of the two: the water gives a survivor minutes, and a
+        //  hull that is giving way takes its price the moment they reach for one more part.
+        //  Silent at `sound` and `shifting` by the same rule that keeps `swimming` quiet.
+        const hull = wreckNoteFor(state);
+        if (hull) return hull;
         const swim = swimStageOf(state);
         if (swim === 'labouring' || swim === 'spent' || swim === 'going-under') {
             const note = swimNote(swim);

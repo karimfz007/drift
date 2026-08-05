@@ -276,6 +276,13 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
         //  there is no channel from it to a score at all.
         case 'boulder':
             return 'harvestingFabrication';
+        //  THE WRECK SLICE. Prying a hull apart is hold-work like the rest, so the mastery
+        //  rule applies — but the domain is SEAMANSHIP, not harvesting. That is the same
+        //  domain `gatherNode` trains when a part is worked, which closes a loop the island
+        //  verbs already have: the thing you get better at is the thing that gets easier.
+        //  Nothing else in the game reads seamanship for mastery yet; this is its first.
+        case 'wreckpart':
+            return 'navigationSeamanship';
         //  `crashbox` is hold-kind but deliberately exempt — a one-time story beat with
         //  fixed contents, not a resource. Exactly the exemption regrowth already makes for
         //  it. This is the ONE exception to "mastery follows effortful work", and it is

@@ -421,7 +421,7 @@ describe('matter, memory, and the save', () => {
 
     it('the wreck\'s history survives too — evidence, never technique ([[D-069]])', () => {
         const s = fresh();
-        s.wreck = { reached: true, reachedAtGameHours: 42 };
+        s.wreck = { reached: true, reachedAtGameHours: 42, instability: 0, lastDisturbedAtGameHours: null };
         const { next } = closeSurvivor(s, 'the cold');
         expect(next.wreck.reached).toBe(true);
         //  And it is still only evidence: the successor does not inherit the raft's PATTERN.

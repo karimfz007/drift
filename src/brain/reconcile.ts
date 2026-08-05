@@ -25,6 +25,7 @@ import { activeProfile } from './vulnerability';
 import { settleOffline } from './fauna';
 import { settleInjuriesOffline } from './injury';
 import { settleIllnessOffline } from './illness';
+import { settleOverGameHours } from './wreck';
 import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
@@ -292,6 +293,14 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             syncLoadoutToOwnership(next);
         }
     }
+    //  ---- THE WRECK SETTLES (the Wreck Slice) ----
+    //  Closed-form over the whole span, like structure decay and the torch above. It is the
+    //  ONLY elapsed-time term the wreck has, and it can only ever LOWER instability — so an
+    //  absence makes the wreck safer and can never make it worse. That is D-011 held by the
+    //  shape of the arithmetic rather than by a floor, and `tests/wreck.test.ts` proves it as
+    //  a property across arbitrary states and spans.
+    next.wreck = settleOverGameHours(next.wreck, totalGameHours);
+
     //  ---- Fatigue (Ch.6, D-058) ----
     //  Closed-form over the whole span, the same treatment structure decay and torch burn
     //  already get: nothing else's rate depends on exactly when fatigue crosses a stage

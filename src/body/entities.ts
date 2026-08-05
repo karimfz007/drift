@@ -478,6 +478,30 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             plank.metadata = { nodeId: node.id };
             return at(crate, 0.21, 0.7, 0);
         }
+        case 'wreckpart': {
+            //  THE WRECK SLICE. A torn section of hull plate with a rib behind it, floating
+            //  at the waterline rather than standing on the seabed eight metres down — the
+            //  same rule the raft's deck follows, and for the same reason: reading `groundY`
+            //  out here would sink every part out of sight.
+            //
+            //  Angled by index so the six parts do not read as six identical crates. This is
+            //  ONE broken ship seen from six sides, not a row of containers.
+            const plate = CreateBox(`n_${node.id}`, { width: 1.5, height: 0.5, depth: 1.1 }, scene);
+            plate.material = materials.wreckpart;
+            plate.rotation.y = index * 1.1;
+            plate.rotation.z = 0.22 + (index % 3) * 0.14;
+            const rib = CreateCylinder(`n_${node.id}_rib`, { height: 1.7, diameter: 0.16, tessellation: 5 }, scene);
+            rib.material = materials.wreckpart;
+            rib.parent = plate;
+            rib.rotation.x = Math.PI / 2;
+            rib.position.set(0, 0.18, 0.1);
+            rib.isPickable = true;
+            rib.metadata = { nodeId: node.id };
+            //  Placed against the SEA SURFACE, not the ground under it.
+            const floated = at(plate, 0.2, 0.9, 0);
+            plate.position.y = WORLD.seaLevel + 0.2;
+            return floated;
+        }
     }
 }
 
@@ -496,6 +520,7 @@ interface NodeMaterials {
     halo: StandardMaterial;
     quarry: StandardMaterial;
     salvage: StandardMaterial;
+    wreckpart: StandardMaterial;
     harvestMark: StandardMaterial;
 }
 
@@ -526,6 +551,9 @@ export class NodeViews {
             halo: haloMaterial(scene),
             quarry: flat(scene, 'm_quarry', PALETTE.quarryStone),
             salvage: flat(scene, 'm_salvage', PALETTE.salvageWood),
+            //  Dark, corroded steel — nothing else on this island is this colour, which is
+            //  the point: a wreck part must never read as driftwood.
+            wreckpart: flat(scene, 'm_wreckpart', PALETTE.wreckHull),
             harvestMark: flat(scene, 'm_harvestMark', PALETTE.harvestMark)
         };
 
@@ -1050,7 +1078,7 @@ export class RaftView {
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,
     berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true,
-    quarry: true, boulder: true, salvage: true
+    quarry: true, boulder: true, salvage: true, wreckpart: true
 };
 void _EXHAUSTIVE;
 

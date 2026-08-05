@@ -148,6 +148,12 @@ describe('knowledge — item 4: mapping existing verbs to domains (only what the
             shellfish: null,
             crashbox: null,
             quarry: 'harvestingFabrication',
+            //  THE WRECK SLICE. NULL here on purpose: working the wreck is not harvesting or
+            //  fabrication, and it trains `navigationSeamanship` through an explicit
+            //  `recordTrying` at the gather call site rather than through this map. Listed so
+            //  the manifest stays total — a kind missing from it is the drift this test exists
+            //  to catch.
+            wreckpart: null,
             //  DROP 2 — the boulder formation trains NOTHING, deliberately. It is the one
             //  inexhaustible face in the game, so a channel from it to a domain score would
             //  be an XP faucet that never runs dry. Mastery still SPEEDS the work (it is in

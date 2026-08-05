@@ -799,7 +799,9 @@ const TOOL_LABEL: Record<string, string> = {
 
 const MATERIAL_LABEL: Record<string, string> = {
     wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
-    coconut: 'Coconut', shellfish: 'Shellfish', sharpblade: 'Sharp blade'
+    coconut: 'Coconut', shellfish: 'Shellfish', sharpblade: 'Sharp blade',
+    //  THE WRECK SLICE. Named as a survivor would name them, not as cargo manifest entries.
+    metal: 'Hull plate', wiring: 'Cable', glass: 'Glass', medicine: 'Medical store', meat: 'Meat'
 };
 
 export interface LoadoutPanelView {
@@ -892,6 +894,10 @@ export interface VitalsExtraView {
     injuryNote: string | null;
     /** DROP 3 — the illness, on the same surface as the wound and in the same shape. */
     illness: { stage: string; note: string | null };
+    /** THE WRECK SLICE — the medical store, offered where the sickness is READ. It works
+     *  anywhere, which is the whole payoff of the crossing, so it must not be bound to a
+     *  world object the way binding a wound is bound to the shelter. */
+    medicine: { held: number; usable: boolean; blocker: string | null };
     activeHand: string | null;
     supportHand: string | null;
     equippable: string[];
@@ -928,6 +934,9 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
         <div class="vital-line pressing">
             <div class="build-head"><strong>Sickness</strong><span class="standing-chip">${ILLNESS_LABEL[extra.illness.stage] ?? extra.illness.stage}</span></div>
             ${extra.illness.note ? `<p class="subtitle vital-cause">${extra.illness.note}</p>` : ''}
+            ${extra.medicine.held > 0 ? `
+                <p class="subtitle">Medical store: ${extra.medicine.held} — salvaged from the wreck.</p>
+                <button class="primary medicine-btn" type="button" ${extra.medicine.usable ? '' : 'disabled'}>${extra.medicine.usable ? 'Take the medicine' : (extra.medicine.blocker ?? 'Not now')}</button>` : ''}
         </div>`;
 
     //  BOTH HANDS, equippable from here. Reuses the shipped carriage mechanism rather than a
@@ -959,6 +968,9 @@ export function showLoadout(
     onTryCombine: (materials: string[]) => void = () => {},
     onDrop: (material: string) => void = () => {},
     onEquipHand: (tool: string, hand: 'left' | 'right') => void = () => {},
+    /** THE WRECK SLICE — spend one salvaged medical store. Defaulted like every optional
+     *  handler here, so an older call site cannot fail to compile. */
+    onTakeMedicine: () => void = () => {},
     onPreview: (materials: string[]) => string | null = () => null,
     //  `onGrowth` is gone: the growth card is a TAB now, not a separate surface, so the
     //  shortcut switches tabs rather than opening one. Retiring the parameter rather than
@@ -1058,6 +1070,14 @@ export function showLoadout(
             const hand = chip.dataset.hand === 'left' ? 'left' : 'right';
             if (tool) onEquipHand(tool, hand);
         });
+    }
+    //  THE WRECK SLICE — the medical store, bound here for the same reason the hand chips
+    //  are: the Vitals tab re-renders in place on every tab switch, so a listener attached
+    //  once at construction would be stranded the first time the player looks at Skills and
+    //  comes back. Re-queried on each render, exactly as above.
+    const medBtn = el.querySelector<HTMLButtonElement>('.medicine-btn');
+    if (medBtn && !medBtn.disabled) {
+        medBtn.addEventListener('click', () => { onTakeMedicine(); fade(el, onClose); });
     }
     for (const chip of el.querySelectorAll<HTMLButtonElement>('.drop-chip')) {
         chip.addEventListener('click', () => {

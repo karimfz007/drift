@@ -139,7 +139,10 @@ const TUNE = new Proxy({
     fatigueSevereAt: 80,
     deathResourceLossFraction: 0.25,
     fatigueRecoveryPerGameHourResting: 12,
-    sleepDurationGameHours: 8
+    sleepDurationGameHours: 8,
+    wreckArrivalRadiusM: 14,
+    wreckGroaningAt: 66,
+    wreckGivingWayAt: 88,
 }, {
     get(target, key) {
         if (typeof key === 'string' && !(key in target)) {
@@ -5416,6 +5419,164 @@ async function main() {
     check('MARITIME 6b — reaching it is RECORDED by the shipped tick',
         crossing.wreck.reached === true && crossing.wreck.reachedAtGameHours !== null,
         `reached ${crossing.wreck.reached} at ${crossing.wreck.reachedAtGameHours}`);
+
+
+
+    // ================= THE WRECK (D-124) =================
+    //
+    //  GETTING THERE IS ALREADY DEVICE-PROVEN — `MARITIME 6` above paddles the real crossing
+    //  under the real stick. Re-walking 115 m of open water before every check here would add
+    //  minutes per assertion and prove the same thing six more times, so the survivor is
+    //  PLACED at the wreck by a state edit, stated openly, exactly as the spine checks grant
+    //  blueprints. What is NOT faked is everything this section is about: the parts are
+    //  tapped for real, the warnings are read off the page, and the medicine is taken through
+    //  the Backpack's own button.
+    console.log('\nTHE WRECK (D-124)');
+    await editSave(`
+        state.player = { x: 40, y: 240 };
+        state.raft = { built: true, x: 40, y: 240, grade: 'serviceable', aboard: true };
+        state.wreck = { reached: true, reachedAtGameHours: 4, instability: 0, lastDisturbedAtGameHours: null };
+        state.energy = 100; state.health = 100; state.hunger = 100; state.thirst = 100;
+        state.injuries = { bleeding: 0, limp: 0, pain: 0 };
+    `);
+
+    const wreckStart = await live();
+    const wreckParts = wreckStart.nodes.filter((n) => n.kind === 'wreckpart');
+    check('WRECK 1 — the wreck has real, workable parts in the served build',
+        wreckParts.length >= 4, `${wreckParts.length} parts`);
+    check('WRECK 1b — and every one is within reach of a raft moored alongside',
+        wreckParts.every((n) => Math.hypot(n.x - 40, n.y - 240) <= TUNE.wreckArrivalRadiusM),
+        wreckParts.map((n) => Math.hypot(n.x - 40, n.y - 240).toFixed(1)).join(' '));
+    await shot('wreck-01-alongside');
+
+    //  THE REAL VERB. Walk to a part and work it with the shipped hold — no debug hook, no
+    //  direct call. This is the whole claim of item 1: exploring the wreck is the island's
+    //  own gather verb used somewhere new (player-path law, D-075).
+    const firstPart = wreckParts.slice().sort((a, b) =>
+        Math.hypot(a.x - wreckStart.player.x, a.y - wreckStart.player.y)
+        - Math.hypot(b.x - wreckStart.player.x, b.y - wreckStart.player.y))[0];
+    let worked = { ok: false, reason: 'no part found' };
+    if (firstPart) {
+        await approach(firstPart.x, firstPart.y, 18);
+        await faceNode(firstPart.x, firstPart.y);
+        worked = await harvest('wreckpart', 40);
+    }
+    const afterOne = await live();
+    const salvaged = ['metal', 'wiring', 'glass', 'medicine']
+        .filter((k) => (afterOne.inventory[k] ?? 0) > (wreckStart.inventory[k] ?? 0));
+    await shot('wreck-02-worked');
+    check('WRECK 2 — a REAL hold on a wreck part yields wreck-era salvage',
+        worked.ok && salvaged.length > 0,
+        `worked ${worked.ok} (${worked.reason ?? ''}), gained [${salvaged.join(', ')}]`);
+    check('WRECK 2b — it cost real effort, through the shipped resolver',
+        afterOne.energy < wreckStart.energy,
+        `energy ${wreckStart.energy.toFixed(1)} -> ${afterOne.energy.toFixed(1)}`);
+    check('WRECK 2c — and it trained SEAMANSHIP, not the island\'s harvesting domain',
+        afterOne.knowledge.domains.navigationSeamanship.technique
+            > wreckStart.knowledge.domains.navigationSeamanship.technique,
+        `seamanship ${wreckStart.knowledge.domains.navigationSeamanship.technique.toFixed(2)}`
+        + ` -> ${afterOne.knowledge.domains.navigationSeamanship.technique.toFixed(2)}`);
+    check('WRECK 2d — the hull SHIFTED for it — the wreck is not inert',
+        afterOne.wreck.instability > wreckStart.wreck.instability,
+        `instability ${wreckStart.wreck.instability} -> ${afterOne.wreck.instability}`);
+
+    //  ---- THE TWO WARNINGS, READ OFF THE PAGE ----
+    //
+    //  The whole fair-challenge claim of item 3 is that the survivor is TOLD, in words, twice,
+    //  before the hull takes anything. No unit test can witness a sentence reaching a screen,
+    //  which is exactly why this leg exists.
+    await editSave(`
+        state.player = { x: 40, y: 240 };
+        state.raft = { built: true, x: 40, y: 240, grade: 'serviceable', aboard: true };
+        state.wreck = { reached: true, reachedAtGameHours: 4, instability: ${TUNE.wreckGroaningAt}, lastDisturbedAtGameHours: 4 };
+        state.health = 100; state.energy = 100;
+    `);
+    await sleep(700);
+    const groanLine = await page.evaluate(() => document.querySelector('.goal')?.textContent ?? '');
+    const groanState = await live();
+    await shot('wreck-03-groaning');
+    check('WRECK 3 — the FIRST warning reaches the page, in words',
+        /groan/i.test(groanLine), `goal line read: "${groanLine.trim()}"`);
+    check('WRECK 3b — and it has cost the survivor NOTHING',
+        groanState.health >= 99.5 && groanState.injuries.bleeding === 0,
+        `health ${groanState.health.toFixed(1)}, bleeding ${groanState.injuries.bleeding}`);
+
+    await editSave(`
+        state.player = { x: 40, y: 240 };
+        state.raft = { built: true, x: 40, y: 240, grade: 'serviceable', aboard: true };
+        state.wreck = { reached: true, reachedAtGameHours: 4, instability: ${TUNE.wreckGivingWayAt}, lastDisturbedAtGameHours: 4 };
+        state.health = 100; state.energy = 100;
+    `);
+    await sleep(700);
+    const givingLine = await page.evaluate(() => document.querySelector('.goal')?.textContent ?? '');
+    const givingState = await live();
+    await shot('wreck-04-giving-way');
+    check('WRECK 3c — the SECOND warning is a DIFFERENT sentence, and still free',
+        /tearing|below the waterline/i.test(givingLine)
+        && givingLine.trim() !== groanLine.trim()
+        && givingState.health >= 99.5,
+        `goal "${givingLine.trim()}", health ${givingState.health.toFixed(1)}`);
+
+    //  ...and only NOW, after both warnings, does working one more part cost something.
+    const bitePart = (await live()).nodes
+        .filter((n) => n.kind === 'wreckpart' && n.available)
+        .sort((a, b) => Math.hypot(a.x - 40, a.y - 240) - Math.hypot(b.x - 40, b.y - 240))[0];
+    let bit = { ok: false, reason: 'no available part' };
+    if (bitePart) {
+        await approach(bitePart.x, bitePart.y, 18);
+        await faceNode(bitePart.x, bitePart.y);
+        bit = await harvest('wreckpart', 40);
+    }
+    const afterBite = await live();
+    await shot('wreck-05-bitten');
+    check('WRECK 4 — working on AFTER both warnings takes a real wound',
+        bit.ok && afterBite.health < givingState.health && afterBite.injuries.bleeding > 0,
+        `worked ${bit.ok}, health ${givingState.health.toFixed(1)} -> ${afterBite.health.toFixed(1)},`
+        + ` bleeding ${afterBite.injuries.bleeding}`);
+    check('WRECK 4b — ...and the survivor STILL gets the salvage — it charges, never cancels',
+        bit.ok, `worked ${bit.ok} (${bit.reason ?? ''})`);
+
+    //  ---- D-011 ON DEVICE ----
+    const wreckAway = await goAway(240);
+    const wreckBack = await live();
+    check('WRECK 5 — D-011: an absence SETTLES the hull and can never raise it',
+        wreckBack.wreck.instability <= wreckAway.wreck.instability,
+        `instability ${wreckAway.wreck.instability} -> ${wreckBack.wreck.instability} over 4 h away`);
+
+    //  ---- THE MEDICINE, THROUGH THE PLAYER'S OWN ROUTE ----
+    //
+    //  Item 2's payoff, and the only salvage that answers a shipped problem. Taken through the
+    //  Backpack's Vitals tab with a real finger, never a hook (D-075).
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.raft = { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false };
+        state.inventory.medicine = 2;
+        state.illness = { severity: 2.0, cause: 'chill', gameHoursSick: 9 };
+        state.health = 90; state.energy = 100;
+    `);
+    const sickBefore = await live();
+    const packTap = await realTapDom('.carried-button');
+    await sleep(450);
+    const vitalsTap = await realTapDom('.tab-vitals');
+    await sleep(450);
+    const medVisible = await isVisible('.medicine-btn');
+    await shot('wreck-06-medicine');
+    check('WRECK 6 — the medical store is OFFERED where the sickness is read',
+        packTap.ok && vitalsTap.ok && medVisible.visible === true,
+        `pack ${packTap.ok}, vitals ${vitalsTap.ok}, button ${medVisible.visible} (${medVisible.reason ?? 'ok'})`);
+
+    const medTap = await realTapDom('.medicine-btn');
+    await sleep(700);
+    const sickAfter = await live();
+    check('WRECK 6b — a real tap SPENDS it and relieves the illness',
+        medTap.ok
+        && sickAfter.inventory.medicine === sickBefore.inventory.medicine - 1
+        && sickAfter.illness.severity < sickBefore.illness.severity,
+        `tap ${medTap.ok}, medicine ${sickBefore.inventory.medicine} -> ${sickAfter.inventory.medicine},`
+        + ` severity ${sickBefore.illness.severity.toFixed(2)} -> ${sickAfter.illness.severity.toFixed(2)}`);
+    check('WRECK 6c — relief, never a cure — the cause is kept while any severity remains',
+        sickAfter.illness.severity <= 0 || sickAfter.illness.cause === 'chill',
+        `severity ${sickAfter.illness.severity.toFixed(2)}, cause ${sickAfter.illness.cause}`);
 
 
     // ---- Hygiene ----

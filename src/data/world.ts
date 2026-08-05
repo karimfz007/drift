@@ -234,6 +234,24 @@ export function createNodes(): WoodNode[] {
         // repeat-minable, unlike the scattered rk1-3 stone outcrops it sits apart from.
         quarryNode('qr1', -46, 22),
 
+        //  ---- THE WRECK (the Wreck Slice) ----------------------------------------------
+        //
+        //  Six workable parts, authored at fixed offsets around the hull at `WRECK`. They are
+        //  ordinary `wreckpart` nodes, so they inherit the whole shipped harvest spine for
+        //  free — the gather verb, the reach check, the effort cost through the One Body
+        //  Resolver, the depleted visual, and the regrow clock. Nothing about working the
+        //  wreck is a parallel mechanic; it is the island's own verb, used 115 m offshore.
+        //
+        //  SPREAD AROUND THE HULL rather than stacked on it, so "explore the wreck" means
+        //  moving around a structure and finding the parts, not tapping one point six times.
+        //  The offsets are inside `wreckArrivalRadiusM` (14 m), so every one of them is
+        //  reachable from a raft moored alongside.
+        //
+        //  v0_10's Zone U0 is the design this matches — *"the boundary where waves, tide and
+        //  wreckage repeatedly move"* — and its ruling on what a wreck IS: **a worksite, not a
+        //  treasure room.** That is why these are worked, not opened.
+        ...WRECK_PARTS.map(([dx, dz], i) => node(`wr${i + 1}`, 'wreckpart', WRECK.x + dx, WRECK.y + dz)),
+
         //  THE BOULDER FORMATION (Drop 2) — the bedrock bluff that closes the ONLINE half of
         //  the renewability law. Placed apart from both the scattered outcrops and the
         //  quarry, so the island's three stone tiers are three visibly different places: you
@@ -242,6 +260,22 @@ export function createNodes(): WoodNode[] {
         node('bo1', 'boulder', 38, -34)
     ];
 }
+
+/**
+ * Where each workable part of the wreck sits, as an offset from the hull's centre in metres.
+ *
+ * Authored rather than scattered: this is a specific broken ship, and a survivor who learns
+ * that the instrument housing is off the port bow has learned something about a PLACE. A
+ * procedural scatter would make every visit a fresh search of the same water.
+ */
+const WRECK_PARTS: ReadonlyArray<readonly [number, number]> = [
+    [-6.5, 2.0],   // hull plating, low on the listing side
+    [5.5, -1.5],   // the buckled deck rail
+    [1.5, 6.0],    // instrument housing, off the bow
+    [-3.0, -6.5],  // a sprung cargo locker
+    [7.0, 4.5],    // the cable run where the mast came down
+    [-7.5, -4.0],  // the ship's medical store
+];
 
 function node(id: string, kind: NodeKind, x: number, z: number): WoodNode {
     return { id, kind, x, y: z, available: true, depletedAtGameHours: null };

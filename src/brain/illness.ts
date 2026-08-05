@@ -210,6 +210,45 @@ export function brewRemedy(state: GameState): boolean {
     return true;
 }
 
+/**
+ * THE MEDICAL STORE (the Wreck Slice) — and the reason it is a separate verb from brewing.
+ *
+ * `brewRemedy` needs a fire, fibre and berries, and gives `remedySeverityRelief`. It is what
+ * the ISLAND can do about being ill. This is what the WRECK can do, and the difference is the
+ * whole payoff of the crossing: no fire, no forage, no hour of work — you open a sealed store
+ * and take it, wherever you are, including 115 m offshore with a bleed and a fever.
+ *
+ * IT IS STILL RELIEF, NEVER A CURE, and that boundary is deliberate rather than cautious. It
+ * cannot take severity below zero and it never touches `cause` while any severity remains, so
+ * the readout can never lie about what started it — the same law `brewRemedy` already keeps.
+ * A one-shot cure would make the Medicine Slice's whole five-stage grammar irrelevant the
+ * moment a survivor owned one.
+ */
+export function canTakeMedicine(state: GameState): boolean {
+    return state.inventory.medicine > 0 && isIll(state.illness);
+}
+
+/** The nearest true reason, in Ch.2's language — never a generic refusal. */
+export function medicineBlocker(state: GameState): string | null {
+    if (state.inventory.medicine <= 0) return 'You have nothing like that.';
+    if (!isIll(state.illness)) return 'You are not ill.';
+    return null;
+}
+
+export function takeMedicine(state: GameState): boolean {
+    if (!canTakeMedicine(state)) return false;
+    state.inventory.medicine -= 1;
+    const severity = Math.max(0, state.illness.severity - TUNE.medicineSeverityRelief);
+    state.illness = {
+        severity,
+        cause: severity > 0 ? state.illness.cause : null,
+        gameHoursSick: state.illness.gameHoursSick,
+    };
+    //  The same domain brewing trains. Using a real medicine correctly is medicine.
+    recordTrying(state, 'foragingMedicine');
+    return true;
+}
+
 /** How much illness taxes every activity. Feeds `impairmentOf`, exactly as pain does. */
 export function illnessImpairmentShare(ill: IllnessState): number {
     if (!illnessCosts(ill)) return 0;

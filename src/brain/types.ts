@@ -56,8 +56,13 @@
  *      still only ever looked at. Merging in a raft nobody built would hand over the exact
  *      thing this slice exists to make someone earn, and marking the wreck reached would be
  *      the game telling a player they went somewhere they have never been.
+ * v24 — THE WRECK SLICE: the four wreck-era materials (metal/wiring/glass/medicine), the
+ *      hull's `instability`, and six `wreckpart` nodes. The materials migrate in at ZERO and
+ *      the nodes MERGE — the same split v21->v22 drew for the cave: a stock is a fact about
+ *      a body and we have no record of this one, while the wreck is a fact about the world
+ *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -80,7 +85,14 @@ export type NodeKind =
     | 'quarry'
     /** DROP 2 — the bedrock bluff. Effectively inexhaustible, deliberately slow. */
     | 'boulder'
-    | 'salvage';
+    | 'salvage'
+    /**
+     * THE WRECK SLICE — one workable part of the hull. Authored at fixed offsets from
+     * `WRECK`, worked with the SAME gather verb as everything else on the island, and
+     * shifting back into reach as the sea moves the wreckage (v0_10's Zone U0: *"the
+     * boundary where waves, tide and wreckage repeatedly move"*).
+     */
+    | 'wreckpart';
 
 /** What a beach salvage find turns out to hold, rolled once at spawn (D-051). */
 export type SalvageLoot = 'driftwood' | 'cordage' | 'stone' | 'bundle';
@@ -135,6 +147,26 @@ export interface Inventory {
     sharpblade: number;
     /** DROP 1 — raw meat from a killed boar. Spoils fast; cooking is the NEXT discovery. */
     meat: number;
+
+    //  ---- THE WRECK-ERA FAMILY (the Wreck Slice) --------------------------------------
+    //
+    //  The codex has named these since Cycle 01 — *"Metal parts (plane / ship salvage) ...
+    //  Salvage payoff — the crash gives back"* — and nothing on the island could produce
+    //  them, because the only place they exist is 115 m offshore. They are the answer to
+    //  "why did I build the raft".
+    //
+    //  They are NOT survival-critical, deliberately: you can live a full life on this island
+    //  without one gram of metal. That is what lets the wreck be finite-per-visit without
+    //  touching the renewability law ([[D-051]]), whose subject is the survival FLOOR.
+
+    /** Hull plate, fasteners, structural members. Heavy; an edge without knapping. */
+    metal: number;
+    /** Salt-stiff cable and loom. Lashing that does not rot. */
+    wiring: number;
+    /** Port glass and instrument faces. Cuts, and is the only transparent thing here. */
+    glass: number;
+    /** A sealed medical store. The one thing out there that answers a shipped problem. */
+    medicine: number;
 }
 
 /** Every kind of carried material — the key set `Inventory` actually holds. Ch.1 v3's
@@ -597,6 +629,17 @@ export interface WreckState {
     reached: boolean;
     /** The island clock when someone first came alongside. Null until they do. */
     reachedAtGameHours: number | null;
+    /**
+     * HOW UNSETTLED THE HULL IS RIGHT NOW, 0..`wreckInstabilityMax`.
+     *
+     * Raised ONLY by working the wreck — an EVENT per salvage, never a rate — which is what
+     * makes [[D-011]] structural here rather than checked: there is no elapsed-time term that
+     * could raise it, so no absence can. It SETTLES over elapsed hours, in `reconcile`, which
+     * is absence making things better and therefore always legal.
+     */
+    instability: number;
+    /** The island clock when the hull was last disturbed — the settling clock's anchor. */
+    lastDisturbedAtGameHours: number | null;
 }
 
 /** One stack on the ground. See `dropped.ts`. */
