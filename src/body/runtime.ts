@@ -7,8 +7,8 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, createSaveRepository, salvageCandidatePoint, spawnSalvageNode, type MorningReport } from '../brain';
-import { isPlaceablePoint } from '../data/world';
+import { SAVE_KEY, Session, createSaveRepository, ladderFor, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { FAR_ISLAND, isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
 /**
@@ -326,6 +326,21 @@ function installDebugHook(): void {
         //  the analytic ground height, and the player mesh's feet (D-022).
         camera: () => runtime.cameraReadout(),
         screenOf: (worldX: number, worldZ: number) => runtime.projectToScreen(worldX, worldZ),
+    //  ---- THE FAR ISLAND ([[D-126]]) — READ-ONLY, per the player-path law [[D-075]] ----
+    //
+    //  Each of these answers a question about the WORLD — where the island is, what sites are
+    //  on it, what rung a recipe sits at for this survivor. None of them performs an action,
+    //  and the harness section that uses them still reads every trace with a real tap. A hook
+    //  that DROVE the reading would prove the brain works and say nothing about whether a
+    //  human can reach it, which is exactly the gap standing hazard 4 is named after.
+    farIsland: () => ({ x: FAR_ISLAND.x, y: FAR_ISLAND.y, radius: FAR_ISLAND.radius }),
+    traceSites: () => traceSites().map((t) => ({
+        id: t.id, x: t.x, y: t.y, kind: t.kind, topic: t.topic, goods: { ...t.goods },
+    })),
+    ladderFor: (recipeId: string) => {
+        const st = runtime.session?.state;
+        return st ? ladderFor(st, recipeId) : null;
+    },
         groundAt: (worldX: number, worldZ: number) => runtime.groundAt(worldX, worldZ),
         playerFeetY: () => runtime.playerFeetY(),
         cameraPosition: () => runtime.cameraPositionReadout(),

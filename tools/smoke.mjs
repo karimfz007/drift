@@ -142,6 +142,7 @@ const TUNE = new Proxy({
     fatigueRecoveryPerGameHourResting: 12,
     sleepDurationGameHours: 8,
     wreckArrivalRadiusM: 14,
+    traceTapRadiusM: 2.6,
     wreckGroaningAt: 66,
     wreckGivingWayAt: 88,
 }, {
@@ -5717,6 +5718,125 @@ async function main() {
 
 
     }
+
+    // ================= THE FAR ISLAND (D-126) =================
+    //
+    //  GETTING THERE IS THE RAFT, and the raft's own crossing is already device-proven
+    //  (MARITIME 6 paddles it under the real stick). Re-paddling 296 m before every check
+    //  here would add minutes per assertion to prove the same thing again, so the survivor is
+    //  PLACED on the far shore by a state edit, stated openly. What is NOT faked is everything
+    //  this section is about: the ground is measured, the traces are tapped for real, and the
+    //  rung a note grants is read out of the shipped ladder.
+    if (section("THE FAR ISLAND (D-126)")) {
+    const FAR = await page.evaluate(() => window.__drift.farIsland?.() ?? null);
+    check('FAR 1 — the served build knows where the far island is',
+        FAR && typeof FAR.x === 'number', JSON.stringify(FAR));
+
+    if (FAR) {
+        await editSave(`
+            state.player = { x: ${FAR.x}, y: ${FAR.y} };
+            state.raft = { built: true, x: ${FAR.x}, y: ${FAR.y - FAR.radius - 6}, grade: 'serviceable', aboard: false };
+            state.energy = 100; state.health = 100; state.hunger = 100; state.thirst = 100;
+            state.traces = { read: [] };
+            //  THE FLOOR, FORCED rather than assumed. FAR 5b passed alone and failed in the
+            //  full sweep: the MARITIME section builds a raft earlier in the run, so by the
+            //  time this ran the survivor already stood at demonstrated, and the ladder
+            //  correctly refused to LOWER them for reading a note. The product was right and
+            //  the fixture was wrong -- it measured what rung they are at, when the claim is
+            //  what the TRACE GRANTS. Same discipline as D-055's journal, forced empty first.
+            state.blueprints = [];
+            state.knowledge = { ...state.knowledge, nullPairs: [] };
+        `);
+
+        //  ---- IT IS REAL LAND ----
+        const standing = await live();
+        const groundHere = await page.evaluate(([x, z]) => window.__drift.groundAt(x, z), [FAR.x, FAR.y]);
+        const feet = await page.evaluate(() => window.__drift.playerFeetY());
+        await shot('far-01-ashore');
+        check('FAR 2 — its centre is DRY LAND, well above the sea',
+            groundHere > -0.5, `ground ${groundHere?.toFixed?.(2)} m at the centre`);
+        check('FAR 2b — and the castaway STANDS on it, not in it',
+            Math.abs(feet - groundHere) < 1.2, `feet ${feet?.toFixed?.(2)} vs ground ${groundHere?.toFixed?.(2)}`);
+
+        //  THE SHORE, walked. The whole claim of this island is that it got a real waterline
+        //  for free from the Maritime Slice's own rules — so measure it rather than assert it.
+        const radial = await page.evaluate(([cx, cy, rad]) => {
+            const out = [];
+            for (let d = 0; d <= rad + 40; d += 2) out.push(window.__drift.groundAt(cx, cy + d));
+            return out;
+        }, [FAR.x, FAR.y, FAR.radius]);
+        const dropsToSea = radial.some((g) => g > 0) && radial[radial.length - 1] < -2;
+        check('FAR 3 — it has a real shore: land at the centre, open water past its rim',
+            dropsToSea, `centre ${radial[0]?.toFixed?.(1)} m, outermost ${radial[radial.length - 1]?.toFixed?.(1)} m`);
+
+        //  ---- THE TRACES, THROUGH THE REAL PLAYER PATH ----
+        const sites = await page.evaluate(() => window.__drift.traceSites?.() ?? []);
+        check('FAR 4 — the three traces exist in the served build',
+            sites.length === 3, `${sites.length} sites: ${sites.map((s) => s.id).join(', ')}`);
+
+        //  Read the CAMP: the one carrying a note about the raft, so the ladder rung is
+        //  observable rather than incidental.
+        const camp = sites.find((s) => s.topic === 'raft') ?? sites[0];
+        let readOk = false;
+        let afterRead = standing;
+        if (camp) {
+            const rungBefore = await page.evaluate(() => window.__drift.ladderFor?.('raft') ?? null);
+            await walkToward(camp.x, camp.y, 1.2);
+            await editSave('state.player = { x: ' + (camp.x + 2.2).toFixed(2) + ', y: ' + (camp.y + 2.2).toFixed(2) + ' };');
+            await faceNode(camp.x, camp.y);
+            await sleep(250);
+            await tapWorld(camp.x, camp.y, 55);
+            await sleep(900);
+            afterRead = await live();
+            readOk = afterRead.traces.read.includes(camp.id);
+            const rungAfter = await page.evaluate(() => window.__drift.ladderFor?.('raft') ?? null);
+            await shot('far-02-trace-read');
+            check('FAR 5 — a REAL tap on a trace reads it',
+                readOk, `read [${afterRead.traces.read.join(', ')}]`);
+            //  THE LINE THE WHOLE DESIGN RESTS ON. A stranger's note may move the survivor to
+            //  `conceptually-suspected` and no further — reading is not doing, for a stranger
+            //  exactly as for a predecessor.
+            check('FAR 5b — and it grants conceptually-suspected, NEVER demonstrated',
+                rungAfter === 'conceptually-suspected',
+                `raft rung ${rungBefore} -> ${rungAfter}`);
+        }
+
+        //  ---- LEFT GOODS, ONCE ----
+        const cache = sites.find((s) => Object.keys(s.goods ?? {}).length > 0 && s.id !== camp?.id);
+        if (cache) {
+            const before = await live();
+            await walkToward(cache.x, cache.y, 1.2);
+            await editSave('state.player = { x: ' + (cache.x + 2.2).toFixed(2) + ', y: ' + (cache.y + 2.2).toFixed(2) + ' };');
+            await faceNode(cache.x, cache.y);
+            await sleep(250);
+            await tapWorld(cache.x, cache.y, 55);
+            await sleep(900);
+            const mid = await live();
+            const gainedKinds = Object.keys(cache.goods).filter((k) => (mid.inventory[k] ?? 0) > (before.inventory[k] ?? 0));
+            check('FAR 6 — a cache hands over what was left behind',
+                mid.traces.read.includes(cache.id) && gainedKinds.length > 0,
+                `read ${mid.traces.read.includes(cache.id)}, gained [${gainedKinds.join(', ')}]`);
+
+            //  ...and NOT twice. A trace is a thing a person left, not a node that regrows.
+            await tapWorld(cache.x, cache.y, 55);
+            await sleep(700);
+            const twice = await live();
+            const doubled = Object.keys(cache.goods).some((k) => (twice.inventory[k] ?? 0) > (mid.inventory[k] ?? 0));
+            check('FAR 6b — ...and never twice',
+                !doubled, `inventory unchanged on the second tap: ${!doubled}`);
+        }
+
+        //  ---- D-011 ON DEVICE ----
+        const awayBefore = await live();
+        await goAway(240);
+        const awayAfter = await live();
+        check('FAR 7 — D-011: an absence on the far island neither harms nor forgets',
+            awayAfter.health > 0
+            && awayAfter.traces.read.length >= awayBefore.traces.read.length,
+            `health ${awayAfter.health?.toFixed?.(1)}, read ${awayBefore.traces.read.length} -> ${awayAfter.traces.read.length}`);
+    }
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

@@ -1035,6 +1035,17 @@ export const TUNE = {
      *  silhouette is ~6.5 m across and listing; this is arriving alongside, not threading a
      *  hatch, and the crossing's beat should not hinge on pixel steering. */
     wreckArrivalRadiusM: 14,
+    /** [TUNE] Far Island — tap forgiveness around a trace site, in metres.
+     *
+     *  THE DEFECT THIS CLOSES, and the device leg is the only thing that could have found it.
+     *  A tap is aimed at the ground plus 0.4 m, which is correct for a box or a cairn and
+     *  WRONG for a fire ring: the camp is a torus 0.29 m tall, so the ray passed clean over it
+     *  and struck the terrain behind. The cache (0.62 m) was hit; the ring never was.
+     *
+     *  A flat thing lying on the ground needs forgiveness rather than a taller mesh, because
+     *  making the ring stand up to be tappable would be letting the input model dictate what
+     *  the world looks like. The raft already has exactly this for exactly this reason. */
+    traceTapRadiusM: 2.6,
     /** [TUNE] Maritime — tap forgiveness around the raft, in metres. Basis: the deck is
      *  2.4 × 2.8 m, so half its diagonal is ~1.85; this is that plus the ~1.5 m of slack the
      *  shelter and the crate already get, on a phone, over water, from a moving camera. */

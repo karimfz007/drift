@@ -130,6 +130,7 @@ import {
     readTrace,
     readingFor,
     traceById,
+    traceSites,
     type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
@@ -803,6 +804,44 @@ export class Game {
     }
 
     /** Which boar the ray struck, read from mesh metadata rather than from its name. */
+    /**
+     * A TRACE SITE the ray struck, by id.
+     *
+     * THE DEFECT THIS CLOSES, found by the device leg on its first run and no earlier. The
+     * trace pending kind existed, `pendingTarget` could walk to one, and `actOnArrival`
+     * could read one — and NOTHING CREATED THE PENDING. `worldCandidateAt` resolves world
+     * targets by proximity to a struck point and returns a BARE KIND STRING, so it has
+     * nowhere to put an id and never knew about traces at all. Every tap on a cairn fell
+     * through to "empty ground".
+     *
+     * Same shape as `craftSpear`'s zero callers ([[D-114]]): the type, the handler and the
+     * verb all existed, and the one line that reaches them did not. Unit tests could not see
+     * it — every one of them calls `readTrace` directly, which is exactly the reachability
+     * gap [[D-090]] names.
+     *
+     * A MESH RAY, not proximity, for the same reason a boar uses one: a trace is a specific
+     * object rather than a region, and a proximity radius would let a cairn steal a tap
+     * aimed past it at the ground beyond.
+     */
+    private pickTrace(screenX: number, screenY: number): string | null {
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.scene.pick(screenX - rect.left, screenY - rect.top,
+            (m: AbstractMesh) => Boolean(m.metadata?.traceId) && m.isPickable);
+        const id = hit?.pickedMesh?.metadata?.traceId;
+        return typeof id === "string" ? id : null;
+    }
+
+    /** The nearest trace site to a struck ground point, within tap forgiveness. */
+    private traceNear(point: { x: number; z: number }): string | null {
+        let best: string | null = null;
+        let bestD = Infinity;
+        for (const t of traceSites()) {
+            const d = distance(point.x, point.z, t.x, t.y);
+            if (d <= TUNE.traceTapRadiusM && d < bestD) { bestD = d; best = t.id; }
+        }
+        return best;
+    }
+
     private pickBoar(screenX: number, screenY: number): string | null {
         const rect = this.canvas.getBoundingClientRect();
         const hit = this.scene.pick(screenX - rect.left, screenY - rect.top,
@@ -888,6 +927,8 @@ export class Game {
     private tapTargetAt(screenX: number, screenY: number): string | null {
         //  DROP 1 — a boar the ray struck outranks everything. When one is in front of you it
         //  is the only thing you meant to touch.
+        const traceProbe = this.pickTrace(screenX, screenY);
+        if (traceProbe) return 'trace:' + traceProbe;
         const boarHit = this.pickBoar(screenX, screenY);
         if (boarHit) return `boar:${boarHit}`;
         const node = this.pickNode(screenX, screenY);
@@ -900,6 +941,8 @@ export class Game {
         //  probe must never do, and it had already drifted once before. Worse, when FIX 5
         //  added the pack branch to the real tap, this copy did not get it, so the probe
         //  could not have reported `backpack` at all. One resolver now, called by both.
+        const nearTraceProbe = this.traceNear(point);
+        if (nearTraceProbe) return 'trace:' + nearTraceProbe;
         const winner = this.worldCandidateAt(point);
         if (winner) return winner;
         return this.pickedBackpack(screenX, screenY) ? 'backpack' : null;
@@ -1092,8 +1135,29 @@ export class Game {
         //  Otherwise, the fire, the pond, the shelter, or storage, by the point the ray
         //  struck — resolved by `worldCandidateAt`, the single copy of that rule, which the
         //  harness-fidelity probe calls too (C3 finding A9).
+        //  A trace the ray struck outranks the point-based resolver: it is a specific
+        //  object and carries an id the bare-kind path cannot express.
+        const traceHit = this.pickTrace(screenX, screenY);
+        if (traceHit) {
+            this.pending = { kind: 'trace', id: traceHit };
+            this.cues.play(CUES.target);
+            this.recordTap(screenX, screenY, 'trace:' + traceHit);
+            return;
+        }
+
         const point = this.pickHitPoint(screenX, screenY);
         if (!point) { this.recordTap(screenX, screenY, 'no-hit'); return; }
+
+        //  ...and a trace NEAR the struck point, for the flat ones the ray flies over. This is
+        //  the raft's own rule applied to ground-level objects: resolve by proximity to where
+        //  the ground was actually struck, so a fire ring is as tappable as a box.
+        const nearTrace = this.traceNear(point);
+        if (nearTrace) {
+            this.pending = { kind: 'trace', id: nearTrace };
+            this.cues.play(CUES.target);
+            this.recordTap(screenX, screenY, 'trace:' + nearTrace);
+            return;
+        }
 
         const winner = this.worldCandidateAt(point);
         //  The pack, resolved only after every world target has declined AND only when the
