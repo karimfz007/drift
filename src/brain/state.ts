@@ -7,6 +7,7 @@ import { gameHoursFromRealSeconds } from './clock';
 import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
 import { disturb, harmFromWorking } from './wreck';
+import { freshTraces } from './traces';
 import { freshInjuries } from './injury';
 import { freshIllness, onsetFrom } from './illness';
 import { TUNE } from '../data/tune';
@@ -111,7 +112,9 @@ export function createInitialState(nowMs: number): GameState {
         //  only one that leaves the island, so it is earned like everything else post-pivot.
         raft: { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false },
         //  The wreck has been on the horizon since Cycle 03 and nobody has ever been to it.
-        wreck: { reached: false, reachedAtGameHours: null, instability: 0, lastDisturbedAtGameHours: null }
+        wreck: { reached: false, reachedAtGameHours: null, instability: 0, lastDisturbedAtGameHours: null },
+        //  Nobody has read anything on the far island, because nobody has been.
+        traces: freshTraces()
     };
 }
 
@@ -159,6 +162,7 @@ export function cloneState(state: GameState): GameState {
         torch: { ...state.torch },
         raft: { ...state.raft },
         wreck: { ...state.wreck },
+        traces: { read: [...state.traces.read] },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
         knowledge: {

@@ -16,6 +16,7 @@ import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
 import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
@@ -26,7 +27,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
 import { TUNE } from '../data/tune';
-import { POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
+import { FAR_ISLAND, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
@@ -77,6 +78,8 @@ export class Island {
         this.buildRocks();
         this.buildPond();
         this.buildWreck();
+        this.buildFarIsland();
+        this.buildTraceSites();
 
         scene.fogMode = Scene.FOGMODE_EXP2;
     }
@@ -256,6 +259,130 @@ export class Island {
         mesh.isPickable = true;
         mesh.freezeWorldMatrix();
         mesh.receiveShadows = false;
+    }
+
+    /**
+     * THE FAR ISLAND gets its OWN mesh, and that is a decision rather than a convenience.
+     *
+     * Spawn Island's terrain spans `(islandRadius + seabedFalloff) * 2.03` — about ±152 m —
+     * so the far island at 420 m out is simply not in it. Widening that span to reach would
+     * have meant either a huge vertex count or a terrain so coarse that home's beach turned to
+     * facets: at 84 segments across 980 m the island would sample every 11.7 m, against 3.6 m
+     * today.
+     *
+     * A second mesh keeps home's resolution exactly as it is and costs one more draw call for
+     * a static, frozen, distant object. It samples the SAME `groundHeight`, so the land it
+     * draws is the land the brain already computes — the picture and the rule cannot drift.
+     */
+    private buildFarIsland(): void {
+        const segments = RENDER.farIslandSegments;
+        const span = FAR_ISLAND.radius * 2.4;
+        const step = span / segments;
+        const ox = FAR_ISLAND.x - span / 2;
+        const oz = FAR_ISLAND.y - span / 2;
+
+        const positions = [];
+        const colours = [];
+        const indices = [];
+        const sandDry = PALETTE.sandDry;
+        const sandWet = PALETTE.sandWet;
+        const grass = PALETTE.grass;
+        const grassDark = PALETTE.grassDark;
+
+        for (let iz = 0; iz <= segments; iz++) {
+            for (let ix = 0; ix <= segments; ix++) {
+                const x = ox + ix * step;
+                const z = oz + iz * step;
+                const y = groundHeight(x, z);
+                positions.push(x, y, z);
+                //  Same palette logic as home, keyed off height rather than radius: grass up
+                //  top, sand at the waterline, wet sand below it. A survivor should recognise
+                //  it as the same KIND of place, made of the same stuff.
+                const grassMix = mix(grassDark, grass, smoothstep(0, 2.4, y));
+                const beachBlend = smoothstep(1.6, 0.2, y);
+                const land = mix(grassMix, sandDry, beachBlend);
+                const wet = smoothstep(WORLD.seaLevel + 0.5, WORLD.seaLevel - 0.5, y);
+                const final = mix(land, sandWet, wet);
+                const shade = 0.88 + 0.12 * Math.sin(x * 0.35) * Math.cos(z * 0.31);
+                colours.push(final[0] * shade, final[1] * shade, final[2] * shade, 1);
+            }
+        }
+
+        const row = segments + 1;
+        for (let iz = 0; iz < segments; iz++) {
+            for (let ix = 0; ix < segments; ix++) {
+                const a = iz * row + ix;
+                indices.push(a, a + row, a + 1, a + 1, a + row, a + row + 1);
+            }
+        }
+
+        //  Analytic normals, for the same reason home uses them: winding-derived normals here
+        //  were once silently inverted and back-face culled a whole beach out of existence.
+        const normals = [];
+        const probe = step * 0.5;
+        for (let iz = 0; iz <= segments; iz++) {
+            for (let ix = 0; ix <= segments; ix++) {
+                const x = ox + ix * step;
+                const z = oz + iz * step;
+                const dhdx = (groundHeight(x + probe, z) - groundHeight(x - probe, z)) / (2 * probe);
+                const dhdz = (groundHeight(x, z + probe) - groundHeight(x, z - probe)) / (2 * probe);
+                const len = Math.hypot(-dhdx, 1, -dhdz);
+                normals.push(-dhdx / len, 1 / len, -dhdz / len);
+            }
+        }
+
+        const mesh = new Mesh('farIsland', this.scene);
+        const data = new VertexData();
+        data.positions = positions;
+        data.indices = indices;
+        data.normals = normals;
+        data.colors = colours;
+        data.applyToMesh(mesh);
+        //  Opaque, or Babylon moves it into the transparent pass and blends it over the sea.
+        mesh.hasVertexAlpha = false;
+        mesh.material = this.terrainMaterial;
+        mesh.isPickable = true;
+        mesh.freezeWorldMatrix();
+        mesh.receiveShadows = false;
+    }
+
+    /**
+     * THE TRACES, drawn so they read from a distance as things a PERSON left — a fire ring,
+     * a box, a cairn — rather than as resource nodes. Each is pickable and tagged with its
+     * own id, so the tap routes to that site and no other.
+     */
+    private buildTraceSites(): void {
+        for (const site of TRACE_SITES) {
+            const y = groundHeight(site.x, site.y);
+            const material = this.flatMaterial(`traceMat_${site.id}`);
+            material.diffuseColor = new Color3(0.34, 0.31, 0.28);
+            material.emissiveColor = new Color3(0.03, 0.03, 0.03);
+
+            let mesh;
+            if (site.kind === 'camp') {
+                //  A ring of stones, laid flat and cold.
+                mesh = CreateTorus(`trace_${site.id}`, { diameter: 1.8, thickness: 0.34, tessellation: 9 }, this.scene);
+                mesh.position.set(site.x, y + 0.12, site.y);
+            } else if (site.kind === 'cache') {
+                mesh = CreateBox(`trace_${site.id}`, { width: 0.9, height: 0.62, depth: 0.7 }, this.scene);
+                mesh.position.set(site.x, y + 0.31, site.y);
+                mesh.rotation.y = 0.4;
+            } else {
+                //  A cairn: shoulder-high, with the flat stone on top.
+                mesh = CreateCylinder(`trace_${site.id}`, { height: 1.5, diameterTop: 0.5, diameterBottom: 0.95, tessellation: 7 }, this.scene);
+                mesh.position.set(site.x, y + 0.75, site.y);
+                const cap = CreateBox(`trace_${site.id}_cap`, { width: 0.7, height: 0.1, depth: 0.7 }, this.scene);
+                cap.material = material;
+                cap.parent = mesh;
+                cap.position.y = 0.8;
+                cap.isPickable = true;
+                cap.metadata = { traceId: site.id };
+            }
+            mesh.material = material;
+            mesh.isPickable = true;
+            mesh.metadata = { traceId: site.id };
+            mesh.freezeWorldMatrix();
+        }
     }
 
     private buildSea(): void {

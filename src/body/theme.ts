@@ -172,6 +172,10 @@ export const RENDER = {
     surfLineAlpha: 0.5,
     /** Terrain grid resolution across the island's full diameter. */
     terrainSegments: 84,
+    /** [Far Island] Its own mesh's resolution. 56 across a 178 m span is ~3.2 m per vertex —
+     *  slightly FINER than home's 3.6, because the island is small and its whole shoreline is
+     *  visible at once from a raft. 57^2 = 3249 vertices on one static frozen mesh. */
+    farIslandSegments: 56,
     /** Hardware scaling ceiling: never render more than this many device pixels per CSS px. */
     maxDevicePixelRatio: 2,
     /** Flame particle budget. */

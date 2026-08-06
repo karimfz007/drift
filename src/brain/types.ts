@@ -56,13 +56,19 @@
  *      still only ever looked at. Merging in a raft nobody built would hand over the exact
  *      thing this slice exists to make someone earn, and marking the wreck reached would be
  *      the game telling a player they went somewhere they have never been.
+ * v25 — THE FAR ISLAND (traces-first): `traces`, the ids of trace sites the survivor has
+ *      read. Migrates in EMPTY — a returning player has not crossed 296 m of open water to
+ *      read a stranger's note, and crediting them would hand over the one thing the far
+ *      island exists to make someone go and find. The island and its sites themselves are
+ *      terrain and content, stored nowhere, so they simply appear — the same split v21->v22
+ *      drew for the cave and v23->v24 for the wreck.
  * v24 — THE WRECK SLICE: the four wreck-era materials (metal/wiring/glass/medicine), the
  *      hull's `instability`, and six `wreckpart` nodes. The materials migrate in at ZERO and
  *      the nodes MERGE — the same split v21->v22 drew for the cave: a stock is a fact about
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -571,6 +577,16 @@ export interface GameState {
     /** DROP 3, the Medicine Slice. Caused, never rolled; held on absence, never worsened. */
     illness: IllnessState;
     /**
+     * THE FAR ISLAND — which traces this survivor has read. Ids only; the sites themselves are
+     * authored content in `world.ts`, not save state.
+     *
+     * A fact about the PERSON, not the place: a successor arrives having read nothing, and has
+     * to cross and look for themselves. That is the same line `wreck.reached` draws from the
+     * other side — the island remembers that someone got there, and nobody inherits what they
+     * understood when they did.
+     */
+    traces: TracesState;
+    /**
      * THE CAVE (Drop 3 Part 2 item 2) — a refuge made of terrain rather than materials.
      *
      * `found` is knowledge, `sheltering` is position, and they are separate because a survivor
@@ -640,6 +656,19 @@ export interface WreckState {
     instability: number;
     /** The island clock when the hull was last disturbed — the settling clock's anchor. */
     lastDisturbedAtGameHours: number | null;
+}
+
+/**
+ * THE FAR ISLAND — which traces have been read. Ids only, in the same JSON-safe shape
+ * `nullPairs` and the memorial already use; the sites themselves are authored content in
+ * `world.ts` and are not save state.
+ *
+ * Declared here rather than in `traces.ts` because `GameState` holds it and `traces.ts`
+ * already imports `GameState` — the other way round would close an import cycle, which is the
+ * same reason `JournalState` and `InjuryState` live here too.
+ */
+export interface TracesState {
+    read: string[];
 }
 
 /** One stack on the ground. See `dropped.ts`. */

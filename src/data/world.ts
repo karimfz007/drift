@@ -137,6 +137,34 @@ export const CAVE_SITE = { x: 48, y: -34 } as const;
 export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 
 /**
+ * THE FAR ISLAND — the curiosity promise, made land.
+ *
+ * Placed BEYOND the wreck on the same bearing, so the three things a survivor can see from
+ * the spawn beach line up into one story: the surf you can reach, the wreck you can paddle
+ * to, and the shape past it that is clearly not weather. Each one is further than the last,
+ * and each one is answered by the same raft.
+ *
+ * ~424 m from the island's centre and ~296 m of open water past Spawn Island's shore. That
+ * number is deliberate: `swimEnergyDrainPerGameHour` buys about 218 m of swimming from a full
+ * reserve, so **this island cannot be swum to, at all, ever** — it is the first place in the
+ * game that is raft-only. Paddled it is ~3 real minutes each way and about 11 energy, which
+ * makes it a journey to provision for rather than a gamble to survive.
+ *
+ * ITS SHORE COSTS NOTHING TO BUILD. `waterDepthAt`, `isDryLand`, `waterZoneAt` and
+ * `surfaceHeightAt` all derive from `groundHeight`, so raising land here gives the far island
+ * a real waterline, a real wading band and real walkable ground with no new rules — the whole
+ * of the Maritime Slice applies to it the moment the terrain exists.
+ */
+export const FAR_ISLAND = {
+    x: 60,
+    y: 420,
+    /** Smaller than home. It is a place you visit, not a second home to settle. */
+    radius: 74,
+    centreHeight: 7.5,
+    shoreFalloff: 14,
+} as const;
+
+/**
  * Ground height at a point, in metres. A flat shelf holds the island above the waterline,
  * a dome rises to the treeline, gentle dunes texture the beach, and the pond basin dips
  * below the shelf so water sits in it. One cheap analytic call — no heightmap to download,
@@ -159,7 +187,13 @@ export function groundHeight(x: number, z: number): number {
     //  surface, which itself reaches ≈ 0 there, so the two halves join without a step.
     if (r >= WORLD.islandRadius) {
         const out = Math.min(1, (r - WORLD.islandRadius) / WORLD.seabedFalloff);
-        return -WORLD.seabedDepth * smoothstep(0, 1, out);
+        const seabed = -WORLD.seabedDepth * smoothstep(0, 1, out);
+        //  THE FAR ISLAND rises out of that seabed. `Math.max` rather than a sum, so the two
+        //  landmasses cannot interfere: home's shelf is untouched (it returns before ever
+        //  reaching here) and the far island simply wins wherever it is higher than the
+        //  water it stands in. Its own shore, waterline and wading band then fall out of
+        //  `waterDepthAt` with no new rule — see `FAR_ISLAND`.
+        return Math.max(seabed, farIslandHeight(x, z));
     }
 
     const shelf = WORLD.shelfHeight * smoothstep(WORLD.islandRadius, WORLD.islandRadius - WORLD.shoreFalloff, r);
@@ -179,6 +213,101 @@ export function groundHeight(x: number, z: number): number {
     const basin = -2.4 * smoothstep(POND.radius + 6, 0, pondDist);
 
     return shelf + dome + dunes + basin;
+}
+
+/**
+ * THE TRACES — three authored sites, and what each one is FOR.
+ *
+ * The design rule, and the reason these are not loot piles: **a trace is evidence that someone
+ * else solved this, not a delivery of the solution.** Each carries a note that enters through
+ * the SAME found-content channel the Survivor's Journal already uses ([[D-068]]), which means
+ * it grants `conceptually-suspected` and stops there — reading about a technique is not having
+ * done it, and the ladder has always said so.
+ *
+ * BENIGN BY CONSTRUCTION, per this pass's brief and [[D-011]]. Nothing here decays, threatens,
+ * spoils, or changes while a player is away. There is no state a returning survivor can wake
+ * into that they could not have walked away from, because a trace does not act at all — it
+ * only ever answers being read.
+ *
+ * Three, not thirty. Enough that the island has something to find and a reason to walk across
+ * it; far short of a settlement, which is deliberately deferred.
+ */
+export interface TraceSite {
+    id: string;
+    x: number;
+    y: number;
+    /** What the site looks like, for the body. */
+    kind: 'camp' | 'cache' | 'marker';
+    /** One line, read on arrival — what you can SEE without touching anything. */
+    sight: string;
+    /** The recipe the note bears on, or null for a plain observation that teaches no craft. */
+    topic: string | null;
+    /** The note itself, in the hand of whoever left it. Never instructions. */
+    note: string;
+    /** What the site yields once, if anything. Left goods, not a reward table. */
+    goods: Partial<Record<'wood' | 'fiber' | 'stone' | 'coconut' | 'metal' | 'wiring' | 'glass' | 'medicine', number>>;
+}
+
+export const TRACE_SITES: readonly TraceSite[] = [
+    {
+        id: 'tr-camp',
+        //  On the near shore, so the first thing a survivor finds after landing is that
+        //  someone landed here before them.
+        x: FAR_ISLAND.x - 6,
+        y: FAR_ISLAND.y - 52,
+        kind: 'camp',
+        sight: 'A fire ring, long cold. The stones are set the way you set yours.',
+        //  A raft note, on the beach where a raft would have been dragged up. It confirms the
+        //  crossing was survivable for someone else, which is the one thing worth knowing here.
+        topic: 'raft',
+        note: 'Third try before it held. Lash the cross-pieces UNDER the deck, not over — mine came apart over.',
+        goods: { fiber: 4, wood: 3 },
+    },
+    {
+        id: 'tr-cache',
+        //  Inland and east: far enough that finding it means crossing the island.
+        x: FAR_ISLAND.x + 34,
+        y: FAR_ISLAND.y + 12,
+        kind: 'cache',
+        sight: 'A box wedged under a rock overhang, deliberately out of the rain.',
+        topic: null,
+        note: 'Leaving what I cannot carry. If you are reading this you got further than I did.',
+        //  Wreck-era goods, because whoever left them had crossed too. This is the only
+        //  source of salvage outside the wreck itself, and it is a one-time find.
+        goods: { metal: 2, medicine: 1 },
+    },
+    {
+        id: 'tr-marker',
+        //  The high point. A marker you can see from the landing, so the island reads as
+        //  having a somewhere-to-go rather than being a disc with objects on it.
+        x: FAR_ISLAND.x + 4,
+        y: FAR_ISLAND.y + 44,
+        kind: 'marker',
+        sight: 'A cairn, shoulder-high, with a flat stone laid on top like a full stop.',
+        topic: null,
+        note: 'Nine of us came ashore. I am writing this alone. Do not wait for the season to turn.',
+        goods: {},
+    },
+];
+
+/**
+ * The far island's own height field, in the same analytic style as home's: a dome that falls
+ * to nothing at its rim. Returns a large NEGATIVE well outside its radius so `Math.max`
+ * against the seabed leaves open water exactly as it was.
+ *
+ * Deliberately simpler than `groundHeight`'s island — no dunes, no basin. This pass ships the
+ * island EXISTING and REACHABLE with a handful of traces on it; giving it its own geology,
+ * forage and weather is the fuller buildout, and is named as deferred rather than half-done.
+ */
+export function farIslandHeight(x: number, z: number): number {
+    const d = Math.hypot(x - FAR_ISLAND.x, z - FAR_ISLAND.y);
+    if (d >= FAR_ISLAND.radius) return -Infinity;
+    //  Flat-ish shelf inside, falling away over `shoreFalloff` to the waterline — the same
+    //  shape that gives home a beach you can wade off rather than a cliff you fall off.
+    const t = 1 - d / FAR_ISLAND.radius;
+    const dome = FAR_ISLAND.centreHeight * t * t * (3 - 2 * t);
+    const shelf = smoothstep(FAR_ISLAND.radius, FAR_ISLAND.radius - FAR_ISLAND.shoreFalloff, d);
+    return dome * shelf - WORLD.seabedDepth * (1 - shelf);
 }
 
 /** Hermite blend between two edges; edge0 may exceed edge1 for a falling ramp. */

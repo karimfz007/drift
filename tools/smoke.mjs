@@ -102,6 +102,7 @@ const TUNE = new Proxy({
     //  SLICE 3: the arrival profile replaces the respawn fractions, here as in tune.ts. The
     //  two `respawn*` constants are GONE from the source, so mirroring them would be mirroring
     //  a value that no longer exists — which is exactly the drift this mirror exists to catch.
+    healthRegenPerGameHour: 4,
     arrivalHealthFraction: 0.65,
     impairmentMaxMultiplier: 1.6,
     environmentStrainMultiplier: 1.3,
@@ -445,6 +446,33 @@ function section(name) {
 /** True when this run saw a filter at all — the summary reads differently if so. */
 function isFilteredRun() {
     return ONLY_TERMS.length > 0 || Boolean(FROM);
+}
+
+/**
+ * THE ARRIVAL PROFILE, READ AGAINST A MOVING TARGET ([[D-116]]/[[D-120]] — one fix, both checks).
+ *
+ * THE DEFECT, and it was arithmetic rather than a hypothesis. Two checks asserted
+ * `|health - arrivalHealthFraction| < 1.5`. But health REGENERATES at
+ * `healthRegenPerGameHour` from the moment a survivor arrives, so the value being measured
+ * is climbing while the check reads it — and a slow boot pushes it out of a band that was
+ * never wrong about the profile, only about the clock. 66.4 passed and 66.6 failed one run
+ * apart, with the arrival unit tests green throughout.
+ *
+ * THE FIX IS TO STOP PRETENDING THE TARGET IS STILL. Health can only rise from the arrival
+ * value (nothing here drains it), and the state knows EXACTLY how long this survivor has
+ * been alive: `gameHoursElapsed - survivorStartedAtGameHours`. So the upper bound is the
+ * arrival value plus the regen actually earned in that time, and the lower bound stays
+ * tight — a body BELOW its arrival profile would be a real defect and must still fail.
+ *
+ * Asymmetric on purpose. Simply widening to ±5 would have hidden the very thing the check
+ * exists to catch, and would drift again the moment a boot got slower still.
+ */
+function arrivalHealthReading(st) {
+    const base = 100 * TUNE.arrivalHealthFraction;
+    const ageGameHours = Math.max(0, (st.gameHoursElapsed ?? 0) - (st.survivorStartedAtGameHours ?? 0));
+    const earned = TUNE.healthRegenPerGameHour * ageGameHours;
+    const ok = st.health >= base - 1.5 && st.health <= base + earned + 1.5;
+    return { ok, base, ageGameHours, earned, health: st.health };
 }
 
 async function main() {
@@ -854,7 +882,7 @@ async function main() {
     console.log(`  (renderer: ${renderer})`);
     await startFresh();
 
-    const booted = await page.evaluate(() => { const s = window.__drift.state(); return { canvas: !!document.getElementById('game-canvas'), nodes: s.nodes.length, thirst: s.thirst, hunger: s.hunger, health: s.health }; });
+    const booted = await page.evaluate(() => { const s = window.__drift.state(); return { canvas: !!document.getElementById('game-canvas'), nodes: s.nodes.length, thirst: s.thirst, hunger: s.hunger, health: s.health, gameHoursElapsed: s.gameHoursElapsed, survivorStartedAtGameHours: s.survivorStartedAtGameHours }; });
     //  LAWS 115-117. This asserted the three vitals were FULL at boot, and it is the harness
     //  twin of the unit test that codified "100% spawn" as correct — both sat green through
     //  the slice that was supposed to fix it. A castaway now WASHES ASHORE: compromised on
@@ -863,9 +891,10 @@ async function main() {
     check('loads a playable 3D scene, and the survivor WASHED ASHORE (not six full bars)',
         booted.canvas && booted.nodes > 0
         && Math.abs(booted.thirst - 100 * TUNE.arrivalThirstFraction) < 1.5
-        && Math.abs(booted.health - 100 * TUNE.arrivalHealthFraction) < 1.5
+        && arrivalHealthReading(booted).ok
         && booted.health < 100 && booted.thirst < 100 && booted.hunger < 100,
-        `${booted.nodes} nodes — thirst ${booted.thirst?.toFixed?.(1)}, hunger ${booted.hunger?.toFixed?.(1)}, health ${booted.health?.toFixed?.(1)}`);
+        `${booted.nodes} nodes — thirst ${booted.thirst?.toFixed?.(1)}, hunger ${booted.hunger?.toFixed?.(1)}, health ${booted.health?.toFixed?.(1)}`
+        + ` (arrival ${arrivalHealthReading(booted).base}, +${arrivalHealthReading(booted).earned.toFixed(2)} regen earned in ${arrivalHealthReading(booted).ageGameHours.toFixed(3)} gh)`);
 
     const layout = await page.evaluate(() => { const c = document.getElementById('game-canvas'); const r = c.getBoundingClientRect(); return { fits: r.width <= window.innerWidth + 1 && r.height <= window.innerHeight + 1, landscape: window.innerWidth >= window.innerHeight, touch: getComputedStyle(document.body).touchAction, vp: document.querySelector('meta[name=viewport]')?.content ?? '' }; });
     check('canvas fills the viewport, no pinch/zoom trap', layout.fits && layout.touch === 'none' && /user-scalable=no/.test(layout.vp));
@@ -3175,8 +3204,8 @@ async function main() {
     //  is empty, the same continuous-drift reason C05's own audit already loosened an
     //  energy===100 assertion for. The fraction should still land close, just not exact.
     check('SLICE 3 — nobody wakes: the successor lands on the authored arrival profile',
-        Math.abs(revived.health - 100 * TUNE.arrivalHealthFraction) < 1.5 && revived.health < 100,
-        `health ${revived.health} (arrival profile ${100 * TUNE.arrivalHealthFraction})`);
+        arrivalHealthReading(revived).ok && revived.health < 100,
+        `health ${revived.health} (arrival ${arrivalHealthReading(revived).base}, +${arrivalHealthReading(revived).earned.toFixed(2)} regen earned in ${arrivalHealthReading(revived).ageGameHours.toFixed(3)} gh)`);
     check('FIX-2 — every death is logged with a cause and a game-clock timestamp', Array.isArray(revived.trace.deathLog) && revived.trace.deathLog.length >= 1 && typeof revived.trace.deathLog[revived.trace.deathLog.length - 1].cause === 'string', JSON.stringify(revived.trace.deathLog?.slice(-1)));
 
     // ---- A4: absence and the morning report ----

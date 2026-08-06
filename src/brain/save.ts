@@ -112,6 +112,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 21) current = migrateV21toV22(current);
     if (current.schemaVersion === 22) current = migrateV22toV23(current);
     if (current.schemaVersion === 23) current = migrateV23toV24(current);
+    if (current.schemaVersion === 24) current = migrateV24toV25(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -776,6 +777,29 @@ function migrateV23toV24(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v24 -> v25, THE FAR ISLAND. The island appears; what anyone learned there does not.
+ *
+ * The split this file keeps drawing, one more time. The landmass and its trace sites are
+ * TERRAIN AND CONTENT — computed by `groundHeight` and authored in `world.ts`, stored in no
+ * save — so every existing game gains them for free, exactly as v21->v22's cave and
+ * v23->v24's wreck nodes did. A save without the far island would be a save on a different sea.
+ *
+ * `traces` migrates in EMPTY, because reading a stranger's note 296 m of open water from home
+ * is an achievement and not a fact about the world. Crediting a returning player with it would
+ * hand over the single thing this island exists to make someone go and find.
+ */
+function migrateV24toV25(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const existing = (old as unknown as { traces?: { read?: unknown } }).traces;
+    const state: GameState = {
+        ...old,
+        traces: Array.isArray(existing?.read) ? { read: existing.read as string[] } : { read: [] },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -815,6 +839,7 @@ function hydrate(state: GameState): GameState {
         storage: { ...base.storage, ...state.storage, stored: { ...base.storage.stored, ...state.storage?.stored } },
         torch: { ...base.torch, ...state.torch },
         raft: { ...base.raft, ...state.raft },
+        traces: { read: [...(state.traces?.read ?? base.traces.read)] },
         wreck: { ...base.wreck, ...state.wreck },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

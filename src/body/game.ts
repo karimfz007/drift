@@ -127,6 +127,9 @@ import {
     waterSpeedMultiplierOf,
     waterZoneOf,
     wreckNoteFor,
+    readTrace,
+    readingFor,
+    traceById,
     type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
@@ -168,6 +171,9 @@ type Pending =
     //  four above — a vehicle does not get a bespoke input path, because a bespoke path is
     //  where the Default-Verb Law quietly stops applying.
     | { kind: 'raft' }
+    //  THE FAR ISLAND — a trace site. Same tap/hold/circle machinery as everything else; a
+    //  note somebody left is not special-cased into its own input path.
+    | { kind: 'trace'; id: string }
     | null;
 
 /** One entry in the debug tap log (D-050) — what a tap resolved to, and where. */
@@ -856,6 +862,10 @@ export class Game {
             const st = session().state.storage;
             return { x: st.x, z: st.y, unexpectedMesh: null };
         }
+        if (hit?.hit && hit.pickedMesh?.metadata?.traceId) {
+            const t = traceById(hit.pickedMesh.metadata.traceId as string);
+            if (t) return { x: t.x, z: t.y, unexpectedMesh: null };
+        }
         if (hit?.hit && hit.pickedMesh?.metadata?.raft) {
             const rf = session().state.raft;
             return { x: rf.x, z: rf.y, unexpectedMesh: null };
@@ -1218,6 +1228,10 @@ export class Game {
             const st = session().state.storage;
             return st.built ? { x: st.x, z: st.y } : null;
         }
+        if (this.pending.kind === 'trace') {
+            const t = traceById(this.pending.id);
+            return t ? { x: t.x, z: t.y } : null;
+        }
         if (this.pending.kind === 'raft') {
             const rf = session().state.raft;
             return rf.built ? { x: rf.x, z: rf.y } : null;
@@ -1246,6 +1260,16 @@ export class Game {
     private actOnArrival(): void {
         if (!this.pending) return;
         const s = session().state;
+
+        //  THE FAR ISLAND — a trace has exactly ONE thing you want from it, so a tap does it.
+        //  That is the Default-Verb Law's simplest case: a circle here would be a menu with a
+        //  single item, which is precisely the frequent-verb slowdown the law forbids.
+        if (this.pending.kind === 'trace') {
+            const id = this.pending.id;
+            this.pending = null;
+            this.doReadTrace(id);
+            return;
+        }
 
         //  SLICE 2 — THE RADIAL CIRCLE REPLACES THREE PRIORITY HACKS.
         //
@@ -1649,6 +1673,34 @@ export class Game {
         if (!leaveRaft(state)) return;
         session().persist(now());
         this.explain(intoWater ? 'You slip into the water beside it.' : 'You step onto solid ground.');
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * READ A TRACE. The whole of the far island's interaction, and deliberately small.
+     *
+     * What it shows is staged: the SIGHT first (what anyone could see standing here), then the
+     * note itself. A survivor who has already read it is told so rather than being handed the
+     * goods twice — a trace is a thing a person left, not a node that regrows.
+     */
+    private doReadTrace(id: string): void {
+        const state = session().state;
+        const reading = readingFor(state, id);
+        if (!reading) return;
+        if (reading.alreadyRead) {
+            this.explain(reading.sight);
+            return;
+        }
+        const result = readTrace(state, id);
+        if (!result.ok) { this.explain(reading.sight); return; }
+        session().persist(now());
+        this.cues.play(CUES.pickup);
+        //  The sight, then the note. Two beats, because arriving somewhere someone else was
+        //  is the point and handing over a paragraph in one toast would flatten it.
+        this.explain(reading.sight);
+        const gained = Object.entries(result.gained)
+            .map(([k, n]) => `${n} ${k}`).join(', ');
+        this.showHint(reading.site.note + (gained ? `  ·  ${gained}` : ''));
         this.lastActivityAt = now();
     }
 

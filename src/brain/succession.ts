@@ -138,6 +138,12 @@ export function closeSurvivor(state: GameState, cause: string): {
         //  it would wake a new castaway already at sea, aboard something they have never seen,
         //  which is the personal/worldly line this whole module is built on.
         raft: { ...state.raft, aboard: false },
+        //  TRACES ARE NOT LISTED HERE, and that absence is the decision. Having READ a
+        //  stranger's note is something that happened to a mind, not to the island — so it
+        //  dies with the reader, and the successor must cross and look for themselves. The
+        //  notes are still out there; what is gone is having understood them. Same line
+        //  `wreck.reached` draws from the other side: the island remembers the crossing
+        //  happened; nobody inherits what it taught.
         //  Someone got out there. That is a fact about this island's history and it is exactly
         //  the `found-intact` grade of inheritance [[D-069]] permits: the successor knows the
         //  crossing is possible and has no idea how it was done.

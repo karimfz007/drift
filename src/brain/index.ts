@@ -37,6 +37,7 @@ export * from './knowledge';
 export * from './body';
 export * from './water';
 export * from './wreck';
+export * from './traces';
 export * from './loadout';
 export * from './experiment';
 export * from './recipes';

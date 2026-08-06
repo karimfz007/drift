@@ -34,6 +34,7 @@ import { TUNE } from '../data/tune';
 import type { GameState, KnowledgeDomain } from './types';
 import { allRecipes } from './recipes';
 import { suspicionFor } from './discovery';
+import { traceSuggests } from './traces';
 
 /**
  * `recipeDomain` THROWS on an unknown id. The ladder is asked about things the survivor has
@@ -110,6 +111,14 @@ export function ladderFor(state: GameState, recipeId: string): LadderState {
     //  Read inline rather than through `journal.ts` on purpose: that module reads the ladder
     //  to decide what may be written, and an import back would close a cycle.
     if (journalSpeaksTo(state, recipeId)) return 'conceptually-suspected';
+
+    //  A TRACE LEFT BY A STRANGER (the Far Island), through the SAME channel and at the SAME
+    //  rung as the journal above — deliberately not one higher. Someone else's note is someone
+    //  else's hands: it tells you the thing is possible and that there is a wrong way to do it,
+    //  and it stops there. Granting `demonstrated` from a note would make the writer's work
+    //  transferable, which is the exact inheritance Slice 3 forbids — and a stranger is no more
+    //  entitled to hand it over than a predecessor is.
+    if (traceSuggests(state, recipeId)) return 'conceptually-suspected';
 
     //  REQUALIFICATION — Slice 3, [[D-069]]: MATTER, NOT MEMORY.
     //
