@@ -89,6 +89,8 @@ export const runtime = {
     /** Installed by the game; used only by the debug hook. */
     cameraReadout: (() => ({ yaw: 0, pitch: 0 })) as () => { yaw: number; pitch: number },
     projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null,
+    /** Aim at a mesh's own drawn centre — the height-agnostic path. See game.ts's header. */
+    screenOfMesh: (() => null) as (meshName: string) => { x: number; y: number } | null,
     ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
     groundAt: (() => 0) as (x: number, z: number) => number,
     playerFeetY: (() => 0) as () => number,
@@ -326,6 +328,9 @@ function installDebugHook(): void {
         //  the analytic ground height, and the player mesh's feet (D-022).
         camera: () => runtime.cameraReadout(),
         screenOf: (worldX: number, worldZ: number) => runtime.projectToScreen(worldX, worldZ),
+    //  The height-agnostic aim. Read-only ([[D-075]]): it computes a screen point and performs
+    //  no action — the tap that follows is still a real tap.
+    screenOfMesh: (meshName: string) => runtime.screenOfMesh(meshName),
     //  ---- THE FAR ISLAND ([[D-126]]) — READ-ONLY, per the player-path law [[D-075]] ----
     //
     //  Each of these answers a question about the WORLD — where the island is, what sites are

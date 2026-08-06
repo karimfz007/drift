@@ -533,6 +533,24 @@ async function main() {
     const actionText = () => page.evaluate(() => { const b = document.querySelector('.action'); return b ? { text: b.textContent, shown: b.style.display !== 'none', ready: b.classList.contains('ready') } : null; });
 
     const tapAt = async (x, y, hold = 55) => { await page.touchscreen.touchStart(x, y); await sleep(hold); await page.touchscreen.touchEnd(); await sleep(140); };
+    /**
+     * TAP A MESH BY NAME, aimed at its own drawn centre rather than at a derived height.
+     *
+     * Use this for anything whose height is not "standing on the ground": underwater targets,
+     * floating ones, and anything short enough that the +0.4 m derived aim flies over it. See
+     * `screenOfMesh` in game.ts for the two defects that produced it.
+     */
+    const tapMesh = async (meshName, hold = 55) => {
+        const p = await page.evaluate((n) => window.__drift.screenOfMesh(n), meshName);
+        if (!p) return { ok: false, why: 'no mesh ' + meshName };
+        const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+        if (!(p.x >= 0 && p.y >= 0 && p.x <= view.w && p.y <= view.h)) {
+            return { ok: false, why: 'off-screen ' + Math.round(p.x) + ',' + Math.round(p.y) };
+        }
+        await tapAt(p.x, p.y, hold);
+        return { ok: true, why: Math.round(p.x) + ',' + Math.round(p.y) };
+    };
+
     const tapWorld = async (wx, wz, hold = 55) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
     //  A HOLD on world coordinates: the same gesture as a tap, held past `tapMaxMs`. Under
     //  the Default-Verb Law a tap acts and a hold asks, and §9.6's site card is what a hold on
@@ -5383,15 +5401,56 @@ async function main() {
         labouring.health >= beforeSwim.health - 0.05,
         `health ${beforeSwim.health.toFixed(2)} -> ${labouring.health.toFixed(2)}`);
     //  The second warning, at the second threshold. Same route, lower reserve.
+    //  ---- THE FIXTURE, corrected twice. See the poll below for the second half. ----
+    //
+    //  It set energy BELOW the spent threshold and expected to read SPENT. That cannot work,
+    //  and the reason is in `editSave` itself: it stamps both clocks to now and THEN reloads,
+    //  so the whole page-load window — 5 to 15 s here — arrives as elapsed time on the first
+    //  online tick. At 70 energy/game-hour that is 2 to 7 energy gone before anything is read,
+    //  multiplied again by whatever load earlier sections left in the pack. Starting at 10,
+    //  the survivor was already at zero and in GOING-UNDER by the first sample.
+    //
+    //  So the fixture starts ABOVE the threshold with headroom the boot window cannot eat, and
+    //  the pack is emptied to remove the load multiplier as a variable — both are controls on
+    //  the setup, not changes to what is being asserted. The stage boundaries are untouched
+    //  and the assertion below is unchanged.
     await editSave(`
         state.player = { x: 0, y: 150 };
-        state.energy = ${TUNE.swimSpentEnergy - 2}; state.health = 100; state.warmth = 100;
+        state.energy = ${TUNE.swimSpentEnergy + 6}; state.health = 100; state.warmth = 100;
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, metal: 0, wiring: 0, glass: 0, medicine: 0 };
         state.gameHoursElapsed = 8;
     `);
-    await walkToward(0, 300, 1.6);
-    await sleep(400);
-    const spent = await live();
-    const spentText = await page.evaluate(() => document.querySelector('.goal')?.textContent ?? '');
+    //  READ AT THE FIRST MOMENT IT IS TRUE, not after a fixed delay.
+    //
+    //  THE DEFECT THIS CLOSES. The survivor is placed in deep water BELOW the spent threshold,
+    //  so they are already SPENT the instant the page boots — the swim that used to run here
+    //  established nothing and only burned reserve. At 70 energy/game-hour, multiplied by
+    //  whatever load earlier sections left in the pack, ~2 s of swimming plus the round-trips
+    //  was enough to cross 0 and land in GOING-UNDER. The check then read the wrong stage and
+    //  reported the wrong sentence: 'goal "You are going under.", health 97.71'.
+    //
+    //  The threshold is NOT the thing that was wrong — the stage boundaries are correct and
+    //  MARITIME 3b/3c prove the one below it. What was wrong was sampling a moving value after
+    //  a delay that had no reason to exist. Same defect class as the arrival-profile
+    //  boot-timing bug ([[D-116]]/[[D-120]]): a threshold read against something still moving.
+    //
+    //  So this polls and stops at the FIRST reading that is genuinely SPENT, capturing the
+    //  goal line and health in one evaluate so the two cannot describe different instants. If
+    //  the stage is never seen, the last reading is reported and the check fails honestly
+    //  rather than being widened until it passes.
+    let spent = await live();
+    let spentText = '';
+    for (let i = 0; i < 60; i++) {
+        const shot = await page.evaluate(() => ({
+            goal: document.querySelector('.goal')?.textContent ?? '',
+            health: window.__drift.state().health,
+            energy: window.__drift.state().energy,
+        }));
+        spentText = shot.goal;
+        spent = { ...spent, health: shot.health, energy: shot.energy };
+        if (/nothing left/i.test(shot.goal)) break;
+        await sleep(120);
+    }
     check('MARITIME 3d — the SPENT warning is a different sentence, and health is still whole',
         /nothing left/i.test(spentText) && spent.health > 95,
         `goal "${spentText}", health ${spent.health.toFixed(2)}`);

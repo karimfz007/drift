@@ -420,6 +420,44 @@ export class Game {
                 activeMeshes: this.scene.getActiveMeshes().length
             };
         };
+        /**
+         * AIM AT WHAT IS ACTUALLY DRAWN — the general answer to a question this project has
+         * now got wrong twice.
+         *
+         * THE AUDIT THAT PRODUCED THIS. `projectToScreen` takes X and Z and DERIVES the height
+         * as `surfaceHeightAt + 0.4`. That is a guess, and it is right for exactly two cases:
+         * something standing on the ground, and something floating at the surface. It has
+         * already been wrong twice —
+         *
+         *   [[D-124]]  the wreck parts float, and it aimed at the SEABED, 7 m under them.
+         *   [[D-127]]  the fire ring is 0.29 m tall, and it aimed 0.4 m OVER it.
+         *
+         * — and each time the answer was a local patch: move the derived height, then add
+         * proximity forgiveness. Neither made it general, and the next thing to break it is
+         * anything below the surface, where a derived height cannot reach by construction.
+         *
+         * So there is now one path that does not guess: give it the mesh, and it projects that
+         * mesh's own world centre. Underwater, mid-air, flat on the sand — it aims at the
+         * object because it asks the object. `projectToScreen` stays for callers that only have
+         * a ground position, and is now the special case rather than the rule.
+         */
+        runtime.screenOfMesh = (meshName: string) => {
+            const mesh = this.scene.getMeshByName(meshName);
+            if (!mesh) return null;
+            const centre = mesh.getBoundingInfo().boundingBox.centerWorld;
+            const projected = Vector3.Project(
+                centre,
+                Matrix.Identity(),
+                this.scene.getTransformMatrix(),
+                this.camera.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight())
+            );
+            const rect = this.canvas.getBoundingClientRect();
+            return {
+                x: rect.left + projected.x * (rect.width / this.engine.getRenderWidth()),
+                y: rect.top + projected.y * (rect.height / this.engine.getRenderHeight())
+            };
+        };
+
         runtime.projectToScreen = (worldX: number, worldZ: number) => {
             //  [[D-124]] — the SURFACE, not the terrain. This read `heightAt(worldX, worldZ)`,
             //  which is the seabed once you are past the shelf, so aiming at anything afloat
