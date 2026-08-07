@@ -38,6 +38,7 @@ export * from './body';
 export * from './water';
 export * from './wreck';
 export * from './dive';
+export * from './fishing';
 export * from './traces';
 export * from './loadout';
 export * from './experiment';

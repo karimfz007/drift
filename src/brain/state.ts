@@ -8,6 +8,7 @@ import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
 import { disturb, harmFromWorking } from './wreck';
 import { submerge } from './dive';
+import { freshFishing } from './fishing';
 import { freshTraces } from './traces';
 import { freshInjuries } from './injury';
 import { freshIllness, onsetFrom } from './illness';
@@ -15,7 +16,7 @@ import { TUNE } from '../data/tune';
 import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
-import { freshMatterWear, transformationFor } from './matter';
+import { freshMatterWear, isSpoiled, transformationFor } from './matter';
 import {
     CAVE_SITE, POND, SPAWN, SURF_LINE_RADIUS, WALKABLE_RADIUS, WORLD,
     createNodes, isDryLand, isPlaceablePoint, waterDepthAt
@@ -26,7 +27,7 @@ import { cloneDomainScores, domainForNodeKind, freshDomainScores, recordTrying, 
 import { cloneLoadout, freshLoadout } from './loadout';
 import { recipeDomain } from './recipes';
 import { grantXp, newSkill } from './skills';
-import { applyDrink, applyFood } from './vitals';
+import { applyDrink, applyFood, type Food } from './vitals';
 import {
     SCHEMA_VERSION,
     type GameState,
@@ -55,7 +56,7 @@ export function createInitialState(nowMs: number): GameState {
         fatigue: 0,
         resting: false,
         inventory: emptyInventory(),
-        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false },
+        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false, net: false },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable' },
@@ -100,7 +101,11 @@ export function createInitialState(nowMs: number): GameState {
         //  DROP 1: the boars were here before the survivor and stay after. Created once,
         //  never added to — the absence of a spawner is the no-spawn-waves rail, in code.
         boars: createBoars(),
-        meatFreshUntilGameHours: null,
+        //  FISHING — nothing cast, nothing set, nothing going off. `freshUntil` starts EMPTY
+        //  rather than seeded with zeroes: a clock only exists once there is something to
+        //  spoil, so an empty pack is not carrying four expired countdowns.
+        fishing: freshFishing(),
+        freshUntil: {},
         injuries: freshInjuries(),
         illness: freshIllness(),
         //  The cave is TERRAIN: it is on the island from the first second, unfound. Placed
@@ -139,7 +144,7 @@ export function freshJournal(): JournalState {
 
 export function emptyInventory(): Inventory {
     return {
-        wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0,
+        wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, fish: 0,
         //  THE WRECK SLICE. Zero, and a fresh castaway can never gain one on the island —
         //  every gram of these exists 115 m offshore.
         metal: 0, wiring: 0, glass: 0, medicine: 0
@@ -167,6 +172,11 @@ export function cloneState(state: GameState): GameState {
         raft: { ...state.raft },
         wreck: { ...state.wreck },
         dive: { ...state.dive },
+        fishing: {
+            line: state.fishing.line ? { ...state.fishing.line } : null,
+            net: state.fishing.net ? { ...state.fishing.net } : null,
+        },
+        freshUntil: { ...state.freshUntil },
         traces: { read: [...state.traces.read] },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
@@ -221,7 +231,13 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
     wreckpart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
     //  THE UNDERWATER SLICE. A hold, no axe — same shape as the wreck, and the only thing
     //  that makes it different is that the air budget is running while you do it.
-    divepart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds }
+    divepart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
+    //  FISHING — a TAP, and it never reaches `gatherNode`. A fishing spot is the one node
+    //  kind that is not a thing you pick up: the tap fires the fishing circle's default verb
+    //  (cast a line) and the hold opens all three methods, exactly as the pond already does
+    //  for drink/fill/fish. The spec exists so the kind is total everywhere the compiler
+    //  checks, and `holdBaseSeconds` is 0 because nothing here is ever held.
+    fishingspot: { interaction: 'tap', needsAxe: false, skill: null, holdBaseSeconds: 0 }
 };
 
 export function nodeSpec(kind: NodeKind): NodeSpec {
@@ -265,6 +281,11 @@ export function effortEnergyCostFor(kind: NodeKind): number {
         case 'salvage': return 0;
         case 'wreckpart': return TUNE.wreckPartEffortEnergy;
         case 'divepart': return TUNE.divePartEffortEnergy;
+        //  FISHING — ZERO, and it is not an oversight. A fishing spot is never gathered;
+        //  each method charges its own price where that price is actually paid (the spear's
+        //  `spearFishEnergy`, the line's minutes, the net's tether). A cost here would be a
+        //  second, invisible one on top.
+        case 'fishingspot': return 0;
     }
 }
 
@@ -717,6 +738,10 @@ export function regrowGameHoursFor(kind: NodeKind): number {
         case 'wreckpart': return TUNE.wreckPartRegrowGameHours;
         //  The same tide that shifts the wreck shifts what sank beneath it.
         case 'divepart': return TUNE.divePartRegrowGameHours;
+        //  FISHING — the population model, and it is one line because the machinery was
+        //  already here. A site emptied by any of the three methods comes back on the same
+        //  clock, through the same [[D-051]] regrow path every bush uses.
+        case 'fishingspot': return TUNE.fishSpotRegrowGameHours;
         //  GEOLOGY V2 (Gate 0 item 7): the quarry is the FINITE tier. A rich deposit is a
         //  real, spent thing — it visibly empties as you work it and it does not come back.
         //  This does NOT breach D-051's renewability law, because stone itself stays
@@ -1057,7 +1082,9 @@ export function drinkFlask(state: GameState): boolean {
     return true;
 }
 
-export type Food = 'berries' | 'coconut' | 'shellfish';
+//  `Food` is defined in vitals.ts, beside the values it indexes, and re-exported here so
+//  every existing `import { type Food } from './state'` keeps working.
+export type { Food } from './vitals';
 
 export function canEat(state: GameState, food: Food): boolean {
     return state.inventory[food] > 0 && state.hunger < TUNE.hungerMax;
@@ -1082,6 +1109,56 @@ export function eat(state: GameState, food: Food): boolean {
         state.illness = onsetFrom(state, 'spoiled-food', TUNE.spoiledFoodExposure);
     }
     recordTrying(state, 'survivalcraft');
+    return true;
+}
+
+// ---- Crafting: the fishing line and the net ------------------------------
+//
+// Both follow the shape every post-pivot craft uses: a `can` predicate, a `shortfall` for
+// the card to name what is missing, and a `craft` that spends and records. Neither is
+// reachable from a menu — the Build panel only ever shows what discovery has minted.
+
+export function canCraftFishingLine(state: GameState): boolean {
+    return !state.tools.fishingLine
+        && state.inventory.fiber >= TUNE.fishingLineFiberCost
+        && state.inventory.sharpblade >= TUNE.fishingLineBladeCost;
+}
+
+export function fishingLineShortfall(state: GameState): { fiber: number; sharpblade: number } {
+    return {
+        fiber: Math.max(0, TUNE.fishingLineFiberCost - state.inventory.fiber),
+        sharpblade: Math.max(0, TUNE.fishingLineBladeCost - state.inventory.sharpblade),
+    };
+}
+
+export function craftFishingLine(state: GameState): boolean {
+    if (!canCraftFishingLine(state)) return false;
+    state.inventory.fiber -= TUNE.fishingLineFiberCost;
+    state.inventory.sharpblade -= TUNE.fishingLineBladeCost;
+    state.tools.fishingLine = true;
+    recordTrying(state, recipeDomain('fishingline'));
+    return true;
+}
+
+export function canCraftNet(state: GameState): boolean {
+    return !state.tools.net
+        && state.inventory.fiber >= TUNE.netFiberCost
+        && state.inventory.sharpblade >= TUNE.netSharpbladeCost;
+}
+
+export function netShortfall(state: GameState): { fiber: number; sharpblade: number } {
+    return {
+        fiber: Math.max(0, TUNE.netFiberCost - state.inventory.fiber),
+        sharpblade: Math.max(0, TUNE.netSharpbladeCost - state.inventory.sharpblade),
+    };
+}
+
+export function craftNet(state: GameState): boolean {
+    if (!canCraftNet(state)) return false;
+    state.inventory.fiber -= TUNE.netFiberCost;
+    state.inventory.sharpblade -= TUNE.netSharpbladeCost;
+    state.tools.net = true;
+    recordTrying(state, recipeDomain('net'));
     return true;
 }
 
@@ -1367,7 +1444,10 @@ export function thrustSpear(state: GameState, boarId: string): { ok: boolean; ki
         const index = state.boars.findIndex((b) => b.id === boarId);
         state.boars = state.boars.map((b, i) => (i === index ? { ...b, alive: false, stage: 'aftermath' as const, chargeBearing: null } : b));
         state.inventory.meat += TUNE.boarMeatYield;
-        state.meatFreshUntilGameHours = state.gameHoursElapsed + TUNE.meatSpoilGameHours;
+        //  FISHING retired `meatFreshUntilGameHours`. Meat now uses the same countdown
+        //  every perishable does — see `perishOnTick`. Nothing about the boar changed except
+        //  that its meat no longer rots while the game is closed.
+        state.freshUntil = { ...state.freshUntil, meat: TUNE.meatSpoilGameHours };
         recordTrying(state, 'survivalcraft');
         return { ok: true, killed: true, meat: TUNE.boarMeatYield };
     }
@@ -1383,11 +1463,14 @@ export function thrustSpear(state: GameState, boarId: string): { ok: boolean; ki
  */
 const boarDamage = new Map<string, number>();
 
-/** Raw meat spoils. Cooking is the NEXT discovery and is deliberately not built here. */
+/**
+ * Raw meat spoils. Cooking is still the NEXT discovery and is still deliberately not built.
+ *
+ * Now one line over the shared perishable clock rather than its own arithmetic — the whole
+ * point of `freshUntil` is that meat and fish cannot answer this question differently.
+ */
 export function meatIsSpoiled(state: GameState): boolean {
-    return state.inventory.meat > 0
-        && state.meatFreshUntilGameHours !== null
-        && state.gameHoursElapsed > state.meatFreshUntilGameHours;
+    return isSpoiled(state, 'meat');
 }
 
 // ---- The stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 ----------------

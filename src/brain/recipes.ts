@@ -166,6 +166,53 @@ export function allRecipes(): Recipe[] {
             ]
         },
         {
+            //  FISHING — THE LINE. One slot, one material: fibre, spun.
+            //
+            //  A UNIQUE SIGNATURE, and it costs nothing to make it unique because nothing
+            //  else in the game is textile ALONE. `knap` is the precedent — masonry alone —
+            //  and the shape is the same: the simplest made things are the ones a castaway
+            //  works out by handling ONE material rather than by pairing two.
+            //
+            //  This is also the recipe that finally makes `tools.fishingLine` reachable. It
+            //  has been in `Tools` since v11 and in the pond's radial circle since Slice 2,
+            //  and until now there was no way to obtain one: the verb was permanently greyed
+            //  with "You have no line to fish with" and nothing anywhere could change that.
+            id: 'fishingline',
+            //  Feeding yourself off the land is Survivalcraft, the same domain fire and
+            //  foraging train — not fabrication. What is being learned is the FISHING.
+            domain: 'survivalcraft',
+            //  TWO SLOTS, and the second one exists because of a defect this project has now
+            //  found six times. Written first as textile ALONE — `knap` is one slot, so one
+            //  slot looked legal — and `canExperimentWith` requires two to four materials, so
+            //  a one-slot recipe can never be resolved by Try-Combining. `knap` is exempt
+            //  because it is not discovered by combining at all; it is the hammer's own verb.
+            //  The line would have been routed, prompted, tested and unreachable.
+            //
+            //  It SHARES {textile, blade} with the net below, which [[D-114]] settled as
+            //  legal: stage four of `resolveRecipe` rotates rather than crowning a winner, so
+            //  a shared gesture costs an attempt and never access. Two recipes on a gesture is
+            //  precedented twice over (torch/backpack, storage/stonehammer); it is THREE that
+            //  the raft's note calls a lottery, and this is two.
+            slots: [
+                { id: 'line-cord', require: { tag: 'textile' }, amount: TUNE.fishingLineFiberCost },
+                { id: 'line-barb', require: { tag: 'blade' }, amount: TUNE.fishingLineBladeCost },
+            ]
+        },
+        {
+            //  FISHING — THE NET. A lot of cordage, and an edge to cut it to shape.
+            //
+            //  {textile, blade} is unique too, and honestly so: every other blade recipe in
+            //  the game pairs the edge with WOODWORK, because everything else made with a
+            //  blade has a handle. A net has no handle, and that absence is what gives it
+            //  its own gesture.
+            id: 'net',
+            domain: 'survivalcraft',
+            slots: [
+                { id: 'net-mesh', require: { tag: 'textile' }, amount: TUNE.netFiberCost },
+                { id: 'net-cut', require: { tag: 'blade' }, amount: TUNE.netSharpbladeCost },
+            ]
+        },
+        {
             id: 'knap',
             //  "Knapping" is one of the ruling's own four named Harvesting & fabrication verbs.
             domain: 'harvestingFabrication',

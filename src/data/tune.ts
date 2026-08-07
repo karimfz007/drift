@@ -1117,6 +1117,113 @@ export const TUNE = {
     /** [TUNE] Dive — game hours before the sea shifts a worked point back into reach. Basis:
      *  matched to `wreckPartRegrowGameHours`; the same tide moves both. */
     divePartRegrowGameHours: 120,
+    // ---- FISHING (three methods, one fish) ---------------------------------
+    //
+    //  THE SHAPE OF THE WHOLE STAGE, stated once here so the numbers below can be read
+    //  against it. Three methods, three genuinely different prices:
+    //
+    //    HANDLINE  cheap to make, and it costs your ATTENTION. You stand there and wait.
+    //    NET       costs a PLACE. It fishes while you do other things, but only near it,
+    //              and it takes real setup before it holds anything worth lifting.
+    //    SPEAR     costs the SITE. Instant, no setup, best per hit — and a miss scares the
+    //              fish, so a poor thrower empties a pool learning to throw.
+    //
+    //  A method that is strictly better than another is a method the other two never get
+    //  chosen over, so each of these is deliberately the worst option in someone's situation.
+
+    /** [TUNE] Fishing — fibre to spin one line. Basis: below the torch's binding (2), because
+     *  a line is the cheapest made thing in the game and it has to be the first one a hungry
+     *  castaway can reach. */
+    fishingLineFiberCost: 2,
+    /** [TUNE] Fishing — blades to barb a line. One: a hook is a chip of edge, not a tool. */
+    fishingLineBladeCost: 1,
+    /** [TUNE] Fishing — fibre in a net. Basis: above the raft's lashing (10) — a net is more
+     *  cordage than anything else here, which is the whole reason it is not the first thing
+     *  you make. */
+    netFiberCost: 12,
+    /** [TUNE] Fishing — blades to cut a net to shape. One, and it is what makes the net's
+     *  discovery signature ({textile, blade}) unique in the game. */
+    netSharpbladeCost: 1,
+
+    /** [TUNE] Fishing — game hours a cast handline waits before it resolves. Basis: 0.12 gh
+     *  is ~18 real seconds of standing still. Long enough to be a decision you regret when a
+     *  boar appears; short enough to fit a phone session. */
+    handlineBiteGameHours: 0.12,
+    /** [TUNE] Fishing — fish per handline bite. One. The baseline is one fish. */
+    handlineYield: 1,
+    /** [TUNE] Fishing — how much of a site's pool one handline catch spends. The gentlest of
+     *  the three: a line takes fish one at a time and does not frighten the rest. */
+    handlinePoolCost: 1,
+
+    /** [TUNE] Fishing — game hours before a set net holds anything at all. Basis: 0.35 gh is
+     *  ~53 real seconds. That dead window IS the net's cost — it is a bad choice for a
+     *  survivor who wants a fish now, and the right one for a survivor who is about to spend
+     *  a while nearby. */
+    netSoakGameHours: 0.35,
+    /** [TUNE] Fishing — fish a soaking net accrues per game hour once it has soaked. Basis:
+     *  well under the handline's effective rate (1 per 0.12 gh = 8.3/gh), because the net is
+     *  not meant to be faster — it is meant to run while your hands are busy. */
+    netCatchPerGameHour: 3.5,
+    /** [TUNE] Fishing — the most a net can hold before it is full and stops. Basis: a full
+     *  net is ~2 game hours of soaking, and a haul that big is a genuine carry decision at
+     *  `materialMassKg.fish`. */
+    netCapacity: 7,
+    /** [TUNE] Fishing — how near the survivor must stay for a set net to keep fishing, in
+     *  metres. Basis: comfortably beyond `interactRadiusM` (2.5) so "nearby" means the area
+     *  and not the spot, and well short of the island, so it is a real tether. */
+    netTendRadiusM: 22,
+    /** [TUNE] Fishing — pool spent when a net is hauled. The heaviest of the three: a net
+     *  takes the whole shoal at once, and the site shows it. */
+    netHaulPoolCost: 3,
+
+    /** [TUNE] Fishing — fish per successful spear strike. Twice the handline's, because a
+     *  strike is one committed moment against a line's patient minutes. */
+    spearFishYield: 2,
+    /** [TUNE] Fishing — pool spent by a spear attempt, hit OR MISS. The miss is the point:
+     *  a thrown spear scares the shoal whether or not it lands, which is why the worst
+     *  thrower is hardest on the water. */
+    spearFishPoolCost: 2,
+    /** [TUNE] Fishing — chance of a spear strike landing with no technique at all. Basis:
+     *  matched to `experimentBaseSuccessChance` (0.35) — this game already decided what an
+     *  unpractised attempt at something is worth, and a second opinion would drift. */
+    spearFishBaseChance: 0.35,
+    /** [TUNE] Fishing — chance added per point of survivalcraft Technique. Basis: the same
+     *  0.006 the experiment curve uses, so 100 Technique adds 0.6 and a practised survivor
+     *  lands most strikes without ever being certain of one. */
+    spearFishChancePerTechnique: 0.006,
+    /** [TUNE] Fishing — the ceiling on a spear strike. Never 1: water bends light, and a
+     *  formality is not a skill. Matches `experimentMaxSuccessChance`. */
+    spearFishMaxChance: 0.95,
+    /** [TUNE] Fishing — deepest water a spear can be thrown into, in metres. Basis: just
+     *  under `swimDepthM` (1.35), so spear-fishing is a WADING act. Off your feet you have
+     *  nothing to throw against — which is also why the 7 m dive site is not a fishery. */
+    spearFishMaxDepthM: 1.3,
+    /** [TUNE] Fishing — energy one spear attempt costs. Basis: between a shellfish tap (0)
+     *  and a deadfall gather (2). Throwing is work; standing holding a line is not. */
+    spearFishEnergy: 2,
+
+    /** [TUNE] Fishing — catches a site yields before it is locally depleted. Basis: 6 lets a
+     *  handline take six, or a spear take three, or a net take two hauls — so the METHOD
+     *  chooses how fast the water empties, which is the population model's whole job. */
+    fishSpotPool: 6,
+    /** [TUNE] Fishing — game hours before a depleted site has fish in it again. Basis: above
+     *  the shellfish's 18 and below a berry bush's 36 — fish move back into a quiet pool
+     *  faster than a bush fruits, and slower than you can walk a circuit of the island. */
+    fishSpotRegrowGameHours: 26,
+    /** [TUNE] Fishing — hunger one fish restores. Basis: between shellfish (22) and raw meat
+     *  (18), and closer to shellfish: a fish is the best forage on this island and still not
+     *  a meal that ends hunger as a concern. */
+    fishHungerValue: 20,
+    /** [TUNE] Fishing — game hours a fish stays fresh. Basis: HALF the meat's 48. A fish goes
+     *  off faster than anything else you can carry, which is what makes the net's big haul a
+     *  genuine decision rather than a stockpile. */
+    fishFreshGameHours: 24,
+
+    /** [TUNE] Fishing — tap forgiveness around a fishing spot, in metres. Basis: matched to
+     *  `traceTapRadiusM` (2.6). A spot is a patch of water, not an object, and the ring that
+     *  marks it is flat — the exact case `traceTapRadiusM` was added for. */
+    fishSpotTapRadiusM: 2.6,
+
     //  NO `diveTapRadiusM`. One was written and then deleted unused: a submerged point is an
     //  ordinary node, so `pickNode`'s `nodeTapSlack` fallback already forgives a near miss,
     //  and `screenOfMesh` aims at the mesh rather than the water above it. A constant with
@@ -1421,6 +1528,9 @@ export const TUNE = {
         berries: 0.1,
         coconut: 1.4,
         shellfish: 0.3,
+        //  FISHING — heavier than a shellfish, lighter than a coconut. A full net is 7 of
+        //  these, which is a real carry decision and is meant to be.
+        fish: 0.45,
         sharpblade: 0.4,
         //  DROP 1 — a unit of boar meat. Between shellfish (0.3) and coconut (1.4): heavy
         //  enough that carrying a whole kill home is a real load decision.
@@ -1507,6 +1617,8 @@ export const TUNE = {
         berries: 0.4,
         coconut: 2,
         shellfish: 0.5,
+        //  FISHING — awkward for its weight, the way meat is.
+        fish: 0.8,
         sharpblade: 0.2,
         //  DROP 1 — bulky for its weight, the way meat is.
         meat: 0.9,

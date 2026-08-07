@@ -148,6 +148,16 @@ export function closeSurvivor(state: GameState, cause: string): {
         //  the `found-intact` grade of inheritance [[D-069]] permits: the successor knows the
         //  crossing is possible and has no idea how it was done.
         wreck: { ...state.wreck },
+        //  FISHING. The NET is matter and it is IN THE WORLD — a set net is a thing standing
+        //  in the water, and it is still standing there when its owner dies, so
+        //  `state.fishing` crosses untouched. The cast LINE does not: a line is held in a
+        //  hand, and the hand is gone. `closeSurvivor` cannot know which without saying so,
+        //  and this is that saying.
+        fishing: { line: null, net: state.fishing.net ? { ...state.fishing.net } : null },
+        //  Perishables do NOT cross. The successor inherits the pack (matter merges) but not
+        //  its clocks — fish that has been in a dead survivor's bag is not fresh, and giving
+        //  a new castaway a full countdown would be a small lie in their favour.
+        freshUntil: {},
         //  NOT copied. Being underwater is a fact about a BODY, and that body drowned or died
         //  ashore; either way the successor washes up breathing. `createInitialState` already
         //  gives them a full one, so the absence of a line here IS the rule — the same

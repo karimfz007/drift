@@ -82,13 +82,30 @@ export function applyDrink(thirst: number): number {
     return clampVital(thirst + TUNE.drinkPerSip, TUNE.thirstMax);
 }
 
+/**
+ * WHAT CAN BE EATEN — and `meat` and `fish` are here because otherwise they cannot be.
+ *
+ * THE DEFECT THIS CLOSES, found while wiring fish into "the existing food chain": there was
+ * no existing food chain at the eating end. Drop 1 shipped `boarMeatYield`,
+ * `meatHungerRestore`, `meatSpoilGameHours`, a freshness stamp and a `meatIsSpoiled`
+ * predicate — and the food union never included `meat`, so a survivor could kill a boar,
+ * carry the meat, be slowed by its weight, watch it spoil, and never once eat it. Every
+ * constant existed and the one line that reaches them did not: [[D-114]]'s shape again.
+ *
+ * So the fish does not plug into a chain — it completes one.
+ *
+ * It lives HERE, beside the values, rather than in state.ts where it started: the module
+ * that knows what a food is worth is the module that should say what a food is.
+ */
+export type Food = 'berries' | 'coconut' | 'shellfish' | 'meat' | 'fish';
+
 /** What eating one unit of a food restores. */
 export interface FoodValue {
     hunger: number;
     thirst: number;
 }
 
-export function foodValue(food: 'berries' | 'coconut' | 'shellfish'): FoodValue {
+export function foodValue(food: Food): FoodValue {
     switch (food) {
         case 'berries':
             return { hunger: TUNE.berryHungerValue, thirst: 0 };
@@ -96,12 +113,19 @@ export function foodValue(food: 'berries' | 'coconut' | 'shellfish'): FoodValue 
             return { hunger: TUNE.coconutHungerValue, thirst: TUNE.coconutThirstValue };
         case 'shellfish':
             return { hunger: TUNE.shellfishHungerValue, thirst: 0 };
+        //  DROP 1's constant, finally readable by something. See `Food` in state.ts for the
+        //  defect this closes — the number existed from the day the boar shipped.
+        case 'meat':
+            return { hunger: TUNE.meatHungerRestore, thirst: 0 };
+        //  FISHING — the best forage on the island, and still not a meal that ends hunger.
+        case 'fish':
+            return { hunger: TUNE.fishHungerValue, thirst: 0 };
     }
 }
 
 /** Apply a food's effect to (hunger, thirst). Returns the clamped new values. */
 export function applyFood(
-    food: 'berries' | 'coconut' | 'shellfish',
+    food: Food,
     hunger: number,
     thirst: number
 ): { hunger: number; thirst: number } {

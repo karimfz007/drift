@@ -80,6 +80,10 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     medicine: 'contaminated',
     //  DROP 1 — a failed attempt on meat spoils it. Matter comes out CHANGED (Law 128).
     meat: 'contaminated',
+    //  FISHING — a fish fails the way meat does, and it is the same word on purpose: `eat`
+    //  already treats `contaminated` as the food that can make you ill, so the fish joins
+    //  that rule by HAVING the property rather than by a second branch checking its name.
+    fish: 'contaminated',
 };
 
 export function transformationFor(material: MaterialKind): Transformation {
@@ -132,6 +136,54 @@ export function transformOnFailure(
     };
 }
 
+/**
+ * ---------------------------------------------------------------------------------------
+ * PERISHING — one clock, every perishable, counted down ONLINE only.
+ *
+ * WHAT THIS REPLACES, and why it is a change rather than an addition. Drop 1 stored
+ * `meatFreshUntilGameHours`: one field, for one material, holding an absolute
+ * `gameHoursElapsed` deadline. Two things were wrong with it, and the second is the reason
+ * this stage could not simply add a second field beside it for fish:
+ *
+ *   1. AN ABSOLUTE DEADLINE ROTS OFFLINE. `gameHoursElapsed` advances across an absence, so
+ *      food spoiled while the tab was shut — the same shape this project already wrote the
+ *      other way for dropped stacks ("absence never erases, and a stack on the ground is the
+ *      survivor's property"). Counting DOWN on the online tick makes the two agree.
+ *
+ *   2. ONE FIELD PER PERISHABLE IS A PARALLEL SYSTEM WAITING TO HAPPEN — a second for fish,
+ *      a third for whatever gets cooked next, each with its own reader and its own drift.
+ *
+ * NOTHING HERE TAKES HEALTH. Spoiled food becomes harm only when a survivor CHOOSES to eat
+ * it, in `eat`, which already routes through `onsetFrom('spoiled-food')`. Perishing is a
+ * fact about the pack and never a hit on the body, and that is what keeps [[D-011]] out of it.
+ */
+export function perishOnTick(state: GameState, gameHours: number): void {
+    if (!(gameHours > 0)) return;
+    const next: Partial<Record<MaterialKind, number>> = {};
+    for (const [kind, left] of Object.entries(state.freshUntil) as Array<[MaterialKind, number]>) {
+        //  A kind nobody is carrying has no clock to run, so eating the last one clears it —
+        //  and the next catch starts fresh rather than inheriting a stale countdown.
+        if (state.inventory[kind] <= 0) continue;
+        next[kind] = Math.max(0, left - gameHours);
+    }
+    state.freshUntil = next;
+}
+
+/**
+ * Has this material gone off? True only for something actually carried whose clock has run
+ * out — a kind with no clock at all is not perishable and can never be spoiled.
+ */
+export function isSpoiled(state: GameState, kind: MaterialKind): boolean {
+    if (state.inventory[kind] <= 0) return false;
+    const left = state.freshUntil[kind];
+    return left !== undefined && left <= 0;
+}
+
+/** Game hours of freshness left, or null when this material does not perish. */
+export function freshnessLeft(state: GameState, kind: MaterialKind): number | null {
+    return state.freshUntil[kind] ?? null;
+}
+
 /** Is this material close enough to failing that the survivor should be told plainly? */
 export function isNearlySpent(state: GameState, material: MaterialKind): boolean {
     return (state.matterWear[material] ?? 0) >= TUNE.matterWearPerUnit * TUNE.matterNearlySpentAt;
@@ -140,7 +192,7 @@ export function isNearlySpent(state: GameState, material: MaterialKind): boolean
 const LABEL: Record<MaterialKind, string> = {
     wood: 'The wood', stone: 'The stone', fiber: 'The fibre', sharpblade: 'The blade',
     coconut: 'The coconut', shellfish: 'The shell', berries: 'The berries',
-    meat: 'The meat',
+    meat: 'The meat', fish: 'The fish',
     metal: 'The plate', wiring: 'The cable', glass: 'The glass', medicine: 'The medicine',
 };
 

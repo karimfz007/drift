@@ -299,7 +299,13 @@ describe('THE SPEAR — reachability, per D-090, mandatory', () => {
         expect(s.boars[0].alive).toBe(false);
 
         expect(meatIsSpoiled(s), 'fresh meat is not spoiled').toBe(false);
-        s.gameHoursElapsed += TUNE.meatSpoilGameHours + 1;
+        //  FISHING moved every perishable onto ONE countdown, spent on the online tick
+        //  (`perishOnTick`), replacing the absolute `gameHoursElapsed` deadline this line used
+        //  to advance. The behaviour that changed is deliberate and is the point: food no
+        //  longer rots while the tab is shut, which is the rule dropped stacks already had.
+        //  What is unchanged is the claim — raw meat is an event, not a stockpile.
+        const { perishOnTick } = await import('../src/brain/matter');
+        perishOnTick(s, TUNE.meatSpoilGameHours + 1);
         expect(meatIsSpoiled(s), 'raw meat is an event, not a stockpile').toBe(true);
     });
 

@@ -7,7 +7,7 @@
  * the interface names them and gets out of the way.
  */
 
-import { formatClock, levelProgress, type MorningReport, type Skills } from '../brain';
+import { formatClock, levelProgress, type Food, type MorningReport, type Skills } from '../brain';
 
 /** Player-facing names for the shipped skills. */
 const SKILL_LABEL: Record<string, string> = { woodcutting: 'Woodcutting', foraging: 'Foraging' };
@@ -61,7 +61,7 @@ export interface HudView {
      *  a soft debuff rather than an urgent pressure. */
     energy: number;
     sheltered: boolean;
-    inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number };
+    inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number; meat: number; fish: number };
     tools: { axe: boolean; flask: boolean; flaskSips: number };
     /** Carry load (D-059). Shown as a chip only once past the top band — below that the
      *  system genuinely has no effect and a permanent readout would be noise. Root cause it
@@ -96,7 +96,7 @@ export class Hud {
         overlay: HTMLElement,
         onAction: () => void,
         onSecondary: () => void = () => {},
-        onEat: (food: 'berries' | 'coconut' | 'shellfish') => void = () => {},
+        onEat: (food: Food) => void = () => {},
         onDrinkFlask: () => void = () => {}
     ) {
         this.root = document.createElement('div');
@@ -151,7 +151,7 @@ export class Hud {
         this.invRow.addEventListener('click', (e) => {
             const target = e.target as HTMLElement;
             const food = target.closest('[data-food]') as HTMLElement | null;
-            if (food) { e.stopPropagation(); onEat(food.dataset.food as 'berries' | 'coconut' | 'shellfish'); return; }
+            if (food) { e.stopPropagation(); onEat(food.dataset.food as Food); return; }
             //  A filled flask is a drink you carry: tap it to sip inland (restores the C03
             //  verb the direct-world model would otherwise have stranded — see D-042 audit).
             if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); return; }
@@ -202,6 +202,10 @@ export class Hud {
             ['berries', v.inventory.berries],
             ['coconut', v.inventory.coconut],
             ['shellfish', v.inventory.shellfish],
+            //  FISHING — meat and fish are chips because they are FOOD, and until now the
+            //  meat had no chip because it had no eat path at all. See `Food` in vitals.ts.
+            ['meat', v.inventory.meat],
+            ['fish', v.inventory.fish],
             ['axe', v.tools.axe],
             ['flask', v.tools.flask ? (v.tools.flaskSips > 0 ? 'full' : 'empty') : false],
             //  D-059: part of the inventory key so the chip repaints when the load changes,
@@ -215,9 +219,9 @@ export class Hud {
 
         const label: Record<string, string> = {
             wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
-            coconut: 'Coconut', shellfish: 'Shellfish'
+            coconut: 'Coconut', shellfish: 'Shellfish', meat: 'Meat', fish: 'Fish'
         };
-        const edible = new Set(['berries', 'coconut', 'shellfish']);
+        const edible = new Set(['berries', 'coconut', 'shellfish', 'meat', 'fish']);
         const chips: string[] = [];
         for (const [name, val] of items) {
             if (name === 'axe') {
@@ -424,6 +428,10 @@ export interface BuildCardView {
     /** THE MARITIME SLICE — the raft. Carries the one blocker a cost list cannot express:
      *  the site. Null when there is nothing standing in the way but materials. */
     raft: BuildItemView & { siteBlocker: string | null };
+    /** FISHING — the line and the net. Ordinary rows: their gates ARE costs, so neither
+     *  needs the raft's bespoke markup. Both revealed by discovery like every row here. */
+    fishingLine: BuildItemView;
+    net: BuildItemView;
     /**
      * The teaching half of the pivot, and the reason subtraction is survivable. An empty
      * panel with no hints is a dead end and a bug report; an empty panel that says *"the dark
@@ -583,7 +591,11 @@ export function showBuildCard(
     onKnapSharpblade: () => void,
     onClose: () => void,
     onMendShelter: () => void = () => {},
-    onSleep: () => void = () => {}
+    onSleep: () => void = () => {},
+    //  FISHING — TRAILING AND OPTIONAL, so not one existing call site changes. The same
+    //  additive shape `onMendShelter` and `onSleep` already use.
+    onCraftFishingLine: () => void = () => {},
+    onCraftNet: () => void = () => {}
 ): void {
     const el = panel(overlay, 'build');
     const hintMarkup = view.hints.length
@@ -633,6 +645,16 @@ export function showBuildCard(
             ${buildItemMarkup('Backpack', 'A frame and a lashing. Carry properly instead of in your arms.', view.backpack,
                 { fiber: TUNE.backpackFiberCost, wood: TUNE.backpackWoodCost }, 'Owned.', 'Make the pack', 'backpack-btn')}
             ${raftMarkup(view.raft)}
+            ${buildItemMarkup(
+                'Fishing line', 'Cord, spun fine. One fish at a time, and it costs you the waiting.',
+                view.fishingLine, { fiber: TUNE.fishingLineFiberCost, sharpblade: TUNE.fishingLineBladeCost },
+                'You have a line.', 'Spin the line', 'fishingline-btn'
+            )}
+            ${buildItemMarkup(
+                'Net', 'A wall of cord. It fishes while your hands are busy — if you stay near it.',
+                view.net, { fiber: TUNE.netFiberCost, sharpblade: TUNE.netSharpbladeCost },
+                'You have a net.', 'Knot the net', 'net-btn'
+            )}
             ${view.mendShelter ? `
             <div class="build-item mend-item">
                 <div class="build-head"><strong>Mend the shelter</strong></div>
@@ -657,6 +679,8 @@ export function showBuildCard(
     bind('.spear-btn', onCraftSpear);
     bind('.backpack-btn', onMakeBackpack);
     bind('.raft-btn', onCraftRaft);
+    bind('.fishingline-btn', onCraftFishingLine);
+    bind('.net-btn', onCraftNet);
     bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
 }

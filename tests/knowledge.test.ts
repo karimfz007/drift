@@ -158,6 +158,10 @@ describe('knowledge — item 4: mapping existing verbs to domains (only what the
             //  part trains `navigationSeamanship` through `recordTrying` at the gather site,
             //  not through this map. Listed so the manifest stays total.
             divepart: null,
+            //  FISHING — null, and for a third distinct reason worth writing down: a fishing
+            //  spot is never GATHERED at all. What the three methods train is Survivalcraft,
+            //  through `recordTrying` at each method's own call site.
+            fishingspot: null,
             //  DROP 2 — the boulder formation trains NOTHING, deliberately. It is the one
             //  inexhaustible face in the game, so a channel from it to a domain score would
             //  be an XP faucet that never runs dry. Mastery still SPEEDS the work (it is in

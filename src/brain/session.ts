@@ -19,6 +19,8 @@ import { thermalStrain } from './thermal';
 import { pruneDropped } from './dropped';
 import { developFromPaddling, developFromSwimming, isAtWreck, waterCostsFor } from './water';
 import { airCapacityOf, airRecoveryPerGameHour, canSubmerge, developFromDiving, diveCostsFor, surfaceOnAbsence } from './dive';
+import { advanceHandline, advanceNet } from './fishing';
+import { perishOnTick } from './matter';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -181,6 +183,13 @@ export class Session {
         //  [[D-011]] as STRUCTURE: there is no elapsed-time term on air anywhere in the
         //  absence path, so no absence of any length can spend a single breath.
         this.advanceDive(outcome.result.elapsedGameHours);
+        //  FISHING — a cast line, a soaking net, and every perishable's countdown, all on the
+        //  ONLINE tick and nowhere else. Same shape as everything above it, and for this
+        //  stage the [[D-011]] argument is the strongest one yet: nothing here can take
+        //  health at all, so an absence cannot reach a harm term because there is none to
+        //  reach. What the structure buys instead is that a net cannot fill while the game is
+        //  closed — offline progression, which this project has refused everywhere else.
+        this.advanceFishing(outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -488,6 +497,33 @@ export class Session {
         //  deep. Surfacing here is not a mercy — it is the model refusing to describe someone
         //  as submerged in 30 cm of water.
         if (!canSubmerge(s)) s.dive.submerged = false;
+    }
+
+    /**
+     * FISHING, ONE SPAN. Online only — see the call site and `fishing.ts`'s header.
+     *
+     * The line and the net are advanced independently because they FAIL independently: a
+     * survivor who walks away loses the cast and keeps the net, which is the whole difference
+     * between holding a line and setting a gear.
+     */
+    private advanceFishing(gameHours: number): void {
+        const s = this.state;
+        if (!(gameHours > 0)) return;
+        const bite = advanceHandline(s, gameHours);
+        if (bite.caught > 0) this.lastFishingCatch = bite.caught;
+        advanceNet(s, gameHours);
+        //  Perishing rides here rather than in `reconcile` for the reason the whole clock was
+        //  rewritten: food must not rot while the tab is shut. See `perishOnTick`.
+        perishOnTick(s, gameHours);
+    }
+
+    /** What the last resolved handline bite produced, for the body to announce. Read-and-clear. */
+    private lastFishingCatch = 0;
+
+    takeFishingCatch(): number {
+        const n = this.lastFishingCatch;
+        this.lastFishingCatch = 0;
+        return n;
     }
 
     /** Clear the death overlay once the player has read it. */

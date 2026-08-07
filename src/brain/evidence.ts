@@ -64,6 +64,9 @@ const PROPERTIES: Record<MaterialKind, PropertyTerm[]> = {
     shellfish: ['rigid'],
     berries: ['absorbent'],
     meat: ['absorbent'],
+    //  FISHING — slippery and soft, and NOTHING structural. A fish has no property this
+    //  game builds with, which is the same answer meat and berries give.
+    fish: ['absorbent'],
 };
 
 export function propertiesOf(kind: MaterialKind): PropertyTerm[] {

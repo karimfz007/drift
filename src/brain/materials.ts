@@ -51,6 +51,11 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     //  DROP 1 — meat is food and nothing else: no tag lets it be built with, so it can
     //  never be lashed into a shelter by a Try-Combining accident.
     meat: { primary: 'organic', tags: ['food'] },
+    //  FISHING — food and nothing else, for meat's exact reason. Worth saying out loud: a
+    //  fish is the most obviously useful-looking organic thing on this island and therefore
+    //  the most tempting to give a structural tag to. It gets none. The one law this schema
+    //  has ever broken was a food satisfying a structural slot, and it will not be this one.
+    fish: { primary: 'organic', tags: ['food'] },
 
     //  ---- THE WRECK-ERA FAMILY (the Wreck Slice) --------------------------------------
     //

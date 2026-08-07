@@ -114,6 +114,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 23) current = migrateV23toV24(current);
     if (current.schemaVersion === 24) current = migrateV24toV25(current);
     if (current.schemaVersion === 25) current = migrateV25toV26(current);
+    if (current.schemaVersion === 26) current = migrateV26toV27(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -584,7 +585,8 @@ function migrateV15toV16(envelope: SaveEnvelope): SaveEnvelope {
         //  handed a predator answer they did not earn.
         tools: { ...old.tools, spear: old.tools?.spear ?? false },
         inventory: { ...old.inventory, meat: old.inventory?.meat ?? 0 },
-        meatFreshUntilGameHours: old.meatFreshUntilGameHours ?? null,
+        //  FISHING retired this field; v26 -> v27 below carries any live meat clock into
+        //  `freshUntil`. Nothing to seed here any more.
         schemaVersion: SCHEMA_VERSION,
     };
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
@@ -828,6 +830,46 @@ function migrateV25toV26(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v26 -> v27, FISHING. Three methods, four sites, one fish, and one retired field.
+ *
+ * THE SITES MERGE, by the same rule the wreck's parts and the dive site's did: fish were in
+ * that water long before anyone washed ashore, and a save without them is a save on a
+ * different island. They arrive FULL — a returning player has not fished them out.
+ *
+ * THE TOOLS DO NOT. No line, no net: both are made things, and handing a returning survivor
+ * a net they never worked out would hand them the whole stage for free.
+ *
+ * THE MEAT CLOCK IS CARRIED ACROSS RATHER THAN DROPPED, and it is converted rather than
+ * copied. The old field was an absolute `gameHoursElapsed` deadline; the new one is game
+ * hours REMAINING. A save holding meat with 9 hours left keeps 9 hours — clamped at zero, so
+ * a save whose meat had already gone off stays gone off rather than being quietly refreshed.
+ */
+function migrateV26toV27(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState & { meatFreshUntilGameHours?: number | null };
+    const merged = [...(Array.isArray(old.nodes) ? old.nodes : [])];
+    const have = new Set(merged.map((n) => n.id));
+    for (const authored of createNodes()) {
+        if (authored.kind === 'fishingspot' && !have.has(authored.id)) merged.push({ ...authored });
+    }
+    const deadline = old.meatFreshUntilGameHours;
+    const meatLeft = typeof deadline === 'number'
+        ? Math.max(0, deadline - (old.gameHoursElapsed ?? 0))
+        : null;
+    const state: GameState = {
+        ...old,
+        nodes: merged,
+        inventory: { ...old.inventory, fish: num((old.inventory as { fish?: unknown })?.fish, 0) },
+        tools: { ...old.tools, net: old.tools?.net === true },
+        fishing: isObject(old.fishing) ? (old.fishing as GameState['fishing']) : { line: null, net: null },
+        freshUntil: isObject(old.freshUntil)
+            ? (old.freshUntil as GameState['freshUntil'])
+            : (meatLeft !== null && (old.inventory?.meat ?? 0) > 0 ? { meat: meatLeft } : {}),
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -870,6 +912,8 @@ function hydrate(state: GameState): GameState {
         traces: { read: [...(state.traces?.read ?? base.traces.read)] },
         wreck: { ...base.wreck, ...state.wreck },
         dive: { ...base.dive, ...state.dive },
+        fishing: { ...base.fishing, ...state.fishing },
+        freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },

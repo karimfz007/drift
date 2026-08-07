@@ -78,6 +78,11 @@ function satisfied(state: GameState, recipeId: string): boolean {
         //  extend" this function's own header names, caught by reading rather than by a
         //  bug report, which is the only reason it is not a fourth occurrence.
         case 'raft': return state.raft.built;
+        //  FISHING. Same gate, same reason, written at the same time as the recipes rather
+        //  than remembered later — a line and a net that stayed "offered" forever would keep
+        //  the Build door open on nothing, which is the defect the raft's own note describes.
+        case 'fishingline': return state.tools.fishingLine;
+        case 'net': return state.tools.net;
         default: return false;
     }
 }

@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -103,7 +103,15 @@ export type NodeKind =
      * THE UNDERWATER SLICE — one submerged salvage point. Worked with the SAME gather verb as
      * everything else, in the one place where the survivor cannot breathe while doing it.
      */
-    | 'divepart';
+    | 'divepart'
+    /**
+     * FISHING — a patch of water that holds fish. NOT a thing you pick up: it is a PLACE
+     * with a population, worked by three different verbs, and the node model is used for it
+     * because the node model is already exactly the two-state population this needs —
+     * `available` (present) plus `depletedAtGameHours` and `pool`, which is the same
+     * machinery the quarry's finite seam and every regrowing bush already run on.
+     */
+    | 'fishingspot';
 
 /** What a beach salvage find turns out to hold, rolled once at spawn (D-051). */
 export type SalvageLoot = 'driftwood' | 'cordage' | 'stone' | 'bundle';
@@ -155,6 +163,8 @@ export interface Inventory {
     berries: number;
     coconut: number;
     shellfish: number;
+    /** FISHING — one fish. Perishable (see `freshUntil`) and structurally inert. */
+    fish: number;
     sharpblade: number;
     /** DROP 1 — raw meat from a killed boar. Spoils fast; cooking is the NEXT discovery. */
     meat: number;
@@ -224,6 +234,13 @@ export interface Tools {
      *  boolean with a position on that ladder; it is a boolean now because the ladder does
      *  not exist yet and pretending otherwise would be inventing the spec. */
     fishingLine: boolean;
+    /**
+     * FISHING — a made net. A CAPABILITY like the line and the spear, and like them a
+     * boolean rather than a count: you own a net or you do not, and setting it puts it in
+     * the world rather than spending it. Where the net currently IS lives in
+     * `FishingState.net`, because a set net is a fact about the island, not about the body.
+     */
+    net: boolean;
 }
 
 /**
@@ -572,7 +589,12 @@ export interface GameState {
      * which is precisely what makes cooking — the NEXT discovery, deliberately not built in
      * this drop — worth wanting.
      */
-    meatFreshUntilGameHours: number | null;
+    /**
+     * RETIRED, and kept as a comment rather than deleted silently. This was
+     * `meatFreshUntilGameHours: number | null` — one field for one perishable, compared
+     * against `gameHoursElapsed`. `freshUntil` above replaces it for meat AND fish at once;
+     * the v26 -> v27 migration carries a live meat clock across rather than dropping it.
+     */
     /**
      * DROP 2 — what a connected charge leaves behind. `bleeding` is a severity that costs
      * health per game hour until bound or clotted; `limp` and `pain` are game-hour timers.
@@ -633,6 +655,39 @@ export interface GameState {
      * making them worse never is.
      */
     dive: DiveState;
+    /**
+     * FISHING — the cast line and the set net. Both live on the ONLINE tick only
+     * (`Session.advanceFishing`), which is [[D-011]] for this stage: an absence cannot
+     * advance a soak or resolve a bite, so nothing here can be worse — or better — for
+     * having closed the tab.
+     */
+    fishing: FishingState;
+    /**
+     * HOW LONG EACH PERISHABLE HAS LEFT, in game hours, keyed by material.
+     *
+     * ONE CLOCK FOR EVERY PERISHABLE, replacing `meatFreshUntilGameHours` — which was a
+     * single-material field, and adding a second one beside it for fish is precisely the
+     * parallel food system this stage is not allowed to build. Absent means "not
+     * perishable"; a number is game hours REMAINING, counted down on the online tick.
+     *
+     * REMAINING rather than an absolute deadline, deliberately. The old field compared
+     * `gameHoursElapsed` against a stamp, and `gameHoursElapsed` advances across an
+     * absence — so food rotted while the tab was shut, which is the same shape as the
+     * dropped-stack rule this project already wrote the other way ("absence never erases").
+     */
+    freshUntil: Partial<Record<MaterialKind, number>>;
+}
+
+/**
+ * FISHING — see `fishing.ts`. Two independent engagements, because the two methods that
+ * take time have genuinely different shapes: a line is HELD (leave the spot and you lose the
+ * cast) and a net is SET (walk away within reach and it keeps working).
+ */
+export interface FishingState {
+    /** A cast handline: which spot, and how long it has waited. Null when not fishing. */
+    line: { spotId: string; waitedGameHours: number } | null;
+    /** A net in the water: where it is, how long it has soaked, and what it holds. */
+    net: { spotId: string; soakedGameHours: number; holding: number } | null;
 }
 
 /** See `GameState.dive` and `dive.ts`. */

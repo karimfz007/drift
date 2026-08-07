@@ -23,6 +23,7 @@ import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
 import { canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater } from './state';
 import { canBindWound } from './injury';
+import { handlineBlocker, haulNetBlocker, nearestSpot, setNetBlocker, spearFishBlocker } from './fishing';
 import { nearestBoar } from './fauna';
 import { droppedWithinReach } from './dropped';
 import { readWrite } from './journal';
@@ -42,7 +43,7 @@ export interface VerbOption {
     reason: string | null;
 }
 
-export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft';
+export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft' | 'fishingspot';
 
 /**
  * Does the survivor know how to fish? A capability, not an inventory item — Slice 2's
@@ -69,6 +70,7 @@ export function verbsFor(state: GameState, target: VerbTarget): VerbOption[] {
         case 'boar': return boarVerbs(state);
         case 'dropped': return droppedVerbs(state);
         case 'raft': return raftVerbs(state);
+        case 'fishingspot': return fishingSpotVerbs(state);
     }
 }
 
@@ -116,6 +118,11 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  ceiling). The same disjoint shape the shelter's sleep/mend and the store's
     //  deposit/withdraw already use, and the reason the raft costs the radial nothing.
     raft: 'board-raft',
+    //  FISHING — the HANDLINE is the default, and it is the default because it is the
+    //  baseline: the cheapest tool, the gentlest on the water, and the one a survivor will
+    //  have first. The other two are deliberate acts reached by a hold, which is the same
+    //  bargain the pond already strikes (tap to drink; hold for the flask and the line).
+    fishingspot: 'cast-line',
 };
 
 /**
@@ -190,6 +197,53 @@ function raftVerbs(state: GameState): VerbOption[] {
     ];
 }
 
+/**
+ * THE FISHING SPOT'S CIRCLE — four segments, three methods.
+ *
+ * Computed against the NEAREST spot rather than an id passed in, the same shape `boarVerbs`
+ * uses for the thrust. That keeps `verbsFor`'s signature untouched, and it is honest: a
+ * survivor standing at the water fishes THIS water, not one they have selected from a list.
+ *
+ * EVERY SEGMENT IS SHOWN, blocked ones greyed with their one truest reason, because the
+ * reasons are the teaching here. "Too deep to stand and strike" is how a player learns that
+ * spear-fishing is a wading act without ever reading a rule, and hiding it would leave them
+ * concluding the spear is broken at the reef.
+ */
+function fishingSpotVerbs(state: GameState): VerbOption[] {
+    const spot = nearestSpot(state);
+    const depleted = spot !== null && !spot.available;
+    return [
+        {
+            id: 'cast-line',
+            label: 'Cast a line',
+            available: handlineBlocker(state) === null,
+            reason: handlineBlocker(state),
+        },
+        {
+            //  Reeling in appears only while a line is actually out, so it never clutters
+            //  the circle of a survivor who has not cast one.
+            ...(state.fishing.line
+                ? { id: 'reel-in', label: 'Reel it in', available: true, reason: null }
+                : { id: 'set-net', label: 'Set the net', available: setNetBlocker(state) === null, reason: setNetBlocker(state) }),
+        },
+        ...(state.fishing.line
+            ? [{ id: 'set-net', label: 'Set the net', available: setNetBlocker(state) === null, reason: setNetBlocker(state) }]
+            : []),
+        ...(state.fishing.net
+            ? [{ id: 'haul-net', label: 'Haul the net', available: haulNetBlocker(state) === null, reason: haulNetBlocker(state) }]
+            : []),
+        {
+            //  THE SPEAR'S SECOND TARGET. No new tool and no new verb — this is Drop 1's
+            //  spear and Drop 1's thrust, given water to be aimed at. That is why this
+            //  method cost a fraction of what the other two did.
+            id: 'spear-fish',
+            label: 'Strike at a fish',
+            available: spearFishBlocker(state) === null,
+            reason: spearFishBlocker(state) ?? (depleted ? 'This water is fished out. Give it time.' : null),
+        },
+    ];
+}
+
 function pondVerbs(state: GameState): VerbOption[] {
     const atPond = isAtPond(state);
     const notThere = atPond ? null : 'You are not at the water.';
@@ -212,6 +266,11 @@ function pondVerbs(state: GameState): VerbOption[] {
                     : state.tools.flaskSips >= TUNE.flaskCapacitySips ? 'The flask is already full.' : null),
         },
         {
+            //  THE POND'S OWN FISH SEGMENT, which existed from Slice 2 and never did
+            //  anything. It now routes to the same handline the fishing spot beside the pond
+            //  offers, so a player who taps the water they already drink from finds the verb
+            //  where they looked for it — and the spot's ring is right there to teach them
+            //  where fishing actually happens.
             id: 'fish',
             label: 'Fish',
             available: atPond && canFish(state),

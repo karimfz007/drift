@@ -69,6 +69,8 @@ function havingEverything(s: GameState): GameState {
     s.shelter.built = true;
     s.storage.built = true;
     s.raft.built = true;
+    s.tools.fishingLine = true;
+    s.tools.net = true;
     return s;
 }
 

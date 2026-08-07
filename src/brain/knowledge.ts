@@ -288,6 +288,10 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
         //  any hold-kind missing from this map, and it caught this one the moment it existed.
         case 'divepart':
             return 'navigationSeamanship';
+        //  FISHING — NOT in the mastery map, and it cannot be: a fishing spot is tap-kind,
+        //  and `masteryOnlyRewardsWork` fails the build for any tap-kind that appears here.
+        //  What fishing actually trains is Survivalcraft, through `recordTrying` at each
+        //  method's own call site — the same route the wreck's parts use for seamanship.
         //  `crashbox` is hold-kind but deliberately exempt — a one-time story beat with
         //  fixed contents, not a resource. Exactly the exemption regrowth already makes for
         //  it. This is the ONE exception to "mastery follows effortful work", and it is

@@ -48,6 +48,13 @@ export const PALETTE = {
     /** THE UNDERWATER SLICE — what sank. Darker and bluer than the surface hull, because
      *  less light reaches it and because a diver must never confuse the two. */
     diveHull: [0.17, 0.21, 0.26],
+    /** FISHING — the ring that marks a spot holding fish. Pale and warm against the sea's
+     *  cold blue, because the one thing it must do at a distance is not read as water. */
+    fishRing: [0.72, 0.78, 0.62],
+    /** FISHING — the same ring once the water is fished out. Grey, drained of the warm cast:
+     *  a survivor must be able to see from the beach that a site is spent, or the population
+     *  model is a number they can only learn by walking to it. */
+    fishRingSpent: [0.38, 0.40, 0.40],
     /** The MOUTH. Near-black on purpose: an opening reads as an opening because it is darker
      *  than everything around it, at any distance and any light. This is the whole of the
      *  "a player can recognise it" requirement, and it costs one colour. */

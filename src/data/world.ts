@@ -150,6 +150,31 @@ export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 export const DIVE_SITE = { x: 54, y: 252 } as const;
 
 /**
+ * THE FISHING SPOTS — four places on this island that hold fish.
+ *
+ * PLACED SO THE THREE METHODS ARE NOT ALL AVAILABLE EVERYWHERE, which is what stops the
+ * choice between them collapsing into "always take the best one":
+ *
+ *   fp-pond    the freshwater pond. Shallow, so all three work — this is the one site where
+ *              a player can compare them side by side, and it sits beside the water they
+ *              already walk to every day for thirst.
+ *   fp-north   } shore water off the beach, inside the wading band. Shallow enough to spear,
+ *   fp-west    } and far enough apart that a net set at one cannot be tended at the other.
+ *   fp-reef    out past the shelf, in real depth. NO spear here — you cannot brace against
+ *              anything while swimming — so the deep site is a line-and-net fishery, and the
+ *              depth rule teaches itself the first time somebody tries.
+ *
+ * Authored rather than derived: a fishery is a PLACE a survivor learns, and a spot that
+ * moved between sessions would make learning it pointless.
+ */
+export const FISHING_SPOTS: ReadonlyArray<{ id: string; x: number; y: number }> = [
+    { id: 'fp-pond', x: POND.x, y: POND.y },
+    { id: 'fp-north', x: 4, y: 116 },
+    { id: 'fp-west', x: -96, y: 34 },
+    { id: 'fp-reef', x: 26, y: 141 },
+];
+
+/**
  * Where each submerged salvage point sits, as an offset from the site's centre in metres.
  *
  * FOUR, authored, and spread wider than one interact radius so that working the site means
@@ -435,6 +460,14 @@ export function createNodes(): WoodNode[] {
         //  wreckage repeatedly move"* — and its ruling on what a wreck IS: **a worksite, not a
         //  treasure room.** That is why these are worked, not opened.
         ...WRECK_PARTS.map(([dx, dz], i) => node(`wr${i + 1}`, 'wreckpart', WRECK.x + dx, WRECK.y + dz)),
+
+        //  ---- THE FISHING SPOTS -------------------------------------------------------
+        //
+        //  Ordinary nodes, because the node model IS the two-state population this needs:
+        //  `available` is present/locally-depleted, `pool` is how many catches are left in
+        //  it, and `depletedAtGameHours` + `regrowGameHoursFor` bring it back. Not one line
+        //  of parallel depletion machinery, which was the point.
+        ...FISHING_SPOTS.map((s) => ({ ...node(s.id, 'fishingspot', s.x, s.y), pool: TUNE.fishSpotPool })),
 
         //  ---- THE DIVE SITE (the Underwater Slice) --------------------------------------
         //

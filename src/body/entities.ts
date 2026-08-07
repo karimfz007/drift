@@ -28,7 +28,7 @@ import '@babylonjs/core/Particles/particleSystemComponent';
 
 import { isFireLit, regrowProgress, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
-import { WORLD } from '../data/world';
+import { WORLD, surfaceHeightAt } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
 
@@ -478,6 +478,31 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             plank.metadata = { nodeId: node.id };
             return at(crate, 0.21, 0.7, 0);
         }
+        case 'fishingspot': {
+            //  A PATCH OF WATER, not an object. A flat ring at the SURFACE with a few small
+            //  marks inside it, so it reads as "something is happening in the water here"
+            //  rather than as a thing floating on it.
+            //
+            //  Drawn at `surfaceHeightAt` for the reason [[D-124]] exists: these sit in
+            //  water from ankle-deep to seven metres, and a ring placed on the seabed at the
+            //  reef would be invisible from a boat. Tapping it works because `screenOfMesh`
+            //  aims at the mesh's own centre — the height-guessing aim path could not have
+            //  reached a flat mark on the water at all ([[D-127]]).
+            const ring = CreateCylinder(`n_${node.id}`, { height: 0.06, diameter: 3.0, tessellation: 16 }, scene);
+            ring.material = node.available ? materials.fishRing : materials.fishRingSpent;
+            for (let m = 0; m < 3; m++) {
+                const mark = CreateCylinder(`n_${node.id}_m${m}`, { height: 0.05, diameter: 0.5, tessellation: 8 }, scene);
+                mark.material = ring.material;
+                mark.parent = ring;
+                const a = m * 2.09 + index;
+                mark.position.set(Math.cos(a) * 0.85, 0.02, Math.sin(a) * 0.85);
+                mark.isPickable = true;
+                mark.metadata = { nodeId: node.id };
+            }
+            const placed = at(ring, 0.03, 0, 0);
+            ring.position.y = surfaceHeightAt(node.x, node.y) + 0.03;
+            return placed;
+        }
         case 'divepart': {
             //  THE UNDERWATER SLICE. Sitting on the SEABED, not at the waterline — this is the
             //  first content in the game that is genuinely below the surface, and drawing it
@@ -546,6 +571,8 @@ interface NodeMaterials {
     salvage: StandardMaterial;
     wreckpart: StandardMaterial;
     divepart: StandardMaterial;
+    fishRing: StandardMaterial;
+    fishRingSpent: StandardMaterial;
     harvestMark: StandardMaterial;
 }
 
@@ -582,6 +609,11 @@ export class NodeViews {
             //  Darker still than the surface hull: less light gets down there, and nothing
             //  else in the game is this colour.
             divepart: flat(scene, 'm_divepart', PALETTE.diveHull),
+            //  Two materials rather than one tinted at runtime: a spent site must be legible
+            //  at a glance from across the water, and swapping the whole material is how
+            //  every other state change in this file is drawn.
+            fishRing: flat(scene, 'm_fishRing', PALETTE.fishRing),
+            fishRingSpent: flat(scene, 'm_fishRingSpent', PALETTE.fishRingSpent),
             harvestMark: flat(scene, 'm_harvestMark', PALETTE.harvestMark)
         };
 
@@ -1106,7 +1138,7 @@ export class RaftView {
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,
     berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true,
-    quarry: true, boulder: true, salvage: true, wreckpart: true, divepart: true
+    quarry: true, boulder: true, salvage: true, wreckpart: true, divepart: true, fishingspot: true
 };
 void _EXHAUSTIVE;
 

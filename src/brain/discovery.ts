@@ -74,6 +74,26 @@ export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
         prompt: 'A blade is no use in the palm of your hand. It wants a handle.',
     },
     {
+        //  FISHING — THE LINE. The need is HUNGER standing at water, which is the most
+        //  ordinary situation on this island and the reason the line is the baseline method:
+        //  a survivor works it out the first time they are hungry beside the pond with fibre
+        //  in their hands. One making, because a line IS one material.
+        recipeId: 'fishingline',
+        need: (s) => s.hunger < TUNE.hungerLowHintAt && s.inventory.fiber > 0 && s.inventory.sharpblade > 0,
+        makings: ['fiber', 'sharpblade'],
+        prompt: 'There are fish in that water, and cord in your hands.',
+    },
+    {
+        //  FISHING — THE NET. A much later thought, and its need says so: you do not invent
+        //  a net until a line has taught you that one fish at a time is not enough. Gated on
+        //  OWNING the line rather than on hunger alone, so the two discoveries arrive in the
+        //  order that makes the second one meaningful.
+        recipeId: 'net',
+        need: (s) => s.tools.fishingLine && !s.tools.net && s.inventory.sharpblade > 0,
+        makings: ['fiber', 'sharpblade'],
+        prompt: 'One hook takes one fish. A wall of cord would take the shoal.',
+    },
+    {
         //  Stone that will not break by hand. Felt when you are holding stone and want an edge.
         recipeId: 'stonehammer',
         need: (s) => !s.tools.stoneHammer && s.inventory.stone > 0,

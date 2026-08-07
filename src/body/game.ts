@@ -127,6 +127,14 @@ import {
     waterSpeedMultiplierOf,
     waterZoneOf,
     wreckNoteFor,
+    castHandline,
+    craftFishingLine,
+    craftNet,
+    haulNet,
+    nearestSpot,
+    reelIn,
+    setNet,
+    spearFish,
     diveNote,
     diveStageOf,
     diveSpeedMultiplierOf,
@@ -1267,6 +1275,12 @@ export class Game {
             case 'pick-up': this.doPickUpDropped(); break;
             case 'make-journal': this.doMakeJournal(); break;
             case 'brew-remedy': this.doBrewRemedy(); break;
+            //  ---- FISHING — three methods, five verbs, one dispatcher ----
+            case 'cast-line': this.doCastLine(); break;
+            case 'reel-in': this.doReelIn(); break;
+            case 'set-net': this.doSetNet(); break;
+            case 'haul-net': this.doHaulNet(); break;
+            case 'spear-fish': this.doSpearFish(); break;
             case 'store-journal': this.doSetJournalCarried(false); break;
             case 'take-journal': this.doSetJournalCarried(true); break;
             default: this.explain('Nothing to do there.'); break;
@@ -1451,6 +1465,33 @@ export class Game {
                 this.pending = null;
             }
             return;
+        }
+
+        //  ---- FISHING — a spot is a node, but it is not a thing you pick up ----
+        //
+        //  It has to be handled BEFORE the `available` guard below, and that ordering is the
+        //  whole point: that guard drops a pending on an unavailable node SILENTLY, which is
+        //  correct for a felled tree (it is gone, there is nothing to say) and exactly wrong
+        //  for fished-out water (it is still there, and the survivor needs to know why
+        //  nothing happened). Falling through would have been [[D-042]]'s silent-tap defect,
+        //  reintroduced by the one node kind that outlives its own depletion.
+        if (this.pending.kind === 'node') {
+            const spot = this.nodes.find(this.pending.id);
+            if (spot?.node.kind === 'fishingspot') {
+                const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
+                this.pending = null;
+                if (this.pendingWasHold ? holdOpensCircle(s, 'fishingspot') : tapOpensCircle(s, 'fishingspot')) {
+                    this.beginPanel();
+                    showVerbCircle(this.overlay, verbsFor(s, 'fishingspot'), at.x, at.y,
+                        (id: string) => { this.endPanel(); this.performVerb(id); },
+                        () => this.endPanel());
+                    return;
+                }
+                const only = defaultVerb(s, 'fishingspot');
+                if (only) this.performVerb(only.id);
+                else this.explain(verbsFor(s, 'fishingspot').find((v) => v.reason)?.reason ?? 'Nothing to do there.');
+                return;
+            }
         }
 
         //  A node: tap-kind gathers at once; hold-kind starts an auto-hold (the castaway
@@ -1781,6 +1822,88 @@ export class Game {
         this.lastActivityAt = now();
     }
 
+    // ---- FISHING -----------------------------------------------------------
+    //
+    //  Five short handlers and not one of them decides anything: every rule lives in
+    //  `fishing.ts`, and these spend the result on cues, float text and a sentence. The
+    //  one thing the body genuinely owns is the ROLL — see `doSpearFish`.
+
+    private doCastLine(): void {
+        const s = session().state;
+        if (!castHandline(s)) { this.explain(this.fishingReason('cast-line')); return; }
+        session().persist(now());
+        this.cues.play(CUES.target);
+        this.explain('The line goes out. Now you wait.');
+        this.lastActivityAt = now();
+    }
+
+    private doReelIn(): void {
+        if (!reelIn(session().state)) return;
+        session().persist(now());
+        this.explain('You draw the line back in, empty.');
+        this.lastActivityAt = now();
+    }
+
+    private doSetNet(): void {
+        const s = session().state;
+        if (!setNet(s)) { this.explain(this.fishingReason('set-net')); return; }
+        session().persist(now());
+        this.cues.play(CUES.craft);
+        this.explain('The net is set. Leave it to soak — and stay within reach of it.');
+        this.lastActivityAt = now();
+    }
+
+    private doHaulNet(): void {
+        const s = session().state;
+        const out = haulNet(s);
+        if (out.spot === null) { this.explain(this.fishingReason('haul-net')); return; }
+        session().persist(now());
+        if (out.caught > 0) {
+            this.cues.play(CUES.gather);
+            this.floatText(`+${out.caught} fish`);
+        }
+        this.explain(out.caught > 0
+            ? (out.spot === 'locally-depleted'
+                ? 'You lift it heavy — and that is the last of them here for a while.'
+                : 'You lift it heavy, and shake it out.')
+            : 'You lift it. Nothing in it yet.');
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * ONE STRIKE, and the ROLL is made HERE.
+     *
+     * `spearFish` takes the roll as an argument rather than calling `Math.random` itself,
+     * because `reconcile` is documented as never rolling dice and a brain module that
+     * quietly did would be untestable at exactly the point where variance IS the mechanic.
+     * The body rolls; the brain decides. This is the only line of chance in the stage.
+     */
+    private doSpearFish(): void {
+        const s = session().state;
+        const out = spearFish(s, Math.random());
+        if (!out.ok) { this.explain(this.fishingReason('spear-fish')); return; }
+        session().persist(now());
+        if (out.caught > 0) {
+            this.cues.play(CUES.gather);
+            this.floatText(`+${out.caught} fish`);
+            this.explain(out.spot === 'locally-depleted'
+                ? 'Clean through it — and the rest of the shoal is gone.'
+                : 'Clean through it.');
+        } else {
+            this.cues.play(CUES.denied);
+            this.explain(out.spot === 'locally-depleted'
+                ? 'You miss, and the last of them scatter.'
+                : 'You miss. The shoal scatters and settles.');
+        }
+        this.lastActivityAt = now();
+    }
+
+    /** The ONE truest reason a fishing verb refused, read from the brain's own blockers. */
+    private fishingReason(verbId: string): string {
+        const found = verbsFor(session().state, 'fishingspot').find((v) => v.id === verbId);
+        return found?.reason ?? 'Not here.';
+    }
+
     private doBoardRaft(): void {
         const state = session().state;
         if (!canBoardRaft(state)) {
@@ -2035,7 +2158,11 @@ export class Game {
                     siteBlocker: !s.raft.built && !nearShoreForRaft(s)
                         ? 'You are too far from the water. A raft has to be built where it can float.'
                         : null,
-                }
+                },
+                //  FISHING — gated by the same ladder reading as every row above it. A
+                //  survivor who has not worked out a line is not offered one.
+                fishingLine: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.fishingLine, revealed: revealedInPanel(s, 'fishingline') },
+                net: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.net, revealed: revealedInPanel(s, 'net') }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             () => {
@@ -2134,7 +2261,27 @@ export class Game {
             },
             () => this.endPanel(),
             () => { this.endPanel(); this.tryRepair('shelter'); },
-            () => { this.endPanel(); this.trySleep(); }
+            () => { this.endPanel(); this.trySleep(); },
+            () => {
+                this.endPanel();
+                if (craftFishingLine(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the line is spun');
+                    session().persist(now());
+                    this.showHint('Find water with fish in it — the rings on the surface — and cast.');
+                }
+                this.lastActivityAt = now();
+            },
+            () => {
+                this.endPanel();
+                if (craftNet(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('the net is knotted');
+                    session().persist(now());
+                    this.showHint('Set it at a fishing spot, then stay nearby while it soaks.');
+                }
+                this.lastActivityAt = now();
+            }
         );
     }
 
@@ -2231,6 +2378,22 @@ export class Game {
         this.lastFrameAt = stamp;
 
         this.scene.render();
+        //  ---- FISHING — a bite resolves on the tick, so the tick is where it is told ----
+        //
+        //  `advanceHandline` returns a catch to `Session`, which parks it; the body drains
+        //  it here. Without this the single most rewarding moment in the whole stage would
+        //  land silently in the inventory — a resolved cast has no tap of its own to hang a
+        //  message on, which is exactly why it needed one.
+        const bit = session().takeFishingCatch();
+        if (bit > 0) {
+            this.cues.play(CUES.gather);
+            this.floatText(`+${bit} fish`);
+            const spot = nearestSpot(session().state);
+            this.showHint(spot && !spot.available
+                ? 'Something takes it — and that is the last of them here for a while.'
+                : 'Something takes it. You draw it in.');
+        }
+
         if (!runtime.sceneReady) runtime.sceneReady = true;
     }
 
