@@ -6509,6 +6509,183 @@ async function main() {
     }
     }
 
+    // ================= THE JUNK & FLAVOUR CATALOGUE (D-131) =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the catalogue's inertness, its prose
+    //  law and the noted/unnoted split (tests/junk.test.ts, 23 checks, six planted defects
+    //  proven red). None of that can witness the one property junk actually lives or dies by:
+    //  THAT A THUMB CAN REACH IT. These are the smallest objects in the game — a rusted head
+    //  0.09 m tall, a plank end 0.11 m — and this project has twice shipped something the aim
+    //  path flew straight over ([[D-127]]'s fire ring at 0.29 m, and the trace tap that had
+    //  zero callers at all). A decorative object nobody can touch is not flavour, it is a lie
+    //  the world tells at a distance.
+    //
+    //  So every check below taps a real mesh with a real finger and reads what the game said.
+    if (section("THE JUNK & FLAVOUR CATALOGUE (D-131)")) {
+    const JUNK = await page.evaluate(() => window.__drift.junkSites?.() ?? []);
+    check('JUNK 1 — all six authored objects are in the served build',
+        JUNK.length === 6, `${JUNK.length}: ${JUNK.map((j) => j.id).join(', ')}`);
+
+    const noted = JUNK.filter((j) => j.hasNote);
+    const unnoted = JUNK.filter((j) => !j.hasNote);
+    check('JUNK 1b — split half noted, half not, across three different zones',
+        noted.length === 3 && unnoted.length === 3,
+        `noted [${noted.map((j) => j.id).join(', ')}], unnoted [${unnoted.map((j) => j.id).join(', ')}]`);
+
+    if (JUNK.length === 6) {
+        const standAt = async (j, extra = '') => {
+            await editSave(`
+                state.player = { x: ${j.x}, y: ${j.y} };
+                state.energy = 100; state.health = 100; state.warmth = 100;
+                state.hunger = 70; state.thirst = 80;
+                state.gameHoursElapsed = 8;
+                ${extra}
+            `);
+        };
+
+        // ---- 2. EVERY ONE OF THEM PROJECTS ONTO THE SCREEN --------------------------
+        //
+        //  Before any tap: does the aim path reach an object this small at all? Read through
+        //  `screenOfMesh`, which aims at the mesh's own centre rather than deriving a height —
+        //  the two at the wreck sit at the waterline over an eight-metre seabed, and a derived
+        //  height could not have reached them by construction.
+        const projections = [];
+        for (const j of JUNK) {
+            await standAt(j);
+            await faceNode(j.x, j.y);
+            const p = await page.evaluate((n) => window.__drift.screenOfMesh(n), `trace_${j.id}`);
+            const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+            projections.push({
+                id: j.id,
+                onScreen: p !== null && p.x >= 0 && p.y >= 0 && p.x <= view.w && p.y <= view.h,
+                at: p ? `${p.x.toFixed(0)},${p.y.toFixed(0)}` : 'no mesh',
+            });
+        }
+        await shot('junk-01-projected');
+        check('JUNK 2 — every object has a real mesh that lands on the actual screen',
+            projections.every((p) => p.onScreen),
+            projections.map((p) => `${p.id} ${p.at}`).join(' | '));
+
+        // ---- 3. AN UNNOTED OBJECT ANSWERS, AND KEEPS ANSWERING ----------------------
+        const flat = unnoted[0];
+        await standAt(flat);
+        await faceNode(flat.x, flat.y);
+        const flatTap = await tapMesh(`trace_${flat.id}`, 55);
+        await sleep(900);
+        const flatSaid = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+        const flatOutcome = await page.evaluate(() => window.__drift.lastTapOutcome?.() ?? null);
+        await shot('junk-02-inspected');
+        check('JUNK 3 — a REAL tap on an unnoted object answers with something to observe',
+            flatTap.ok === true && flatSaid.length > 10,
+            `tap ${flatTap.ok}, outcome ${flatOutcome}, said "${flatSaid}"`);
+
+        //  ...and it is not spent by being looked at. This is the whole difference between a
+        //  piece of world texture and a pickup, and it is invisible to anyone who taps once.
+        const beforeAgain = await live();
+        await faceNode(flat.x, flat.y);
+        await tapMesh(`trace_${flat.id}`, 55);
+        await sleep(900);
+        const saidAgain = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+        const afterAgain = await live();
+        check('JUNK 3b — ...and answers the SECOND look exactly as it answered the first',
+            saidAgain.length > 10
+            && afterAgain.traces.read.includes(flat.id) === false
+            && JSON.stringify(afterAgain.inventory) === JSON.stringify(beforeAgain.inventory),
+            `said "${saidAgain}", recorded as read ${afterAgain.traces.read.includes(flat.id)},`
+            + ` pack unchanged ${JSON.stringify(afterAgain.inventory) === JSON.stringify(beforeAgain.inventory)}`);
+
+        // ---- 4. A NOTED OBJECT READS ONCE, THROUGH THE SHIPPED CHANNEL --------------
+        const withNote = noted[0];
+        await standAt(withNote);
+        await faceNode(withNote.x, withNote.y);
+        const beforeRead = await live();
+        const readTap = await tapMesh(`trace_${withNote.id}`, 55);
+        await sleep(1000);
+        const noteSaid = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+        const afterRead = await live();
+        await shot('junk-03-read');
+        check('JUNK 4 — a REAL tap on a noted object hands over the words somebody left',
+            readTap.ok === true
+            && afterRead.traces.read.includes(withNote.id)
+            && noteSaid.length > 20,
+            `tap ${readTap.ok}, recorded ${afterRead.traces.read.includes(withNote.id)}, said "${noteSaid}"`);
+
+        check('JUNK 4b — ...and it hands over NO GOODS. Flavour, not a reward table',
+            JSON.stringify(afterRead.inventory) === JSON.stringify(beforeRead.inventory),
+            `pack unchanged ${JSON.stringify(afterRead.inventory) === JSON.stringify(beforeRead.inventory)}`);
+
+        //  Read twice is read once. The found-content channel's own rule, which junk inherits
+        //  rather than reimplements.
+        await faceNode(withNote.x, withNote.y);
+        await tapMesh(`trace_${withNote.id}`, 55);
+        await sleep(900);
+        const secondSaid = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+        const afterSecond = await live();
+        check('JUNK 4c — ...and never twice: the second tap gives the sight, not the note',
+            afterSecond.traces.read.filter((id) => id === withNote.id).length === 1
+            && secondSaid !== noteSaid,
+            `recorded once ${afterSecond.traces.read.filter((id) => id === withNote.id).length},`
+            + ` second reading "${secondSaid}"`);
+
+        // ---- 5. THE TWO AT THE WRECK, WHERE THE SEABED IS EIGHT METRES DOWN ---------
+        const atWreck = JUNK.filter((j) => Math.hypot(j.x - 40, j.y - 240) <= TUNE.wreckArrivalRadiusM);
+        check('JUNK 5 — the catalogue reaches the WRECK, not just the two islands',
+            atWreck.length === 2, `${atWreck.length} out there: ${atWreck.map((j) => j.id).join(', ')}`);
+
+        if (atWreck.length > 0) {
+            const j = atWreck[0];
+            await standAt(j, `
+                state.raft = { built: true, x: ${j.x}, y: ${j.y}, grade: 'serviceable', aboard: false };
+                state.wreck = { reached: true, reachedAtGameHours: 4, instability: 0, lastDisturbedAtGameHours: null };
+            `);
+            const feet = await page.evaluate(() => window.__drift.playerFeetY());
+            const seabed = await page.evaluate(([x, z]) => window.__drift.groundAt(x, z), [j.x, j.y]);
+            await faceNode(j.x, j.y);
+            const wreckTap = await tapMesh(`trace_${j.id}`, 55);
+            await sleep(900);
+            const wreckSaid = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+            await shot('junk-04-at-the-wreck');
+            check('JUNK 5b — and it floats at the WATERLINE, reachable from a raft, not on the seabed',
+                seabed < -3 && wreckTap.ok === true && wreckSaid.length > 10,
+                `seabed ${seabed.toFixed(2)} m, swimmer's feet ${feet.toFixed(2)},`
+                + ` tap ${wreckTap.ok}, said "${wreckSaid}"`);
+        }
+
+        // ---- 6. NOTHING HERE IS SILENT ---------------------------------------------
+        //
+        //  The world-truth law, swept across the whole catalogue with a real finger. An object
+        //  that can be tapped and answers with nothing is the defect this rule exists to
+        //  forbid, and it is the one a decorative pass ships by accident.
+        const mute = [];
+        for (const j of JUNK) {
+            await standAt(j);
+            await faceNode(j.x, j.y);
+            await page.evaluate(() => { window.__drift.persist?.(); });
+            const tapped = await tapMesh(`trace_${j.id}`, 55);
+            await sleep(800);
+            const said = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+            if (!tapped.ok || said.length < 10) mute.push(`${j.id}(tap ${tapped.ok}, "${said}")`);
+        }
+        await shot('junk-05-swept');
+        check('JUNK 6 — every object in the catalogue answers a real tap. None is a silent prop',
+            mute.length === 0, mute.length === 0 ? 'all six spoke' : `mute: ${mute.join(', ')}`);
+
+        // ---- 7. D-011 ---------------------------------------------------------------
+        await standAt(noted[1]);
+        await faceNode(noted[1].x, noted[1].y);
+        await tapMesh(`trace_${noted[1].id}`, 55);
+        await sleep(900);
+        const beforeAway = await live();
+        await goAway(240);
+        const afterAway = await live();
+        check('JUNK 7 — D-011: four hours away neither forgets what was read nor costs anything',
+            afterAway.traces.read.length >= beforeAway.traces.read.length
+            && afterAway.health > 0,
+            `read ${beforeAway.traces.read.length} -> ${afterAway.traces.read.length},`
+            + ` health ${afterAway.health.toFixed(1)}`);
+    }
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

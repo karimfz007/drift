@@ -56,6 +56,78 @@ const AFFORDANCES: Record<string, Affordance> = {
     },
 };
 
+
+/**
+ * THE JUNK & FLAVOUR CATALOGUE'S OWN AFFORDANCES (Ch.3).
+ *
+ * SAME SHAPE, SAME LAW, SEPARATE MAP. These are keyed by SITE id rather than by material,
+ * because a rusted tool head is not a material you carry — it is an object in the world, and
+ * `inspectableMaterials()` feeds the Backpack's list of things in your pack. Putting a world
+ * object in there would offer the player an inspection of something they are not holding.
+ *
+ * They live in THIS FILE rather than beside the catalogue in world.ts for one reason, and it
+ * is the reason the whole module exists: `assertNoFinishedAnswers` sweeps *"every string this
+ * module ships"*. Authoring junk prose anywhere else would put it outside the one guard that
+ * stops observation drifting into instruction, one helpful edit at a time.
+ *
+ * ONLY THE UNNOTED HALF HAS AN ENTRY, and that is deliberate. A noted object answers with the
+ * words somebody left; an unnoted one has nothing to say, so it has to be worth LOOKING at
+ * instead — properties you could actually observe by handling it, and the question they
+ * raise. An unnoted object with no affordance would be a silent decorative prop, which the
+ * world-truth law forbids outright.
+ */
+const JUNK_AFFORDANCES: Record<string, Affordance> = {
+    'jk-adze': {
+        properties: [
+            'Heavier than stone for its size',
+            'One edge was ground straight, not fractured',
+            'Rust flakes off in sheets and there is rust under that',
+        ],
+        questions: [
+            'Who grinds an edge straight instead of knapping one?',
+            'How long does iron have to sit to go through like this?',
+        ],
+    },
+    'jk-figure': {
+        properties: [
+            'Cut from a broom handle, across the grain in places',
+            'The face is worn smoother than the rest',
+            'Whittled with something small and sharp',
+        ],
+        questions: [
+            'How many hours does a thing like this take?',
+            'Was it made to be kept, or to pass the time?',
+        ],
+    },
+    'jk-plank': {
+        properties: [
+            'Salt-bleached grey the whole way through',
+            'Square holes, cut — not split, not bored',
+            'The spacing between them is even',
+        ],
+        questions: [
+            'What was on the other side of those holes?',
+            'Is even spacing something the sea can do?',
+        ],
+    },
+};
+
+/**
+ * What handling a piece of junk tells you, or null when it holds a note instead.
+ *
+ * Null is not an oversight and the body must not treat it as one: a noted object answers
+ * through the found-content channel, and giving it observations as well would be two voices
+ * for one tap.
+ */
+export function junkAffordanceOf(siteId: string): Affordance | null {
+    return JUNK_AFFORDANCES[siteId] ?? null;
+}
+
+/** Every junk id that answers with observation rather than with a note. */
+export function inspectableJunk(): string[] {
+    return Object.keys(JUNK_AFFORDANCES);
+}
+
 export function affordanceOf(material: MaterialKind | string): Affordance | null {
     return AFFORDANCES[material] ?? null;
 }

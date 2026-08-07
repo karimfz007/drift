@@ -7,7 +7,7 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, airCapacityOf, createSaveRepository, depthAt, diveStageOf, ladderFor, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { SAVE_KEY, Session, airCapacityOf, createSaveRepository, depthAt, diveStageOf, ladderFor, junkSites, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
 import { DIVE_SITE, FAR_ISLAND, isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
@@ -389,6 +389,12 @@ function installDebugHook(): void {
             stage: diveStageOf(st),
         };
     },
+    //  THE JUNK & FLAVOUR CATALOGUE (Ch.3) — READ-ONLY, per [[D-075]]. It answers where the
+    //  objects are and whether each holds a note; it never reads one, never inspects one, and
+    //  never records one. The harness still taps every single object with a real finger.
+    junkSites: () => junkSites().map((j) => ({
+        id: j.id, x: j.x, y: j.y, kind: j.kind, hasNote: j.note !== null,
+    })),
     traceSites: () => traceSites().map((t) => ({
         id: t.id, x: t.x, y: t.y, kind: t.kind, topic: t.topic, goods: { ...t.goods },
     })),

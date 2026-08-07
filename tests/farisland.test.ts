@@ -22,7 +22,7 @@ import { waterZoneAt } from '../src/brain/water';
 import { namesAFinishedAnswer } from '../src/brain/affordance';
 import { SCHEMA_VERSION } from '../src/brain/types';
 import {
-    FAR_ISLAND, SURF_LINE_RADIUS, TRACE_SITES, WORLD, WRECK,
+    FAR_ISLAND, JUNK_SITES, SURF_LINE_RADIUS, TRACE_SITES, WORLD, WRECK,
     groundHeight, isDryLand, surfaceHeightAt, waterDepthAt,
 } from '../src/data/world';
 import { TUNE } from '../src/data/tune';
@@ -172,8 +172,13 @@ describe('the traces — the shipped channel, at the journal\'s rung and no high
     });
 
     it('the note never instructs — the same guard the inspection layer keeps', () => {
-        for (const t of TRACE_SITES) {
-            expect(namesAFinishedAnswer(t.note), `${t.id}'s note instructs`).toBe(false);
+        //  BOTH CATALOGUES. Ch.3's junk is the same type carrying the same kind of prose, and
+        //  a law that swept only the first list would leave the newer half of the writing
+        //  unguarded — which is precisely how "observation" drifts into "instruction".
+        for (const t of [...TRACE_SITES, ...JUNK_SITES]) {
+            if (t.note !== null) {
+                expect(namesAFinishedAnswer(t.note), `${t.id}'s note instructs`).toBe(false);
+            }
             expect(namesAFinishedAnswer(t.sight), `${t.id}'s sight line instructs`).toBe(false);
         }
     });

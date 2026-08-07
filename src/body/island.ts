@@ -27,7 +27,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
 import { TUNE } from '../data/tune';
-import { FAR_ISLAND, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach } from '../data/world';
+import { FAR_ISLAND, JUNK_SITES, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach, surfaceHeightAt } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
@@ -352,8 +352,18 @@ export class Island {
      * own id, so the tap routes to that site and no other.
      */
     private buildTraceSites(): void {
-        for (const site of TRACE_SITES) {
-            const y = groundHeight(site.x, site.y);
+        //  BOTH CATALOGUES, one builder. The far island's three traces and the junk & flavour
+        //  catalogue's six are the same type and get the same mesh path, the same pickable
+        //  metadata and the same tap route — see `JUNK_SITES` for why they are separate lists
+        //  and identical machinery.
+        for (const site of [...TRACE_SITES, ...JUNK_SITES]) {
+            //  THE SURFACE, not the terrain. Two of the junk catalogue's objects are AT THE
+            //  WRECK, where the seabed is eight metres down — `groundHeight` would sink a mess
+            //  tin out of sight and make it unpickable into the bargain. This is [[D-124]]'s
+            //  fix applied where it was always going to be needed next, and it changes nothing
+            //  on land: `surfaceHeightAt` and `groundHeight` are identical above sea level,
+            //  which the wreck slice's own regression sweep asserts.
+            const y = surfaceHeightAt(site.x, site.y);
             const material = this.flatMaterial(`traceMat_${site.id}`);
             material.diffuseColor = new Color3(0.34, 0.31, 0.28);
             material.emissiveColor = new Color3(0.03, 0.03, 0.03);
@@ -367,6 +377,40 @@ export class Island {
                 mesh = CreateBox(`trace_${site.id}`, { width: 0.9, height: 0.62, depth: 0.7 }, this.scene);
                 mesh.position.set(site.x, y + 0.31, site.y);
                 mesh.rotation.y = 0.4;
+            } else if (site.kind === 'tool') {
+                //  A rusted head, half in the sand. Flat and small on purpose: it should be
+                //  something you nearly walk past, and `traceTapRadiusM` is what makes a flat
+                //  thing tappable without standing it up ([[D-127]]).
+                mesh = CreateBox(`trace_${site.id}`, { width: 0.34, height: 0.09, depth: 0.2 }, this.scene);
+                mesh.position.set(site.x, y + 0.045, site.y);
+                mesh.rotation.y = 0.7;
+                mesh.rotation.z = 0.18;
+                material.diffuseColor = new Color3(0.36, 0.21, 0.13);
+            } else if (site.kind === 'carving') {
+                //  Upright and small — a whittled figure, or notches in a trunk. Standing, so
+                //  it reads as deliberate at a distance rather than as more debris.
+                mesh = CreateCylinder(`trace_${site.id}`, { height: 0.52, diameterTop: 0.1, diameterBottom: 0.14, tessellation: 6 }, this.scene);
+                mesh.position.set(site.x, y + 0.26, site.y);
+                material.diffuseColor = new Color3(0.46, 0.35, 0.22);
+            } else if (site.kind === 'driftwood') {
+                //  A plank END, lying flat. Squarer than anything the sea makes, which is the
+                //  whole of what it has to say before you touch it.
+                mesh = CreateBox(`trace_${site.id}`, { width: 1.15, height: 0.11, depth: 0.3 }, this.scene);
+                mesh.position.set(site.x, y + 0.055, site.y);
+                mesh.rotation.y = 1.1;
+                material.diffuseColor = new Color3(0.62, 0.6, 0.55);
+            } else if (site.kind === 'effect') {
+                //  Someone's belongings: low, paired, set down rather than dropped.
+                mesh = CreateBox(`trace_${site.id}`, { width: 0.46, height: 0.17, depth: 0.26 }, this.scene);
+                mesh.position.set(site.x, y + 0.085, site.y);
+                mesh.rotation.y = -0.35;
+                const twin = CreateBox(`trace_${site.id}_twin`, { width: 0.42, height: 0.15, depth: 0.24 }, this.scene);
+                twin.material = material;
+                twin.parent = mesh;
+                twin.position.set(0.3, -0.01, 0.06);
+                twin.isPickable = true;
+                twin.metadata = { traceId: site.id };
+                material.diffuseColor = new Color3(0.28, 0.24, 0.22);
             } else {
                 //  A cairn: shoulder-high, with the flat stone on top.
                 mesh = CreateCylinder(`trace_${site.id}`, { height: 1.5, diameterTop: 0.5, diameterBottom: 0.95, tessellation: 7 }, this.scene);

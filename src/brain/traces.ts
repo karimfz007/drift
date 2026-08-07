@@ -28,7 +28,8 @@
  * ---------------------------------------------------------------------------------------
  */
 import { TUNE } from '../data/tune';
-import { TRACE_SITES, type TraceSite } from '../data/world';
+import { JUNK_SITES, TRACE_SITES, type TraceSite } from '../data/world';
+import { junkAffordanceOf, type Affordance } from './affordance';
 import type { GameState, MaterialKind, TracesState } from './types';
 
 export function freshTraces(): TracesState {
@@ -39,8 +40,28 @@ export function traceSites(): readonly TraceSite[] {
     return TRACE_SITES;
 }
 
+/**
+ * THE JUNK & FLAVOUR CATALOGUE (Ch.3) — the far island's traces' own machinery, pointed at a
+ * second catalogue. See `JUNK_SITES` in world.ts for why it is a separate array of the same
+ * type rather than more entries in the first one.
+ */
+export function junkSites(): readonly TraceSite[] {
+    return JUNK_SITES;
+}
+
+/**
+ * EVERY readable object in the world, both catalogues.
+ *
+ * The single list every lookup below walks. Written this way rather than as two code paths
+ * because two code paths is how a tap on a piece of junk comes to resolve differently from a
+ * tap on a trace — and this project has fixed that exact divergence twice.
+ */
+export function allSites(): readonly TraceSite[] {
+    return [...TRACE_SITES, ...JUNK_SITES];
+}
+
 export function traceById(id: string): TraceSite | null {
-    return TRACE_SITES.find((t) => t.id === id) ?? null;
+    return allSites().find((t) => t.id === id) ?? null;
 }
 
 /** Has this site already given up what it holds? */
@@ -52,7 +73,7 @@ export function hasRead(state: GameState, id: string): boolean {
 export function traceWithinReach(state: GameState): TraceSite | null {
     let best: TraceSite | null = null;
     let bestD = Infinity;
-    for (const t of TRACE_SITES) {
+    for (const t of allSites()) {
         const d = Math.hypot(t.x - state.player.x, t.y - state.player.y);
         if (d <= TUNE.interactRadiusM && d < bestD) { bestD = d; best = t; }
     }
@@ -65,6 +86,21 @@ export interface TraceReading {
     sight: string;
     /** The note, once read. Null while unread: the point is to go and look. */
     note: string | null;
+    /**
+     * Does this object hold a note AT ALL?
+     *
+     * It exists because `note: null` alone is ambiguous between "you have not read it yet"
+     * and "there is nothing here to read", and the body has to tell those apart to know
+     * whether to offer a second beat. Conflating them would make an unnoted object look
+     * permanently unread — a promise the world never keeps, which is the world-truth law's
+     * whole subject.
+     */
+    hasNote: boolean;
+    /**
+     * What HANDLING it tells you, for an object with no note. Observable properties and open
+     * questions, from the affordance layer — never a named answer.
+     */
+    observed: Affordance | null;
     alreadyRead: boolean;
 }
 
@@ -72,7 +108,17 @@ export function readingFor(state: GameState, id: string): TraceReading | null {
     const site = traceById(id);
     if (!site) return null;
     const been = hasRead(state, id);
-    return { site, sight: site.sight, note: been ? site.note : null, alreadyRead: been };
+    const hasNote = site.note !== null;
+    return {
+        site,
+        sight: site.sight,
+        note: hasNote && been ? site.note : null,
+        hasNote,
+        observed: hasNote ? null : junkAffordanceOf(site.id),
+        //  An object with nothing to read is never "already read" — there is no state to be
+        //  in. It answers the hundredth tap exactly as it answered the first.
+        alreadyRead: hasNote ? been : false,
+    };
 }
 
 /**
@@ -85,7 +131,10 @@ export function readingFor(state: GameState, id: string): TraceReading | null {
  */
 export function readTrace(state: GameState, id: string): { ok: boolean; gained: Partial<Record<MaterialKind, number>> } {
     const site = traceById(id);
-    if (!site || hasRead(state, id)) return { ok: false, gained: {} };
+    //  A NOTE-LESS OBJECT IS NEVER READ. It is inspected, and inspection consumes nothing —
+    //  so this refuses outright rather than recording it, which would quietly turn a permanent
+    //  piece of world texture into a one-shot pickup.
+    if (!site || site.note === null || hasRead(state, id)) return { ok: false, gained: {} };
 
     state.traces = { read: [...state.traces.read, id] };
     const gained: Partial<Record<MaterialKind, number>> = {};
@@ -104,11 +153,11 @@ export function readTrace(state: GameState, id: string): { ok: boolean; gained: 
  * who has never crossed to this island has no business suspecting anything from it.
  */
 export function traceSuggests(state: GameState, recipeId: string): boolean {
-    return TRACE_SITES.some((t) =>
+    return allSites().some((t) =>
         t.topic === recipeId && state.traces.read.includes(t.id));
 }
 
 /** Everything read so far — for the morning report and the Skills tab. */
 export function tracesRead(state: GameState): TraceSite[] {
-    return TRACE_SITES.filter((t) => state.traces.read.includes(t.id));
+    return allSites().filter((t) => state.traces.read.includes(t.id));
 }

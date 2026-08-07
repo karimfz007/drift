@@ -288,17 +288,146 @@ export interface TraceSite {
     id: string;
     x: number;
     y: number;
-    /** What the site looks like, for the body. */
-    kind: 'camp' | 'cache' | 'marker';
+    /**
+     * What the site looks like, for the body.
+     *
+     * The first three are the far island's own traces. The four after them are the JUNK &
+     * FLAVOUR CATALOGUE's — same type, same machinery, different catalogue (see `JUNK_SITES`).
+     */
+    kind: 'camp' | 'cache' | 'marker' | 'tool' | 'carving' | 'driftwood' | 'effect';
     /** One line, read on arrival — what you can SEE without touching anything. */
     sight: string;
     /** The recipe the note bears on, or null for a plain observation that teaches no craft. */
     topic: string | null;
-    /** The note itself, in the hand of whoever left it. Never instructions. */
-    note: string;
+    /**
+     * The note itself, in the hand of whoever left it. Never instructions.
+     *
+     * NULL for an object that holds no note — the unnoted half of the junk catalogue. That is
+     * a mechanical difference and not a cosmetic one: a noted object is READ, once, and is
+     * spent afterwards; an unnoted one is INSPECTED, always, and records nothing. See
+     * `readTrace`, which refuses a note-less site outright rather than marking it read.
+     */
+    note: string | null;
     /** What the site yields once, if anything. Left goods, not a reward table. */
     goods: Partial<Record<'wood' | 'fiber' | 'stone' | 'coconut' | 'metal' | 'wiring' | 'glass' | 'medicine', number>>;
 }
+
+/**
+ * THE JUNK & FLAVOUR CATALOGUE (Ch.3) — FIRST REPRESENTATIVES, not the full catalogue.
+ *
+ * Six authored objects with NO MECHANICAL FUNCTION and real presence. They yield nothing,
+ * teach no recipe, gate nothing and decay never. What they do is make the island read as a
+ * place people have been, rather than a board with resources on it.
+ *
+ * ---------------------------------------------------------------------------------------
+ * WHY THIS IS THE SAME TYPE AS A TRACE, and not a new object system.
+ *
+ * A trace already is: authored data, a mesh, a mesh-ray pick with a proximity fallback, a
+ * SIGHT line on arrival, a NOTE on first reading, one-time contents, and a read-once record
+ * in the save. That is every part a piece of junk needs. Building a second one would be a
+ * second reading system, which the brief forbids and which this project has already paid for
+ * twice (`worldCandidateAt`'s bare kind strings, and the pond's two ideas of "at the pond").
+ *
+ * SEPARATE ARRAY, SAME TYPE. `TRACE_SITES` stays exactly the far island's three, because the
+ * far island's own tests and its harness section are ABOUT those three and counting them is
+ * a real assertion. Junk is a different catalogue that happens to be made of the same stuff —
+ * so it gets its own list and shares every mechanism through `traces.ts`.
+ *
+ * ---------------------------------------------------------------------------------------
+ * HALF OF THEM HOLD A NOTE AND HALF DO NOT, and the difference is mechanical rather than
+ * cosmetic:
+ *
+ *   A NOTED object is READ, once. It enters through the found-content channel [[D-068]]
+ *   already shared by the Journal and the far island's traces, and it is spent afterwards.
+ *
+ *   An UNNOTED object is INSPECTED, always. There is nothing to consume, so it never records
+ *   anything, never changes, and answers the same way on the hundredth tap as the first.
+ *   What it gives back is the affordance layer's own vocabulary — observable properties and
+ *   open questions, never a named answer — which is why a rusted tool head can be genuinely
+ *   ambiguous without the game ever telling you what to do about it.
+ *
+ * EVERY ONE YIELDS NOTHING. `goods: {}` across the board, and a test locks it. That is not
+ * timidity: a rusted iron head is, in fiction, METAL — and `metal` is wreck-era, the material
+ * whose entire point is that a fresh castaway cannot obtain it without crossing. Junk that
+ * handed one over on the spawn beach would silently undo the Wreck slice's central claim. So
+ * the fiction says the rust goes all the way through, and the mechanics agree with the
+ * fiction instead of quietly refusing what it promised.
+ */
+export const JUNK_SITES: readonly TraceSite[] = [
+    // ---- SPAWN ISLAND ------------------------------------------------------------------
+    {
+        //  On the tideline of the home beach, where the first walk goes. The first thing this
+        //  catalogue has to establish is that somebody was here before, and it should be
+        //  found without looking for it.
+        id: 'jk-adze',
+        x: -14,
+        y: 96,
+        kind: 'tool',
+        sight: 'A wedge of iron the size of your palm, half in the sand. Rust all the way through.',
+        topic: null,
+        note: null,
+        goods: {},
+    },
+    {
+        //  Inland, in the scrub between the pond and the treeline — somewhere a survivor
+        //  walks past a dozen times before looking at it.
+        id: 'jk-tally',
+        x: -34,
+        y: 30,
+        kind: 'carving',
+        sight: 'Notches cut into a trunk in rows of five. The last row is not finished.',
+        topic: null,
+        note: 'Forty-one. I stopped counting for a while and had to guess. It does not matter as much as I thought it would.',
+        goods: {},
+    },
+
+    // ---- THE WRECK ---------------------------------------------------------------------
+    {
+        //  Wedged in the plating, at the waterline like everything else out here.
+        id: 'jk-figure',
+        x: 43.5,
+        y: 236.5,
+        kind: 'carving',
+        sight: 'A little figure carved from a broom handle, jammed upright in a split seam.',
+        topic: null,
+        note: null,
+        goods: {},
+    },
+    {
+        id: 'jk-tin',
+        x: 36.5,
+        y: 243,
+        kind: 'effect',
+        sight: 'A mess tin, dented flat on one side, caught in the rail.',
+        topic: null,
+        note: 'M. HALLORAN scratched inside the lid, and under it in a different hand: he is not coming back for it.',
+        goods: {},
+    },
+
+    // ---- THE FAR ISLAND ----------------------------------------------------------------
+    {
+        //  On the far shore, near enough to the landing to be the second thing found there
+        //  after the cold fire ring — so the far island keeps building the same story.
+        id: 'jk-plank',
+        x: FAR_ISLAND.x + 11,
+        y: FAR_ISLAND.y - 48,
+        kind: 'driftwood',
+        sight: 'A plank end, salt-bleached. Square holes cut through it at even spacing.',
+        topic: null,
+        note: null,
+        goods: {},
+    },
+    {
+        id: 'jk-boots',
+        x: FAR_ISLAND.x - 26,
+        y: FAR_ISLAND.y - 41,
+        kind: 'effect',
+        sight: 'A pair of boots set side by side above the tideline, laces tucked in.',
+        topic: null,
+        note: 'Whoever finds these: the water on the east side is fresh. I could not tell you that in time to help.',
+        goods: {},
+    },
+];
 
 export const TRACE_SITES: readonly TraceSite[] = [
     {
@@ -492,7 +621,7 @@ export function createNodes(): WoodNode[] {
  * that the instrument housing is off the port bow has learned something about a PLACE. A
  * procedural scatter would make every visit a fresh search of the same water.
  */
-const WRECK_PARTS: ReadonlyArray<readonly [number, number]> = [
+export const WRECK_PARTS: ReadonlyArray<readonly [number, number]> = [
     [-6.5, 2.0],   // hull plating, low on the listing side
     [5.5, -1.5],   // the buckled deck rail
     [1.5, 6.0],    // instrument housing, off the bow
