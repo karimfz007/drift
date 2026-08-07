@@ -346,6 +346,35 @@ function installDebugHook(): void {
     //  real finger and comes up by pressing the real button. A hook that dived for the player
     //  would prove the air budget works and say nothing about whether a human can reach it.
     diveSite: () => ({ x: DIVE_SITE.x, y: DIVE_SITE.y, depthM: depthAt(DIVE_SITE.x, DIVE_SITE.y) }),
+    //  ---- FISHING — READ-ONLY, per the player-path law [[D-075]] ----
+    //
+    //  Where the sites are, how deep, and what state their population is in; and what the
+    //  survivor currently has in the water. None of these fishes: the harness still crafts
+    //  through a real Build-panel tap, casts through a real tap on the ring, and sets and
+    //  hauls through real taps on real circle segments. A hook that fished would prove the
+    //  brain works and say nothing about whether a thumb can reach it.
+    fishingSpots: () => {
+        const st = runtime.session?.state;
+        if (!st) return [];
+        return st.nodes.filter((n) => n.kind === 'fishingspot').map((n) => ({
+            id: n.id, x: n.x, y: n.y,
+            depthM: depthAt(n.x, n.y),
+            state: n.available ? 'present' : 'locally-depleted',
+            pool: n.pool ?? 0,
+        }));
+    },
+    fishing: () => {
+        const st = runtime.session?.state;
+        if (!st) return null;
+        return {
+            line: st.fishing.line ? { ...st.fishing.line } : null,
+            net: st.fishing.net ? { ...st.fishing.net } : null,
+            fish: st.inventory.fish,
+            hasLine: st.tools.fishingLine,
+            hasNet: st.tools.net,
+            freshLeft: st.freshUntil.fish ?? null,
+        };
+    },
     depthAtPoint: (worldX: number, worldZ: number) => depthAt(worldX, worldZ),
     //  The live air budget and stage, so a check can say WHY it is red. `stage` is the brain's
     //  own word for it, not a second copy the harness derives and lets drift.

@@ -733,6 +733,19 @@ export class NodeViews {
                 view.body.scaling.set(s, sy, s);
                 view.body.position.y = view.groundY + view.baseYOffset * sy;
             };
+            //  FISHING — a spot never shrinks and never vanishes; it CHANGES COLOUR. It is a
+            //  patch of water, so a "remnant" would be nonsense and disappearing would be a
+            //  lie. This is the one kind whose depleted state is read by material alone.
+            if (view.node.kind === 'fishingspot') {
+                view.body.setEnabled(true);
+                setScale(1);
+                view.shadow.setEnabled(false);
+                view.halo.setEnabled(false);
+                const skin = available ? this.materials.fishRing : this.materials.fishRingSpent;
+                view.body.material = skin;
+                for (const child of view.body.getChildMeshes()) child.material = skin;
+                continue;
+            }
             if (available) {
                 view.body.setEnabled(true);
                 setScale(1);

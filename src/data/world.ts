@@ -169,8 +169,8 @@ export const DIVE_SITE = { x: 54, y: 252 } as const;
  */
 export const FISHING_SPOTS: ReadonlyArray<{ id: string; x: number; y: number }> = [
     { id: 'fp-pond', x: POND.x, y: POND.y },
-    { id: 'fp-north', x: 4, y: 116 },
-    { id: 'fp-west', x: -96, y: 34 },
+    { id: 'fp-north', x: 4, y: 130 },
+    { id: 'fp-west', x: -125, y: 44 },
     { id: 'fp-reef', x: 26, y: 141 },
 ];
 

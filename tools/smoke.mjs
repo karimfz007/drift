@@ -152,6 +152,13 @@ const TUNE = new Proxy({
     diveFailingAir: 16,
     divePartEffortEnergy: 11,
     cameraPitchMaxDeg: 62,
+    //  FISHING (D-130) — mirrors src/data/tune.ts, same duplication convention.
+    fishingLineFiberCost: 2,
+    fishingLineBladeCost: 1,
+    netFiberCost: 12,
+    netSharpbladeCost: 1,
+    spearFishPoolCost: 2,
+    spearFishMaxDepthM: 1.3,
 }, {
     get(target, key) {
         if (typeof key === 'string' && !(key in target)) {
@@ -6184,6 +6191,321 @@ async function main() {
         //  paired `Session.resume`, to the bit. What is device-only is the check above — the
         //  reload path is a page load, not a function call, and it is the half of the
         //  surfacing fix that unit tests could not see.
+    }
+    }
+
+    // ================= FISHING (D-130) =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the three methods' arithmetic, the
+    //  two-state population, D-011 and the save (tests/fishing.test.ts, 45 checks, seven
+    //  planted defects proven red). What it cannot witness is the thing the brief made
+    //  mandatory and named three times: that EACH METHOD IS REACHABLE ON ITS OWN. Post-pivot
+    //  that means the tool is discoverable, the segment is on a real circle, and a thumb can
+    //  get from a fresh castaway to a fish — three separate claims, because they arrive by
+    //  three separate routes and a shared proof would let one hide behind the others.
+    //
+    //  So every craft below is a REAL tap on the real Build panel, every cast, set, haul and
+    //  strike is a REAL tap on a real circle segment, and the only hooks used are read-only.
+    if (section("FISHING (D-130)")) {
+    const SPOTS = await page.evaluate(() => window.__drift.fishingSpots?.() ?? []);
+    check('FISH 1 — the served build has the authored fishing sites',
+        SPOTS.length >= 4, `${SPOTS.length} sites: ${SPOTS.map((s) => `${s.id} ${s.depthM.toFixed(2)}m`).join(', ')}`);
+
+    const shallow = SPOTS.find((s) => s.id === 'fp-north');
+    const reef = SPOTS.find((s) => s.id === 'fp-reef');
+    check('FISH 1b — and they are not all the same water: one wading, one past the shelf',
+        Boolean(shallow) && Boolean(reef)
+        && shallow.depthM <= TUNE.spearFishMaxDepthM && reef.depthM > TUNE.spearFishMaxDepthM,
+        `${shallow?.id} ${shallow?.depthM?.toFixed?.(2)} m vs ${reef?.id} ${reef?.depthM?.toFixed?.(2)} m,`
+        + ` spear limit ${TUNE.spearFishMaxDepthM}`);
+
+    if (shallow && reef) {
+        const atSpot = async (spot, extra = '') => {
+            await editSave(`
+                state.player = { x: ${spot.x}, y: ${spot.y} };
+                state.energy = 100; state.health = 100; state.warmth = 100;
+                state.hunger = 60; state.thirst = 80;
+                state.injuries = { bleeding: 0, limp: 0, pain: 0 };
+                state.gameHoursElapsed = 8;
+                ${extra}
+            `);
+        };
+        //  Granting the BLUEPRINT is stated openly and is not the shortcut it looks like: the
+        //  discovery route itself is separately proven (tests/combine-reach.test.ts drives
+        //  Try-Combining until every routed recipe is reached, `fishingline` and `net`
+        //  included). What this section is about is the other half — that a revealed row
+        //  reaches a thumb — and re-driving discovery inside each check would prove the same
+        //  thing three times while making every failure ambiguous about which half broke.
+        const grantFishing = (id) => `state.blueprints = [...(state.blueprints ?? []), { id: 'bp-fish-${id}', name: 'Granted for the spine', recipeId: '${id}', inputs: ['fiber'], version: 1, workmanship: 'crude', author: 'harness', discoveredAtGameHours: 0 }];`;
+
+        // ---- 1. HANDLINE, end to end ------------------------------------------------
+        await atSpot(shallow, `
+            state.inventory.fiber = ${TUNE.fishingLineFiberCost + 4};
+            state.inventory.sharpblade = ${TUNE.fishingLineBladeCost + 1};
+            ${grantFishing('fishingline')}
+        `);
+        //  Through the BACKPACK, which is where making things lives since the maker door
+        //  moved — the harness has owned that route in one helper since, precisely so a
+        //  section like this cannot invent a second one. My first cut tapped a `.secondary`
+        //  button that has not existed for several slices, and the device said so.
+        const buildOpen = await openBuild();
+        const lineRowPresent = await page.evaluate(() => Boolean(document.querySelector('.fishingline-btn')));
+        const shippedRowReach = await realTapDom('.build-item.done, .build-item');
+        await shot('fish-01-build-panel');
+        check('FISH 2 — HANDLINE: the line has a REAL row a finger can reach in the panel',
+            buildOpen.ok === true && lineRowPresent === true && shippedRowReach.ok === true,
+            `panel ${buildOpen.ok} ${buildOpen.reason ?? ''}, row present ${lineRowPresent},`
+            + ` a shipped row in the same panel is reachable ${shippedRowReach.ok}`);
+
+        const madeLine = await realTapDom('.fishingline-btn');
+        await sleep(600);
+        const afterLine = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        check('FISH 2b — ...and a REAL tap on it makes the line',
+            madeLine.ok === true && afterLine?.hasLine === true,
+            `tap ${madeLine.ok}, hasLine ${afterLine?.hasLine}`);
+
+        //  THE CAST, through a real tap on the ring itself.
+        await faceNode(shallow.x, shallow.y);
+        const castTap = await tapMesh(`n_${shallow.id}`, 55);
+        await sleep(700);
+        const cast = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        await shot('fish-02-cast');
+        check('FISH 3 — a REAL tap on the water casts the line',
+            castTap.ok === true && cast?.line?.spotId === shallow.id,
+            `tap ${castTap.ok} (${castTap.why ?? 'ok'}), line ${JSON.stringify(cast?.line)}`);
+
+        //  ...and it resolves, in real time, into a real fish.
+        const biteDeadline = Date.now() + 25000;
+        let bit = null;
+        while (Date.now() < biteDeadline && !bit) {
+            await sleep(500);
+            const f = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+            if (f && f.fish > 0) bit = f;
+        }
+        await shot('fish-03-caught');
+        check('FISH 3b — and waiting at the water turns it into a fish',
+            bit !== null && bit.fish > 0,
+            bit === null ? 'no bite in 25 s' : `fish ${bit.fish}, freshness ${bit.freshLeft?.toFixed?.(1)} gh`);
+
+        // ---- 2. NET, end to end ------------------------------------------------------
+        await atSpot(shallow, `
+            state.tools.fishingLine = true;
+            state.inventory.fiber = ${TUNE.netFiberCost + 2};
+            state.inventory.sharpblade = ${TUNE.netSharpbladeCost + 1};
+            ${grantFishing('net')}
+        `);
+        await openBuild();
+        const netRowPresent = await page.evaluate(() => Boolean(document.querySelector('.net-btn')));
+        const madeNet = await realTapDom('.net-btn');
+        await sleep(600);
+        const afterNet = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        await shot('fish-04-net-made');
+        check('FISH 4 — NET: its own row, its own real tap, its own tool',
+            netRowPresent === true && madeNet.ok === true && afterNet?.hasNet === true,
+            `row present ${netRowPresent}, tap ${madeNet.ok}, hasNet ${afterNet?.hasNet}`);
+
+        //  A HOLD on the water opens the circle — the deliberate route to the rarer verbs.
+        await faceNode(shallow.x, shallow.y);
+        const held = await holdWorld(shallow.x, shallow.y);
+        await sleep(700);
+        const setSeg = await isVisible('.verb-seg[data-verb="set-net"]');
+        await shot('fish-05-circle');
+        check('FISH 4b — a REAL hold on the water opens the circle with all three methods',
+            setSeg.visible === true,
+            `hold ${held.ok ?? held}, set-net segment ${setSeg.visible} (${setSeg.reason ?? 'ok'})`);
+
+        const setTap = await realTapDom('.verb-seg[data-verb="set-net"]');
+        await sleep(700);
+        const netSet = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        check('FISH 4c — ...and a REAL tap on its segment sets the net',
+            setTap.ok === true && netSet?.net?.spotId === shallow.id,
+            `tap ${setTap.ok}, net ${JSON.stringify(netSet?.net)}`);
+
+        //  It soaks while the survivor stands nearby, and then it is worth lifting.
+        //
+        //  ONE HUNDRED AND THIRTY REAL SECONDS, and the number is arithmetic rather than
+        //  padding. `netSoakGameHours` is 0.35 gh and a game hour is ~152 real seconds, so the
+        //  setup cost alone is ~53 s; the first WHOLE fish then needs 1/3.5 gh more, another
+        //  ~43 s. Nine seconds read `held 0.00` and seventy read `held 0.43` — both were
+        //  measuring the dead window rather than the method. A check has to pay what the
+        //  design charges, and this method's charge is that you wait.
+        await sleep(130000);
+        const soaked = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        const beforeHaul = soaked?.fish ?? 0;
+        await faceNode(shallow.x, shallow.y);
+        await holdWorld(shallow.x, shallow.y);
+        await sleep(700);
+        const haulTap = await realTapDom('.verb-seg[data-verb="haul-net"]');
+        await sleep(800);
+        const hauled = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        await shot('fish-06-hauled');
+        check('FISH 4d — it fills while you stand there, and a REAL haul hands it over',
+            soaked !== null && soaked.net !== null && soaked.net.holding > 0
+            && haulTap.ok === true && hauled !== null && hauled.fish > beforeHaul && hauled.net === null,
+            `held ${soaked?.net?.holding?.toFixed?.(2)}, haul ${haulTap.ok},`
+            + ` fish ${beforeHaul} -> ${hauled?.fish}, net lifted ${hauled?.net === null}`);
+
+        // ---- 3. SPEAR, end to end — and NO NEW TOOL ---------------------------------
+        //
+        //  ASSERTED THROUGH A PLAIN TAP, not through the circle, and that is the honest
+        //  reading of the Default-Verb Law rather than a workaround. A survivor carrying only
+        //  a spear has exactly ONE usable verb at the water, so `holdOpensCircle` is false and
+        //  a tap simply DOES it — which is the law working, and a stronger claim than "a
+        //  segment was drawn": the cheapest method needs no menu at all.
+        //  THE LINE AND THE NET ARE EXPLICITLY CLEARED. `atSpot` edits the live save, which
+        //  by now carries the line and net the two sections above made — so the first run of
+        //  this check cast a line and reported "The line goes out. Now you wait." The game was
+        //  right (the handline IS the declared default) and the fixture was lying about what
+        //  the survivor owned.
+        await atSpot(shallow, 'state.tools.spear = true; state.tools.fishingLine = false; state.tools.net = false; state.fishing = { line: null, net: null };');
+        await faceNode(shallow.x, shallow.y);
+        const beforeStrike = await page.evaluate(() => window.__drift.fishingSpots?.() ?? []);
+        const strikeProbe = await page.evaluate(([x, y]) => window.__drift.tapTargetAt(x, y),
+            [(await page.evaluate((n) => window.__drift.screenOfMesh(n), `n_${shallow.id}`))?.x ?? 0,
+             (await page.evaluate((n) => window.__drift.screenOfMesh(n), `n_${shallow.id}`))?.y ?? 0]);
+        const strikeTap = await tapMesh(`n_${shallow.id}`, 55);
+        await sleep(1200);
+        const afterStrike = await page.evaluate(() => window.__drift.fishingSpots?.() ?? []);
+        const strikeOutcome = await page.evaluate(() => window.__drift.lastTapOutcome?.() ?? null);
+        const strikeHint = await page.evaluate(() => window.__drift.hints?.()?.last ?? null);
+        await shot('fish-07-struck');
+        check('FISH 5 — SPEAR: a survivor who crafted NOTHING taps the water and strikes',
+            strikeTap.ok === true,
+            `tap ${strikeTap.ok} (${strikeTap.why ?? 'ok'}), probe ${strikeProbe},`
+            + ` outcome ${strikeOutcome}, said "${strikeHint}"`);
+        const poolBefore = beforeStrike.find((s) => s.id === shallow.id)?.pool ?? 0;
+        const poolAfter = afterStrike.find((s) => s.id === shallow.id)?.pool ?? 0;
+        await shot('fish-08-struck');
+        check('FISH 5b — ...and a REAL strike costs the water whether or not it lands',
+            strikeTap.ok === true && poolAfter === poolBefore - TUNE.spearFishPoolCost,
+            `tap ${strikeTap.ok}, pool ${poolBefore} -> ${poolAfter} (cost ${TUNE.spearFishPoolCost})`);
+
+        //  THE DEPTH RULE, on the page. The reef refuses the spear and SAYS why — which is
+        //  how a player learns spear-fishing is a wading act without reading a rule.
+        //  Line AND net AND spear, so two verbs are usable out here and the circle genuinely
+        //  opens — with only a line the tap would just cast, and there would be no segment to
+        //  read a refusal off. The refusal is the point of the check.
+        await atSpot(reef, 'state.tools.spear = true; state.tools.fishingLine = true; state.tools.net = true;');
+        await faceNode(reef.x, reef.y);
+        await holdWorld(reef.x, reef.y);
+        await sleep(700);
+        const reefReason = await page.evaluate(() => {
+            const seg = document.querySelector('.verb-seg[data-verb="spear-fish"]');
+            const cast = document.querySelector('.verb-seg[data-verb="cast-line"]');
+            return {
+                strikeBlocked: seg ? seg.classList.contains('blocked') : null,
+                reason: seg?.querySelector('.verb-reason')?.textContent?.trim() ?? '',
+                castReady: cast ? cast.classList.contains('ready') : null,
+            };
+        });
+        await shot('fish-09-reef');
+        check('FISH 5c — the deep site refuses the spear IN WORDS, and still takes a line',
+            reefReason.strikeBlocked === true && /too deep/i.test(reefReason.reason)
+            && reefReason.castReady === true,
+            `strike blocked ${reefReason.strikeBlocked} — "${reefReason.reason}", line ready ${reefReason.castReady}`);
+
+        // ---- 4. THE POPULATION, worked down on device -------------------------------
+        await atSpot(shallow, `
+            state.tools.spear = true; state.tools.fishingLine = true; state.tools.net = true;
+            state.nodes = state.nodes.map((n) => n.id === '${shallow.id}'
+                ? { ...n, pool: ${TUNE.spearFishPoolCost}, available: true } : n);
+        `);
+        await faceNode(shallow.x, shallow.y);
+        await holdWorld(shallow.x, shallow.y);
+        await sleep(700);
+        await realTapDom('.verb-seg[data-verb="spear-fish"]');
+        await sleep(800);
+        const emptied = await page.evaluate(() => window.__drift.fishingSpots?.() ?? []);
+        const spent = emptied.find((s) => s.id === shallow.id);
+        await shot('fish-10-fished-out');
+        check('FISH 6 — a site really does empty, and the served build says so',
+            spent?.state === 'locally-depleted' && spent?.pool === 0,
+            `${shallow.id} is ${spent?.state}, pool ${spent?.pool}`);
+
+        //  A SPENT SITE HAS ZERO USABLE VERBS, so no circle opens — and that is exactly the
+        //  case [[D-042]]'s fail-loud law is about. It is also why the fishing branch in
+        //  `actOnArrival` had to be placed BEFORE the node-availability guard: that guard
+        //  drops a pending on an unavailable node silently, which is right for a felled tree
+        //  and wrong for water that is still there. So the claim is not "a segment says so",
+        //  it is "the tap SPEAKS".
+        await faceNode(shallow.x, shallow.y);
+        await tapMesh(`n_${shallow.id}`, 55);
+        await sleep(900);
+        const spentHint = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+        const spentProbe = await page.evaluate(([x, y]) => window.__drift.tapTargetAt(x, y),
+            [(await page.evaluate((n) => window.__drift.screenOfMesh(n), `n_${shallow.id}`))?.x ?? 0,
+             (await page.evaluate((n) => window.__drift.screenOfMesh(n), `n_${shallow.id}`))?.y ?? 0]);
+        await shot('fish-10b-refused');
+        check('FISH 6b — and a tap on fished-out water SAYS SO, rather than doing nothing',
+            /fished out/i.test(spentHint),
+            `probe ${spentProbe}, the game said: "${spentHint}"`);
+
+        // ---- 5. THE FISH IS FOOD, eaten with a real thumb ---------------------------
+        await atSpot(shallow, 'state.inventory.fish = 3; state.hunger = 30;');
+        const beforeEat = await live();
+        const fishChip = await realTapDom('[data-food="fish"]');
+        await sleep(700);
+        const afterEat = await live();
+        await shot('fish-11-eaten');
+        check('FISH 7 — a fish is FOOD: a real tap on the chip eats one and feeds you',
+            fishChip.ok === true
+            && afterEat.inventory.fish === beforeEat.inventory.fish - 1
+            && afterEat.hunger > beforeEat.hunger,
+            `tap ${fishChip.ok}, fish ${beforeEat.inventory.fish} -> ${afterEat.inventory.fish},`
+            + ` hunger ${beforeEat.hunger.toFixed(1)} -> ${afterEat.hunger.toFixed(1)}`);
+
+        //  ...and so is the BOAR'S MEAT, which could not be eaten at all until this stage.
+        await atSpot(shallow, 'state.inventory.meat = 2; state.hunger = 30;');
+        const beforeMeat = await live();
+        const meatChip = await realTapDom('[data-food="meat"]');
+        await sleep(700);
+        const afterMeat = await live();
+        check('FISH 7b — ...and so is the boar meat, which had no eat path before this stage',
+            meatChip.ok === true
+            && afterMeat.inventory.meat === beforeMeat.inventory.meat - 1
+            && afterMeat.hunger > beforeMeat.hunger,
+            `tap ${meatChip.ok}, meat ${beforeMeat.inventory.meat} -> ${afterMeat.inventory.meat},`
+            + ` hunger ${beforeMeat.hunger.toFixed(1)} -> ${afterMeat.hunger.toFixed(1)}`);
+
+        // ---- 6. D-011 ON DEVICE -----------------------------------------------------
+        //
+        //  Four hours away with a line cast, a net soaking and a fish going off. Nothing may
+        //  advance — the net must not fill, the line must not resolve, and the fish must not
+        //  rot. This is the reload path, which no unit test can take.
+        await atSpot(shallow, `
+            state.tools.fishingLine = true; state.tools.net = true;
+            state.inventory.fish = 2;
+            state.freshUntil = { fish: 3 };
+        `);
+        await faceNode(shallow.x, shallow.y);
+        await tapMesh(`n_${shallow.id}`, 55);
+        await sleep(400);
+        await holdWorld(shallow.x, shallow.y);
+        await sleep(700);
+        await realTapDom('.verb-seg[data-verb="set-net"]');
+        await sleep(500);
+        const beforeAway = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        await goAway(240);
+        const afterAway = await page.evaluate(() => window.__drift.fishing?.() ?? null);
+        const backAlive = await live();
+        await shot('fish-12-returned');
+        //  BOUNDED, NOT EXACT, and the bound is the honest one. `goAway` reloads, and the
+        //  online tick runs for the couple of real seconds the page takes to boot before
+        //  anything can be read — so a strictly-equal freshness check measures the boot, not
+        //  the absence. What an absence term would actually cost is FOUR GAME HOURS of
+        //  freshness; two seconds of legal online time costs about 0.02. Half a game hour
+        //  separates those by two orders of magnitude, and the exact-equality version of this
+        //  claim is pinned in the unit suite where both sides can share a clock.
+        const freshLost = (beforeAway?.freshLeft ?? 0) - (afterAway?.freshLeft ?? 0);
+        check('FISH 8 — D-011: four hours away neither fishes for you nor rots what you have',
+            beforeAway !== null && afterAway !== null
+            && afterAway.fish === beforeAway.fish
+            && freshLost < 0.5
+            && (afterAway.net?.holding ?? 0) === (beforeAway.net?.holding ?? 0)
+            && backAlive.health > 0,
+            `fish ${beforeAway?.fish} -> ${afterAway?.fish},`
+            + ` freshness lost ${freshLost.toFixed(3)} gh against a 0.5 bound (an absence term would cost 4.0),`
+            + ` net holding ${beforeAway?.net?.holding ?? 'none'} -> ${afterAway?.net?.holding ?? 'none'}`);
     }
     }
 

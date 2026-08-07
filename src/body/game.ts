@@ -915,14 +915,18 @@ export class Game {
         const hit = this.worldPick(screenX, screenY);
         if (hit?.hit && hit.pickedMesh?.metadata?.nodeId) {
             const view = this.nodes.find(hit.pickedMesh.metadata.nodeId as string);
-            if (view?.node.available) return view;
+            //  A fishing spot resolves whether or not it currently holds fish: it is a PLACE,
+            //  and the survivor has to be able to tap it and be told it is fished out. Every
+            //  other kind is an object, and a spent one must NOT keep swallowing taps aimed
+            //  at the ground behind it — the picking regression [[D-042]] root-caused.
+            if (view && (view.node.available || view.node.kind === 'fishingspot')) return view;
         }
         if (hit?.hit && hit.pickedPoint) {
             const p = hit.pickedPoint;
             let best: NodeView | null = null;
             let bestD: number = TUNE.nodeTapSlack;
             for (const view of this.nodes.views) {
-                if (!view.node.available) continue;
+                if (!view.node.available && view.node.kind !== 'fishingspot') continue;
                 const d = distance(p.x, p.z, view.node.x, view.node.y);
                 if (d <= bestD) { best = view; bestD = d; }
             }
@@ -1333,7 +1337,17 @@ export class Game {
         if (!this.pending) return null;
         if (this.pending.kind === 'node') {
             const view = this.nodes.find(this.pending.id);
-            return view && view.node.available ? { x: view.node.x, z: view.node.y } : null;
+            if (!view) return null;
+            //  FISHING — a spot is a PLACE, and it is still there when the fish are not. Every
+            //  other kind is an object that is GONE once worked, and walking to where a tree
+            //  used to be is not an interaction; walking to water that has been fished out
+            //  is, because the survivor needs to be told why nothing is happening.
+            //
+            //  Found on device: without this, a tap on a spent site was dropped HERE, one
+            //  layer above the fail-loud branch in `actOnArrival` that exists to speak for it.
+            //  The branch was unreachable and its own comment said it was not.
+            if (view.node.kind === 'fishingspot') return { x: view.node.x, z: view.node.y };
+            return view.node.available ? { x: view.node.x, z: view.node.y } : null;
         }
         if (this.pending.kind === 'boar') {
             //  A boar MOVES, so its target point is read fresh every frame rather than
