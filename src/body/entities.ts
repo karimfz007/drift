@@ -478,6 +478,30 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             plank.metadata = { nodeId: node.id };
             return at(crate, 0.21, 0.7, 0);
         }
+        case 'divepart': {
+            //  THE UNDERWATER SLICE. Sitting on the SEABED, not at the waterline — this is the
+            //  first content in the game that is genuinely below the surface, and drawing it
+            //  at sea level would make the whole depth model a lie the player can see.
+            //
+            //  `screenOfMesh` is what makes it tappable: the old aim path derived a height
+            //  from the surface and could never have reached something 7 m down. See
+            //  game.ts's header for the two defects that produced that fix.
+            const hull = CreateBox(`n_${node.id}`, { width: 1.2, height: 0.7, depth: 1.4 }, scene);
+            hull.material = materials.divepart;
+            hull.rotation.y = index * 0.9;
+            hull.rotation.z = 0.16 + (index % 2) * 0.2;
+            const spar = CreateCylinder(`n_${node.id}_spar`, { height: 1.5, diameter: 0.2, tessellation: 5 }, scene);
+            spar.material = materials.divepart;
+            spar.parent = hull;
+            spar.rotation.z = Math.PI / 2;
+            spar.position.set(0, 0.22, -0.2);
+            spar.isPickable = true;
+            spar.metadata = { nodeId: node.id };
+            const placed = at(hull, 0.35, 0.9, 0);
+            //  ON THE BOTTOM. `groundY` out here is the seabed, which is exactly right.
+            hull.position.y = groundY + 0.35;
+            return placed;
+        }
         case 'wreckpart': {
             //  THE WRECK SLICE. A torn section of hull plate with a rib behind it, floating
             //  at the waterline rather than standing on the seabed eight metres down — the
@@ -521,6 +545,7 @@ interface NodeMaterials {
     quarry: StandardMaterial;
     salvage: StandardMaterial;
     wreckpart: StandardMaterial;
+    divepart: StandardMaterial;
     harvestMark: StandardMaterial;
 }
 
@@ -554,6 +579,9 @@ export class NodeViews {
             //  Dark, corroded steel — nothing else on this island is this colour, which is
             //  the point: a wreck part must never read as driftwood.
             wreckpart: flat(scene, 'm_wreckpart', PALETTE.wreckHull),
+            //  Darker still than the surface hull: less light gets down there, and nothing
+            //  else in the game is this colour.
+            divepart: flat(scene, 'm_divepart', PALETTE.diveHull),
             harvestMark: flat(scene, 'm_harvestMark', PALETTE.harvestMark)
         };
 
@@ -1078,7 +1106,7 @@ export class RaftView {
 const _EXHAUSTIVE: Record<NodeKind, true> = {
     driftwood: true, deadfall: true, tree: true, rock: true,
     berrybush: true, coconutpalm: true, reed: true, shellfish: true, crashbox: true,
-    quarry: true, boulder: true, salvage: true, wreckpart: true
+    quarry: true, boulder: true, salvage: true, wreckpart: true, divepart: true
 };
 void _EXHAUSTIVE;
 

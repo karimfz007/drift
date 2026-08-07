@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -98,7 +98,12 @@ export type NodeKind =
      * shifting back into reach as the sea moves the wreckage (v0_10's Zone U0: *"the
      * boundary where waves, tide and wreckage repeatedly move"*).
      */
-    | 'wreckpart';
+    | 'wreckpart'
+    /**
+     * THE UNDERWATER SLICE — one submerged salvage point. Worked with the SAME gather verb as
+     * everything else, in the one place where the survivor cannot breathe while doing it.
+     */
+    | 'divepart';
 
 /** What a beach salvage find turns out to hold, rolled once at spawn (D-051). */
 export type SalvageLoot = 'driftwood' | 'cordage' | 'stone' | 'bundle';
@@ -618,6 +623,25 @@ export interface GameState {
      * of inheritance [[D-069]] already allows: matter and evidence, never technique.
      */
     wreck: WreckState;
+    /**
+     * THE UNDERWATER SLICE. Whether the survivor is under, and how much breath is left.
+     *
+     * `air` is the only new resource this stage adds, and it is the clock every risk down
+     * there is measured against. It falls ONLY in `Session.advanceDive` — the online tick —
+     * so no absence can spend a breath; and an absence actively SURFACES the diver
+     * (`surfaceOnAbsence`), because absence making things better is legal where absence
+     * making them worse never is.
+     */
+    dive: DiveState;
+}
+
+/** See `GameState.dive` and `dive.ts`. */
+export interface DiveState {
+    submerged: boolean;
+    /** 0..`airCapacityOf(capacities)`. Falls only while under; refills fast at the surface. */
+    air: number;
+    /** The deepest this survivor has ever been, in metres. History, never a gate. */
+    deepestM: number;
 }
 
 /**

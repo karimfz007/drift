@@ -148,6 +148,10 @@ export function closeSurvivor(state: GameState, cause: string): {
         //  the `found-intact` grade of inheritance [[D-069]] permits: the successor knows the
         //  crossing is possible and has no idea how it was done.
         wreck: { ...state.wreck },
+        //  NOT copied. Being underwater is a fact about a BODY, and that body drowned or died
+        //  ashore; either way the successor washes up breathing. `createInitialState` already
+        //  gives them a full one, so the absence of a line here IS the rule — the same
+        //  default-to-death shape this whole table is built on.
         //  The journal is matter, and it obeys matter's rule: carried, it goes with the body;
         //  set down, it waits. `succeedJournal` owns that asymmetry.
         journal: succeedJournal(state.journal),

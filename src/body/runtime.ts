@@ -7,8 +7,8 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, createSaveRepository, ladderFor, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
-import { FAR_ISLAND, isPlaceablePoint } from '../data/world';
+import { SAVE_KEY, Session, airCapacityOf, createSaveRepository, depthAt, diveStageOf, ladderFor, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { DIVE_SITE, FAR_ISLAND, isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
 /**
@@ -339,6 +339,27 @@ function installDebugHook(): void {
     //  that DROVE the reading would prove the brain works and say nothing about whether a
     //  human can reach it, which is exactly the gap standing hazard 4 is named after.
     farIsland: () => ({ x: FAR_ISLAND.x, y: FAR_ISLAND.y, radius: FAR_ISLAND.radius }),
+    //  ---- THE UNDERWATER SLICE — READ-ONLY, same rule ----
+    //
+    //  Where the site is and how deep it is. Neither goes under, neither surfaces, neither
+    //  spends a breath: the harness section still submerges by TAPPING a submerged part with a
+    //  real finger and comes up by pressing the real button. A hook that dived for the player
+    //  would prove the air budget works and say nothing about whether a human can reach it.
+    diveSite: () => ({ x: DIVE_SITE.x, y: DIVE_SITE.y, depthM: depthAt(DIVE_SITE.x, DIVE_SITE.y) }),
+    depthAtPoint: (worldX: number, worldZ: number) => depthAt(worldX, worldZ),
+    //  The live air budget and stage, so a check can say WHY it is red. `stage` is the brain's
+    //  own word for it, not a second copy the harness derives and lets drift.
+    dive: () => {
+        const st = runtime.session?.state;
+        if (!st) return null;
+        return {
+            submerged: st.dive.submerged,
+            air: st.dive.air,
+            capacity: airCapacityOf(st.capacities),
+            deepestM: st.dive.deepestM,
+            stage: diveStageOf(st),
+        };
+    },
     traceSites: () => traceSites().map((t) => ({
         id: t.id, x: t.x, y: t.y, kind: t.kind, topic: t.topic, goods: { ...t.goods },
     })),

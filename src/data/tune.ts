@@ -1046,6 +1046,82 @@ export const TUNE = {
      *  making the ring stand up to be tappable would be letting the input model dictate what
      *  the world looks like. The raft already has exactly this for exactly this reason. */
     traceTapRadiusM: 2.6,
+
+    // ---- DIVING (the Underwater Slice) -------------------------------------
+    //
+    //  THE WHOLE STAGE BALANCES ON ONE NUMBER: how long a breath lasts at the site's depth.
+    //  Everything else is arranged around it, and the arithmetic is written out here rather
+    //  than discovered later, because "surfacing in time" is only a skill if the time is real.
+
+    /** [TUNE] Dive — water shallower than this is a duck, not a descent. Basis: chest-deep is
+     *  `swimDepthM` (1.35); at 2.2 m a survivor is genuinely under rather than standing. */
+    diveMinDepthM: 2.2,
+    /** [TUNE] Dive — a base breath, in air units where the drain below is per game hour.
+     *  Basis, worked against the site's REAL depth rather than a guess: the seabed past the
+     *  shelf is -8.0 and `seaLevel` is -1.0, so the site sits under **7.0 m** of water. At
+     *  620/h x the 1.63 depth factor that is 1011/h, and 100 units is 0.099 gh = **~15 real
+     *  seconds** under. A real breath-hold: long enough to descend, work one thing and come
+     *  up; short enough that a second target is a decision rather than a formality. */
+    diveAirCapacityBase: 100,
+    /** [TUNE] Dive — how much a fully practised `breathWaterConfidence` adds, as a fraction of
+     *  the base. Capped well short of doubling: §12's boundary for this capacity is "does not
+     *  extend human physiology without limit", and 45% is a diver who has learned to be calm,
+     *  not one who has grown gills. */
+    diveAirCapacityFromConfidence: 0.45,
+    /** [TUNE] Dive — air per game hour at zero depth, before the depth factor. */
+    diveAirDrainPerGameHour: 620,
+    /** [TUNE] Dive — extra air cost per metre of depth, as a fraction. Basis: 0.09 makes the
+     *  site's 7 m cost 1.63x the surface rate, shortening a breath from 24 s to ~15 s. Depth
+     *  is FELT as time, which is the only way a player can feel it at all. */
+    diveAirCostPerMetre: 0.09,
+    /** [TUNE] Dive — air recovered per game hour at the surface. Basis: fast. A breath is
+     *  quick; it is the descent that costs. ~4 real seconds to refill from empty. */
+    diveAirRecoveryPerGameHour: 3800,
+
+    /** [TUNE] Dive — air at or below which the chest BURNS: the first spoken warning. Basis:
+     *  40% of a base breath. At the site that is **~8.9 s of silence**, then the warning with
+     *  ~5.9 s of air still in hand — told early enough to finish a thought and go up. */
+    diveBurningAir: 40,
+    /** [TUNE] Dive — air at or below which the diver is FAILING: the second warning, and the
+     *  last stage that costs nothing. Basis: **~2.4 s** at the site. Surfacing is a VERB, not
+     *  a swim, so that is enough to act on and nowhere near enough to work one more point —
+     *  which is the decision the whole stage is built to pose. */
+    diveFailingAir: 16,
+    /** [TUNE] Dive — health per game hour while blacking out. §12's `unsafe-continued`, and
+     *  the only cause here that may move health. Basis: 150/h is ~2.4 real seconds per point
+     *  — genuinely frightening, and still not a trapdoor: a diver who turns for the surface
+     *  the moment it starts survives it. */
+    diveDrowningHealthPerGameHour: 150,
+
+    /** [TUNE] Dive — fraction of the swim speed while submerged. Basis: moving in three
+     *  dimensions against water is slower than moving across it. */
+    diveSpeedMultiplier: 0.72,
+    /** [TUNE] Dive — DISORIENTATION, made mechanical. A fumbling diver's speed as a fraction
+     *  of the dive speed. Deliberately not a camera trick: this game's honest-systems rail
+     *  forbids misleading a player about real state, so what a failing diver loses is
+     *  coordination, expressed in the multiplier the water already owns. */
+    diveFumblingSpeedMultiplier: 0.55,
+    /** [TUNE] Dive — game hours of diving that count as one training bout. Basis: 0.05 gh is
+     *  ~7.5 real seconds under, so a single good breath is most of a bout. */
+    diveBoutGameHours: 0.05,
+
+    /** [TUNE] Dive — how much colder each metre of depth makes the existing evaporative term,
+     *  as a fraction. Basis: 0.10 makes the site's 7.0 m cost 1.70x the surface's wet loss. It
+     *  scales the SHIPPED term in `netHeatFlowPerGameHour` rather than adding a rival to it,
+     *  so there is still exactly one opinion about where a body's heat is going. */
+    thermalDepthChillPerMetre: 0.10,
+
+    /** [TUNE] Dive — effort to work one submerged salvage point. Basis: above the wreck's
+     *  9 (prying metal in open water) because you are doing it without breathing. */
+    divePartEffortEnergy: 11,
+    /** [TUNE] Dive — game hours before the sea shifts a worked point back into reach. Basis:
+     *  matched to `wreckPartRegrowGameHours`; the same tide moves both. */
+    divePartRegrowGameHours: 120,
+    //  NO `diveTapRadiusM`. One was written and then deleted unused: a submerged point is an
+    //  ordinary node, so `pickNode`'s `nodeTapSlack` fallback already forgives a near miss,
+    //  and `screenOfMesh` aims at the mesh rather than the water above it. A constant with
+    //  zero callers is the defect this project has now found four times (the spear, the
+    //  Backpack door, the trace tap); the fix is to not add the fifth.
     /** [TUNE] Maritime — tap forgiveness around the raft, in metres. Basis: the deck is
      *  2.4 × 2.8 m, so half its diagonal is ~1.85; this is that plus the ~1.5 m of slack the
      *  shelter and the crate already get, on a phone, over water, from a moving camera. */

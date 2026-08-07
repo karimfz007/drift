@@ -150,8 +150,19 @@ describe('AIMING at a floating object — the defect that made a working wreck l
     it('...and it changes NOTHING on land, so no existing aimed check moves', () => {
         //  The whole island is above sea level, so the fix is a no-op everywhere a check has
         //  ever aimed before. If this ever fails, the fix has reached further than its defect.
-        for (const node of createInitialState(0).nodes) {
-            if (node.kind === 'wreckpart') continue;
+        //
+        //  DERIVED, not a kind list. This skipped `wreckpart` by name and went red the day
+        //  `divepart` was added — correctly, but for a bookkeeping reason rather than a real
+        //  one. The actual claim is "everything standing on ground ABOVE the water is
+        //  unmoved", so that is what it now asks the world, and any future offshore kind is
+        //  covered without editing this test. Both sets are witnessed non-empty below, so it
+        //  cannot pass by skipping everything.
+        const offshore = (n: { x: number; y: number }) => groundHeight(n.x, n.y) < WORLD.seaLevel;
+        const all = createInitialState(0).nodes;
+        expect(all.filter(offshore).length, 'no offshore nodes — nothing to exclude').toBeGreaterThan(0);
+        expect(all.filter((n) => !offshore(n)).length, 'no land nodes — nothing to check').toBeGreaterThan(20);
+        for (const node of all) {
+            if (offshore(node)) continue;
             expect(surfaceHeightAt(node.x, node.y), `${node.id} moved`)
                 .toBe(PRE_FIX(node.x, node.y));
         }
@@ -190,11 +201,16 @@ describe('the salvage is REAL — the wreck-era family, and what it may not do',
         //  The claim that makes the crossing matter. Every island node's yield is checked
         //  against the wreck-era family; not one of them may produce it.
         const s = createInitialState(0);
-        const islandKinds = new Set(s.nodes.filter((n) => n.kind !== 'wreckpart').map((n) => n.kind));
+        //  DERIVED for the same reason as the aiming check above: "on the island" means dry
+        //  ground under it, not "is not one named kind". The Underwater Slice's `divepart`
+        //  yields metal too, and it is offshore for exactly the reason this claim is about.
+        const offshore = (n: { x: number; y: number }) => groundHeight(n.x, n.y) < WORLD.seaLevel;
+        const islandKinds = new Set(s.nodes.filter((n) => !offshore(n)).map((n) => n.kind));
         expect(islandKinds.size).toBeGreaterThan(5);
+        expect(s.nodes.filter(offshore).length, 'nothing offshore — the claim would be vacuous').toBeGreaterThan(0);
         const home = fullBody(createInitialState(0));
         for (const node of s.nodes) {
-            if (node.kind === 'wreckpart') continue;
+            if (offshore(node)) continue;
             const probe = fullBody(createInitialState(0));
             probe.player.x = node.x; probe.player.y = node.y;
             probe.tools.axe = true;

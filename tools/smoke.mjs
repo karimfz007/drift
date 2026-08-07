@@ -145,6 +145,13 @@ const TUNE = new Proxy({
     traceTapRadiusM: 2.6,
     wreckGroaningAt: 66,
     wreckGivingWayAt: 88,
+    //  THE UNDERWATER SLICE (D-129) — mirrors src/data/tune.ts, same duplication convention.
+    diveMinDepthM: 2.2,
+    diveAirCapacityBase: 100,
+    diveBurningAir: 40,
+    diveFailingAir: 16,
+    divePartEffortEnergy: 11,
+    cameraPitchMaxDeg: 62,
 }, {
     get(target, key) {
         if (typeof key === 'string' && !(key in target)) {
@@ -481,10 +488,16 @@ async function main() {
     //  lock — naming a section must be free, or nobody will look it up.
     if (LIST) {
         const selfSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
-        names = [...selfSrc.matchAll(/^ {4}if \(section\((".*?")\)\) \{\s*$/gm)]
+        //  `sectionNames`, NOT `names`. `names` is one of the 62 cross-section bindings
+        //  hoisted at the top of the run below, so assigning it here threw
+        //  `Cannot access 'names' before initialization` — the temporal dead zone, in the one
+        //  path that exits before ever reaching the declaration. `--list` crashed on every
+        //  invocation from the moment the filter shipped and nothing noticed, because the
+        //  full sweep never takes this branch. Own the name and it cannot happen again.
+        const sectionNames = [...selfSrc.matchAll(/^ {4}if \(section\((".*?")\)\) \{\s*$/gm)]
             .map((m) => { try { return JSON.parse(m[1]); } catch { return m[1]; } });
-        console.log(`\n${names.length} sections:\n`);
-        for (const n of names) console.log('  ' + n);
+        console.log(`\n${sectionNames.length} sections:\n`);
+        for (const n of sectionNames) console.log('  ' + n);
         console.log('\nOne section:  node tools/smoke.mjs <url> --only=WRECK');
         console.log('Several:      --only=WRECK,MARITIME      From a point on:  --from=SLICE 3');
         console.log('The FULL sweep is the default, and is what ships to main.\n');
@@ -801,6 +814,38 @@ async function main() {
     };
 
     /**
+     * PITCH THE CAMERA, with a real vertical drag.
+     *
+     * THE UNDERWATER SLICE needed this and nothing before it did, because everything this
+     * harness had ever tapped was at or near eye level. A salvage point on the seabed is 7 m
+     * DOWN and 4 m away — 63 degrees below the horizon — and `screenOfMesh` correctly
+     * projected it to y=1072 on a 412-pixel-tall screen. That is not a defect in the aim
+     * path, it is the honest answer: a swimmer looking at the horizon cannot see the bottom.
+     *
+     * A player drags down to raise the orbit camera and look over the water at the floor. So
+     * does this. The clamp is the game's own (`cameraPitchMaxDeg`), so if the rig is ever
+     * retuned such that the seabed cannot be brought into view, the checks that use this go
+     * red rather than quietly compensating for it.
+     */
+    const lookDown = async (targetPitchRad) => {
+        for (let i = 0; i < 8; i++) {
+            const view = await camera();
+            const delta = targetPitchRad - view.pitch;
+            if (Math.abs(delta) < 0.03) return view.pitch;
+            const rect = await canvasRect();
+            const ox = rect.left + rect.width * 0.72, oy = rect.top + rect.height * 0.42;
+            //  `takeLook` reads a DOWNWARD drag as +pitch, which raises the orbit camera and
+            //  points it at the floor. Same scale constant the yaw helper uses.
+            const py = Math.max(-150, Math.min(150, delta / 0.0042));
+            await page.touchscreen.touchStart(ox, oy);
+            for (let k = 1; k <= 4; k++) { await page.touchscreen.touchMove(ox, oy + (py * k) / 4); await sleep(20); }
+            await page.touchscreen.touchEnd();
+            await sleep(220);
+        }
+        return (await camera()).pitch;
+    };
+
+    /**
      * THE PIVOT'S HARNESS AFFORDANCE (Slice 2B Stage 2b).
      *
      * After the invention pivot the Build panel is a RECORD, not a catalogue — a row exists
@@ -945,7 +990,7 @@ async function main() {
     //  a FILTERED run a reader gets `undefined` and fails loudly at the first property
     //  access, which is the correct answer: that section genuinely depends on another and
     //  cannot be run alone.
-    let ground, camMinAboveGround, felled, lines, growth, leaked, chips, fired, vitals, skills, returned, reach, switched, close, emptyGround, siteClearUsed, drift, names, afterShelter, afterStorage, failedTapsAfter, quarry, quarryOk, quarryTaps, inReach, approachTrail, dying, revived, moving, frame, still, afterReach, gained, afterHammer, afterKnap, afterAxe, beforeJournal, afterJournal, beforeFellKnowledge, felledForKnowledge, promoted, woodBefore, style, combineViaPlayerPath, opened, armed, mintedBlueprints, attempt, nodes, walkTarget, firstMoveMs, tapResolvedTo, panel, circle, treeProbe, meshes, ghostShown, cardOpen, heldGhost, outward, wreckStart, worked, quarryStillAvailable;
+    let ground, camMinAboveGround, felled, lines, growth, leaked, chips, fired, vitals, skills, returned, reach, switched, close, emptyGround, siteClearUsed, drift, names, afterShelter, afterStorage, failedTapsAfter, quarry, quarryOk, quarryTaps, inReach, approachTrail, dying, revived, moving, frame, still, afterReach, gained, afterHammer, afterKnap, afterAxe, beforeJournal, afterJournal, beforeFellKnowledge, felledForKnowledge, promoted, woodBefore, style, combineViaPlayerPath, opened, armed, mintedBlueprints, attempt, nodes, walkTarget, firstMoveMs, tapResolvedTo, panel, circle, treeProbe, meshes, ghostShown, cardOpen, heldGhost, outward, wreckStart, worked, quarryStillAvailable, diveStart, wentUnder, surfacedAgain;
 
     if (section("A6 — ground truth (grounding + colliders + camera never clips)")) {
     const grounding = await page.evaluate(() => {
@@ -5893,6 +5938,252 @@ async function main() {
             awayAfter.health > 0
             && awayAfter.traces.read.length >= awayBefore.traces.read.length,
             `health ${awayAfter.health?.toFixed?.(1)}, read ${awayBefore.traces.read.length} -> ${awayAfter.traces.read.length}`);
+    }
+    }
+
+    // ================= THE UNDERWATER SLICE (D-129) =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the air budget, the five stages, the
+    //  cold and D-011 as arithmetic (tests/dive.test.ts, 36 checks). None of it can witness
+    //  the thing this stage is actually built on: that a target SEVEN METRES UNDER can be
+    //  brought into view and tapped by a thumb at all. Every aim path shipped before
+    //  `screenOfMesh` derived a height from the terrain or the waterline, and neither can
+    //  reach the seabed by construction — the wreck's five vacuous checks (D-124) were exactly
+    //  that, green while aiming at nothing.
+    //
+    //  SO THIS SECTION DIVES THE WAY A PLAYER DOES, and it had to be rewritten once to get
+    //  there. The first draft staged submerged states with `editSave` and every warning check
+    //  came back reading the axe hint. That was not a bug: a save edit reloads the page, a
+    //  reload runs the ABSENCE path, and the absence path SURFACES the diver by design. The
+    //  game was right and the fixture was lying. So the warnings are now reached by going
+    //  under and staying there while the air actually runs out — which is the only way a
+    //  player will ever reach them either.
+    if (section("THE UNDERWATER SLICE (D-129)")) {
+    const SITE = await page.evaluate(() => window.__drift.diveSite?.() ?? null);
+    check('UNDER 1 — the served build knows where the dive site is, and it is genuinely deep',
+        SITE !== null && SITE.depthM > 6.5,
+        SITE === null ? 'NO diveSite hook — the check could not run' : `site (${SITE.x}, ${SITE.y}) under ${SITE.depthM.toFixed(2)} m`);
+
+    if (SITE) {
+        const diveFixture = async (extra = '') => {
+            await editSave(`
+                state.player = { x: ${SITE.x}, y: ${SITE.y} };
+                //  MOORED CLEAR, and the reason is a real finding rather than a tweak: the
+                //  first fixture put the raft at the survivor's own coordinates, so its deck
+                //  floated at the surface directly in the sight line to the bottom and ate
+                //  every downward ray (probe read \`raft\`, and the tap BOARDED it). The game
+                //  was right — a mesh the ray genuinely strikes outranks a proximity guess,
+                //  and the raft was genuinely in the way. A diver swims clear of their own
+                //  boat before going down, and so does this one.
+                state.raft = { built: true, x: ${SITE.x + 11}, y: ${SITE.y - 11}, grade: 'serviceable', aboard: false };
+                state.wreck = { reached: true, reachedAtGameHours: 4, instability: 0, lastDisturbedAtGameHours: null };
+                state.dive = { submerged: false, air: 100, deepestM: 0 };
+                state.energy = 100; state.health = 100; state.hunger = 100; state.thirst = 100; state.warmth = 100;
+                state.injuries = { bleeding: 0, limp: 0, pain: 0 };
+                state.gameHoursElapsed = 8;
+                ${extra}
+            `);
+        };
+        await diveFixture();
+        diveStart = await live();
+        const diveParts = diveStart.nodes.filter((n) => n.kind === 'divepart');
+        const depths = [];
+        for (const n of diveParts) depths.push(await page.evaluate(([x, z]) => window.__drift.depthAtPoint(x, z), [n.x, n.y]));
+        check('UNDER 1b — there are real salvage points down there, every one under real water',
+            diveParts.length >= 4 && depths.every((d) => d >= TUNE.diveMinDepthM),
+            `${diveParts.length} points at depths [${depths.map((d) => d.toFixed(1)).join(', ')}]`);
+        await shot('under-01-above-the-site');
+
+        //  ---- THE CLAIM THE WHOLE SLICE RESTS ON ------------------------------------
+        const target = diveParts.slice().sort((p, q) =>
+            Math.hypot(p.x - SITE.x, p.y - SITE.y) - Math.hypot(q.x - SITE.x, q.y - SITE.y))[0];
+        const pitched = await lookDown((TUNE.cameraPitchMaxDeg * Math.PI) / 180);
+        if (target) await faceNode(target.x, target.y);
+        const aim = target ? await page.evaluate((n) => window.__drift.screenOfMesh(n), `n_${target.id}`) : null;
+        const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+        await shot('under-02-looking-down');
+        check('UNDER 2 — looking down brings a 7 m-deep part ONTO the screen',
+            aim !== null && aim.x >= 0 && aim.y >= 0 && aim.x <= view.w && aim.y <= view.h,
+            aim === null ? `no mesh n_${target?.id}`
+                : `n_${target.id} at (${aim.x.toFixed(0)}, ${aim.y.toFixed(0)}) in ${view.w}x${view.h}, pitch ${(pitched * 180 / Math.PI).toFixed(0)} deg`);
+
+        //  WHAT THE PROBE SAYS THE TAP WILL RESOLVE TO, read before the tap so a red check
+        //  names the reason instead of the symptom.
+        const probeAt = aim ? await page.evaluate(([x, y]) => window.__drift.tapTargetAt(x, y), [aim.x, aim.y]) : null;
+        const tapped = target ? await tapMesh(`n_${target.id}`, 55) : { ok: false, why: 'no target' };
+        await sleep(600);
+        wentUnder = await page.evaluate(() => window.__drift.dive?.() ?? null);
+        const outcome = await page.evaluate(() => window.__drift.lastTapOutcome?.() ?? null);
+        const whereNow = await live();
+        const standDepth = await page.evaluate(([x, z]) => window.__drift.depthAtPoint(x, z), [whereNow.player.x, whereNow.player.y]);
+        await shot('under-03-submerged');
+        check('UNDER 2b — and a REAL TAP on it takes the survivor UNDER',
+            tapped.ok === true && wentUnder !== null && wentUnder.submerged === true,
+            `tap ${tapped.ok} (${tapped.why ?? 'ok'}), probe ${probeAt}, outcome ${outcome},`
+            + ` player (${whereNow.player.x.toFixed(1)}, ${whereNow.player.y.toFixed(1)}) in ${standDepth.toFixed(2)} m,`
+            + ` aboard ${whereNow.raft?.aboard}, submerged ${wentUnder?.submerged}, stage ${wentUnder?.stage}`);
+
+        //  ---- THE BREATH RUNS OUT, IN REAL TIME, ON THE PAGE ------------------------
+        //
+        //  One dive, sampled until it bites. Every warning below is the sentence a player
+        //  would actually read, at the moment they would actually read it.
+        const seen = { burning: null, failing: null, drowning: null };
+        let surfaceButton = null;
+        const breathDeadline = Date.now() + 30000;
+        while (Date.now() < breathDeadline && !(seen.drowning && seen.drowning.healthAfter !== null)) {
+            const goal = await page.evaluate(() => document.querySelector('.goal')?.textContent ?? '');
+            const st = await live();
+            const d = await page.evaluate(() => window.__drift.dive?.() ?? null);
+            if (!seen.burning && /chest is starting to burn/i.test(goal)) {
+                seen.burning = { goal: goal.trim(), health: st.health, air: d?.air ?? -1 };
+                surfaceButton = await page.evaluate(() => {
+                    const el = document.querySelector('.action');
+                    if (!el) return { found: false, label: '', display: 'none' };
+                    return { found: true, label: (el.textContent ?? '').trim(), display: getComputedStyle(el).display };
+                });
+                await shot('under-04-burning');
+            }
+            if (seen.burning && !seen.failing && /fumbling/i.test(goal)) {
+                seen.failing = { goal: goal.trim(), health: st.health, air: d?.air ?? -1 };
+                await shot('under-05-failing');
+            }
+            if (!seen.drowning && /drowning/i.test(goal)) {
+                seen.drowning = { goal: goal.trim(), healthAt: st.health, healthAfter: null };
+                await sleep(2600);
+                seen.drowning.healthAfter = (await live()).health;
+                await shot('under-06-drowning');
+            }
+            if (!seen.drowning) await sleep(450);
+        }
+
+        check('UNDER 3 — the FIRST warning reaches the page, in words, while the air runs down',
+            seen.burning !== null && seen.burning.health >= 99.5,
+            seen.burning === null ? 'never saw the burning line in 30 s'
+                : `"${seen.burning.goal}" at air ${seen.burning.air.toFixed(1)}, health ${seen.burning.health.toFixed(2)}`);
+        check('UNDER 3b — the SECOND is a DIFFERENT sentence, and still costs nothing',
+            seen.failing !== null && seen.burning !== null
+            && seen.failing.goal !== seen.burning.goal && seen.failing.health >= 99.5,
+            seen.failing === null ? 'never saw the fumbling line'
+                : `"${seen.failing.goal}" at air ${seen.failing.air.toFixed(1)}, health ${seen.failing.health.toFixed(2)}`);
+        check('UNDER 4 — and ONLY after both does the water take anything',
+            seen.drowning !== null && seen.drowning.healthAfter !== null
+            && seen.drowning.healthAfter < seen.drowning.healthAt,
+            seen.drowning === null ? 'never reached blacking-out'
+                : `"${seen.drowning.goal}", health ${seen.drowning.healthAt.toFixed(2)} -> ${seen.drowning.healthAfter?.toFixed?.(2)}`);
+
+        //  ---- COMING UP IS A BUTTON, AND IT IS THE ONE ON SCREEN --------------------
+        check('UNDER 5 — the primary action reads SURFACE while under, beating every other verb',
+            surfaceButton !== null && surfaceButton.found === true
+            && /surface/i.test(surfaceButton.label) && surfaceButton.display !== 'none',
+            surfaceButton === null ? 'never sampled — the burning stage was never reached'
+                : `button "${surfaceButton.label}" display ${surfaceButton.display}`);
+
+        const beforeUp = await page.evaluate(() => window.__drift.dive?.() ?? null);
+        const press = await realTapDom('.action');
+        await sleep(900);
+        surfacedAgain = await page.evaluate(() => window.__drift.dive?.() ?? null);
+        await shot('under-07-surfaced');
+        check('UNDER 5b — a REAL press of it brings the survivor up, and the breath comes back',
+            press.ok === true && surfacedAgain !== null && surfacedAgain.submerged === false
+            && surfacedAgain.air > (beforeUp?.air ?? 0),
+            `press ${press.ok}, submerged ${beforeUp?.submerged} -> ${surfacedAgain?.submerged}, air ${beforeUp?.air?.toFixed?.(1)} -> ${surfacedAgain?.air?.toFixed?.(1)}`);
+
+        //  ---- REAL SALVAGE, THROUGH THE ORDINARY VERB -------------------------------
+        //
+        //  `harvest()` cannot be reused: it aims with `tapWorld`, which derives a height from
+        //  the surface and therefore points at the water ABOVE the part. That is the D-124
+        //  defect living in the helper rather than in the game, and using it here would have
+        //  produced a green check that never touched the seabed.
+        await diveFixture();
+        const salvageTarget = (await live()).nodes.filter((n) => n.kind === 'divepart' && n.available)
+            .sort((p, q) => Math.hypot(p.x - SITE.x, p.y - SITE.y) - Math.hypot(q.x - SITE.x, q.y - SITE.y))[0];
+        const beforeSalvage = await live();
+        let consumed = false;
+        if (salvageTarget) {
+            //  WALK FIRST, THEN AIM, THEN HOLD — and retry, which is what `harvest()` does and
+            //  what this step failed to do. Written as one tap and a 5.6 s poll, it passed
+            //  alone and went red in the full sweep: the survivor still has metres of open
+            //  water to swim, the hold only starts on arrival, and a machine two hours into a
+            //  sweep is slower than one that just booted. That is a harness-timing failure
+            //  reported as a game failure, which is the worst kind of red.
+            //
+            //  `lookDown` is re-run INSIDE the loop because approaching changes the angle to
+            //  the bottom, and a re-aim between attempts is exactly what a player does.
+            const deadline = Date.now() + 40000;
+            while (Date.now() < deadline && !consumed) {
+                await approach(salvageTarget.x, salvageTarget.y, 12);
+                await lookDown((TUNE.cameraPitchMaxDeg * Math.PI) / 180);
+                await faceNode(salvageTarget.x, salvageTarget.y);
+                await tapMesh(`n_${salvageTarget.id}`, 55);
+                for (let i = 0; i < 10 && !consumed; i++) {
+                    await sleep(400);
+                    const cur = (await live()).nodes.find((n) => n.id === salvageTarget.id);
+                    consumed = !cur || !cur.available;
+                }
+            }
+        }
+        const afterSalvage = await live();
+        const gainedDown = ['metal', 'wiring', 'glass', 'medicine']
+            .filter((k) => (afterSalvage.inventory[k] ?? 0) > (beforeSalvage.inventory[k] ?? 0));
+        await shot('under-08-salvaged');
+        check('UNDER 6 — a REAL tap-and-hold on a submerged part yields wreck-era salvage',
+            consumed === true && gainedDown.length > 0,
+            `worked ${consumed} on ${salvageTarget?.id}, gained [${gainedDown.join(', ')}]`);
+        //  ---- WHAT THIS SECTION DELIBERATELY DOES NOT CHECK, AND WHY ----------------
+        //
+        //  NOT energy, and NOT seamanship. Both moved in the run where the gather never
+        //  happened at all, because SWIMMING spends the reserve and trains seamanship every
+        //  second the survivor is out here — so either one would have been a green check
+        //  measuring the swim it took to get there. That is the vacuity D-066 (a) is about,
+        //  and both are unit facts already (tests/dive.test.ts). What is device-only is the
+        //  line above: a thumb reached something on the seabed and came back with it.
+        check('UNDER 6b — the yield is the AUTHORED one for that point, so the site can be learned',
+            consumed === true && gainedDown.length > 0 && gainedDown.length <= 3,
+            `${salvageTarget?.id} gave [${gainedDown.join(', ')}] — authored per point, not rolled`);
+
+        //  ---- D-011 ON DEVICE, AS A PAIRED COMPARISON -------------------------------
+        //
+        //  Absence still costs a body thirst and warmth, so "health did not fall" is the wrong
+        //  claim and it failed honestly when I first wrote it that way. The RIGHT claim is
+        //  that being underwater added NOTHING to it: two identical bodies, four hours away,
+        //  one submerged on the last of its breath and one at the surface, must come back the
+        //  same — and the diver must come back UP and BREATHING.
+        //  STAGED ACTIVELY DROWNING, on purpose: air at zero, health already falling. This is
+        //  the worst state a player can close a tab in and it is the one the law is actually
+        //  about. Before the second half of the surfacing fix, this exact fixture came back at
+        //  health 0.000, still submerged — a survivor who drowned across four hours of not
+        //  playing, which is [[D-011]] breached outright. It is the sharpest check in the
+        //  section and it is device-only: the reload path is a page load, not a function call.
+        await diveFixture(`state.dive = { submerged: true, air: 0, deepestM: 7 }; state.health = 40;`);
+        const preDive = await goAway(240);
+        const divedAway = await live();
+        const divedDive = await page.evaluate(() => window.__drift.dive?.() ?? null);
+        await shot('under-09-returned');
+        check('UNDER 7 — D-011: four hours away while DROWNING cannot drown anybody',
+            divedAway.health > 0 && divedDive !== null && divedDive.submerged === false
+            && divedDive.air >= divedDive.capacity - 0.001,
+            `health ${preDive.health.toFixed(2)} -> ${divedAway.health.toFixed(2)}, submerged ${divedDive?.submerged},`
+            + ` air ${divedDive?.air?.toFixed?.(1)}/${divedDive?.capacity?.toFixed?.(1)}`);
+
+        //  ---- AND IT COST NO MORE THAN FLOATING THERE WOULD HAVE ----
+        //
+        //  ---- WHAT IS NOT CHECKED HERE, AND WHY IT IS NOT ----
+        //
+        //  "Four hours under costs EXACTLY what four hours afloat costs" was written as a
+        //  device check twice and is now DELETED rather than tuned, which is the honest
+        //  outcome of what it measured. Two runs cannot share an online window: each boots,
+        //  regenerates health, drains thirst and navigates for a few real seconds before its
+        //  clock is rewound, and the submerged one additionally pays the depth chill on the
+        //  thermal model for those seconds. So the two bodies enter their absences in
+        //  different states, and the difference came back 1.85 and then 4.23 — same sign,
+        //  varying size, all of it originating ONLINE where harm is entirely legal.
+        //
+        //  Widening the bound until it passed would have been fitting a check to noise, which
+        //  is exactly the vacuity D-066 forbids. The exact-equality claim belongs where both
+        //  bodies CAN share a clock, and it lives there: tests/dive.test.ts pins it on a
+        //  paired `Session.resume`, to the bit. What is device-only is the check above — the
+        //  reload path is a page load, not a function call, and it is the half of the
+        //  surfacing fix that unit tests could not see.
     }
     }
 

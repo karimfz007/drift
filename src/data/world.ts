@@ -137,6 +137,33 @@ export const CAVE_SITE = { x: 48, y: -34 } as const;
 export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 
 /**
+ * THE DIVE SITE (the Underwater Slice) — the half of the wreck that went down.
+ *
+ * Placed just off the hull rather than somewhere new, because the fiction is already there:
+ * the thing on the surface is what stayed up. A survivor who has crossed to the wreck can see
+ * this without being told about a second destination, and the raft that got them there is the
+ * raft that gets them here.
+ *
+ * The seabed past the shelf is a flat -8.0 and `seaLevel` is -1.0, so every point here sits
+ * under exactly 7.0 m of water — which is the number the whole air budget is tuned against.
+ */
+export const DIVE_SITE = { x: 54, y: 252 } as const;
+
+/**
+ * Where each submerged salvage point sits, as an offset from the site's centre in metres.
+ *
+ * FOUR, authored, and spread wider than one interact radius so that working the site means
+ * moving between points — which is what makes a breath a budget rather than a formality. You
+ * will not get all four in one descent, and that is the design.
+ */
+export const DIVE_PARTS: ReadonlyArray<readonly [number, number]> = [
+    [-4.0, 1.5],   // the sunken hold, spilled open
+    [4.5, -2.0],   // a strongbox wedged under a beam
+    [1.0, 5.0],    // the engine housing
+    [-5.5, -4.5],  // the ship's locker, still shut
+];
+
+/**
  * THE FAR ISLAND — the curiosity promise, made land.
  *
  * Placed BEYOND the wreck on the same bearing, so the three things a survivor can see from
@@ -408,6 +435,13 @@ export function createNodes(): WoodNode[] {
         //  wreckage repeatedly move"* — and its ruling on what a wreck IS: **a worksite, not a
         //  treasure room.** That is why these are worked, not opened.
         ...WRECK_PARTS.map(([dx, dz], i) => node(`wr${i + 1}`, 'wreckpart', WRECK.x + dx, WRECK.y + dz)),
+
+        //  ---- THE DIVE SITE (the Underwater Slice) --------------------------------------
+        //
+        //  Ordinary nodes, worked with the ordinary verb. Everything that makes them different
+        //  is the water above them: `divePartEffortEnergy` costs more than the wreck's because
+        //  you are doing it without breathing, and the air budget is running the whole time.
+        ...DIVE_PARTS.map(([dx, dz], i) => node(`dv${i + 1}`, 'divepart', DIVE_SITE.x + dx, DIVE_SITE.y + dz)),
 
         //  THE BOULDER FORMATION (Drop 2) — the bedrock bluff that closes the ONLINE half of
         //  the renewability law. Placed apart from both the scattered outcrops and the

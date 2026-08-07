@@ -282,6 +282,11 @@ export function masteryDomainForNodeKind(kind: NodeKind): KnowledgeDomain | null
         //  verbs already have: the thing you get better at is the thing that gets easier.
         //  Nothing else in the game reads seamanship for mastery yet; this is its first.
         case 'wreckpart':
+        //  THE UNDERWATER SLICE. Same hold, same domain, one harder circumstance — a diver who
+        //  has learned the site works it faster, which is the only thing mastery may do here.
+        //  Structurally required, not optional: `masteryOnlyRewardsWork` fails the build for
+        //  any hold-kind missing from this map, and it caught this one the moment it existed.
+        case 'divepart':
             return 'navigationSeamanship';
         //  `crashbox` is hold-kind but deliberately exempt — a one-time story beat with
         //  fixed contents, not a resource. Exactly the exemption regrowth already makes for

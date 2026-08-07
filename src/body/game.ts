@@ -127,6 +127,11 @@ import {
     waterSpeedMultiplierOf,
     waterZoneOf,
     wreckNoteFor,
+    diveNote,
+    diveStageOf,
+    diveSpeedMultiplierOf,
+    surface,
+    submergeForNode,
     readTrace,
     readingFor,
     traceById,
@@ -1164,6 +1169,10 @@ export class Game {
 
         const node = this.pickNode(screenX, screenY);
         if (node) {
+            //  Reaching for something on the bottom IS the dive. Committed here, at the tap,
+            //  rather than on arrival — the air should start counting when the survivor
+            //  decides to go down, not when they get there.
+            submergeForNode(session().state, node.node.id);
             this.pending = { kind: 'node', id: node.node.id };
             this.cues.play(CUES.target);
             this.recordTap(screenX, screenY, `node:${node.node.id}`);
@@ -1663,6 +1672,10 @@ export class Game {
     /** Build fire — available whenever wood suffices, day OR night (the D-040/D-042 fix). */
     private onBuildFire(): void {
         const s = session().state;
+        //  A submerged survivor is not building a fire. The primary slot carries "Surface"
+        //  while under, and this is the other half of that — a label without a handler is a
+        //  button that lies, which is worse than no button at all.
+        if (diveStageOf(s) !== 'surfaced') { this.doSurface(); return; }
         if (!canBuildFire(s)) { this.deniedFire(); return; }
         const x = s.player.x + Math.sin(this.facing) * TUNE.fireBuildOffsetM;
         const z = s.player.y + Math.cos(this.facing) * TUNE.fireBuildOffsetM;
@@ -1755,6 +1768,19 @@ export class Game {
      * a survivor who steps on and then presses the stick expecting to walk needs to know why
      * they are suddenly slow and why the beach refuses them.
      */
+    /**
+     * COME UP. Always available while under, and never refused — a control that can say no to
+     * a drowning diver is not a control.
+     */
+    private doSurface(): void {
+        const s = session().state;
+        if (!surface(s)) return;
+        session().persist(now());
+        this.cues.play(CUES.pickup);
+        this.explain('You break the surface and breathe.');
+        this.lastActivityAt = now();
+    }
+
     private doBoardRaft(): void {
         const state = session().state;
         if (!canBoardRaft(state)) {
@@ -2239,7 +2265,11 @@ export class Game {
             //  THE MARITIME SLICE, on the same line and for the same reason as every
             //  multiplier above it: water scales `walkSpeedMps` at use and never mutates the
             //  constant. Dry land returns exactly 1, so nothing about walking changes.
-            waterSpeedMultiplierOf(state);
+            waterSpeedMultiplierOf(state) *
+            //  THE UNDERWATER SLICE, on the same line and by the same rule as every multiplier
+            //  above it: it scales `walkSpeedMps` at use and never mutates the constant.
+            //  Surfaced returns exactly 1, so nothing about swimming changes.
+            diveSpeedMultiplierOf(state);
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the
@@ -2648,6 +2678,22 @@ export class Game {
         //  bound, and the door to the room was gone. The list is deleted rather than
         //  extended; `makerOffers` derives the gate from what the panel actually holds, so
         //  the eighth craftable cannot repeat this.
+        //  ---- THE UNDERWATER SLICE: the one control that must never be buried ----
+        //
+        //  SURFACING OUTRANKS EVERY OTHER PRIMARY ACTION, so it is assigned LAST — after the
+        //  fire clause, where nothing downstream can overwrite it. Written above the fire
+        //  clause first, and it read correctly while being wrong: the fire's assignment ran
+        //  after and took the slot straight back. That is the priority-starvation bug this
+        //  project has now fixed four times (D-040, D-042, D-053) and it is why the rule is
+        //  "assign last", not "assign first with a comment about priority".
+        //
+        //  Going DOWN is deliberately NOT here. A dive begins by reaching for something on
+        //  the bottom (tap a submerged point), because that is the decision a player actually
+        //  makes; what they need a button for is getting back.
+        if (diveStageOf(state) !== 'surfaced') {
+            action = { label: 'Surface', visible: true, ready: true };
+        }
+
         const offers = makerOffers(state);
         const secondary = { label: 'Build', visible: offers.length > 0 };
 
@@ -2677,6 +2723,14 @@ export class Game {
         //  moment has no way left to raise its voice, and these two warnings only work
         //  because the stage before them is quiet — the same reasoning that keeps a nascent
         //  illness from displacing exhaustion, three paragraphs down.
+        //  THE UNDERWATER SLICE — the breath speaks above EVERYTHING. It is the shortest fuse
+        //  in the game: the water gives a swimmer minutes and a groaning hull gives a diver a
+        //  warning they can act on at leisure, but air is counted in seconds. Silent at
+        //  `holding` by the same rule that keeps `swimming` and a sound hull quiet — the two
+        //  warnings only work because the stage before them says nothing.
+        const breath = diveNote(diveStageOf(state));
+        if (breath) return breath;
+
         //  THE WRECK SLICE — the hull speaks ABOVE the water's own warnings, and only at the
         //  wreck. It is the more acute of the two: the water gives a survivor minutes, and a
         //  hull that is giving way takes its price the moment they reach for one more part.

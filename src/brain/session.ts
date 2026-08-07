@@ -18,6 +18,7 @@ import { onsetFrom, stepIllness } from './illness';
 import { thermalStrain } from './thermal';
 import { pruneDropped } from './dropped';
 import { developFromPaddling, developFromSwimming, isAtWreck, waterCostsFor } from './water';
+import { airCapacityOf, airRecoveryPerGameHour, canSubmerge, developFromDiving, diveCostsFor, surfaceOnAbsence } from './dive';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -29,6 +30,37 @@ export interface SessionStart {
     report: MorningReport | null;
     /** True when this is a brand-new run and the cold open should play. */
     isNewRun: boolean;
+}
+
+/**
+ * WHAT AN ABSENCE DOES BEYOND `reconcile` — the Underwater Slice, and the only member so far.
+ *
+ * THERE ARE TWO ABSENCE PATHS AND THIS EXISTS BECAUSE I ONLY FIXED ONE. `Session.start` folds
+ * in the time a RELOAD was away; `Session.resume` folds in the time a BACKGROUNDED TAB was
+ * away. They are the same event to a player and they were two call sites to me: surfacing
+ * went into `resume` alone, and the device harness came back with a survivor who had drowned
+ * across a four-hour absence — health 0.000, still submerged — because the harness reloads.
+ * That is [[D-011]] breached by a missing line, which is exactly this project's recurring
+ * shape: a law enforced in one layer is enforced nowhere. So it is ONE named function now,
+ * and adding a third absence path means calling it rather than remembering it.
+ *
+ * IT RUNS BEFORE `reconcile`, NOT AFTER, and that ordering is load-bearing. The absence is
+ * then computed on a body already at the surface, so the depth chill `reconcile` reads off
+ * the dive state is structurally ZERO for every offline hour — an absence cannot cost warmth
+ * for being deep, because by the time the span is computed nobody is deep.
+ *
+ * It may only ever make things BETTER. Absence improving a body is always legal; absence
+ * worsening one never is, and that asymmetry is the whole of the law.
+ *
+ * NOT in `reconcile`, where it started: `Session.tick` calls `reconcile` every frame with a
+ * 16 ms span, so a courtesy written there surfaced a diver sixty times a second and no dive
+ * could begin at all. See reconcile.ts's note.
+ */
+function afterAbsence(state: GameState): void {
+    //  An absence does not merely decline to spend a breath: it brings the survivor UP with a
+    //  full one. Nobody held their breath for eight hours, and modelling that they did would
+    //  be inventing harm out of not playing.
+    surfaceOnAbsence(state);
 }
 
 export class Session {
@@ -79,6 +111,8 @@ export class Session {
 
         const loaded = envelope.state;
         const elapsedRealSeconds = Math.max(0, (nowMs - envelope.savedAtMs) / 1000);
+        //  BEFORE the span is computed, not after — see `afterAbsence`.
+        afterAbsence(loaded);
         const { state, result } = reconcile(loaded, elapsedRealSeconds);
         state.lastSeenMs = nowMs;
 
@@ -103,6 +137,8 @@ export class Session {
             return null;
         }
 
+        //  BEFORE the span is computed, not after — see `afterAbsence`.
+        afterAbsence(this.state);
         const { state, result } = reconcile(this.state, elapsedRealSeconds);
         state.trace = this.state.trace;
         state.lastSeenMs = nowMs;
@@ -140,6 +176,11 @@ export class Session {
         //  which an absence charges a swim stroke, so no absence can drown anybody and no
         //  rescue-teleport has to exist to make sure of it. See `water.ts`'s header.
         this.advanceWater(outcome.result.elapsedGameHours);
+        //  THE UNDERWATER SLICE — air lives on the ONLINE tick and nowhere else, by the same
+        //  shape as the boars, the injuries, the illness, the water and the wreck. This is
+        //  [[D-011]] as STRUCTURE: there is no elapsed-time term on air anywhere in the
+        //  absence path, so no absence of any length can spend a single breath.
+        this.advanceDive(outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -409,6 +450,44 @@ export class Session {
         //  chose a moment, and got somewhere. Recorded through the shipped channel, not a new
         //  one.
         recordTrying(s, 'navigationSeamanship');
+    }
+
+    /**
+     * THE BREATH, ONE SPAN. Online only — see the call site and `dive.ts`'s header.
+     *
+     * ORDER MATTERS ONCE, and for the same reason it does in the water: the stage is read
+     * BEFORE the air is spent, so a diver who crosses a threshold during this very span is
+     * charged the price of the stage they were WARNED about, not the one they arrived in.
+     * Read the other way round, the two-warnings contract quietly becomes one and a half.
+     */
+    private advanceDive(gameHours: number): void {
+        const s = this.state;
+        if (!(gameHours > 0)) return;
+
+        if (!s.dive.submerged) {
+            //  At the surface a breath comes back fast. Clamped to this body's own capacity,
+            //  which a practised diver has grown — the second producer, read not written.
+            const cap = airCapacityOf(s.capacities);
+            s.dive.air = Math.min(cap, s.dive.air + airRecoveryPerGameHour() * gameHours);
+            return;
+        }
+
+        const costs = diveCostsFor(s);
+        s.dive.air = Math.max(0, s.dive.air - costs.airPerGameHour * gameHours);
+        //  §12: health may move for `unsafe-continued`, and staying down after two spoken
+        //  warnings is exactly that. Every gentler stage returns 0 here.
+        if (costs.healthPerGameHour > 0) {
+            s.health = Math.max(0, s.health - costs.healthPerGameHour * gameHours);
+            this.lastOnlineHarmCause = 'drowning';
+        }
+        //  History, never a gate: how deep this survivor has ever been.
+        s.dive.deepestM = Math.max(s.dive.deepestM, costs.depthM);
+        s.capacities = developFromDiving(s.capacities, costs.stage, gameHours);
+
+        //  YOU CANNOT STAY DOWN ON A RAFT YOU JUST BOARDED, or in water that stopped being
+        //  deep. Surfacing here is not a mercy — it is the model refusing to describe someone
+        //  as submerged in 30 cm of water.
+        if (!canSubmerge(s)) s.dive.submerged = false;
     }
 
     /** Clear the death overlay once the player has read it. */

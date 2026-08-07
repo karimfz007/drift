@@ -74,6 +74,18 @@ export interface ThermalContext {
     /** Enclosed with no ventilation — the fifth scenario's precondition. */
     enclosed: boolean;
     /**
+     * HOW DEEP UNDER THE SURFACE THE BODY IS, in metres. Optional, and absent means ZERO —
+     * so every caller that predates diving keeps its exact arithmetic, the same
+     * "unknown means unchanged" contract `refuge` below already honours.
+     *
+     * IT SCALES THE EVAPORATIVE TERM RATHER THAN ADDING A NEW ONE. A submerged body is not
+     * losing heat by a different mechanism than a soaked one — it is losing it by the same
+     * mechanism, harder, because the water is colder and moving. Giving depth its own rate
+     * would have put a second opinion about heat beside the first, and `heatFlowNote` could
+     * then name the wrong loss as the one worth fixing.
+     */
+    submergedDepthM?: number;
+    /**
      * THE VULNERABILITY MAP, optional by design. Absent means "derive the shipped flat factor
      * from `sheltered`/`shelterGrade`", so every caller that predates the map keeps its exact
      * numbers. A caller that knows about refuges passes one and gets per-threat answers.
@@ -166,7 +178,10 @@ export function netHeatFlowPerGameHour(ctx: ThermalContext): HeatFlow {
     //  why a wet night under a good roof can still cool you — but a refuge that answers RAIN
     //  keeps the weather off you in the first place, which the flat factor could not express.
     const wetness = clamp01(ctx.wet / TUNE.wetMax);
-    const evaporativeLoss = -TUNE.thermalWetLoss * wetness * (1 - clampAnswer(refuge.rain));
+    //  DEPTH (the Underwater Slice). One multiplier on the term that already models losing
+    //  heat to water. Absent or zero leaves this bit-for-bit what it was.
+    const depthChill = 1 + Math.max(0, ctx.submergedDepthM ?? 0) * TUNE.thermalDepthChillPerMetre;
+    const evaporativeLoss = -TUNE.thermalWetLoss * wetness * (1 - clampAnswer(refuge.rain)) * depthChill;
 
     //  Clothing insulates against the passive losses, never against being wet.
     const insulation = 1 - clamp01(ctx.clothing) * TUNE.thermalClothingInsulation;

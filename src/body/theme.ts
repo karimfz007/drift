@@ -45,6 +45,9 @@ export const PALETTE = {
     /** THE WRECK SLICE — corroded steel. Deliberately darker and colder than any island
      *  material, so a workable hull part cannot be mistaken for driftwood at a glance. */
     wreckHull: [0.26, 0.28, 0.31],
+    /** THE UNDERWATER SLICE — what sank. Darker and bluer than the surface hull, because
+     *  less light reaches it and because a diver must never confuse the two. */
+    diveHull: [0.17, 0.21, 0.26],
     /** The MOUTH. Near-black on purpose: an opening reads as an opening because it is darker
      *  than everything around it, at any distance and any light. This is the whole of the
      *  "a player can recognise it" requirement, and it costs one colour. */

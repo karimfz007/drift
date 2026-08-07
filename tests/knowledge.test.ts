@@ -154,6 +154,10 @@ describe('knowledge — item 4: mapping existing verbs to domains (only what the
             //  the manifest stays total — a kind missing from it is the drift this test exists
             //  to catch.
             wreckpart: null,
+            //  THE UNDERWATER SLICE, null for exactly the wreck's reason: working a submerged
+            //  part trains `navigationSeamanship` through `recordTrying` at the gather site,
+            //  not through this map. Listed so the manifest stays total.
+            divepart: null,
             //  DROP 2 — the boulder formation trains NOTHING, deliberately. It is the one
             //  inexhaustible face in the game, so a channel from it to a domain score would
             //  be an XP faucet that never runs dry. Mastery still SPEEDS the work (it is in

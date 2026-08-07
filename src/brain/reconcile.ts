@@ -21,6 +21,7 @@ import { TUNE, morningReportMinRealSeconds } from '../data/tune';
 import { gameHoursFromRealSeconds, hoursUntilNextPhaseChange, timeOfDay } from './clock';
 import { isRestfulSpot, loadEnergyMultiplierOf } from './body';
 import { netHeatFlowPerGameHour } from './thermal';
+import { submergedDepthForThermal } from './dive';
 import { activeProfile } from './vulnerability';
 import { settleOffline } from './fauna';
 import { settleInjuriesOffline } from './injury';
@@ -165,6 +166,18 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
             fireLit: lit,
             atFire: sheltered,
             wet: wetNow,
+            //  ---- THE UNDERWATER SLICE: deeper is colder ----
+            //
+            //  It scales the EVAPORATIVE term already here rather than adding a rate beside
+            //  it, so there is still exactly one opinion about where a body's heat is going.
+            //
+            //  ONLINE ONLY, and structurally so rather than by a flag: this function is
+            //  shared between `Session.tick` and both absence paths, and the absence paths
+            //  now surface the diver BEFORE calling it. So `submerged` is true here only on
+            //  a live frame, and every offline hour reads zero. This is the same shape the
+            //  air itself uses, and it is why the wiring is one argument rather than a
+            //  parallel "dive chill" the rest card could disagree with.
+            submergedDepthM: submergedDepthForThermal(state),
             //  Bedding is the term the shelter buys you. On open ground you are on the ground.
             //  A CAVE BUYS YOU NOTHING HERE (Drop 3 Part 2 item 1) — it is a roof, not a bed,
             //  and its floor is stone. Sheltering in one leaves you on `bare-ground` until you
@@ -300,6 +313,23 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
     //  shape of the arithmetic rather than by a floor, and `tests/wreck.test.ts` proves it as
     //  a property across arbitrary states and spans.
     next.wreck = settleOverGameHours(next.wreck, totalGameHours);
+
+    //  ---- THE DIVER AND THE BREATH (the Underwater Slice) ----
+    //
+    //  NOTHING HERE TOUCHES AIR, and that absence IS [[D-011]] for this stage: there is no
+    //  elapsed-time term on the breath anywhere in this function, so no absence of any length
+    //  can spend one. `Session.advanceDive` owns the whole of it, on the online tick.
+    //
+    //  `surfaceOnAbsence` was HERE and had to be moved, which is worth stating rather than
+    //  quietly correcting. This function is not the absence path — it is the SHARED path:
+    //  `Session.tick` calls it every frame with a 16 ms span. So a courtesy written as "an
+    //  absence brings the diver up" fired sixty times a second and surfaced them instantly;
+    //  the device harness read `probe node:dv1, outcome node:dv1, submerged false` and the
+    //  brain-layer tests all passed, because every one of them called `reconcile` directly
+    //  with a long span and never once with a frame. It now lives in session.ts's
+    //  `afterAbsence`, called by BOTH functions that mean "the player was away" — and it is
+    //  one named function precisely because the first fix reached only one of the two. Same
+    //  shape as the water's costs and the boars' ladder, for the same reason.
 
     //  ---- Fatigue (Ch.6, D-058) ----
     //  Closed-form over the whole span, the same treatment structure decay and torch burn

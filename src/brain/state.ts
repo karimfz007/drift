@@ -7,6 +7,7 @@ import { gameHoursFromRealSeconds } from './clock';
 import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
 import { disturb, harmFromWorking } from './wreck';
+import { submerge } from './dive';
 import { freshTraces } from './traces';
 import { freshInjuries } from './injury';
 import { freshIllness, onsetFrom } from './illness';
@@ -113,6 +114,9 @@ export function createInitialState(nowMs: number): GameState {
         raft: { built: false, x: 0, y: 0, grade: 'serviceable', aboard: false },
         //  The wreck has been on the horizon since Cycle 03 and nobody has ever been to it.
         wreck: { reached: false, reachedAtGameHours: null, instability: 0, lastDisturbedAtGameHours: null },
+        //  THE UNDERWATER SLICE. At the surface with a full breath, which is where every
+        //  castaway starts and where an absence always returns them.
+        dive: { submerged: false, air: TUNE.diveAirCapacityBase, deepestM: 0 },
         //  Nobody has read anything on the far island, because nobody has been.
         traces: freshTraces()
     };
@@ -162,6 +166,7 @@ export function cloneState(state: GameState): GameState {
         torch: { ...state.torch },
         raft: { ...state.raft },
         wreck: { ...state.wreck },
+        dive: { ...state.dive },
         traces: { read: [...state.traces.read] },
         player: { ...state.player },
         nodes: state.nodes.map((n) => ({ ...n })),
@@ -213,7 +218,10 @@ const NODE_SPECS: Record<NodeKind, NodeSpec> = {
     //  island verbs and neither describes working a wreck; the domain that DOES describe it
     //  (`navigationSeamanship`) is trained through `recordTrying` at the call site, the same
     //  way the raft and the crossing already do.
-    wreckpart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds }
+    wreckpart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds },
+    //  THE UNDERWATER SLICE. A hold, no axe — same shape as the wreck, and the only thing
+    //  that makes it different is that the air budget is running while you do it.
+    divepart: { interaction: 'hold', needsAxe: false, skill: null, holdBaseSeconds: TUNE.deadfallHoldSeconds }
 };
 
 export function nodeSpec(kind: NodeKind): NodeSpec {
@@ -256,6 +264,7 @@ export function effortEnergyCostFor(kind: NodeKind): number {
         case 'shellfish': return 0;
         case 'salvage': return 0;
         case 'wreckpart': return TUNE.wreckPartEffortEnergy;
+        case 'divepart': return TUNE.divePartEffortEnergy;
     }
 }
 
@@ -367,6 +376,19 @@ export interface GatherResult {
  * box. Applies the yield, trains the skill, and reports everything the body needs to draw
  * the result. Mutates state. A blocked gather returns ok:false with a reason.
  */
+/**
+ * GOING UNDER TO REACH SOMETHING. A dive begins by reaching for what is on the bottom, which
+ * is the decision a player actually makes — nobody submerges for its own sake.
+ *
+ * Returns false when there is nothing to submerge into, which is the honest answer in shallow
+ * water and the reason this is a predicate rather than a command.
+ */
+export function submergeForNode(state: GameState, nodeId: string): boolean {
+    const node = findNode(state, nodeId);
+    if (!node || node.kind !== 'divepart') return false;
+    return submerge(state);
+}
+
 export function gatherNode(state: GameState, nodeId: string): GatherResult {
     const blocked = gatherBlockedReason(state, nodeId);
     if (blocked) {
@@ -511,6 +533,22 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             recordTrying(state, 'navigationSeamanship');
             break;
         }
+        case 'divepart': {
+            //  ---- THE UNDERWATER SLICE: what a breath buys ---------------------------
+            //
+            //  NO EXTRA HARM HERE, deliberately. The wreck's own gather charges a wound when
+            //  the hull is giving way; this one charges nothing beyond the effort, because
+            //  the danger underwater is not the salvage — it is the air, and the air is
+            //  already running. Adding a second threat on top would make the one that
+            //  matters harder to read, which is the opposite of a legible risk.
+            const yieldFor = divePartYield(node.id);
+            for (const [kind, amount] of Object.entries(yieldFor) as Array<[MaterialKind, number]>) {
+                state.inventory[kind] += amount;
+                gained[kind] = amount;
+            }
+            recordTrying(state, 'navigationSeamanship');
+            break;
+        }
         case 'salvage': {
             //  Plain odds, no loot-box dressing (D-051): the reward was rolled once at
             //  spawn time and simply revealed now.
@@ -629,6 +667,26 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
  * Unknown ids fall back to plating rather than throwing: a save whose node list predates a
  * future re-authoring should hand over metal, not crash.
  */
+/**
+ * What each submerged point gives up. Authored per point, like the wreck's, so the site has a
+ * layout a diver can LEARN — the locker is the locker every time, and knowing that is what
+ * lets someone spend a breath deliberately instead of gambling it.
+ *
+ * The yields are RICHER than the wreck's per point, and there are fewer points. That is the
+ * trade the depth buys: what sank is better preserved than what stayed up in the weather, and
+ * you can only reach one or two of them per breath.
+ */
+export function divePartYield(nodeId: string): Partial<Record<MaterialKind, number>> {
+    switch (nodeId) {
+        case 'dv1': return { metal: 4, glass: 2 };
+        case 'dv2': return { metal: 2, wiring: 3 };
+        case 'dv3': return { metal: 5 };
+        //  The ship's locker, still shut — and the only other medical store in the game.
+        case 'dv4': return { medicine: 1, glass: 2, wiring: 1 };
+        default: return { metal: 3 };
+    }
+}
+
 export function wreckPartYield(nodeId: string): Partial<Record<MaterialKind, number>> {
     switch (nodeId) {
         case 'wr1': return { metal: TUNE.wreckMetalYield };
@@ -657,6 +715,8 @@ export function regrowGameHoursFor(kind: NodeKind): number {
         //  doing the work rather than a season. Slower than a tree, so the crossing stays a
         //  journey rather than becoming a commute.
         case 'wreckpart': return TUNE.wreckPartRegrowGameHours;
+        //  The same tide that shifts the wreck shifts what sank beneath it.
+        case 'divepart': return TUNE.divePartRegrowGameHours;
         //  GEOLOGY V2 (Gate 0 item 7): the quarry is the FINITE tier. A rich deposit is a
         //  real, spent thing — it visibly empties as you work it and it does not come back.
         //  This does NOT breach D-051's renewability law, because stone itself stays

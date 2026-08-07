@@ -113,6 +113,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 22) current = migrateV22toV23(current);
     if (current.schemaVersion === 23) current = migrateV23toV24(current);
     if (current.schemaVersion === 24) current = migrateV24toV25(current);
+    if (current.schemaVersion === 25) current = migrateV25toV26(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -800,6 +801,33 @@ function migrateV24toV25(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v25 -> v26, THE UNDERWATER SLICE. The sea gains a floor worth visiting; the survivor gains
+ * a breath and nothing else.
+ *
+ * The same split every content migration in this file has drawn: the four `divepart` nodes
+ * MERGE, because what sank has been down there since before anyone washed ashore and a save
+ * without them is a save on a different sea. `dive` arrives SURFACED with a full breath —
+ * the only honest state for a returning player, and the same one an absence produces.
+ */
+function migrateV25toV26(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const merged = [...(Array.isArray(old.nodes) ? old.nodes : [])];
+    const have = new Set(merged.map((n) => n.id));
+    for (const authored of createNodes()) {
+        if (authored.kind === 'divepart' && !have.has(authored.id)) merged.push({ ...authored });
+    }
+    const state: GameState = {
+        ...old,
+        nodes: merged,
+        dive: isObject(old.dive)
+            ? (old.dive as GameState['dive'])
+            : { submerged: false, air: TUNE.diveAirCapacityBase, deepestM: 0 },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -841,6 +869,7 @@ function hydrate(state: GameState): GameState {
         raft: { ...base.raft, ...state.raft },
         traces: { read: [...(state.traces?.read ?? base.traces.read)] },
         wreck: { ...base.wreck, ...state.wreck },
+        dive: { ...base.dive, ...state.dive },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
         trace: { ...base.trace, ...state.trace },
