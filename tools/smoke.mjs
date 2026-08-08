@@ -118,6 +118,10 @@ const TUNE = new Proxy({
     //  THE MARITIME SLICE (D-121) — mirrors src/data/tune.ts, same duplication convention.
     swimLabouringEnergy: 35,
     swimSpentEnergy: 12,
+    //  D-134 — MARITIME 3d's two halves, which must agree and previously lived apart. See
+    //  their entries in src/data/tune.ts and the derivation test in tests/water.test.ts.
+    swimSpentFixtureHeadroom: 10,
+    swimSpentPollBudgetSeconds: 60,
     raftWoodCost: 14,
     raftFiberCost: 10,
     raftCoconutCost: 4,
@@ -5477,31 +5481,37 @@ async function main() {
     //  and the assertion below is unchanged.
     await editSave(`
         state.player = { x: 0, y: 150 };
-        state.energy = ${TUNE.swimSpentEnergy + 6}; state.health = 100; state.warmth = 100;
+        state.energy = ${TUNE.swimSpentEnergy + TUNE.swimSpentFixtureHeadroom}; state.health = 100; state.warmth = 100;
         state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, metal: 0, wiring: 0, glass: 0, medicine: 0 };
         state.gameHoursElapsed = 8;
     `);
-    //  READ AT THE FIRST MOMENT IT IS TRUE, not after a fixed delay.
+    //  ---- READ AT THE FIRST MOMENT IT IS TRUE, WITHIN A DERIVED DEADLINE ----
     //
-    //  THE DEFECT THIS CLOSES. The survivor is placed in deep water BELOW the spent threshold,
-    //  so they are already SPENT the instant the page boots — the swim that used to run here
-    //  established nothing and only burned reserve. At 70 energy/game-hour, multiplied by
-    //  whatever load earlier sections left in the pack, ~2 s of swimming plus the round-trips
-    //  was enough to cross 0 and land in GOING-UNDER. The check then read the wrong stage and
-    //  reported the wrong sentence: 'goal "You are going under.", health 97.71'.
+    //  THE D-134 FIX, and it is the second time this check has been repaired for a timing
+    //  reason — so this time the number is derived rather than chosen.
     //
-    //  The threshold is NOT the thing that was wrong — the stage boundaries are correct and
-    //  MARITIME 3b/3c prove the one below it. What was wrong was sampling a moving value after
-    //  a delay that had no reason to exist. Same defect class as the arrival-profile
-    //  boot-timing bug ([[D-116]]/[[D-120]]): a threshold read against something still moving.
+    //  It polled `60 × 120 ms`: 7.2 seconds of sleep. The swim it was waiting for takes
+    //  `swimSpentFixtureHeadroom / swimEnergyDrainPerGameHour` game hours — 6/70 gh, which is
+    //  12.9 REAL SECONDS. The poll gave up roughly five seconds early, every time, on any
+    //  machine where a `page.evaluate` round-trip cost less than 214 ms.
     //
-    //  So this polls and stops at the FIRST reading that is genuinely SPENT, capturing the
-    //  goal line and health in one evaluate so the two cannot describe different instants. If
-    //  the stage is never seen, the last reading is reported and the check fails honestly
-    //  rather than being widened until it passes.
+    //  That is why it read as a load artifact for three sessions and why that reading was
+    //  exactly backwards: it PASSED on a loaded machine, because slow round-trips stretched
+    //  sixty iterations past thirteen seconds, and FAILED on a healthy one. D-128 fixed the
+    //  opposite failure — a headroom too small for the boot window — and in raising the
+    //  headroom pushed the drain beyond what the poll could wait for. One timing bug traded
+    //  for its mirror image, with nothing comparing the two numbers because they lived in
+    //  different files.
+    //
+    //  So the wait is now a DEADLINE in real time, both halves of it live in `tune.ts`, and
+    //  `tests/water.test.ts` asserts the budget comfortably exceeds the need — which is the
+    //  check that would have caught this, and the one that stops it un-fixing itself.
     let spent = await live();
     let spentText = '';
-    for (let i = 0; i < 60; i++) {
+    let spentAtMs = null;
+    const spentDeadline = Date.now() + TUNE.swimSpentPollBudgetSeconds * 1000;
+    const spentStartedAt = Date.now();
+    while (Date.now() < spentDeadline) {
         const shot = await page.evaluate(() => ({
             goal: document.querySelector('.goal')?.textContent ?? '',
             health: window.__drift.state().health,
@@ -5509,12 +5519,15 @@ async function main() {
         }));
         spentText = shot.goal;
         spent = { ...spent, health: shot.health, energy: shot.energy };
-        if (/nothing left/i.test(shot.goal)) break;
+        if (/nothing left/i.test(shot.goal)) { spentAtMs = Date.now() - spentStartedAt; break; }
         await sleep(120);
     }
+
     check('MARITIME 3d — the SPENT warning is a different sentence, and health is still whole',
         /nothing left/i.test(spentText) && spent.health > 95,
-        `goal "${spentText}", health ${spent.health.toFixed(2)}`);
+        `goal "${spentText}", health ${spent.health.toFixed(2)},`
+        + ` reached at ${spentAtMs === null ? 'NEVER' : (spentAtMs / 1000).toFixed(1) + ' s'}`
+        + ` of a ${TUNE.swimSpentPollBudgetSeconds} s budget`);
     //  Immersion is wetness — the whole cold-water channel, visible in the live state.
     check('MARITIME 3e — immersion soaks you to the ceiling (the one thermal channel)',
         spent.wet >= 99, `wet ${spent.wet}`);

@@ -14,7 +14,8 @@
 import { describe, expect, it } from 'vitest';
 import { reconcile } from '../src/brain/reconcile';
 import { createInitialState } from '../src/brain/state';
-import { realSecondsPerGameHour } from '../src/brain/clock';
+import { realSecondsFromGameHours, realSecondsPerGameHour } from '../src/brain/clock';
+import { readFileSync } from 'node:fs';
 import { netHeatFlowPerGameHour } from '../src/brain/thermal';
 import { EXPOSED } from '../src/brain/vulnerability';
 import { freshCapacities } from '../src/brain/capacities';
@@ -452,5 +453,76 @@ describe('the crossing is a decision with a body count — the number the balanc
     it('distance to the wreck is read from the world, never stored', () => {
         expect(distanceToWreck(WRECK.x, WRECK.y)).toBe(0);
         expect(distanceToWreck(0, 0)).toBeCloseTo(Math.hypot(WRECK.x, WRECK.y), 9);
+    });
+});
+
+// ---------------------------------------------------------------------------
+describe('D-134 — the two numbers MARITIME 3d rests on, compared', () => {
+    /**
+     * THE CHECK THAT WOULD HAVE CAUGHT IT, and the reason it lives in the brain suite rather
+     * than in the harness.
+     *
+     * MARITIME 3d has now been repaired twice for opposite timing reasons. [[D-128]] found the
+     * fixture starting too CLOSE to the SPENT threshold — the page-load window pushed the
+     * survivor straight past it into going-under — and raised the headroom. That fix pushed
+     * the swim beyond what the harness's poll could wait for: `60 × 120 ms` is 7.2 seconds of
+     * sleep against a swim that takes 12.9, so the check could only pass when each round-trip
+     * to the browser cost 214 ms or more. It passed on a LOADED machine and failed on a
+     * healthy one, which is why three sessions read it as a load artifact and had the
+     * causality precisely backwards.
+     *
+     * Neither repair could see the other, because the headroom lived in the fixture and the
+     * wait lived in the poll and nothing compared them. They are both in `tune.ts` now, and
+     * this is the comparison — in a suite that runs in seconds, so the next retune of the swim
+     * cannot discover the mismatch two hours into a device sweep.
+     */
+    const secondsToSpend = (headroom: number) =>
+        realSecondsFromGameHours(headroom / TUNE.swimEnergyDrainPerGameHour);
+
+    it('the poll budget comfortably exceeds the swim it is waiting for', () => {
+        const need = secondsToSpend(TUNE.swimSpentFixtureHeadroom);
+        expect(need).toBeGreaterThan(0);
+        //  Twice over, not merely enough. A budget that only just covers the need is a budget
+        //  that fails the first time a machine is slower than the one it was measured on.
+        expect(TUNE.swimSpentPollBudgetSeconds,
+            `the fixture needs ${need.toFixed(1)} s to reach SPENT and the harness waits `
+            + `${TUNE.swimSpentPollBudgetSeconds} s`).toBeGreaterThan(need * 2);
+    });
+
+    it('and the headroom is big enough that a slow boot cannot eat it — D-128\'s half', () => {
+        //  The OTHER failure, kept: the fixture must still start far enough above SPENT that
+        //  a 5-15 s page load cannot drain past the stage under test. Guarding only the new
+        //  direction would re-open the old one the next time somebody tunes the headroom down.
+        const bootWorstCaseSeconds = 15;
+        const drainedByBoot = TUNE.swimEnergyDrainPerGameHour
+            * (bootWorstCaseSeconds / realSecondsFromGameHours(1));
+        expect(TUNE.swimSpentFixtureHeadroom,
+            `a ${bootWorstCaseSeconds} s boot drains ${drainedByBoot.toFixed(1)} energy and the `
+            + `fixture only has ${TUNE.swimSpentFixtureHeadroom} of headroom`)
+            .toBeGreaterThan(drainedByBoot);
+    });
+
+    it('leaves a real window between the two failures, so both cannot be true at once', () => {
+        //  The two constraints pull in opposite directions — a bigger headroom survives the
+        //  boot and takes longer to drain. This asserts the window between them is not merely
+        //  non-empty but comfortable, which is the property that stopped holding.
+        const need = secondsToSpend(TUNE.swimSpentFixtureHeadroom);
+        const bootDrainSeconds = 15;
+        expect(need).toBeGreaterThan(bootDrainSeconds * 0.5);
+        expect(need).toBeLessThan(TUNE.swimSpentPollBudgetSeconds * 0.5);
+    });
+
+    it('and the harness waits on a CLOCK, not on an iteration count', () => {
+        //  The shape of the bug, not just its arithmetic. A fixed loop count silently encodes
+        //  an assumption about how fast a `page.evaluate` round-trip is — which is a property
+        //  of the machine, not of the game. Asserted against the source because that
+        //  assumption is invisible in any value the harness produces.
+        const src = readFileSync('tools/smoke.mjs', 'utf8');
+        //  `lastIndexOf`: the harness's TUNE mirror mentions MARITIME 3d in a comment, and
+        //  slicing from the FIRST match read that comment instead of the check.
+        const block = src.slice(src.lastIndexOf('MARITIME 3d'), src.lastIndexOf('MARITIME 3e'));
+        expect(block, 'MARITIME 3d is polling on a fixed iteration count again')
+            .not.toMatch(/for \(let i = 0; i < \d+; i\+\+\)/);
+        expect(block).toContain('swimSpentPollBudgetSeconds');
     });
 });

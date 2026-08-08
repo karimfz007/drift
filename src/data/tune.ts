@@ -1397,6 +1397,42 @@ export const TUNE = {
     //  and `screenOfMesh` aims at the mesh rather than the water above it. A constant with
     //  zero callers is the defect this project has now found four times (the spear, the
     //  Backpack door, the trace tap); the fix is to not add the fifth.
+    /**
+     * [TUNE] MARITIME 3d's fixture headroom, in energy above `swimSpentEnergy`.
+     *
+     * IT IS HERE RATHER THAN TYPED INTO THE HARNESS because two numbers have to agree and
+     * neither is allowed to drift: how far the fixture starts above the SPENT threshold, and
+     * how long the harness is willing to wait for the swim to close that gap. The check has
+     * now failed twice for opposite reasons — once because the gap was too SMALL for the boot
+     * window (D-128), once because it was too LARGE for the poll (D-134) — and both times the
+     * two numbers lived in different files with nothing comparing them.
+     *
+     * 10 energy at `swimEnergyDrainPerGameHour` (70/gh) over `realSecondsPerGameHour` (150)
+     * is 21.4 real seconds of swimming. `swimSpentPollBudgetSeconds` below is what the harness
+     * waits, and `tests/water.test.ts` asserts the second comfortably exceeds the first.
+     *
+     * TEN RATHER THAN SIX, and six is what D-128 left. The comparison this pass added found
+     * that a 15-second boot — the figure D-128's own note cites as the worst case — drains
+     * 7.0 energy, so the headroom never actually covered the failure it was raised to prevent.
+     * It was made rarer and then recorded as fixed. Ten clears it with margin.
+     */
+    swimSpentFixtureHeadroom: 10,
+    /**
+     * [TUNE] How long MARITIME 3d waits for the swim to reach SPENT, in real seconds.
+     *
+     * A DEADLINE, NOT AN ITERATION COUNT, and that distinction IS the D-134 fix. The check
+     * polled `60 × 120 ms` — 7.2 s of sleep against a 12.9 s swim — so it could only ever pass
+     * when each round-trip to the browser cost 214 ms or more. It passed on a loaded machine
+     * and failed on a healthy one, which is why three sessions read it as a load artifact and
+     * had the causality exactly backwards.
+     *
+     * 60 s is a little under three times the 21.4 s need. Generous, bounded, and — because a
+     * unit test DERIVES it against the headroom rather than trusting it — it cannot silently
+     * stop being enough when somebody retunes the swim. The poll stops the moment the stage
+     * is seen, so the budget is a ceiling on failure, not a cost paid every run.
+     */
+    swimSpentPollBudgetSeconds: 60,
+
     /** [TUNE] Maritime — tap forgiveness around the raft, in metres. Basis: the deck is
      *  2.4 × 2.8 m, so half its diagonal is ~1.85; this is that plus the ~1.5 m of slack the
      *  shelter and the crate already get, on a phone, over water, from a moving camera. */
