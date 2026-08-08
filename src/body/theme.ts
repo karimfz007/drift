@@ -55,6 +55,10 @@ export const PALETTE = {
      *  a survivor must be able to see from the beach that a site is spent, or the population
      *  model is a number they can only learn by walking to it. */
     fishRingSpent: [0.38, 0.40, 0.40],
+    /** ENTROPY & MAINTENANCE — the gap where the thatch has thinned. Near-black, by the same
+     *  rule the cave mouth follows: an opening reads as an opening because it is darker than
+     *  what surrounds it, at any distance and in any light. */
+    thatchGap: [0.07, 0.06, 0.05],
     /** The MOUTH. Near-black on purpose: an opening reads as an opening because it is darker
      *  than everything around it, at any distance and any light. This is the whole of the
      *  "a player can recognise it" requirement, and it costs one colour. */

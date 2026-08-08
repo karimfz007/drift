@@ -146,6 +146,11 @@ const TUNE = new Proxy({
     wreckGroaningAt: 66,
     wreckGivingWayAt: 88,
     //  THE UNDERWATER SLICE (D-129) — mirrors src/data/tune.ts, same duplication convention.
+    //  ENTROPY & MAINTENANCE (D-132) — mirrors src/data/tune.ts, same duplication convention.
+    defectShowingAt: 0.34,
+    defectFailingAt: 0.75,
+    defectLashingPerNightHour: 0.010,
+    defectLashingDayFraction: 0.2,
     diveMinDepthM: 2.2,
     diveAirCapacityBase: 100,
     diveBurningAir: 40,
@@ -6684,6 +6689,179 @@ async function main() {
             `read ${beforeAway.traces.read.length} -> ${afterAway.traces.read.length},`
             + ` health ${afterAway.health.toFixed(1)}`);
     }
+    }
+
+    // ================= ENTROPY & MAINTENANCE (D-132) =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the defect model outright — the named
+    //  stages, the per-place threats, D-011, the trips arithmetic (tests/upkeep.test.ts, 33
+    //  checks, seven planted defects proven red). What it cannot witness is the half the
+    //  dossier actually complained about: that a percentage bar is *not something a survivor
+    //  can see*. Every check below is about the cues reaching a screen and the work reaching a
+    //  thumb — a defect model nobody can read is the same durability bar with more prose.
+    if (section("ENTROPY & MAINTENANCE (D-132)")) {
+    const pitchShelter = async (defects, extra = '') => {
+        await editSave(`
+            state.shelter = { built: true, x: 6, y: -12, durability: 100, grade: 'serviceable',
+                              defects: ${JSON.stringify(defects)} };
+            state.player = { x: 6, y: -12 };
+            state.inventory.wood = 5;
+            state.energy = 100; state.health = 100; state.warmth = 60;
+            state.hunger = 70; state.thirst = 80; state.wet = 0;
+            state.gameHoursElapsed = 8;
+            ${extra}
+        `);
+    };
+
+    // ---- 1. A SOUND SHELTER SAYS NOTHING -----------------------------------------
+    await pitchShelter({ lashing: 0, thatch: 0, footing: 0 });
+    const soundRefuge = await page.evaluate(() => window.__drift.refuge());
+    await shot('upkeep-01-sound');
+    check('UPKEEP 1 — a sound shelter reports no outstanding work at all',
+        soundRefuge.upkeep === null && soundRefuge.working === true,
+        `upkeep ${JSON.stringify(soundRefuge.upkeep)}, holding ${soundRefuge.reductionPct}%`);
+
+    // ---- 2. A NAMED DEFECT REACHES THE PLAYER, IN WORDS ---------------------------
+    await pitchShelter({ lashing: 0, thatch: TUNE.defectShowingAt + 0.01, footing: 0 });
+    const showingRefuge = await page.evaluate(() => window.__drift.refuge());
+    await shot('upkeep-02-showing');
+    check('UPKEEP 2 — a defect NAMES ITS PLACE on the served build, and never quotes a number',
+        typeof showingRefuge.upkeep === 'string'
+        && /thatch/i.test(showingRefuge.upkeep)
+        && !/\d/.test(showingRefuge.upkeep),
+        `upkeep line: "${showingRefuge.upkeep}"`);
+
+    check('UPKEEP 2b — and the shelter now claims LESS than it would sound. The debt, stated',
+        showingRefuge.reductionPct < soundRefuge.reductionPct
+        && showingRefuge.potentialPct === soundRefuge.potentialPct
+        && /sound, it would hold/.test(showingRefuge.line),
+        `holding ${showingRefuge.reductionPct}% against a sound ${showingRefuge.potentialPct}% — "${showingRefuge.line}"`);
+
+    // ---- 3. THE BUILDING SHOWS IT ------------------------------------------------
+    //
+    //  The dossier's actual objection, tested: a number is not something you can SEE from
+    //  across a clearing. These read the RENDERED meshes, not the state that drove them.
+    const cueOf = () => page.evaluate(() => {
+        const gap = window.__drift.meshInfo?.('shelterRidgeGap') ?? null;
+        const roof = window.__drift.meshInfo?.('shelterRoof') ?? null;
+        return { gapShown: gap?.enabled ?? null, gapScale: gap?.scaleZ ?? null, roofRoll: roof?.rotZ ?? null };
+    });
+    await pitchShelter({ lashing: 0, thatch: 0, footing: 0 });
+    await sleep(600);
+    const cueSound = await cueOf();
+    await pitchShelter({ lashing: TUNE.defectFailingAt + 0.01, thatch: TUNE.defectShowingAt + 0.01, footing: 0 });
+    await sleep(600);
+    const cueBad = await cueOf();
+    await shot('upkeep-03-visible');
+    check('UPKEEP 3 — the ROOF GAP appears on the rendered shelter when the thatch thins',
+        cueSound.gapShown === false && cueBad.gapShown === true,
+        `gap enabled ${cueSound.gapShown} -> ${cueBad.gapShown}`);
+    check('UPKEEP 3b — ...and a parted lashing visibly racks the frame over',
+        typeof cueBad.roofRoll === 'number' && Math.abs(cueBad.roofRoll) > Math.abs(cueSound.roofRoll ?? 0),
+        `roof roll ${cueSound.roofRoll} -> ${cueBad.roofRoll} rad`);
+
+    // ---- 4. THE WORK IS REACHABLE, AND IT NAMES ITSELF ---------------------------
+    await pitchShelter({ lashing: 0, thatch: 0, footing: TUNE.defectFailingAt + 0.01 },
+        //  STOOD BACK, not on top of it. A hold from inside the frame strikes the ground
+        //  behind the shelter and opens the open-ground build card instead.
+        'state.player = { x: 6, y: -16 };');
+    const beforeMend = await live();
+    await faceNode(beforeMend.shelter.x, beforeMend.shelter.y);
+    const holdOut = await holdWorld(beforeMend.shelter.x, beforeMend.shelter.y);
+    await sleep(700);
+    const circleLabels = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.verb-seg')).map((e) => (e.textContent ?? '').trim()));
+    await shot('upkeep-04-circle');
+    const mendLabel = circleLabels.find((l) => /mend/i.test(l)) ?? '';
+    check('UPKEEP 4 — a real HOLD on the shelter offers work that NAMES THE PLACE',
+        holdOut.ok !== false && /footing/i.test(mendLabel),
+        `hold ${holdOut.ok ?? 'ok'}, segments [${circleLabels.join(' | ')}]`);
+
+    const mendTap = await realTapDom('.verb-seg[data-verb="mend"]');
+    await sleep(800);
+    const afterMend = await live();
+    const saidMend = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+    await shot('upkeep-05-mended');
+    check('UPKEEP 4b — a REAL tap on it spends one wood on THAT PLACE and says so',
+        afterMend.shelter.defects.footing < beforeMend.shelter.defects.footing
+        && afterMend.inventory.wood === beforeMend.inventory.wood - 1
+        && /footing/i.test(saidMend),
+        `footing ${beforeMend.shelter.defects.footing.toFixed(2)} -> ${afterMend.shelter.defects.footing.toFixed(2)},`
+        + ` wood ${beforeMend.inventory.wood} -> ${afterMend.inventory.wood}, said "${saidMend}"`);
+
+    check('UPKEEP 4c — ...and one wood does not finish a FAILING place. The debt is trips',
+        afterMend.shelter.defects.footing > 0,
+        `still ${afterMend.shelter.defects.footing.toFixed(2)} of wear at the footing after one visit`);
+
+    const beachEdge = await page.evaluate(() => {
+        //  Walk outward through the SHIPPED terrain function until the ground drops to sand
+        //  height. Mirroring `beachRadius` would put a second copy of the island in the
+        //  harness, and this asks the island itself.
+        for (let r = 60; r < 140; r += 1) if (window.__drift.groundAt(0, r) < 1.2) return r + 6;
+        return 102;
+    });
+
+    // ---- 5. IT WEARS WHILE YOU PLAY, AND ONLY WHILE YOU PLAY ---------------------
+    //
+    //  Pitched ON THE SAND, where the footing rots — the site being a decision is the one
+    //  driver a player can do something about after the fact.
+    await editSave(`
+        state.shelter = { built: true, x: 0, y: ${beachEdge}, durability: 100, grade: 'serviceable',
+                          defects: { lashing: 0, thatch: 0, footing: 0 } };
+        state.player = { x: 0, y: ${beachEdge} };
+        state.energy = 100; state.health = 100; state.warmth = 100;
+        state.gameHoursElapsed = 8;
+    `);
+    const wetSiteBefore = await live();
+    await sleep(6000);
+    const wetSiteAfter = await live();
+    await shot('upkeep-06-rotting');
+    check('UPKEEP 5 — a shelter pitched on the wet sand rots at the FOOTING while you stand there',
+        wetSiteAfter.shelter.defects.footing > wetSiteBefore.shelter.defects.footing,
+        `footing ${wetSiteBefore.shelter.defects.footing.toFixed(4)} -> ${wetSiteAfter.shelter.defects.footing.toFixed(4)} over ~6 s`);
+
+    // ---- 6. D-011 ON DEVICE ------------------------------------------------------
+    //  MEASURED AGAINST A CONTROL, not as a bare before/after — and the first version of this
+    //  check taught me why. It read the defects, went away for four hours, read them again,
+    //  and found the lashing had grown by 0.0046. The absence was innocent: `goAway` reloads
+    //  the page, and the seconds the game spends BOOTING and settling are seconds of ordinary
+    //  ONLINE wear. A bare comparison bills them to the absence.
+    //
+    //  So the same window is measured twice. First with no absence at all, which is pure boot
+    //  wear; then with four hours of absence folded in. If the absence counted, the second
+    //  number would be an order of magnitude larger — four game hours against six seconds.
+    const controlPitch = { lashing: TUNE.defectShowingAt + 0.01, thatch: 0, footing: 0 };
+    await pitchShelter(controlPitch);
+    const controlStart = await live();
+    await sleep(6000);
+    const controlEnd = await live();
+    const controlGrowth = controlEnd.shelter.defects.lashing - controlStart.shelter.defects.lashing;
+
+    await pitchShelter(controlPitch);
+    const refugeBefore = await page.evaluate(() => window.__drift.refuge());
+    const beforeAway = await goAway(240);
+    const afterAway = await live();
+    const refugeBack = await page.evaluate(() => window.__drift.refuge());
+    await shot('upkeep-07-returned');
+    const awayGrowth = afterAway.shelter.defects.lashing - beforeAway.shelter.defects.lashing;
+    //  What the absence WOULD have cost if it counted — its own game hours at the gentlest
+    //  rate the lashing ever wears. The floor, deliberately: the night rate is five times
+    //  this, so a real offline term could not come in under it.
+    const absenceGameHours = afterAway.gameHoursElapsed - beforeAway.gameHoursElapsed;
+    const wouldHaveCost = absenceGameHours * TUNE.defectLashingPerNightHour * TUNE.defectLashingDayFraction;
+    check('UPKEEP 6 — D-011: the absence itself wears the shelter essentially nothing',
+        wouldHaveCost > 0.05
+        && awayGrowth < wouldHaveCost * 0.1
+        && afterAway.shelter.defects.footing === 0,
+        `${absenceGameHours.toFixed(1)} game hours away grew the lashing by ${awayGrowth.toFixed(5)};`
+        + ` billed to the absence it would have cost at least ${wouldHaveCost.toFixed(3)}`
+        + ` (a quiet 6 s of PLAY costs ${controlGrowth.toFixed(5)})`);
+
+    check('UPKEEP 6b — ...so the shelter holds off exactly what it did before the absence',
+        refugeBack.reductionPct === refugeBefore.reductionPct
+        && refugeBack.upkeep === refugeBefore.upkeep,
+        `holding ${refugeBefore.reductionPct}% -> ${refugeBack.reductionPct}%,`
+        + ` upkeep "${refugeBefore.upkeep}" -> "${refugeBack.upkeep}"`);
     }
 
     // ---- Hygiene ----

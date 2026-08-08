@@ -119,7 +119,15 @@ export function closeSurvivor(state: GameState, cause: string): {
         gameHoursElapsed: state.gameHoursElapsed,
         lastSeenMs: state.lastSeenMs,
         fire: { ...state.fire },
-        shelter: { ...state.shelter },
+        //  ENTROPY & MAINTENANCE — the shelter crosses AS IT STANDS, defects and all, deep-
+        //  copied so the dead survivor's state and the successor's cannot share a roof.
+        //
+        //  Inheriting the WEAR is the right answer and worth saying out loud: a successor
+        //  walks into a building whose lashing somebody else let go slack. That is the same
+        //  `found-intact` grade of inheritance [[D-069]] already permits — you get the thing,
+        //  not the knowledge of how it got that way — and it is the first time this game has
+        //  been able to hand somebody a consequence rather than an object.
+        shelter: { ...state.shelter, defects: { ...state.shelter.defects } },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
         nodes: state.nodes.map((n) => ({ ...n })),
         //  Stacks on the ground are matter, and matter stays. A successor finds what the last

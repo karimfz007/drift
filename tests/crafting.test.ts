@@ -215,7 +215,7 @@ describe('death — the survivor ends, the island does not (Slice 3)', () => {
         s.inventory.wood = 12;
         s.tools.axe = true;
         s.skills.woodcutting.level = 3;
-        s.shelter = { built: true, x: 5, y: 5, durability: 71, grade: 'crude' };
+        s.shelter = { built: true, x: 5, y: 5, durability: 71, grade: 'crude', defects: { lashing: 0, thatch: 0, footing: 0 } };
         s.storage = { built: true, x: 8, y: 8, durability: 62, stored: { wood: 40, stone: 30, fiber: 20 } };
         s.warmth = 0;
         s.thirst = 0;
@@ -230,7 +230,12 @@ describe('death — the survivor ends, the island does not (Slice 3)', () => {
         expect(next.skills.woodcutting.level).toBe(1);
 
         //  THE ISLAND IS UNTOUCHED, down to the durability the last survivor wore into it.
-        expect(next.shelter).toEqual({ built: true, x: 5, y: 5, durability: 71, grade: 'crude' });
+        //  ENTROPY & MAINTENANCE — and the named defects cross with it. A successor inherits
+        //  the building AS IT STANDS, including whatever the last survivor let go.
+        expect(next.shelter).toEqual({
+            built: true, x: 5, y: 5, durability: 71, grade: 'crude',
+            defects: { lashing: 0, thatch: 0, footing: 0 },
+        });
         expect(next.storage.stored).toEqual({ wood: 40, stone: 30, fiber: 20 });
         expect(next.storage.durability).toBe(62);
         //  The world clock never resets. A successor arrives into a night already in progress.

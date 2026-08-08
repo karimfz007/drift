@@ -16,6 +16,7 @@ export * from './discovery';
 export * from './reveal';
 export * from './placement';
 export * from './vulnerability';
+export * from './upkeep';
 export * from './illness';
 export * from './confidence';
 export * from './growth';

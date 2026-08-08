@@ -115,6 +115,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 24) current = migrateV24toV25(current);
     if (current.schemaVersion === 25) current = migrateV25toV26(current);
     if (current.schemaVersion === 26) current = migrateV26toV27(current);
+    if (current.schemaVersion === 27) current = migrateV27toV28(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -870,6 +871,33 @@ function migrateV26toV27(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v27 -> v28, ENTROPY & MAINTENANCE. The shelter learns WHERE it is failing.
+ *
+ * A RETURNING SHELTER IS SOUND AT EVERY NAMED PLACE, and that is the only honest answer: we
+ * have no record of which cross-brace was slack, and inventing one would be charging a
+ * survivor for wear that never happened — the same reasoning every tool migration in this file
+ * has used, and the same direction [[D-011]] points in.
+ *
+ * `durability` is untouched. The C05/[[D-098]] bar is not replaced by this pass; the named
+ * places sit alongside it, and a migrated save keeps whatever wear it had.
+ */
+function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const shelter = isObject(old.shelter) ? old.shelter : ({} as GameState['shelter']);
+    const state: GameState = {
+        ...old,
+        shelter: {
+            ...shelter,
+            defects: isObject(shelter.defects)
+                ? shelter.defects
+                : { lashing: 0, thatch: 0, footing: 0 },
+        },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -905,7 +933,7 @@ function hydrate(state: GameState): GameState {
                 ...state.confidence?.lastPractisedGameHours,
             },
         },
-        shelter: { ...base.shelter, ...state.shelter },
+        shelter: { ...base.shelter, ...state.shelter, defects: { ...base.shelter.defects, ...state.shelter?.defects } },
         storage: { ...base.storage, ...state.storage, stored: { ...base.storage.stored, ...state.storage?.stored } },
         torch: { ...base.torch, ...state.torch },
         raft: { ...base.raft, ...state.raft },

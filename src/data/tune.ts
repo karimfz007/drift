@@ -1117,6 +1117,72 @@ export const TUNE = {
     /** [TUNE] Dive — game hours before the sea shifts a worked point back into reach. Basis:
      *  matched to `wreckPartRegrowGameHours`; the same tide moves both. */
     divePartRegrowGameHours: 120,
+    // ---- ENTROPY & MAINTENANCE (v0.11 §8) — the decay half ------------------
+    //
+    //  THE SHAPE THESE NUMBERS SERVE. Three named places, three different drivers, and two
+    //  spoken stages before anything is taken. The rates below are sized so that a shelter
+    //  left entirely alone reaches its FIRST warning inside a couple of game days and its
+    //  first real consequence a couple after that — slow enough that a survivor doing other
+    //  things is not nagged, fast enough that ignoring it for a week is visibly a choice.
+
+    /** [TUNE] Upkeep — wear at which a defect starts SHOWING: the first spoken warning, and
+     *  it costs a little. Basis: a third of the way to failure, so the warning arrives with
+     *  most of the runway still ahead of it. */
+    defectShowingAt: 0.34,
+    /** [TUNE] Upkeep — wear at which a defect is FAILING: the consequence, after two spoken
+     *  stages. Basis: 0.75 rather than 1.0 so the last quarter is a survivor living with a
+     *  known-bad building rather than a bar filling to the end. */
+    defectFailingAt: 0.75,
+
+    /** [TUNE] Upkeep — how much of the affected answer a SHOWING defect takes, as a fraction.
+     *  Basis: a quarter. Noticeable in the refuge line and on a cold night, and nowhere near
+     *  enough to make a warned survivor's shelter useless. */
+    defectShowingAnswerLoss: 0.25,
+    /** [TUNE] Upkeep — how much a FAILING defect takes. Basis: 0.6 — most of that answer, but
+     *  never all of it: a racked frame is still a frame. Only the FOOTING reaches two answers
+     *  at once, and that is the load path doing what a load path does. */
+    defectFailingAnswerLoss: 0.6,
+
+    /** [TUNE] Upkeep — the lashing works loose per game hour OF NIGHT. Basis: 0.010/h reaches
+     *  the first warning in ~34 night hours, which at this island's day length is a few
+     *  nights of weather. The wind is what unpicks a knot, so the night is what charges it. */
+    defectLashingPerNightHour: 0.010,
+    /** [TUNE] Upkeep — the fraction of that rate the lashing wears during the DAY. Basis: a
+     *  fifth. Not zero — the wind does not stop at dawn — but the night is the driver, and a
+     *  rate that ignored daylight entirely would be a rule rather than weather. */
+    defectLashingDayFraction: 0.2,
+
+    /** [TUNE] Upkeep — the thatch thins per game hour, always. Basis: 0.0045/h reaches the
+     *  first warning in ~76 h, about three game days. This is the slowest of the three and
+     *  the only one nothing can slow down: weathering is what a roof is FOR. */
+    defectThatchPerGameHour: 0.0045,
+
+    /** [TUNE] Upkeep — the footing rots per game hour on a fully damp site. Basis: the fastest
+     *  of the three (0.014/h, ~24 h to the first warning) because it is the one the player
+     *  chose: a shelter pitched on wet sand tells you so within a day, and a shelter pitched
+     *  inland never raises it at all. */
+    defectFootingPerGameHour: 0.014,
+    /** [TUNE] Upkeep — the fraction of that rate on a site that is near the water but not IN
+     *  it. Basis: half. The beach is damp underfoot without standing water on it. */
+    defectFootingDampSite: 0.5,
+    /** [TUNE] Upkeep — how far from the island's centre counts as a damp site, in metres.
+     *  Basis: `beachRadius` (96) — the sand, which is exactly the ground that stays wet. A
+     *  shelter in the scrub or under the treeline never rots at the feet. */
+    defectFootingDampRadiusM: 96,
+
+    /** [TUNE] Upkeep — wear removed by spending one wood on ONE named place.
+     *
+     *  EXACTLY `defectShowingAt`, and the equality is the point rather than a coincidence:
+     *  one wood clears a SHOWING defect precisely, and a FAILING one is by definition past
+     *  that threshold, so it always takes two. Written first as a flat 0.45, where a defect
+     *  sitting on the failing threshold dropped straight to sound in one visit — the comment
+     *  claimed two and the number delivered one, which its own test caught.
+     *
+     *  That is the maintenance debt made concrete: deferring does not accrue a hidden
+     *  multiplier, it accrues TRIPS — wood carried and distance walked, the only kind of debt
+     *  a player can plan around. */
+    defectMendPerWood: 0.34,
+
     // ---- FISHING (three methods, one fish) ---------------------------------
     //
     //  THE SHAPE OF THE WHOLE STAGE, stated once here so the numbers below can be read

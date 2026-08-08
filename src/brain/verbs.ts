@@ -23,6 +23,7 @@ import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
 import { canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater } from './state';
 import { canBindWound } from './injury';
+import { defectPlace, worstDefect } from './upkeep';
 import { handlineBlocker, haulNetBlocker, nearestSpot, setNetBlocker, spearFishBlocker } from './fishing';
 import { nearestBoar } from './fauna';
 import { droppedWithinReach } from './dropped';
@@ -311,14 +312,20 @@ function shelterVerbs(state: GameState): VerbOption[] {
             reason: notBuilt ?? (isInDisrepair(state.shelter) ? 'It has fallen in. Mend it first.' : null),
         },
         {
+            //  ENTROPY & MAINTENANCE (v0.11 §8) — the segment NAMES THE PLACE it would work
+            //  on. "Mend" told a survivor a number was low; "Mend the uphill footing" tells
+            //  them where the building is failing and what one wood buys, which is the whole
+            //  difference between a bar and a maintenance model.
             id: 'mend',
-            label: 'Mend',
+            label: worstDefect(state) ? `Mend ${defectPlace(worstDefect(state)!.id)}` : 'Mend',
             available: built && canRepairStructure(state, 'shelter'),
             reason: notBuilt
-                ?? (state.shelter.durability >= TUNE.structureDurabilityMax
-                    ? 'It is sound. Nothing to mend.'
-                    : state.inventory.wood < 1
-                        ? 'You need wood to mend it.'
+                ?? (state.inventory.wood < 1
+                    ? 'You need wood to mend it.'
+                    //  Nothing outstanding at any named place AND a full bar is the only
+                    //  state that genuinely has nothing to do.
+                    : (state.shelter.durability >= TUNE.structureDurabilityMax && !worstDefect(state))
+                        ? 'It is sound. Nothing to mend.'
                         : null),
         },
     ];

@@ -91,6 +91,8 @@ export const runtime = {
     projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null,
     /** Aim at a mesh's own drawn centre — the height-agnostic path. See game.ts's header. */
     screenOfMesh: (() => null) as (meshName: string) => { x: number; y: number } | null,
+    /** A rendered mesh's own transform — the cue as DRAWN, not the state behind it. */
+    meshInfo: (() => null) as (meshName: string) => { enabled: boolean; rotZ: number; scaleZ: number; y: number } | null,
     ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
     groundAt: (() => 0) as (x: number, z: number) => number,
     playerFeetY: (() => 0) as () => number,
@@ -331,6 +333,13 @@ function installDebugHook(): void {
     //  The height-agnostic aim. Read-only ([[D-075]]): it computes a screen point and performs
     //  no action — the tap that follows is still a real tap.
     screenOfMesh: (meshName: string) => runtime.screenOfMesh(meshName),
+    //  ENTROPY & MAINTENANCE (v0.11 §8) — a rendered mesh's own state, READ-ONLY ([[D-075]]).
+    //
+    //  The dossier's objection to a durability bar is that a number is not something a
+    //  survivor can SEE, so the check that matters is whether the CUE reached the screen —
+    //  not whether the state that should have driven it is correct. Reading the mesh rather
+    //  than the state is the difference between witnessing the fix and witnessing the intent.
+    meshInfo: (meshName: string) => runtime.meshInfo(meshName),
     //  ---- THE FAR ISLAND ([[D-126]]) — READ-ONLY, per the player-path law [[D-075]] ----
     //
     //  Each of these answers a question about the WORLD — where the island is, what sites are

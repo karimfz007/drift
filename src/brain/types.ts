@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -281,7 +281,34 @@ export interface Structure {
 /** The shelter specifically — the one structure with a grade (Ch.1 v3, D-055): its
  *  warmth bonus, and only its warmth bonus, scales with it. Storage has no grade — the
  *  spec names exactly one stat per item TYPE, and storage has none listed. */
+/**
+ * ENTROPY & MAINTENANCE (v0.11 §8) — wear at each named place, 0..1.
+ *
+ * A NUMBER PER PLACE, never a number for the building. The stored fractions are the mechanism
+ * and are deliberately never shown: every reader goes through `stageOf`, which turns one into
+ * a NAMED STAGE, and it is the stage that reaches a player. See `upkeep.ts` for why the
+ * dossier rejects the single bar this sits beside.
+ */
+export interface ShelterDefects {
+    /** The windward cross-brace. Works loose over nights; the wind gets in. */
+    lashing: number;
+    /** The roof covering. Thins with weathering; the cold gets in. */
+    thatch: number;
+    /** Where the frame meets the ground. Rots on a damp SITE, and takes both with it. */
+    footing: number;
+}
+
 export interface ShelterState extends Structure {
+    /**
+     * The three named places this lean-to fails, and how far gone each is.
+     *
+     * This does NOT replace `durability` — the C05/[[D-098]] disrepair-never-deletion model
+     * stands exactly as it was, and its own tests still pass unchanged. It sits alongside it,
+     * answering a question the bar never could: not "how bad is the shelter" but "WHERE is it
+     * compromised", which is Shelter Law 4 and the only shape the pressure-transfer ledger
+     * (v0.14 L3) could ever hang an entry on.
+     */
+    defects: ShelterDefects;
     /** Rolled once at build time; scales the warmth-drain-reduction bonus only. */
     grade: ItemGrade;
 }

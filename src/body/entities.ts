@@ -28,6 +28,7 @@ import '@babylonjs/core/Particles/particleSystemComponent';
 
 import { isFireLit, regrowProgress, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
+import { defectStage } from '../brain';
 import { WORLD, surfaceHeightAt } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
@@ -961,6 +962,8 @@ export class FireView {
 
 export class ShelterView {
     private root: Mesh;
+    private sagPole: Mesh | null = null;
+    private ridgeGap: Mesh | null = null;
     private roofMaterial: StandardMaterial;
     private shadow: Mesh;
     private built = false;
@@ -984,7 +987,20 @@ export class ShelterView {
             pole.rotation.x = 0.5; // undo the parent's tilt so poles stand vertical
             pole.isPickable = false;
             if (!firstPole) firstPole = pole;
+            //  ENTROPY & MAINTENANCE — the UPHILL footing is the one that rots, so the pole
+            //  that leans when it goes is a specific pole rather than "the shelter".
+            if (side === -1) this.sagPole = pole;
         }
+        //  THE GAP IN THE THATCH, drawn as a dark band along the ridge and hidden while the
+        //  roof is sound. A visible cue rather than a readout: the dossier's whole objection
+        //  to a durability bar is that a number is not something you can SEE from across a
+        //  clearing, and this is what seeing it looks like.
+        this.ridgeGap = CreateBox('shelterRidgeGap', { width: 3.2, height: 0.06, depth: 0.42 }, scene);
+        this.ridgeGap.material = flat(scene, 'shelterGapMat', PALETTE.thatchGap);
+        this.ridgeGap.parent = this.root;
+        this.ridgeGap.position.set(0, 0.13, 0);
+        this.ridgeGap.isPickable = false;
+        this.ridgeGap.setEnabled(false);
         //  The grade tell (Ch.1 v3, D-055) — same rule as the axe's/torch's, on a pole.
         const gradeMark = addGradeMark(scene, firstPole!, 'serviceable', 0, 0.9, 0);
         this.gradeMat = gradeMark.material as StandardMaterial;
@@ -1028,6 +1044,33 @@ export class ShelterView {
             if (built) this.gradeMat.diffuseColor = colour(GRADE_COLOR[state.shelter.grade]);
         }
         if (!built) return;
+
+        //  ---- ENTROPY & MAINTENANCE (v0.11 §8): the building SHOWS what is wrong ----
+        //
+        //  Read every frame rather than set once at a transition, because unlike the grade
+        //  these change while you are standing there. Two cues, at the two places you can see
+        //  from outside — a leaning footing and a gap in the ridge — and both are set from the
+        //  brain's own named stage rather than from a number this file re-derives.
+        //
+        //  The dossier's whole objection to a durability bar is that a percentage is not
+        //  something a survivor can SEE from across a clearing. This is what seeing it looks
+        //  like, and it is why the defect model had to be per-location: "63%" has nowhere to
+        //  lean and nothing to open.
+        const footing = defectStage(state, 'footing');
+        if (this.sagPole) {
+            //  A rotted footing lets that corner drop and the whole frame rack over. The lean
+            //  is the load path failing, drawn.
+            this.sagPole.rotation.z = footing === 'failing' ? 0.16 : footing === 'showing' ? 0.06 : 0;
+        }
+        const thatch = defectStage(state, 'thatch');
+        if (this.ridgeGap) {
+            this.ridgeGap.setEnabled(thatch !== 'sound');
+            this.ridgeGap.scaling.z = thatch === 'failing' ? 1 : 0.45;
+        }
+        //  A parted lashing racks the whole roof, which is the one defect visible in the
+        //  silhouette rather than at a point on it.
+        const lashing = defectStage(state, 'lashing');
+        this.root.rotation.z = lashing === 'failing' ? 0.09 : lashing === 'showing' ? 0.035 : 0;
 
         this.root.position.set(state.shelter.x, groundY + 2.05, state.shelter.y);
         this.shadow.position.set(state.shelter.x, groundY + 0.02, state.shelter.y);

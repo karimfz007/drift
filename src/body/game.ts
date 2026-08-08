@@ -105,6 +105,9 @@ import {
     nodeSpec,
     recordCombinationAttempts,
     repairStructure,
+    repairStructureDetailed,
+    defectCue,
+    defectPlace,
     timeOfDay,
     useStorage,
     type Food,
@@ -454,6 +457,26 @@ export class Game {
          * object because it asks the object. `projectToScreen` stays for callers that only have
          * a ground position, and is now the special case rather than the rule.
          */
+        runtime.meshInfo = (meshName: string) => {
+            const mesh = this.scene.getMeshByName(meshName);
+            if (!mesh) return null;
+            return {
+                enabled: mesh.isEnabled(),
+                rotZ: mesh.rotation.z,
+                scaleZ: mesh.scaling.z,
+                y: mesh.position.y,
+            };
+        };
+        runtime.meshInfo = (meshName: string) => {
+            const mesh = this.scene.getMeshByName(meshName);
+            if (!mesh) return null;
+            return {
+                enabled: mesh.isEnabled(),
+                rotZ: mesh.rotation.z,
+                scaleZ: mesh.scaling.z,
+                y: mesh.position.y,
+            };
+        };
         runtime.screenOfMesh = (meshName: string) => {
             const mesh = this.scene.getMeshByName(meshName);
             if (!mesh) return null;
@@ -1568,7 +1591,47 @@ export class Game {
         this.openReport(report);
     }
 
+    /**
+     * ENTROPY & MAINTENANCE (v0.11 §8) — one wood, one NAMED PLACE, and it says which.
+     *
+     * The shipped action spent a wood and moved a bar, so the only feedback available was a
+     * number nobody could see. It now reports the place it worked on and the state that place
+     * is in AFTERWARDS — which is what turns maintenance from an upkeep tax into work a player
+     * can plan, and what makes deferring it a decision rather than an oversight.
+     *
+     * The storage crate keeps the old behaviour untouched: it has no named places this pass,
+     * and giving it invented ones would be scope blur rather than symmetry.
+     */
     private tryRepair(which: RepairTarget): void {
+        const s = session().state;
+        if (which !== 'shelter') { this.tryRepairOLD(which); return; }
+
+        const out = repairStructureDetailed(s, 'shelter');
+        if (!out.ok) {
+            //  The nearest true reason, read from the verb the circle already computes rather
+            //  than re-derived here — two opinions about why an action refused is how a
+            //  player gets told something the game does not believe.
+            this.explain(verbsFor(s, 'shelter').find((v) => v.id === 'mend')?.reason
+                ?? 'Needs wood in hand to repair.');
+            return;
+        }
+        session().persist(now());
+        this.cues.play(CUES.craft);
+        if (out.mended) {
+            this.floatText(`mended ${defectPlace(out.mended.id)}`);
+            //  The stage AFTER the work, so a survivor learns that one wood does not always
+            //  finish a job — the debt being paid down rather than erased.
+            this.explain(out.mended.to === 'sound'
+                ? `You put ${defectPlace(out.mended.id)} right.`
+                : `${defectCue(out.mended.id, out.mended.to)} Another piece of wood would finish it.`);
+        } else {
+            this.floatText(`+${TUNE.repairDurabilityPerWood} durability`);
+            this.explain('You go over the frame and tighten what you can reach.');
+        }
+        this.lastActivityAt = now();
+    }
+
+    private tryRepairOLD(which: RepairTarget): void {
         const s = session().state;
         if (!repairStructure(s, which)) { this.explain('Needs wood in hand to repair.'); return; }
         this.cues.play(CUES.craft);

@@ -9,6 +9,9 @@ import { createBoars } from './fauna';
 import { disturb, harmFromWorking } from './wreck';
 import { submerge } from './dive';
 import { freshFishing } from './fishing';
+import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
+import { builtShelterProfile } from './vulnerability';
+import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
 import { freshTraces } from './traces';
 import { freshInjuries } from './injury';
 import { freshIllness, onsetFrom } from './illness';
@@ -59,7 +62,7 @@ export function createInitialState(nowMs: number): GameState {
         tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false, net: false },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
-        shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable' },
+        shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
         torch: { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' },
         player: { x: SPAWN.x, y: SPAWN.y },
@@ -165,7 +168,9 @@ export function cloneState(state: GameState): GameState {
             foraging: { ...state.skills.foraging }
         },
         fire: { ...state.fire },
-        shelter: { ...state.shelter },
+        //  ENTROPY & MAINTENANCE — the named places clone BY VALUE. The outer spread copies
+        //  the reference, so a cloned state would otherwise mend the original's roof.
+        shelter: { ...state.shelter, defects: { ...state.shelter.defects } },
         cave: { ...state.cave },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
         torch: { ...state.torch },
@@ -1680,7 +1685,7 @@ export function buildShelter(state: GameState, x: number, y: number): boolean {
     state.inventory.stone -= TUNE.shelterStoneCost;
     state.inventory.fiber -= TUNE.shelterFiberCost;
     const grade = rollGrade(nextGradeSeed(state));
-    state.shelter = { built: true, x, y, durability: TUNE.structureDurabilityMax, grade };
+    state.shelter = { built: true, x, y, durability: TUNE.structureDurabilityMax, defects: freshDefects(), grade };
     recordTrying(state, recipeDomain('shelter'));
     return true;
 }
@@ -1733,22 +1738,52 @@ export type RepairTarget = 'shelter' | 'storage';
  */
 export function canRepairStructure(state: GameState, which: RepairTarget): boolean {
     const structure = state[which];
-    if (!structure.built || structure.durability >= TUNE.structureDurabilityMax) return false;
+    if (!structure.built) return false;
     if (state.inventory.wood <= 0) return false;
+    //  ENTROPY & MAINTENANCE (v0.11 §8) — the shelter now has a SECOND reason to be worth
+    //  mending, and this is the whole of what "extend, don't replace" means here. The bar
+    //  still gates it exactly as it did; a NAMED DEFECT is a new, independent reason. A
+    //  shelter at full durability with a parted lashing was previously un-mendable, which is
+    //  the shape of refusal this stage exists to remove.
+    const worthDoing = which === 'shelter'
+        ? structure.durability < TUNE.structureDurabilityMax || hasOutstandingWork(state)
+        : structure.durability < TUNE.structureDurabilityMax;
+    if (!worthDoing) return false;
     return which === 'shelter' ? isNearShelter(state) : isNearStorage(state);
+}
+
+export interface RepairResult {
+    ok: boolean;
+    /** Which named place the wood actually went into, or null when it went into the bar. */
+    mended: ReturnType<typeof mendWorst>;
+}
+
+/**
+ * Spend one wood. On the shelter it goes into ONE NAMED PLACE if any is outstanding, and into
+ * the durability bar otherwise.
+ *
+ * NAMED WORK FIRST, and that priority is the maintenance-debt model in one line: a survivor
+ * with a rotted footing and a scuffed bar should be fixing the footing, because the footing is
+ * holding up the parts that answer the weather. The bar is general wear; a defect is a place.
+ */
+export function repairStructureDetailed(state: GameState, which: RepairTarget): RepairResult {
+    if (!canRepairStructure(state, which)) return { ok: false, mended: null };
+    state.inventory.wood -= 1;
+    const structure = state[which];
+    const mended = which === 'shelter' ? mendWorst(state) : null;
+    if (!mended) {
+        structure.durability = Math.min(TUNE.structureDurabilityMax, structure.durability + TUNE.repairDurabilityPerWood);
+    }
+    recordTrying(state, 'construction');
+    return { ok: true, mended };
 }
 
 /** Spend one wood to restore `repairDurabilityPerWood` durability. Returns true if it did anything. */
 export function repairStructure(state: GameState, which: RepairTarget): boolean {
-    if (!canRepairStructure(state, which)) return false;
-    state.inventory.wood -= 1;
-    const structure = state[which];
-    structure.durability = Math.min(TUNE.structureDurabilityMax, structure.durability + TUNE.repairDurabilityPerWood);
-    //  "Building shelter/storage/repair -> Construction" — one domain regardless of which
-    //  structure, since both live there anyway.
-    recordTrying(state, 'construction');
-    return true;
+    return repairStructureDetailed(state, which).ok;
 }
+
+
 
 /** The raw-material keys storage can hold — personal inventory carries food too; storage never does. */
 const STORABLE_KEYS: Array<keyof StorageInventory> = ['wood', 'stone', 'fiber'];
@@ -1878,12 +1913,29 @@ export interface RefugeReport {
     status: 'none' | 'too-far' | 'disrepair' | 'wet-reduced' | 'working';
     /** One plain sentence: what is happening and, when it is not working, what to do. */
     line: string;
+    /**
+     * ENTROPY & MAINTENANCE (v0.11 §8) — the outstanding named work, or null when there is
+     * none. THE MAINTENANCE DEBT, and it is a separate field rather than more prose inside
+     * `line` for the same reason `wetPenaltyPct` is: they are different costs with different
+     * answers, and a player has to be able to act on each independently.
+     */
+    upkeep: string | null;
 }
 
 export function refugeReport(state: GameState): RefugeReport {
     const grade = state.shelter.grade;
     const potential = 1 - TUNE.shelterGradeWarmthMultiplier[grade];
     const pct = (v: number) => Math.round(v * 100);
+    //  ENTROPY & MAINTENANCE — what the building is ACTUALLY answering, defects and all.
+    //
+    //  This file's own header calls it "the liar" and means it: the reduction reported here
+    //  must equal the reduction `reconcile` produces, and `tests/refuge.test.ts` compares
+    //  them across the whole grid. The moment `activeProfile` learned about defects, a
+    //  report still quoting the grade's sound number became exactly that lie. So it reads the
+    //  degraded profile from the same function the heat balance does, rather than deriving a
+    //  second opinion from the same defects.
+    const degraded = degradeProfile(builtShelterProfile(grade), answerLoss(state));
+    const upkeep = upkeepNote(state);
 
     const wetMultiplier = 1 + (TUNE.wetWarmthDrainMultiplierAtMaxWet - 1) * (state.wet / TUNE.wetMax);
     const wetPenaltyPct = Math.round((wetMultiplier - 1) * 100);
@@ -1893,21 +1945,21 @@ export function refugeReport(state: GameState): RefugeReport {
     if (!state.shelter.built) {
         return {
             reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
-            status: 'none',
+            status: 'none', upkeep,
             line: `No shelter. The night takes its full toll — a lean-to would cut it by about half.${wetTail}`,
         };
     }
     if (isInDisrepair(state.shelter)) {
         return {
             reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
-            status: 'disrepair',
+            status: 'disrepair', upkeep,
             line: `The shelter has fallen apart — it cuts nothing until it is mended. Sound, it would hold off ${pct(potential)}% of the cold.${wetTail}`,
         };
     }
     if (!isNearShelter(state)) {
         return {
             reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
-            status: 'too-far',
+            status: 'too-far', upkeep,
             line: `Too far from the shelter for it to help. Within ${TUNE.shelterRadius} m it would hold off ${pct(potential)}% of the cold.${wetTail}`,
         };
     }
@@ -1917,12 +1969,19 @@ export function refugeReport(state: GameState): RefugeReport {
     //  Keeping them separate is what lets the player act on each one independently, which is
     //  the whole point of the influence half of the depth-dial test.
     return {
-        reduction: potential,
-        reductionPct: pct(potential),
+        reduction: degraded.cold,
+        reductionPct: pct(degraded.cold),
         potentialPct: pct(potential),
         wetPenaltyPct,
         working: true,
         status: soaked ? 'wet-reduced' : 'working',
-        line: `The shelter is holding off ${pct(potential)}% of the night's cold.${wetTail}`,
+        //  When there is outstanding work the line says what the building is holding off NOW
+        //  and what it would hold off sound — the gap between those two numbers IS the
+        //  maintenance debt, stated rather than hidden. When everything is sound the second
+        //  clause is absent, because a report that always hedges teaches nobody anything.
+        line: upkeep === null
+            ? `The shelter is holding off ${pct(degraded.cold)}% of the night's cold.${wetTail}`
+            : `The shelter is holding off ${pct(degraded.cold)}% of the night's cold — sound, it would hold ${pct(potential)}%.${wetTail}`,
+        upkeep,
     };
 }

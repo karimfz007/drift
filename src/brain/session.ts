@@ -21,6 +21,7 @@ import { developFromPaddling, developFromSwimming, isAtWreck, waterCostsFor } fr
 import { airCapacityOf, airRecoveryPerGameHour, canSubmerge, developFromDiving, diveCostsFor, surfaceOnAbsence } from './dive';
 import { advanceHandline, advanceNet } from './fishing';
 import { perishOnTick } from './matter';
+import { advanceDefects } from './upkeep';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -190,6 +191,12 @@ export class Session {
         //  reach. What the structure buys instead is that a net cannot fill while the game is
         //  closed — offline progression, which this project has refused everywhere else.
         this.advanceFishing(outcome.result.elapsedGameHours);
+        //  ENTROPY & MAINTENANCE (v0.11 §8) — the named defects worsen on the ONLINE tick and
+        //  nowhere else. STRICTER than the durability bar beside them, which `reconcile` does
+        //  decay across an absence, and deliberately so: a defect degrades a REFUGE ANSWER, so
+        //  one that worsened offline would mean coming back to a measurably colder shelter for
+        //  having been away. That is absence making a body worse. See `upkeep.ts`'s header.
+        advanceDefects(this.state, outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
