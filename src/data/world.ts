@@ -429,6 +429,63 @@ export const JUNK_SITES: readonly TraceSite[] = [
     },
 ];
 
+/**
+ * THE BROKEN FISHING BOAT — DROP 4, "THE PULL: THE WAY HOME, VISIBLE" (Laws 124–125).
+ *
+ * STATE B0, and B0 is the whole of this drop: beached, hull holed, engineless. Nothing here
+ * moves it off that stage and nothing pretends it is close. What it is for is the horizon.
+ *
+ * ---------------------------------------------------------------------------------------
+ * THE VISUAL SENTENCE, which is the reason the coordinates are what they are.
+ *
+ * The Far Island sits at (60, 420) — a bearing of about 8 degrees east of north from the
+ * island's centre. The Wreck sits at (40, 240), on very nearly the same line. So there is
+ * already a sentence written across this map and nobody was standing anywhere to read it.
+ *
+ * The boat is placed on the NORTH shore, on that same bearing, so that a survivor standing at
+ * it and looking out sees all three things in one view, in order of distance:
+ *
+ *      the boat you are standing at  ->  the wreck that put you here  ->  the island beyond
+ *
+ * "There, and this is how." That is one composition rather than three placements, and it is
+ * why the boat is not simply dropped on the nearest beach.
+ *
+ * SPAWN ISLAND, deliberately — not the Far Island, and reachable on an ordinary shore walk
+ * with no raft. A promise you must already have crossed the sea to see is not a promise.
+ */
+export const BOAT = { x: 14, y: 100 } as const;
+
+/**
+ * FOUND DOCUMENTS — the manual route (Law 125), and the reason it is its own small catalogue.
+ *
+ * A third array of the same `TraceSite` type, for the same reason `JUNK_SITES` is a second
+ * one: `TRACE_SITES` is the far island's own three and its tests count them. This is one
+ * document, on home ground, and it is the only site in the game that carries a TOPIC other
+ * than the far island's raft note — which is exactly what makes `ladderFor` answer for it
+ * without a line of new ladder code.
+ *
+ * IT IS NOT AT THE BOAT. Finding the hull and finding the manual are two separate acts, so a
+ * survivor can meet either first and neither is a prerequisite for the other. That is Law
+ * 125's "two paths, neither mandatory" applied to the geography as well as to the mechanism.
+ */
+export const MANUALS: readonly TraceSite[] = [
+    {
+        id: 'mn-boatbook',
+        //  In the scrub above the tideline, well east of the boat: on the same shore walk,
+        //  found separately.
+        x: 52,
+        y: 78,
+        kind: 'cache',
+        sight: 'A dry-bag wedged under a rock, folded over twice and still holding.',
+        //  THE TOPIC IS WHAT MAKES THE LADDER ANSWER. `traceSuggests` walks every site and
+        //  matches on this string; `ladderFor` reads that and returns `conceptually-suspected`
+        //  for 'boat'. No new ladder branch, no parallel knowledge track.
+        topic: 'boat',
+        note: 'Hull first, always. Patch her dry, seal her, THEN worry about power — I did it the other way round and lost a season to it.',
+        goods: {},
+    },
+];
+
 export const TRACE_SITES: readonly TraceSite[] = [
     {
         id: 'tr-camp',

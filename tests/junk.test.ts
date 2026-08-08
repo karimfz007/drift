@@ -32,7 +32,7 @@ import {
 import { allRecipes } from '../src/brain/recipes';
 import { ALL_MATERIAL_KINDS } from '../src/brain/materials';
 import {
-    DIVE_PARTS, DIVE_SITE, FAR_ISLAND, JUNK_SITES, TRACE_SITES, WORLD, WRECK, WRECK_PARTS,
+    DIVE_PARTS, DIVE_SITE, FAR_ISLAND, JUNK_SITES, MANUALS, TRACE_SITES, WORLD, WRECK, WRECK_PARTS,
     groundHeight, surfaceHeightAt,
 } from '../src/data/world';
 import { TUNE } from '../src/data/tune';
@@ -87,7 +87,12 @@ describe('the catalogue — first representatives, deliberately not the whole id
         //  Junk is a SEPARATE catalogue of the same type. If it ever leaked into `traceSites()`
         //  the far island's own count assertions would start measuring this pass's work.
         expect(traceSites().length).toBe(3);
-        expect(allSites().length).toBe(3 + JUNK_SITES.length);
+        //  ...and `allSites()` is the UNION of every catalogue, which is a growing number by
+        //  design — Drop 4's manual joined it as a third list, and this line read `3 + junk`
+        //  and went red. Rewritten to name each list rather than to hard-code the sum, so the
+        //  next catalogue is a one-word edit and a leak between them is still caught.
+        expect(allSites().length).toBe(TRACE_SITES.length + JUNK_SITES.length + MANUALS.length);
+        expect(allSites().filter((s) => s.id.startsWith('jk-')).length).toBe(JUNK_SITES.length);
     });
 
     it('does not sit on top of anything else that can be tapped', () => {

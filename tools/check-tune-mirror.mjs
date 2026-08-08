@@ -48,10 +48,26 @@ if (missing.length) {
 }
 
 //  ...and every mirrored value must still match the real tune.
+//
+//  THE PATTERN IS A REGEXP LITERAL NOW, AND THAT IS THE WHOLE FIX. It was built by
+//  interpolating the key into a TEMPLATE literal — `\`^\s*${key}:...\`` — and a template
+//  literal eats the backslashes before `RegExp` ever sees them. The pattern that actually
+//  compiled was `^s*<key>:s*([-d.]+)s*,`, which matches nothing in tune.ts, so `if (!m)
+//  continue` fired for every single key and this loop has never compared one value to
+//  another. It printed "none drifted from src/data/tune.ts" over 81 keys it never read.
+//
+//  Found when Drop 4 retuned `boatSeamanshipTechnique` from 34 to 14, left the harness
+//  mirror at 34, and this tool said the mirror was clean. The file's own header says "a
+//  mirror that is complete but wrong is the worse failure" — and only the completeness half
+//  above was ever running. `escapeForRegExp` is belt-and-braces: every key today is a plain
+//  identifier, but a pattern built from data should not depend on that staying true.
+const escapeForRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const drifted = [];
+let compared = 0;
 for (const [key, value] of mirror) {
-    const m = new RegExp(`^\s*${key}:\s*([-\d.]+)\s*,`, 'm').exec(tuneSrc);
+    const m = new RegExp('^\\s*' + escapeForRegExp(key) + ':\\s*([-\\d.]+)\\s*,', 'm').exec(tuneSrc);
     if (!m) continue;                       // legitimately harness-only (e.g. world constants)
+    compared++;
     if (Number(m[1]) !== value) drifted.push(`${key}: harness ${value} vs tune.ts ${m[1]}`);
 }
 if (drifted.length) {
@@ -60,4 +76,13 @@ if (drifted.length) {
     process.exit(1);
 }
 
-console.log(`TUNE mirror check passed: ${used.size} live references, all mirrored; ${mirror.size} mirrored values, none drifted from src/data/tune.ts.`);
+//  COMPARED, not merely mirrored. The count is printed because "none drifted" out of zero
+//  comparisons is exactly the sentence this tool spent its whole life saying.
+if (compared === 0) {
+    console.error('TUNE mirror check FAILED: zero values were actually compared against src/data/tune.ts.');
+    console.error('  That is the silent-pass this check exists to prevent. Fix the lookup, not this message.');
+    process.exit(1);
+}
+
+console.log(`TUNE mirror check passed: ${used.size} live references, all mirrored;`
+    + ` ${compared} of ${mirror.size} mirrored values compared against src/data/tune.ts, none drifted.`);

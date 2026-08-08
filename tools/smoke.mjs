@@ -172,6 +172,9 @@ const TUNE = new Proxy({
     netSharpbladeCost: 1,
     spearFishPoolCost: 2,
     spearFishMaxDepthM: 1.3,
+    //  DROP 4 — THE PULL (Laws 124-125) — mirrors src/data/tune.ts, same convention.
+    boatTapRadiusM: 4.5,
+    boatSeamanshipTechnique: 14,
 }, {
     get(target, key) {
         if (typeof key === 'string' && !(key in target)) {
@@ -7039,6 +7042,208 @@ async function main() {
     check('STORM 6c — ...and the next one is scheduled AHEAD of the returning clock',
         stormBack !== null && stormBack.nextAtGameHours > awayAfter.gameHoursElapsed,
         `next at ${stormBack?.nextAtGameHours?.toFixed?.(1)} against a clock of ${awayAfter.gameHoursElapsed.toFixed(1)}`);
+    }
+
+    // ================= DROP 4 — THE PULL: THE WAY HOME, VISIBLE (Laws 124-125) =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the two routes, the never-summed rule,
+    //  the parts-list guard, the scope cap and D-011 (tests/boat.test.ts, 23 checks, five
+    //  planted defects proven red). None of that is what this drop is FOR.
+    //
+    //  This drop is a promise made visible, and "visible" is not a claim a unit test can make.
+    //  So the checks below are about seeing and reaching, in that order:
+    //
+    //    BOAT 1-2   she exists in the served build, as real geometry, on the actual screen
+    //    BOAT 3     A REAL SURVIVOR WALKS TO HER AND TAPS — the reachability proof, on the
+    //               only route there is. No debug hook drives any part of it ([[D-075]]).
+    //    BOAT 4     the inspection speaks in QUESTIONS, on screen, in words
+    //    BOAT 5     the manual route changes what she says — witnessed as a difference
+    //    BOAT 6     the scope cap holds: no repair verb, and the absence says so
+    //    BOAT 7     THE VISUAL SENTENCE — from her stern, the far island is in frame
+    if (section("DROP 4 — THE PULL: THE WAY HOME, VISIBLE")) {
+    const boatHook = await page.evaluate(() => window.__drift.boat?.() ?? null);
+    //  "Beached" asked of the SHIPPED terrain rather than of a mirrored radius, the same way
+    //  the beach walk above asks the island itself: dry ground, inside the walkable disc.
+    const boatGround = boatHook === null ? null
+        : await page.evaluate(([x, y]) => window.__drift.groundAt(x, y), [boatHook.x, boatHook.y]);
+    check('BOAT 1 — the served build has her, on dry ground on Spawn Island, at stage B0',
+        boatHook !== null && boatHook.stage === 'B0' && boatGround > 0
+        && Math.hypot(boatHook.x, boatHook.y) < TUNE.walkableRadiusM,
+        boatHook === null ? 'NO boat hook — the check could not run'
+            : `at ${boatHook.x},${boatHook.y} (r ${Math.hypot(boatHook.x, boatHook.y).toFixed(1)}),`
+              + ` ground ${boatGround?.toFixed?.(2)}, stage ${boatHook.stage}`);
+
+    if (boatHook !== null) {
+    //  A survivor on their feet, on the beach, a short walk from her. NOT alongside — the
+    //  walk is half of what BOAT 3 is proving, so putting them in range would hand the
+    //  check its own answer.
+    const onTheBeach = async (extra = '') => {
+        await editSave(`
+            state.player = { x: ${(boatHook.x * 0.86).toFixed(2)}, y: ${(boatHook.y * 0.86).toFixed(2)} };
+            state.energy = 100; state.health = 100; state.warmth = 90;
+            state.hunger = 70; state.thirst = 80; state.wet = 0;
+            state.gameHoursElapsed = 9;
+            ${extra}
+        `);
+        await waitForScene();
+    };
+
+    // ---- 2. SHE IS REAL GEOMETRY, AND SHE LANDS ON THE ACTUAL SCREEN -----------
+    await onTheBeach();
+    await faceNode(boatHook.x, boatHook.y);
+    const hullPt = await page.evaluate(() => window.__drift.screenOfMesh('boat_hull'));
+    const holePt = await page.evaluate(() => window.__drift.screenOfMesh('boat_hole'));
+    const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+    const onScreen = (p) => p !== null && p.x >= 0 && p.y >= 0 && p.x <= view.w && p.y <= view.h;
+    await shot('boat-01-from-the-beach');
+    check('BOAT 2 — the hull AND the hole are real meshes that land on the screen',
+        onScreen(hullPt) && onScreen(holePt),
+        `hull ${hullPt ? `${hullPt.x.toFixed(0)},${hullPt.y.toFixed(0)}` : 'no mesh'},`
+        + ` hole ${holePt ? `${holePt.x.toFixed(0)},${holePt.y.toFixed(0)}` : 'no mesh'}`);
+
+    // ---- 3. THE REACHABILITY PROOF — walked, not teleported --------------------
+    //
+    //  The whole drop through the player's own hands: from a standing start out of range,
+    //  walk with the stick until in range, then tap the hull with a finger. Every step is a
+    //  gesture; the hook is read only to say whether the survivor got there.
+    const startedOutOfRange = (await page.evaluate(() => window.__drift.boat().inRange)) === false;
+    const walked = await approach(boatHook.x, boatHook.y, 25);
+    const arrived = await page.evaluate(() => window.__drift.boat().inRange);
+    await faceNode(boatHook.x, boatHook.y);
+    const tapped = await tapMesh('boat_hull', 55);
+    await sleep(900);
+    const said = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+    await shot('boat-02-alongside');
+    check('BOAT 3 — REACHABILITY: a survivor walks to her from out of range and a real tap answers',
+        startedOutOfRange && arrived === true && tapped.ok === true && said.length > 10,
+        `started out of range ${startedOutOfRange}, walked to ${walked.toFixed(1)}m,`
+        + ` in range ${arrived}, tap ${tapped.ok} ${tapped.why ?? ''}, said "${said}"`);
+
+    // ---- 4. WHAT SHE SAYS IS QUESTIONS ----------------------------------------
+    //
+    //  Read off the screen, because "the affordance layer returns questions" is a unit claim
+    //  and "the player is asked a question" is not the same sentence. A survivor who has done
+    //  nothing must be wondering, not shopping.
+    const uninformed = said;
+    check('BOAT 4 — she answers an uninformed survivor with observations and OPEN QUESTIONS',
+        uninformed.includes('?')
+        && !/fibreglass|fiberglass|resin|epoxy|outboard|petrol|diesel/i.test(uninformed),
+        `on screen: "${uninformed}"`);
+
+    //  ...AND THE ABSENCE OF A REPAIR VERB SPEAKS. `boatWorkBlocker`'s sentence has to reach
+    //  a screen, or the scope cap is a comment. Matched on its own opening words rather than
+    //  the whole string, so rewording the line does not turn this into a spelling test.
+    check('BOAT 4b — ...and is told plainly that there is no work here yet',
+        /not fixing her/i.test(uninformed),
+        `closing beat present: ${/not fixing her/i.test(uninformed)}`);
+
+    // ---- 5. THE MANUAL ROUTE CHANGES WHAT SHE SAYS -----------------------------
+    //
+    //  Law 125's two routes are invisible unless taking one visibly changes something. The
+    //  manual is granted through the SHIPPED channel — `traces.read` — rather than by a hook,
+    //  so this is the same state a survivor reaches by finding the dry-bag and reading it.
+    await onTheBeach(`state.traces = { read: ['${boatHook.manualId}'] };`);
+    const readerRoutes = await page.evaluate(() => window.__drift.boat());
+    await approach(boatHook.x, boatHook.y, 25);
+    await faceNode(boatHook.x, boatHook.y);
+    const readerTap = await tapMesh('boat_hull', 55);
+    await sleep(900);
+    const informed = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+    await shot('boat-03-informed');
+    check('BOAT 5 — a survivor who read the manual is told something DIFFERENT, and still asked',
+        readerTap.ok === true && informed.length > 10 && informed !== uninformed
+        && informed.includes('?') && readerRoutes.byManual === true && readerRoutes.byHands === false,
+        `by manual ${readerRoutes.byManual} / by hands ${readerRoutes.byHands},`
+        + ` understanding ${readerRoutes.understanding}, on screen: "${informed}"`);
+
+    //  THE ONE THE FIRST BUILD GOT BACKWARDS. The handler read `route ?? blocker`, so the
+    //  survivor who now knows what the hull needs — and is therefore likeliest to reach for a
+    //  repair verb — was the only one never told there isn't one. Both beats, for both people.
+    check('BOAT 5b — ...and the informed survivor is told BOTH: which route taught them, and that there is still no work',
+        /dry-bag book|handled enough boats|read it and you have done it/i.test(informed)
+        && /not fixing her/i.test(informed),
+        `route named ${/dry-bag book|handled enough boats|read it and you have done it/i.test(informed)},`
+        + ` blocker present ${/not fixing her/i.test(informed)}`);
+
+    // ---- 6. THE SCOPE CAP HOLDS, AND SAYS SO -----------------------------------
+    //
+    //  The drop's own boundary, witnessed: repeated taps must not advance her. B1 does not
+    //  exist, and a survivor who keeps tapping should be TOLD there is no work here rather
+    //  than left in silence — [[D-042]], applied to an absence that is deliberate.
+    const beforeMore = await live();
+    await tapMesh('boat_hull', 55);
+    await sleep(500);
+    await tapMesh('boat_hull', 55);
+    await sleep(700);
+    const afterMore = await live();
+    const stillB0 = await page.evaluate(() => window.__drift.boat().stage);
+    check('BOAT 6 — no repair verb: tapping her again changes nothing she has and nothing you have',
+        stillB0 === 'B0'
+        && JSON.stringify(afterMore.inventory) === JSON.stringify(beforeMore.inventory)
+        && Object.keys(afterMore).every((k) => !k.toLowerCase().includes('boat')),
+        `stage ${stillB0}, pack unchanged`
+        + ` ${JSON.stringify(afterMore.inventory) === JSON.stringify(beforeMore.inventory)},`
+        + ` no boat key in the save ${Object.keys(afterMore).every((k) => !k.toLowerCase().includes('boat'))}`);
+
+    // ---- 7. THE VISUAL SENTENCE ------------------------------------------------
+    //
+    //  THE POINT OF THE WHOLE DROP, and the one check here that is genuinely about a picture.
+    //  Stand behind her stern, look down her length, and the far island must be in frame
+    //  BEYOND her — "there, and this is how" as one composition rather than two facts in
+    //  different parts of the world.
+    //
+    //  Asserted as: with the camera on her bearing, the far island's own centre projects into
+    //  the viewport, and the hull projects lower on the screen than it does — i.e. she is in
+    //  the foreground of it, not beside it.
+    //  THE VANTAGE, chosen from device frames rather than from arithmetic: fourteen metres
+    //  astern and four to port. Dead astern puts the survivor's own body between the camera
+    //  and the hull — a third-person camera draws them in the middle of the frame — so the
+    //  quarter is where a person stands to look at a boat, and it is where she reads.
+    const along = { x: Math.sin(boatHook.bearingToFarIsland), y: Math.cos(boatHook.bearingToFarIsland) };
+    const port = { x: -along.y, y: along.x };
+    const stern = {
+        x: boatHook.x - along.x * 14 + port.x * 4.4,
+        y: boatHook.y - along.y * 14 + port.y * 4.4,
+    };
+    await editSave(`
+        state.player = { x: ${stern.x.toFixed(2)}, y: ${stern.y.toFixed(2)} };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80; state.wet = 0;
+        state.gameHoursElapsed = 18;
+    `);
+    await waitForScene();
+    const FAR = await page.evaluate(() => window.__drift.farIsland?.() ?? null);
+    await faceNode(FAR ? FAR.x : boatHook.x, FAR ? FAR.y : boatHook.y);
+    const sentencePitch = await lookDown(0.02);
+    await sleep(400);
+    const sentence = await page.evaluate(([fx, fy]) => ({
+        hull: window.__drift.screenOfMesh('boat_hull'),
+        island: window.__drift.screenOf(fx, fy),
+        w: window.innerWidth, h: window.innerHeight,
+    }), [FAR ? FAR.x : 0, FAR ? FAR.y : 0]);
+    await shot('boat-04-the-visual-sentence');
+    const bothInFrame = onScreen(sentence.hull) && onScreen(sentence.island);
+    check('BOAT 7 — THE VISUAL SENTENCE: from her quarter, the far island is in frame beyond her',
+        bothInFrame && sentence.hull.y > sentence.island.y,
+        `hull ${sentence.hull ? `${sentence.hull.x.toFixed(0)},${sentence.hull.y.toFixed(0)}` : 'off'},`
+        + ` far island ${sentence.island ? `${sentence.island.x.toFixed(0)},${sentence.island.y.toFixed(0)}` : 'off'}`
+        + ` in a ${sentence.w}x${sentence.h} frame at pitch ${(sentencePitch * 180 / Math.PI).toFixed(1)}deg`);
+
+    //  ...AND SHE IS BOAT-SIZED, which is the half of the sentence a projection cannot state.
+    //
+    //  She shipped as a 5.6 m box under a comment calling her the largest made thing on this
+    //  island, and every check passed, because none of them could see her. From sixteen metres
+    //  she read as a crate. This is that screenshot turned into an instrument: a hull a person
+    //  could work alone is about eight metres on the keel and two and a half in the beam, and
+    //  anything appreciably under that is a prop rather than a promise.
+    const hullSize = await page.evaluate(() => window.__drift.meshSizeM?.('boat_hull') ?? null);
+    const longest = hullSize ? Math.max(hullSize.x, hullSize.z) : 0;
+    const beam = hullSize ? Math.min(hullSize.x, hullSize.z) : 0;
+    check('BOAT 7b — ...and she is the size of a boat a person could work, not a crate',
+        longest >= 7 && beam >= 2.4 && hullSize.y >= 1.2,
+        hullSize ? `${longest.toFixed(2)} m on the keel, ${beam.toFixed(2)} m beam, ${hullSize.y.toFixed(2)} m deep`
+            : 'NO hull mesh — the check could not run');
+    }
     }
 
     // ---- Hygiene ----

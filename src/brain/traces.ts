@@ -28,7 +28,7 @@
  * ---------------------------------------------------------------------------------------
  */
 import { TUNE } from '../data/tune';
-import { JUNK_SITES, TRACE_SITES, type TraceSite } from '../data/world';
+import { JUNK_SITES, MANUALS, TRACE_SITES, type TraceSite } from '../data/world';
 import { junkAffordanceOf, type Affordance } from './affordance';
 import type { GameState, MaterialKind, TracesState } from './types';
 
@@ -57,8 +57,14 @@ export function junkSites(): readonly TraceSite[] {
  * tap on a trace — and this project has fixed that exact divergence twice.
  */
 export function allSites(): readonly TraceSite[] {
-    return [...TRACE_SITES, ...JUNK_SITES];
+    //  Drop 4 adds `MANUALS` as a third list, for the same reason junk is a second one: each
+    //  catalogue is counted by its own tests, and merging them would make one pass's
+    //  assertions measure another pass's work. There is deliberately NO `manuals()` accessor
+    //  beside `junkSites()` — `junkSites()` exists because the runtime hook calls it, and an
+    //  accessor written for symmetry with nothing calling it is [[D-114]]'s defect class.
+    return [...TRACE_SITES, ...JUNK_SITES, ...MANUALS];
 }
+
 
 export function traceById(id: string): TraceSite | null {
     return allSites().find((t) => t.id === id) ?? null;

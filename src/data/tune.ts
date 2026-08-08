@@ -1117,6 +1117,42 @@ export const TUNE = {
     /** [TUNE] Dive — game hours before the sea shifts a worked point back into reach. Basis:
      *  matched to `wreckPartRegrowGameHours`; the same tide moves both. */
     divePartRegrowGameHours: 120,
+    // ---- DROP 4 — THE PULL: the way home, visible ---------------------------
+    //
+    //  TWO CONSTANTS, and that is the whole of this drop's tuning surface. The boat is a
+    //  promise made visible rather than a system to master, so there is nothing here to
+    //  balance — only a reach and a threshold.
+
+    /** [TUNE] Boat — tap forgiveness around the hull, in metres. Basis: she is 7.6 m long and
+     *  2.6 m in the beam, so half her diagonal is ~4.0; this is that plus a hand's slack. A
+     *  hull is the largest thing on this beach and must never be fiddly to touch. */
+    boatTapRadiusM: 4.5,
+    /** [TUNE] Boat — `navigationSeamanship` Technique at which a survivor's own hands can read
+     *  the hull, without ever finding the manual (Law 125's second route).
+     *
+     *  BASIS, COUNTED RATHER THAN GUESSED — and it shipped wrong first, which is the reason
+     *  the counting is written down here. The value was 34 on the reasoning that it was "past
+     *  the point where somebody has plainly been doing this", with a basis line claiming the
+     *  domain is trained by "building the raft, making the crossing, working the wreck and all
+     *  three fishing methods". Fishing trains nothing: it never reaches `gatherNode` and has no
+     *  `recordTrying` of its own. And the domain's real producers, counted, are FOUR:
+     *
+     *    crafting the raft        1   (the recipe's own domain)
+     *    reaching the wreck       1   (`Session`, once — guarded by `wreck.reached`)
+     *    working a wreck part     6   (six nodes)
+     *    working a dive part      4   (four nodes)
+     *
+     *  Technique gains decay with headroom, so twelve events — every maritime thing the game
+     *  contains, done once — reach 19.3. Thirty-four needs twenty-seven, which is three full
+     *  regrow cycles of the wreck AND the dive site. The second route would have existed and
+     *  been unreachable, which is [[D-114]]'s defect class exactly.
+     *
+     *  14 is the eighth event: build the raft, cross open water, work the six parts of the
+     *  hull. That is the sentence `boat.ts` uses for this route, and now it is also the
+     *  arithmetic. It needs no dive and no regrow, and at nearly three times
+     *  `knowledgeInnateFloor` (5) a fresh castaway can never arrive holding it. */
+    boatSeamanshipTechnique: 14,
+
     // ---- RAIN & WET ESCALATION — the second hazard family --------------------
     //
     //  THE SHAPE THESE SERVE. Two free warning stages, then two that cost, then a soaked

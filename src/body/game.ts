@@ -138,6 +138,11 @@ import {
     reelIn,
     setNet,
     spearFish,
+    atBoat,
+    boatAffordance,
+    boatSight,
+    boatUnderstandingNote,
+    boatWorkBlocker,
     isStormActive,
     stormNote,
     diveNote,
@@ -152,7 +157,7 @@ import {
     type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
-import { COLD_OPEN, POND, WORLD, surfaceHeightAt } from '../data/world';
+import { BOAT, COLD_OPEN, POND, WORLD, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
@@ -190,6 +195,7 @@ type Pending =
     //  four above — a vehicle does not get a bespoke input path, because a bespoke path is
     //  where the Default-Verb Law quietly stops applying.
     | { kind: 'raft' }
+    | { kind: 'boat' }
     //  THE FAR ISLAND — a trace site. Same tap/hold/circle machinery as everything else; a
     //  note somebody left is not special-cased into its own input path.
     | { kind: 'trace'; id: string }
@@ -494,6 +500,22 @@ export class Game {
                 x: rect.left + projected.x * (rect.width / this.engine.getRenderWidth()),
                 y: rect.top + projected.y * (rect.height / this.engine.getRenderHeight())
             };
+        };
+
+        //  HOW BIG A DRAWN THING ACTUALLY IS, in metres of world. Read-only ([[D-075]]).
+        //
+        //  Added for Drop 4, and for a reason worth recording: the boat shipped as a 5.6 m box
+        //  under a comment calling her "the largest made thing on this island", and every test
+        //  in the suite agreed, because none of them could see her. A device frame from
+        //  sixteen metres settled it in one look — she read as a crate. A claim about SIZE has
+        //  to be checkable against the geometry, or the only instrument for it is a screenshot
+        //  somebody remembers to take.
+        runtime.meshSizeM = (meshName: string) => {
+            const mesh = this.scene.getMeshByName(meshName);
+            if (!mesh) return null;
+            const box = mesh.getBoundingInfo().boundingBox;
+            const span = box.maximumWorld.subtract(box.minimumWorld);
+            return { x: Math.abs(span.x), y: Math.abs(span.y), z: Math.abs(span.z) };
         };
 
         runtime.projectToScreen = (worldX: number, worldZ: number) => {
@@ -1039,10 +1061,17 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat'; d: number };
         const candidates: Candidate[] = [];
+        {
+            //  DROP 4 — the broken fishing boat. Always a candidate: unlike the fire, the
+            //  shelter and the crate, she is not built and cannot be absent. She has been on
+            //  that beach since before the survivor washed up.
+            const d = distance(point.x, point.z, BOAT.x, BOAT.y);
+            if (d <= TUNE.boatTapRadiusM) candidates.push({ kind: 'boat', d });
+        }
         if (s.fire.built) {
             const d = distance(point.x, point.z, s.fire.x, s.fire.y);
             if (d <= TUNE.fireTapRadius + 1.5) candidates.push({ kind: 'fire', d });
@@ -1374,6 +1403,11 @@ export class Game {
             if (view.node.kind === 'fishingspot') return { x: view.node.x, z: view.node.y };
             return view.node.available ? { x: view.node.x, z: view.node.y } : null;
         }
+        //  DROP 4 — she does not move and she is never absent, so her point is a constant.
+        //  The raft above returns null when unbuilt; the boat has no such state. She was on
+        //  that beach before the survivor washed up and she will be there at the end of it.
+        if (this.pending.kind === 'boat') return { x: BOAT.x, z: BOAT.y };
+
         if (this.pending.kind === 'boar') {
             //  A boar MOVES, so its target point is read fresh every frame rather than
             //  captured at the tap. Walking to where it used to be is not an interaction.
@@ -1432,6 +1466,19 @@ export class Game {
             const id = this.pending.id;
             this.pending = null;
             this.doReadTrace(id);
+            return;
+        }
+
+        //  ---- DROP 4: THE PULL. Looking at her IS the verb ----
+        //
+        //  A tap does it, for the same reason the trace above does: there is exactly one thing
+        //  to want from her, and the Default-Verb Law's simplest case is a target with one
+        //  option. A circle here would be a menu with a single item. What the tap gives back is
+        //  what the survivor can currently SEE in her — which grows with understanding and
+        //  never becomes a list.
+        if (this.pending.kind === 'boat') {
+            this.pending = null;
+            this.doInspectBoat();
             return;
         }
 
@@ -1981,6 +2028,46 @@ export class Game {
     private fishingReason(verbId: string): string {
         const found = verbsFor(session().state, 'fishingspot').find((v) => v.id === verbId);
         return found?.reason ?? 'Not here.';
+    }
+
+    /**
+     * DROP 4 — LOOK AT HER PROPERLY.
+     *
+     * Three beats, in the order a person actually experiences them: what she IS, what handling
+     * her tells you, and — only once a survivor has earned it — which route taught them. The
+     * middle beat comes from `boatAffordance`, so the informed and uninformed readings are the
+     * brain's and this file never decides what anybody knows.
+     *
+     * AND IT ALWAYS ANSWERS, WHOEVER IS ASKING. There is no repair verb this drop, so a
+     * survivor who came here expecting one is told so in a sentence rather than left tapping
+     * at a hull that does nothing — [[D-042]]'s fail-loud law, applied to an absence that is
+     * deliberate.
+     *
+     * THIS READ `route ?? boatWorkBlocker()`, and that was exactly backwards. The route note
+     * exists only for a survivor who has come to understand the hull — so the fallback meant
+     * the ONE person who now knows what she needs, and is therefore likeliest to expect a
+     * repair verb, was the only person never told there isn't one. The uninformed got the
+     * warning; the informed got a compliment. Both lines are said now, because they answer
+     * two different questions and neither substitutes for the other.
+     */
+    private doInspectBoat(): void {
+        const s = session().state;
+        if (!atBoat(s)) { this.explain('Too far to see much. Get alongside her.'); return; }
+        const seen = boatAffordance(s);
+        this.cues.play(CUES.target);
+        this.explain(boatSight());
+        //  Properties, then questions, then where you stand with her — one line, the same
+        //  shape the junk catalogue uses. The questions are the point: understanding buys
+        //  better ones, never answers, and the closing beat is always that there is no work
+        //  here yet.
+        const route = boatUnderstandingNote(s);
+        this.showHint([
+            ...seen.properties,
+            ...seen.questions,
+            ...(route ? [route] : []),
+            boatWorkBlocker(),
+        ].join('  ·  '));
+        this.lastActivityAt = now();
     }
 
     private doBoardRaft(): void {

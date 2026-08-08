@@ -7,8 +7,8 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, airCapacityOf, createSaveRepository, depthAt, diveStageOf, ladderFor, junkSites, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
-import { DIVE_SITE, FAR_ISLAND, isPlaceablePoint } from '../data/world';
+import { SAVE_KEY, Session, airCapacityOf, atBoat, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { BOAT, DIVE_SITE, FAR_ISLAND, MANUALS, isPlaceablePoint } from '../data/world';
 import { RENDER } from './theme';
 
 /**
@@ -91,6 +91,7 @@ export const runtime = {
     projectToScreen: (() => null) as (x: number, z: number) => { x: number; y: number } | null,
     /** Aim at a mesh's own drawn centre — the height-agnostic path. See game.ts's header. */
     screenOfMesh: (() => null) as (meshName: string) => { x: number; y: number } | null,
+    meshSizeM: (() => null) as (meshName: string) => { x: number; y: number; z: number } | null,
     /** A rendered mesh's own transform — the cue as DRAWN, not the state behind it. */
     meshInfo: (() => null) as (meshName: string) => { enabled: boolean; rotZ: number; scaleZ: number; y: number } | null,
     ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
@@ -333,6 +334,7 @@ function installDebugHook(): void {
     //  The height-agnostic aim. Read-only ([[D-075]]): it computes a screen point and performs
     //  no action — the tap that follows is still a real tap.
     screenOfMesh: (meshName: string) => runtime.screenOfMesh(meshName),
+    meshSizeM: (meshName: string) => runtime.meshSizeM(meshName),
     //  ENTROPY & MAINTENANCE (v0.11 §8) — a rendered mesh's own state, READ-ONLY ([[D-075]]).
     //
     //  The dossier's objection to a durability bar is that a number is not something a
@@ -439,6 +441,28 @@ function installDebugHook(): void {
     junkSites: () => junkSites().map((j) => ({
         id: j.id, x: j.x, y: j.y, kind: j.kind, hasNote: j.note !== null,
     })),
+    //  DROP 4 — THE BROKEN FISHING BOAT. READ-ONLY, per [[D-075]]. It answers where she is,
+    //  what stage she is at, and which routes the survivor has actually taken. It does NOT
+    //  inspect her: the harness walks a real survivor over and taps the hull with a finger,
+    //  and everything the check reads afterwards comes off the screen, not off this hook.
+    boat: () => {
+        const st = runtime.session?.state;
+        return {
+            x: BOAT.x,
+            y: BOAT.y,
+            stage: boatStage(),
+            bearingToFarIsland: Math.atan2(FAR_ISLAND.x - BOAT.x, FAR_ISLAND.y - BOAT.y),
+            manualId: MANUALS[0]?.id ?? null,
+            ...(st
+                ? {
+                    inRange: atBoat(st),
+                    understanding: boatUnderstanding(st),
+                    byManual: manualUnderstands(st),
+                    byHands: handsUnderstand(st),
+                }
+                : { inRange: false, understanding: null, byManual: false, byHands: false }),
+        };
+    },
     traceSites: () => traceSites().map((t) => ({
         id: t.id, x: t.x, y: t.y, kind: t.kind, topic: t.topic, goods: { ...t.goods },
     })),

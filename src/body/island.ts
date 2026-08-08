@@ -27,7 +27,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
 import { TUNE } from '../data/tune';
-import { FAR_ISLAND, JUNK_SITES, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach, surfaceHeightAt } from '../data/world';
+import { BOAT, FAR_ISLAND, JUNK_SITES, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach, surfaceHeightAt } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
@@ -80,6 +80,7 @@ export class Island {
         this.buildWreck();
         this.buildFarIsland();
         this.buildTraceSites();
+        this.buildBoat();
 
         scene.fogMode = Scene.FOGMODE_EXP2;
     }
@@ -351,6 +352,75 @@ export class Island {
      * a box, a cairn — rather than as resource nodes. Each is pickable and tagged with its
      * own id, so the tap routes to that site and no other.
      */
+    /**
+     * THE BROKEN FISHING BOAT (Drop 4) — the largest made thing on this island, and the only
+     * one nobody here built.
+     *
+     * DRAWN AT THE SURFACE HEIGHT OF HER OWN SPOT and heeled over, because she is a hull ON
+     * SAND rather than a hull afloat: dragged above the tideline and left to lie. The list is
+     * what says "dead" at fifty metres, before any of the damage is legible.
+     *
+     * THE HOLE IS A REAL HOLE IN THE MESH — a dark box let into the planking rather than a
+     * texture — for the same reason the cave mouth is near-black geometry: an opening reads as
+     * an opening because it is darker than everything round it, at any distance and any light.
+     * A survivor should be able to see she is holed from the treeline.
+     *
+     * AND SHE IS THE SIZE OF A REAL BOAT — 7.6 m on the keel, 2.6 m in the beam. The first
+     * pass built her at 5.6 x 1.9, which is a dinghy, and a device frame from sixteen metres
+     * settled it: she read as a crate on the sand. The comment above her said "the largest
+     * made thing on this island" and the geometry did not agree, which is the kind of claim
+     * that only a screenshot can refute. An inshore fishing boat a person could work alone
+     * is about this big; below it she is a prop, and a prop cannot carry a promise.
+     *
+     * AND SHE FACES THE SEA on the bearing the far island sits on. That is the composition
+     * this whole drop exists for: standing at her stern and looking down her length puts the
+     * wreck in the middle distance and the far island on the horizon behind it.
+     */
+    private buildBoat(): void {
+        const y = surfaceHeightAt(BOAT.x, BOAT.y);
+        const timber = this.flatMaterial('boatTimber');
+        timber.diffuseColor = new Color3(0.44, 0.38, 0.31);
+        const dark = this.flatMaterial('boatHole');
+        dark.diffuseColor = new Color3(0.05, 0.05, 0.06);
+
+        //  The hull: a long box, heeled over and bow-up on the sand.
+        const hull = CreateBox('boat_hull', { width: 2.6, height: 1.6, depth: 7.6 }, this.scene);
+        hull.material = timber;
+        hull.position.set(BOAT.x, y + 0.58, BOAT.y);
+        //  Bearing to the far island, so her length IS the sentence.
+        hull.rotation.y = Math.atan2(FAR_ISLAND.x - BOAT.x, FAR_ISLAND.y - BOAT.y);
+        hull.rotation.z = 0.22;   // the list
+        hull.rotation.x = -0.06;  // bow up on the sand
+        hull.isPickable = true;
+        hull.metadata = { boat: true };
+
+        //  The gunwale, so she reads as a boat rather than a crate at a distance.
+        const rail = CreateBox('boat_rail', { width: 2.86, height: 0.2, depth: 7.85 }, this.scene);
+        rail.material = timber;
+        rail.parent = hull;
+        rail.position.set(0, 0.84, 0);
+        rail.isPickable = true;
+        rail.metadata = { boat: true };
+
+        //  THE HOLE, low in the port side. Geometry, not paint.
+        const hole = CreateBox('boat_hole', { width: 0.62, height: 0.58, depth: 0.58 }, this.scene);
+        hole.material = dark;
+        hole.parent = hull;
+        hole.position.set(-1.32, -0.34, -1.5);
+        hole.isPickable = true;
+        hole.metadata = { boat: true };
+
+        //  The transom, cut square where the engine was unbolted — the second visible absence.
+        const transom = CreateBox('boat_transom', { width: 2.4, height: 1.12, depth: 0.18 }, this.scene);
+        transom.material = timber;
+        transom.parent = hull;
+        transom.position.set(0, 0.07, -3.88);
+        transom.isPickable = true;
+        transom.metadata = { boat: true };
+
+        for (const m of [hull, rail, hole, transom]) m.freezeWorldMatrix();
+    }
+
     private buildTraceSites(): void {
         //  BOTH CATALOGUES, one builder. The far island's three traces and the junk & flavour
         //  catalogue's six are the same type and get the same mesh path, the same pickable
