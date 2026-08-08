@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -690,6 +690,14 @@ export interface GameState {
      */
     fishing: FishingState;
     /**
+     * RAIN & WET ESCALATION — the second hazard family, and the first that is not a creature.
+     *
+     * Advanced by `Session.advanceStorm` on the online tick and nowhere else; an absence ENDS
+     * a storm rather than running one, because nobody stood in the rain for eight hours.
+     */
+    storm: StormState;
+
+    /**
      * HOW LONG EACH PERISHABLE HAS LEFT, in game hours, keyed by material.
      *
      * ONE CLOCK FOR EVERY PERISHABLE, replacing `meatFreshUntilGameHours` — which was a
@@ -717,7 +725,29 @@ export interface FishingState {
     net: { spotId: string; soakedGameHours: number; holding: number } | null;
 }
 
+/**
+ * RAIN & WET ESCALATION — where the weather is in its life cycle. See `storm.ts`.
+ *
+ * The STAGE is the fact; `inStageGameHours` is the mechanism and never reaches a player.
+ * `nextAtGameHours` is a world-clock reading rather than a countdown, so it survives an
+ * absence of any length unchanged — and `clearOnAbsence` pushes it out rather than leaving a
+ * storm mid-flight for somebody to walk back into.
+ */
+export interface StormState {
+    stage: StormStage;
+    inStageGameHours: number;
+    /** World-clock reading at which the next storm begins. */
+    nextAtGameHours: number;
+}
+
+/**
+ * The six-stage life cycle, in `storm.ts`'s own words. Declared here rather than imported so
+ * `types.ts` stays the one module every other one may depend on without a cycle.
+ */
+export type StormStage = 'clear' | 'precursor' | 'watch' | 'committed' | 'impact' | 'aftermath';
+
 /** See `GameState.dive` and `dive.ts`. */
+
 export interface DiveState {
     submerged: boolean;
     /** 0..`airCapacityOf(capacities)`. Falls only while under; refills fast at the surface. */

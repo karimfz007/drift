@@ -133,15 +133,40 @@ describe('SHELTER LAW 4 — a wall is a load path, not a hit-point total', () =>
         expect(loss.cold).toBeGreaterThan(0);
     });
 
-    it('never touches an answer the lean-to never gave', () => {
-        //  Rain and ground damp are 0 for a built shelter and must stay 0: F3's certified band
-        //  rests on the lean-to answering exactly two threats, and a defect that invented a
-        //  third would break a number nobody asked to change.
+    it('never invents an answer the lean-to does not give', () => {
+        //  DERIVED FROM THE SHELTER, not from a list. This was written as "rain and ground damp
+        //  are 0 and must stay 0", which was true when the lean-to answered exactly two
+        //  threats — and RAIN & WET ESCALATION gave it a third, because a roof that kept no
+        //  rain off is a roof in name only. The hardcoded version went red for a change that
+        //  was correct.
+        //
+        //  What the rule actually protects is unchanged: a defect may only ever degrade an
+        //  answer the building genuinely gives. Asking `builtShelterProfile` means a future
+        //  threat cannot break this test by being added, only by being degraded wrongly.
+        const sound = builtShelterProfile('serviceable');
         for (const id of ALL_DEFECTS) {
             const loss = answerLoss(withDefect(id, FAILING));
-            expect(loss.rain, `${id} invented a rain term`).toBe(0);
-            expect(loss['ground-damp'], `${id} invented a ground term`).toBe(0);
+            for (const [threat, taken] of Object.entries(loss) as Array<[string, number]>) {
+                const key = threat === 'ground-damp' ? 'groundDamp' : threat;
+                const answered = (sound as unknown as Record<string, number>)[key];
+                if (answered > 0) continue;
+                expect(taken, `${id} invented a ${threat} term the shelter never gave`).toBe(0);
+            }
         }
+        //  ...and the ground is still one the lean-to never answers, so it stays untouched.
+        expect(sound.groundDamp).toBe(0);
+        for (const id of ALL_DEFECTS) expect(answerLoss(withDefect(id, FAILING))['ground-damp']).toBe(0);
+    });
+
+    it('and the THATCH now costs rain as well as cold — the storm reaching the roof', () => {
+        //  RAIN & WET ESCALATION's one edit to this model, and the tie that makes "no disaster
+        //  exists alone" mechanical rather than thematic. The covering is what rain falls on.
+        expect([...threatsOf('thatch')].sort()).toEqual(['cold', 'rain']);
+        const loss = answerLoss(withDefect('thatch', FAILING));
+        expect(loss.rain).toBeGreaterThan(0);
+        //  The other two places are untouched by rain: a slack lashing lets wind in, not water.
+        expect(answerLoss(withDefect('lashing', FAILING)).rain).toBe(0);
+        expect(answerLoss(withDefect('footing', FAILING)).rain).toBe(0);
     });
 
     it('only ever SUBTRACTS, and never below nothing', () => {

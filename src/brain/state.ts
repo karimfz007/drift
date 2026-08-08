@@ -9,6 +9,7 @@ import { createBoars } from './fauna';
 import { disturb, harmFromWorking } from './wreck';
 import { submerge } from './dive';
 import { freshFishing } from './fishing';
+import { freshStorm } from './storm';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
@@ -108,6 +109,8 @@ export function createInitialState(nowMs: number): GameState {
         //  rather than seeded with zeroes: a clock only exists once there is something to
         //  spoil, so an empty pack is not carrying four expired countdowns.
         fishing: freshFishing(),
+        //  RAIN & WET ESCALATION — clear skies, and the first storm a comfortable way off.
+        storm: freshStorm(),
         freshUntil: {},
         injuries: freshInjuries(),
         illness: freshIllness(),
@@ -177,6 +180,7 @@ export function cloneState(state: GameState): GameState {
         raft: { ...state.raft },
         wreck: { ...state.wreck },
         dive: { ...state.dive },
+        storm: { ...state.storm },
         fishing: {
             line: state.fishing.line ? { ...state.fishing.line } : null,
             net: state.fishing.net ? { ...state.fishing.net } : null,

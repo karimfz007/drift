@@ -156,6 +156,12 @@ export function closeSurvivor(state: GameState, cause: string): {
         //  the `found-intact` grade of inheritance [[D-069]] permits: the successor knows the
         //  crossing is possible and has no idea how it was done.
         wreck: { ...state.wreck },
+        //  RAIN & WET ESCALATION — the WEATHER crosses untouched, and that is the only honest
+        //  answer: a storm is a fact about the island, not about the person standing in it.
+        //  A successor who washes ashore mid-impact washes ashore in the rain, exactly as the
+        //  last one would have. Nothing here is inherited FROM the dead survivor; the sky
+        //  simply never noticed.
+        storm: { ...state.storm },
         //  FISHING. The NET is matter and it is IN THE WORLD — a set net is a thing standing
         //  in the water, and it is still standing there when its owner dies, so
         //  `state.fishing` crosses untouched. The cast LINE does not: a line is held in a

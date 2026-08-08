@@ -116,6 +116,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 25) current = migrateV25toV26(current);
     if (current.schemaVersion === 26) current = migrateV26toV27(current);
     if (current.schemaVersion === 27) current = migrateV27toV28(current);
+    if (current.schemaVersion === 28) current = migrateV28toV29(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -898,6 +899,30 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
     return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
 }
 
+/**
+ * v28 -> v29, RAIN & WET ESCALATION. The sky learns how to do something.
+ *
+ * A RETURNING SAVE ARRIVES UNDER CLEAR SKIES, with the next storm a full interval away rather
+ * than immediately. That is the same direction every migration in this file points: a
+ * returning player is never handed a hazard they did not walk into. Scheduling it from THEIR
+ * clock rather than from zero also means a long-running save does not load straight into a
+ * storm that was notionally due while nobody was playing — which is [[D-011]]'s spirit applied
+ * to a schedule rather than to a rate.
+ */
+function migrateV28toV29(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const state: GameState = {
+        ...old,
+        storm: isObject(old.storm) ? (old.storm as GameState['storm']) : {
+            stage: 'clear',
+            inStageGameHours: 0,
+            nextAtGameHours: num(old.gameHoursElapsed, 0) + TUNE.stormIntervalGameHours,
+        },
+        schemaVersion: SCHEMA_VERSION,
+    };
+    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+}
+
 function num(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -941,6 +966,7 @@ function hydrate(state: GameState): GameState {
         wreck: { ...base.wreck, ...state.wreck },
         dive: { ...base.dive, ...state.dive },
         fishing: { ...base.fishing, ...state.fishing },
+        storm: { ...base.storm, ...state.storm },
         freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

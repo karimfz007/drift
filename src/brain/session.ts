@@ -22,6 +22,9 @@ import { airCapacityOf, airRecoveryPerGameHour, canSubmerge, developFromDiving, 
 import { advanceHandline, advanceNet } from './fishing';
 import { perishOnTick } from './matter';
 import { advanceDefects } from './upkeep';
+import { clearOnAbsence, rescheduleAfterAbsence, settleAftermath, stepStorm, type StormStage } from './storm';
+import { activeProfile } from './vulnerability';
+import { isInDisrepair, isNearShelter } from './state';
 import { closeSurvivor } from './succession';
 import { narrateArrival, reviewDeath, type DeathReview } from './deathReview';
 import { deserialize, serialize, type SaveRepository } from './save';
@@ -64,6 +67,10 @@ function afterAbsence(state: GameState): void {
     //  full one. Nobody held their breath for eight hours, and modelling that they did would
     //  be inventing harm out of not playing.
     surfaceOnAbsence(state);
+    //  RAIN & WET ESCALATION — and the weather stops. Nobody stood in the rain for eight
+    //  hours, and a survivor who returns into the middle of an impact they never experienced
+    //  would be paying for time they were not here. Absence making things better is legal.
+    clearOnAbsence(state);
 }
 
 export class Session {
@@ -117,6 +124,8 @@ export class Session {
         //  BEFORE the span is computed, not after — see `afterAbsence`.
         afterAbsence(loaded);
         const { state, result } = reconcile(loaded, elapsedRealSeconds);
+        //  AFTER the span, deliberately — see `rescheduleAfterAbsence`.
+        rescheduleAfterAbsence(state);
         state.lastSeenMs = nowMs;
 
         const session = new Session(repo, state);
@@ -143,6 +152,8 @@ export class Session {
         //  BEFORE the span is computed, not after — see `afterAbsence`.
         afterAbsence(this.state);
         const { state, result } = reconcile(this.state, elapsedRealSeconds);
+        //  AFTER the span, deliberately — see `rescheduleAfterAbsence`.
+        rescheduleAfterAbsence(state);
         state.trace = this.state.trace;
         state.lastSeenMs = nowMs;
         this.state = state;
@@ -197,6 +208,12 @@ export class Session {
         //  one that worsened offline would mean coming back to a measurably colder shelter for
         //  having been away. That is absence making a body worse. See `upkeep.ts`'s header.
         advanceDefects(this.state, outcome.result.elapsedGameHours);
+        //  RAIN & WET ESCALATION — the weather lives on the ONLINE tick and nowhere else, by
+        //  the same shape as every hazard before it. This is [[D-011]] as STRUCTURE: there is
+        //  no elapsed-time term on the storm anywhere in the absence path, so no absence can
+        //  begin one, escalate one, or wet anybody — and `afterAbsence` actively ENDS one
+        //  rather than leaving a survivor to walk back into rain they never stood in.
+        this.advanceStorm(outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -531,6 +548,41 @@ export class Session {
         const n = this.lastFishingCatch;
         this.lastFishingCatch = 0;
         return n;
+    }
+
+    /**
+     * THE WEATHER, ONE SPAN. Online only — see the call site and `storm.ts`'s header.
+     *
+     * THE REFUGE IS READ FIRST AND PASSED IN, which is the only interesting line here. The
+     * profile it reads is `activeProfile`'s — already degraded by whatever the shelter's named
+     * defects have done to it — so a thinned thatch arrives at the wetting rate as a smaller
+     * rain answer, and `storm.ts` never has to know that maintenance exists. Two systems
+     * meeting through one number is the only way they can meet without one re-deriving the
+     * other, and re-deriving it is how the refuge report became "the liar" in the first place.
+     */
+    private advanceStorm(gameHours: number): void {
+        const s = this.state;
+        if (!(gameHours > 0)) return;
+        const shelterActive = isNearShelter(s) && !isInDisrepair(s.shelter);
+        const step = stepStorm(s, gameHours, activeProfile(s, shelterActive));
+
+        if (step.wetGained > 0) {
+            s.wet = Math.min(TUNE.wetMax, s.wet + step.wetGained);
+        }
+        //  THE CHANGED WORLD, owed exactly once — on the tick the impact ends and never again.
+        //  Anywhere else and a long aftermath would pay it repeatedly, which is a hazard
+        //  quietly becoming a damage-over-time tick against the model it hands work to.
+        if (step.justFinishedImpact) settleAftermath(s);
+        if (step.changed) this.lastStormStage = step.stage;
+    }
+
+    /** The stage the last tick moved into, for the body to announce. Read-and-clear. */
+    private lastStormStage: StormStage | null = null;
+
+    takeStormChange(): StormStage | null {
+        const stage = this.lastStormStage;
+        this.lastStormStage = null;
+        return stage;
     }
 
     /** Clear the death overlay once the player has read it. */

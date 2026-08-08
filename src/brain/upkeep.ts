@@ -112,7 +112,12 @@ export function defectStage(state: GameState, id: DefectId): DefectStage {
 export function threatsOf(id: DefectId): readonly Threat[] {
     switch (id) {
         case 'lashing': return ['wind'];
-        case 'thatch': return ['cold'];
+        //  RAIN & WET ESCALATION — the covering answers RAIN as well as cold, and that second
+        //  threat is the storm hazard reaching the maintenance model without either system
+        //  knowing anything about the other. A thinned thatch was already a colder night; it
+        //  is now also a wetter one, and the difference is felt only while it is raining.
+        case 'thatch': return ['cold', 'rain'];
+
         //  THE LOAD PATH. Everything above the footing is standing on it, so it is the one
         //  place whose failure is not confined to a single answer.
         case 'footing': return ['wind', 'cold'];

@@ -138,6 +138,8 @@ import {
     reelIn,
     setNet,
     spearFish,
+    isStormActive,
+    stormNote,
     diveNote,
     diveStageOf,
     diveSpeedMultiplierOf,
@@ -2455,6 +2457,21 @@ export class Game {
         this.lastFrameAt = stamp;
 
         this.scene.render();
+        //  ---- RAIN & WET ESCALATION: the sky announces itself, once per stage ----
+        //
+        //  On the CHANGE and never on the state, which is what separates a warning from
+        //  nagging. A line every frame while it rained would be the same sentence sixty times
+        //  a second, and a player who learns to ignore the weather text has been given no
+        //  warning at all — the exact failure the boar's `unaware` silence exists to avoid.
+        const stormMoved = session().takeStormChange();
+        if (stormMoved) {
+            const said = stormNote(stormMoved);
+            if (said) {
+                this.cues.play(stormMoved === 'impact' ? CUES.denied : CUES.target);
+                this.showHint(said);
+            }
+        }
+
         //  ---- FISHING — a bite resolves on the tick, so the tick is where it is told ----
         //
         //  `advanceHandline` returns a catch to `Session`, which parks it; the body drains
@@ -2963,6 +2980,20 @@ export class Game {
         //  moment has no way left to raise its voice, and these two warnings only work
         //  because the stage before them is quiet — the same reasoning that keeps a nascent
         //  illness from displacing exhaustion, three paragraphs down.
+        //  RAIN & WET ESCALATION — the weather sits BELOW the breath and the hull, and above
+        //  the ordinary goal line. It is a sustained condition rather than an emergency: a
+        //  drowning diver has seconds and a survivor in the rain has the whole storm, so the
+        //  ordering is by how soon the thing kills you, which is what this whole stack is.
+        //
+        //  Only while it is actually raining. The two WARNING stages get their one-shot
+        //  announcement above and then go quiet — a permanent "it might rain" line is weather
+        //  reporting, not a warning.
+        const sky = isStormActive(state.storm.stage) && state.storm.stage !== 'precursor'
+            && state.storm.stage !== 'watch'
+            ? stormNote(state.storm.stage)
+            : null;
+        if (sky && state.wet > TUNE.wetMax * 0.25) return sky;
+
         //  THE UNDERWATER SLICE — the breath speaks above EVERYTHING. It is the shortest fuse
         //  in the game: the water gives a swimmer minutes and a groaning hull gives a diver a
         //  warning they can act on at leisure, but air is counted in seconds. Silent at

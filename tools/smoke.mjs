@@ -147,6 +147,10 @@ const TUNE = new Proxy({
     wreckGivingWayAt: 88,
     //  THE UNDERWATER SLICE (D-129) — mirrors src/data/tune.ts, same duplication convention.
     //  ENTROPY & MAINTENANCE (D-132) — mirrors src/data/tune.ts, same duplication convention.
+    //  RAIN & WET ESCALATION (D-133) — mirrors src/data/tune.ts.
+    stormIntervalGameHours: 60,
+    stormPrecursorGameHours: 1.2,
+    stormImpactGameHours: 2.0,
     defectShowingAt: 0.34,
     defectFailingAt: 0.75,
     defectLashingPerNightHour: 0.010,
@@ -6862,6 +6866,166 @@ async function main() {
         && refugeBack.upkeep === refugeBefore.upkeep,
         `holding ${refugeBefore.reductionPct}% -> ${refugeBack.reductionPct}%,`
         + ` upkeep "${refugeBefore.upkeep}" -> "${refugeBack.upkeep}"`);
+    }
+
+    // ================= RAIN & WET ESCALATION (D-133) =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the life cycle, the two free warning
+    //  stages, the asymmetry and D-011 (tests/storm.test.ts, 32 checks, eight planted defects
+    //  proven red — one of which was green until the test that missed it was rewritten). What
+    //  it cannot witness is the half a sustained hazard actually lives on: that the WARNINGS
+    //  REACH A SCREEN, once each, in words, before anything is taken — and that a real
+    //  survivor standing in real rain gets measurably wet.
+    //
+    //  A storm is the first hazard here with nothing to face and nowhere to dodge, so the
+    //  only evidence that it is fair is legibility, and legibility is a device claim.
+    if (section("RAIN & WET ESCALATION (D-133)")) {
+    //  THE WEATHER IS SET AFTER THE BOOT, not through the save, and that is the model working
+    //  rather than a gap in it: `editSave` reloads, a reload is an ABSENCE, and an absence
+    //  ENDS a storm. Every storm written into the save is cleared by the boot that reads it —
+    //  which is exactly the D-011 behaviour STORM 6b asserts a few checks below.
+    const pitchStorm = async (stage, inStage = 0, extra = '') => {
+        await editSave(`
+            state.shelter = { built: true, x: 6, y: -12, durability: 100, grade: 'serviceable',
+                              defects: { lashing: 0, thatch: 0, footing: 0 } };
+            state.player = { x: 6, y: -12 };
+            state.wet = 0; state.warmth = 90; state.health = 100; state.energy = 100;
+            state.hunger = 70; state.thirst = 80;
+            state.gameHoursElapsed = 100;
+            ${extra}
+        `);
+        await page.evaluate(([s, i]) => window.__drift.setStorm(s, i), [stage, inStage]);
+    };
+
+    // ---- 1. THE SERVED BUILD HAS WEATHER AT ALL --------------------------------
+    await pitchStorm('clear');
+    const stormHook = await page.evaluate(() => window.__drift.storm?.() ?? null);
+    check('STORM 1 — the served build has a storm model, and it starts clear',
+        stormHook !== null && stormHook.stage === 'clear',
+        stormHook === null ? 'NO storm hook — the check could not run' : `stage ${stormHook.stage}`);
+
+    // ---- 2. BOTH WARNINGS REACH THE SCREEN, AND BOTH ARE FREE ------------------
+    //
+    //  The fair-challenge contract, witnessed rather than asserted. Two different sentences,
+    //  and the survivor is not one drop wetter for having read either.
+    const warnings = [];
+    await pitchStorm('clear', 0);
+    for (const [from, into] of [['clear', 'precursor'], ['precursor', 'watch']]) {
+        //  Poised at the very end of the previous stage, so the next real tick crosses into
+        //  the one under test and the game ANNOUNCES it. `clear` is poised by its clock
+        //  instead, since it has no duration.
+        //  Poised at the very end of the previous stage, so the next real tick crosses into
+        //  the one under test and the game ANNOUNCES it — an announcement fires on a CHANGE,
+        //  which is what separates a warning from nagging.
+        //  Poised on the brink of the stage BEFORE the one under test, so a real tick crosses
+        //  the boundary and the game ANNOUNCES it. Setting the stage directly would produce
+        //  the state without the event, and the announcement fires on the event — which is
+        //  what separates a warning from nagging, and what this check exists to witness.
+        if (from === 'clear') {
+            //  `clear` has no duration; it waits on the world clock, so it is poised by that.
+            const clock = (await live()).gameHoursElapsed;
+            await page.evaluate((t) => { window.__drift.setStorm('clear', 0, t); }, clock);
+        } else {
+            await pitchStorm(from, TUNE.stormPrecursorGameHours - 0.01);
+        }
+        await sleep(2500);
+        const said = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+        const st = await live();
+        const now = await page.evaluate(() => window.__drift.storm?.() ?? null);
+        warnings.push({ stage: into, said, wet: st.wet, health: st.health, landed: now?.stage });
+    }
+    await shot('storm-01-warnings');
+    check('STORM 2 — both warning stages announce themselves on the page, in DIFFERENT words',
+        warnings.every((w) => w.said.length > 25) && warnings[0].said !== warnings[1].said,
+        warnings.map((w) => `${w.stage} (landed ${w.landed}): "${w.said.slice(0, 55)}"`).join('  |  '));
+
+    check('STORM 2b — ...and neither costs a single drop. The preparation window is free',
+        warnings.every((w) => w.wet === 0 && w.health >= 99.5),
+        warnings.map((w) => `${w.stage} wet ${w.wet}, health ${w.health.toFixed(1)}`).join(', '));
+
+    // ---- 3. IT ACTUALLY RAINS, AND A ROOF ACTUALLY HELPS ------------------------
+    //
+    //  The paired measurement the whole hazard rests on: same storm, same body, one
+    //  difference — where they stood.
+    await pitchStorm('impact', 0, 'state.player = { x: 62, y: -44 };');
+    const openBefore = await live();
+    await sleep(7000);
+    const openAfter = await live();
+
+    await pitchStorm('impact', 0);
+    const roofBefore = await live();
+    await sleep(7000);
+    const roofAfter = await live();
+    await shot('storm-02-impact');
+
+    const openGain = openAfter.wet - openBefore.wet;
+    const roofGain = roofAfter.wet - roofBefore.wet;
+    check('STORM 3 — a survivor caught in the open gets genuinely soaked',
+        openGain > 1,
+        `wet ${openBefore.wet.toFixed(1)} -> ${openAfter.wet.toFixed(1)} over ~7 s of impact`);
+
+    check('STORM 3b — THE ASYMMETRY: the same storm under a sound roof costs far less',
+        roofGain < openGain,
+        `in the open +${openGain.toFixed(2)}, under the roof +${roofGain.toFixed(2)}`);
+
+    // ---- 4. A HOLED ROOF IS A WETTER ROOF — the two systems, tied ---------------
+    await pitchStorm('impact', 0, `state.shelter.defects = { lashing: 0, thatch: ${TUNE.defectFailingAt + 0.01}, footing: 0 };`);
+    const holedBefore = await live();
+    await sleep(7000);
+    const holedAfter = await live();
+    await shot('storm-03-holed');
+    const holedGain = holedAfter.wet - holedBefore.wet;
+    check('STORM 4 — a roof with a FAILING thatch lets measurably more rain through',
+        holedGain > roofGain,
+        `sound roof +${roofGain.toFixed(2)}, holed roof +${holedGain.toFixed(2)} over the same span`);
+
+    // ---- 5. THE CHANGED WORLD --------------------------------------------------
+    //
+    //  "No disaster exists alone." The storm hands work to the maintenance model — measured
+    //  against a CONTROL, because a shelter weathers whether or not it is raining.
+    await pitchStorm('impact', TUNE.stormImpactGameHours - 0.01);
+    const stormedStart = await live();
+    await sleep(9000);
+    const stormedEnd = await live();
+
+    //  The control is the SAME span with no storm in it, because a shelter weathers whether or
+    //  not it is raining — comparing the stormed number against zero would bill ordinary
+    //  weathering to the weather.
+    await pitchStorm('clear', 0);
+    const calmStart = await live();
+    await sleep(9000);
+    const calmEnd = await live();
+    await shot('storm-04-aftermath');
+
+    const stormedThatch = stormedEnd.shelter.defects.thatch - stormedStart.shelter.defects.thatch;
+    const calmThatch = calmEnd.shelter.defects.thatch - calmStart.shelter.defects.thatch;
+    check('STORM 5 — the storm leaves the ROOF worse than ordinary weathering does',
+        stormedThatch > calmThatch + 0.01,
+        `stormed +${stormedThatch.toFixed(4)} against a calm control of +${calmThatch.toFixed(4)}`);
+
+    check('STORM 5b — ...and it leaves the LASHING alone. This hazard is rain, not wind',
+        Math.abs((stormedEnd.shelter.defects.lashing - stormedStart.shelter.defects.lashing)
+            - (calmEnd.shelter.defects.lashing - calmStart.shelter.defects.lashing)) < 0.01,
+        `stormed lashing +${(stormedEnd.shelter.defects.lashing - stormedStart.shelter.defects.lashing).toFixed(4)},`
+        + ` calm +${(calmEnd.shelter.defects.lashing - calmStart.shelter.defects.lashing).toFixed(4)}`);
+
+    // ---- 6. D-011 --------------------------------------------------------------
+    await pitchStorm('impact', 0, 'state.player = { x: 62, y: -44 };');
+    const awayBefore = await goAway(240);
+    const awayAfter = await live();
+    const stormBack = await page.evaluate(() => window.__drift.storm?.() ?? null);
+    await shot('storm-05-returned');
+    check('STORM 6 — D-011: four hours away in a downpour does NOT stand you in the rain',
+        awayAfter.wet <= awayBefore.wet + 0.01 && awayAfter.health > 0,
+        `wet ${awayBefore.wet.toFixed(1)} -> ${awayAfter.wet.toFixed(1)}, health ${awayAfter.health.toFixed(1)}`);
+
+    check('STORM 6b — ...the storm is OVER when you get back, not still falling on you',
+        stormBack !== null && stormBack.stage === 'clear',
+        `stage on return: ${stormBack?.stage}`);
+
+    check('STORM 6c — ...and the next one is scheduled AHEAD of the returning clock',
+        stormBack !== null && stormBack.nextAtGameHours > awayAfter.gameHoursElapsed,
+        `next at ${stormBack?.nextAtGameHours?.toFixed?.(1)} against a clock of ${awayAfter.gameHoursElapsed.toFixed(1)}`);
     }
 
     // ---- Hygiene ----

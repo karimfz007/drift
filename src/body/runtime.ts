@@ -340,6 +340,41 @@ function installDebugHook(): void {
     //  not whether the state that should have driven it is correct. Reading the mesh rather
     //  than the state is the difference between witnessing the fix and witnessing the intent.
     meshInfo: (meshName: string) => runtime.meshInfo(meshName),
+    //  RAIN & WET ESCALATION — READ-ONLY ([[D-075]]). It answers what the sky is doing and
+    //  when the next one is due; it cannot start, stop or advance a storm. The harness stages
+    //  weather through the save exactly as it stages everything else.
+    storm: () => {
+        const st = runtime.session?.state;
+        return st ? { ...st.storm } : null;
+    },
+    /**
+     * SET THE WEATHER — a state edit that has to land AFTER boot, and the reason is the model
+     * working correctly rather than a gap in it.
+     *
+     * The harness stages everything else through `editSave`, which writes the save and
+     * reloads. A reload is an ABSENCE, and an absence ENDS a storm — deliberately, because
+     * nobody stood in the rain for eight hours. So the one thing `editSave` structurally
+     * cannot stage is weather: every storm it writes is cleared by the boot it triggers.
+     *
+     * THIS IS NOT A HOOK THAT DRIVES A PLAYER PATH ([[D-075]]). There is no player path to
+     * drive: a storm is not tapped, chosen or reached — it arrives on a clock. What this
+     * replaces is a SIXTY-GAME-HOUR WAIT, the same way `intend` replaces an unhittable
+     * projected tap. Every consequence downstream — the announcement reaching the screen, the
+     * wetting, what a roof does about it, the aftermath — is still measured through real ticks
+     * against the real model.
+     */
+    setStorm: (stage: string, inStageGameHours = 0, nextAtGameHours?: number) => {
+        const st = runtime.session?.state;
+        if (!st) return null;
+        st.storm = {
+            stage: stage as typeof st.storm.stage,
+            inStageGameHours,
+            //  Settable so the harness can poise a CLEAR sky on the brink, and let the real
+            //  tick start the precursor — which is the only way its announcement fires.
+            nextAtGameHours: nextAtGameHours ?? st.storm.nextAtGameHours,
+        };
+        return { ...st.storm };
+    },
     //  ---- THE FAR ISLAND ([[D-126]]) — READ-ONLY, per the player-path law [[D-075]] ----
     //
     //  Each of these answers a question about the WORLD — where the island is, what sites are

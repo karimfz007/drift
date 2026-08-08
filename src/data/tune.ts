@@ -1117,6 +1117,108 @@ export const TUNE = {
     /** [TUNE] Dive — game hours before the sea shifts a worked point back into reach. Basis:
      *  matched to `wreckPartRegrowGameHours`; the same tide moves both. */
     divePartRegrowGameHours: 120,
+    // ---- RAIN & WET ESCALATION — the second hazard family --------------------
+    //
+    //  THE SHAPE THESE SERVE. Two free warning stages, then two that cost, then a soaked
+    //  aftermath — and the whole event fits inside a phone session so a survivor sees it end.
+    //  The two warnings together are the preparation window, and they are deliberately the
+    //  longest part of the event: reading the sky has to be worth more than reacting to rain.
+
+    /** [TUNE] Storm — game hours before the FIRST storm of a run. Basis: 30 gh is past the
+     *  first night and the first shelter, so nobody's opening hour is a storm they had no
+     *  tools to answer. The island introduces itself before it tests anybody. */
+    stormFirstAtGameHours: 30,
+    /** [TUNE] Storm — game hours of clear weather between storms. Basis: ~2.5 game days, so a
+     *  storm is an event a survivor remembers rather than weather they stop reading. */
+    stormIntervalGameHours: 60,
+
+    /** [TUNE] Storm — the PRECURSOR stage, in game hours. Costs nothing. Basis: 1.2 gh is
+     *  ~3 real minutes — long enough to walk home from anywhere on the island. */
+    stormPrecursorGameHours: 1.2,
+    /** [TUNE] Storm — the WATCH stage. Also costs nothing. Basis: 0.8 gh, shorter than the
+     *  precursor because it is the second warning: the time to finish what you started, not
+     *  to start something. Together the two give ~5 real minutes of free preparation. */
+    stormWatchGameHours: 0.8,
+    /** [TUNE] Storm — COMMITTED, the first rain. Basis: 1.0 gh at reduced intensity — the
+     *  stage where a survivor who ignored both warnings can still get under cover having
+     *  paid something rather than everything. */
+    stormCommittedGameHours: 1.0,
+    /** [TUNE] Storm — IMPACT, the weight of it. Basis: 2.0 gh, the longest costed stage, so
+     *  the answer to a storm is a place to be rather than a sprint to outlast it. */
+    stormImpactGameHours: 2.0,
+    /** [TUNE] Storm — AFTERMATH: no more rain, everything soaked. Basis: 1.5 gh. Nothing is
+     *  falling, so the cost is drying off — which the shipped `wetDecayPerGameHour*` rates
+     *  already price, and a sheltered survivor already dries four times faster. */
+    stormAftermathGameHours: 1.5,
+
+    /** [TUNE] Storm — how hard it rains at COMMITTED, as a fraction of the impact.
+     *
+     *  READ AGAINST THE DRYING RATE, not against zero, which is the correction its own test
+     *  forced. `wetDecayPerGameHourDry` (15/gh) runs the whole time, so the number that
+     *  matters is the NET: at 0.35 an exposed survivor gained 55×0.35 − 15 = +4.25/gh, and
+     *  "the first of it comes down, fat and cold" delivered a faint dampening.
+     *
+     *  0.5 nets +12.5/gh — unmistakably getting wet, and still a third of the impact's
+     *  +40/gh, which is what keeps the committed stage a genuine last chance rather than the
+     *  storm proper arriving early. */
+    stormCommittedIntensity: 0.5,
+    /** [TUNE] Storm — wetness gained per game hour in full, unsheltered rain.
+     *
+     *  SET AGAINST THE TWO DRYING RATES IT IS FIGHTING, which is the correction the device
+     *  harness forced. Written first as 55 — chosen against `wetGainPerGameHourInPond` (240)
+     *  on the reasoning that a downpour is not a pond, and against no decay rate at all. But
+     *  `wetDecayPerGameHourSheltered` is 60/gh, so ANY survivor standing at their shelter
+     *  dried faster than the hardest rain could wet them. Sound roof and holed roof both read
+     *  +0.00, and the tie to the maintenance model this stage exists to prove could not
+     *  manifest.
+     *
+     *  100/gh, and the three cases it has to separate:
+     *    EXPOSED             100 against `wetDecayPerGameHourDry` (15) — net +85/gh, so an
+     *                        exposed survivor soaks through in a little over a game hour.
+     *    SOUND ROOF          100 × (1 − 0.55) = 45 against 60 — net NEGATIVE. A sound roof
+     *                        keeps you dry through the worst of it, which is what a roof is.
+     *    FAILING THATCH      the defect takes 0.6 of the rain answer, leaving 0.22, so
+     *                        100 × 0.78 = 78 against 60 — net +18/gh. The roof is still
+     *                        helping and is no longer enough, which is exactly the felt
+     *                        difference a named defect is supposed to buy. */
+    stormWetGainPerGameHour: 100,
+
+    /** [TUNE] Storm — how much of the rain a SOUND lean-to keeps off, 0..1.
+     *
+     *  This is `builtShelterProfile`'s `rain` answer, which has been 0 since Drop 3 for the
+     *  honest reason that nothing had ever rained.
+     *
+     *  0.55, and the number is set by the CAVE rather than by the rain. `caveRainAnswered` is
+     *  1.0, so a lean-to at the 0.85 this was first written as left the best roof on the
+     *  island a fifteen-point edge — erasing the one thing a cave is unambiguously better at,
+     *  in the very stage that finally gives that statistic a question. A lean-to is a roof and
+     *  one open side; a cave is stone on every side but the mouth, and in a storm that gap
+     *  should be the difference between damp and dry.
+     *
+     *  It is also the one shipped number this coefficient moves: the evaporative term reads
+     *  `(1 - refuge.rain)`, so a WET SHELTERED body now loses less than it did before this
+     *  pass. That is correct — a roof keeps the weather off you, which is thermal.ts's own
+     *  stated reading of this term — and it is a real change to a case the refuge grid
+     *  explicitly holds at wet=0, so it is pinned by its own test rather than assumed neutral. */
+    shelterRainAnswered: 0.55,
+
+    /** [TUNE] Storm — wear added to the ROOF COVERING when an impact ends.
+     *
+     *  0.12, which is just OVER a third of `defectShowingAt` (0.34) — so three unanswered
+     *  storms land at 0.36 and the roof is visibly thinning, and two land at 0.24 and it is
+     *  not. Written first as 0.11, where three storms reached 0.33 and the comment claiming
+     *  "roughly three" was claiming a number the constant did not deliver; its own test caught
+     *  it, the same way `defectMendPerWood`'s did a stage earlier.
+     *
+     *  The storm hands WORK to the maintenance model rather than taking health, and that is
+     *  what "no disaster exists alone" buys: a hazard whose aftermath is a debt at a named
+     *  place, payable in wood and walking. */
+    stormThatchDamage: 0.12,
+    /** [TUNE] Storm — wear added to the FOOTING when an impact ends. Basis: half the thatch's,
+     *  because standing water is what rots a post and the rain has to pool before it does.
+     *  The LASHING is deliberately untouched: this hazard is rain, not wind. */
+    stormFootingDamage: 0.055,
+
     // ---- ENTROPY & MAINTENANCE (v0.11 §8) — the decay half ------------------
     //
     //  THE SHAPE THESE NUMBERS SERVE. Three named places, three different drivers, and two
