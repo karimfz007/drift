@@ -1117,6 +1117,21 @@ export const TUNE = {
     /** [TUNE] Dive — game hours before the sea shifts a worked point back into reach. Basis:
      *  matched to `wreckPartRegrowGameHours`; the same tide moves both. */
     divePartRegrowGameHours: 120,
+    /** [TUNE] How long a freshly-opened panel ignores hit-tested input, in milliseconds.
+     *
+     *  THE WINDOW IS THE PANEL'S OWN FADE-IN, so this is not an invented number: `.panel`
+     *  transitions opacity over 300 ms in `index.html`, and this is exactly "while it is
+     *  still appearing". Every panel is full-screen and is created DURING the tap that opens
+     *  it, so the browser's trailing compatibility click for that same touch lands on the
+     *  panel — the gesture that opened it also presses it. A device probe caught the Backpack
+     *  switching itself to the Skills tab because `.growth-btn` sat at the pixel the player
+     *  tapped their pack at. See `panel()` in `src/body/hud.ts`.
+     *
+     *  Shorter and the stray click still lands on a half-faded panel; longer and a genuinely
+     *  quick second press starts getting eaten. Tied to the transition rather than tuned
+     *  against it, so the two cannot drift apart. */
+    panelArmDelayMs: 300,
+
     // ---- DROP 4 — THE PULL: the way home, visible ---------------------------
     //
     //  TWO CONSTANTS, and that is the whole of this drop's tuning surface. The boat is a

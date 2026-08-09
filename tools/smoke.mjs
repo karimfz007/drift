@@ -175,6 +175,7 @@ const TUNE = new Proxy({
     //  DROP 4 — THE PULL (Laws 124-125) — mirrors src/data/tune.ts, same convention.
     boatTapRadiusM: 4.5,
     boatSeamanshipTechnique: 14,
+    boarSightRangeM: 22,
 }, {
     get(target, key) {
         if (typeof key === 'string' && !(key in target)) {
@@ -3140,10 +3141,42 @@ async function main() {
     //  Both directions are asserted, because both have now failed in production:
     //    attempt 1 — a pickable pack won `scene.pick` and broke nine gather verbs (D-074)
     //    attempt 2 — a screen-space region ate `empty-ground`, the "never mind" tap (C3 A2)
-    await editSave('state.player = { x: 0, y: 40 };');
+    //  ...AND THE SURVIVOR MUST BE ALONE, which is the OTHER half of why this has been red.
+    //
+    //  A boar outranks every other target by design ([[D-109]]): "when one is in front of you,
+    //  it is the only thing you meant to touch". `boar1` lives at (42, 35) — 42 m from this
+    //  fixture — but boars ROAM, and in a full sweep enough game time has passed by the time
+    //  this section runs that it has often wandered onto the survivor. The first tap then
+    //  targets the boar, the survivor WALKS OFF toward it, and every remaining tap in the
+    //  column lands on the ground they used to be standing on. Standalone the run is short,
+    //  the boar is still home, and the check passes.
+    //
+    //  That is the whole of this check's standalone-passes / sweep-fails history, and it was
+    //  invisible until the breadcrumb trail below started printing what the game actually saw:
+    //  `(458,351)->boar:boar1` followed by four `empty-ground`.
+    //
+    //  Sending them home is staging of exactly the kind this section already does for the
+    //  shelter and the crate — and `homeX/homeY` is where an absence puts them anyway, so it
+    //  is the world's own resting state rather than an invented one. The boar's precedence is
+    //  asserted by its own section; this one is about the pack.
+    await editSave(`
+        state.player = { x: 0, y: 40 };
+        state.boars = state.boars.map((b) => ({ ...b, x: b.homeX, y: b.homeY,
+                                                stage: 'unaware', chargeBearing: null }));
+    `);
     await sleep(600);
     const meAt = await screenOf(0, 40);
     if (meAt) {
+        //  FAIL LOUD IF THE FIXTURE DID NOT HOLD, rather than sampling a column with something
+        //  else standing in it and reporting the pack untappable.
+        const nearestBoar = (await live()).boars
+            .filter((b) => b.alive)
+            .map((b) => Math.hypot(b.x - 0, b.y - 40))
+            .sort((a, b) => a - b)[0] ?? Infinity;
+        check('FIX 5 setup — the survivor is genuinely alone, so nothing outranks the pack',
+            nearestBoar > TUNE.boarSightRangeM,
+            `nearest living boar ${nearestBoar === Infinity ? 'none' : nearestBoar.toFixed(1) + ' m'}`
+            + ` against a sight range of ${TUNE.boarSightRangeM} m`);
         const column = [];
         for (const dy of [0, 20, 40, 70, 120]) {
             await tapAt(meAt.x, meAt.y - dy, 55);
@@ -3157,7 +3190,23 @@ async function main() {
             if (opened) await sleep(700);
         }
         const packHits = column.filter((c) => c.endsWith('pack')).length;
-        check('FIX 5 — the pack on the survivor is tappable at all', packHits > 0, column.join(' '));
+        //  THE BREADCRUMB TRAIL IN THE DETAIL LINE, not in the assertion — which is unchanged.
+        //
+        //  This check spent many sweeps red reading `0:ground 20:ground ...` and nobody could
+        //  say why, because "the panel did not open" covers three completely different events:
+        //  the gesture never reached the game at all, it reached it and resolved to something
+        //  else, or it resolved to the pack and the panel opened under a different class. The
+        //  game records every tap it sees; printing that record here means the next person
+        //  reads the cause off the failure instead of building a probe to find it.
+        //
+        //  (The cause, for the record, was the third: the panel opened full-screen UNDER the
+        //  finger and the touch's own trailing click pressed its `.growth-btn`, switching it
+        //  to Skills — so `.panel.loadout` stopped resolving and the still-open panel then
+        //  swallowed every later tap in the column. Fixed in `panel()`'s arming guard.)
+        const trail = await page.evaluate(() => (window.__drift.tapTrail?.() ?? []).slice(-6)
+            .map((b) => `(${b.screenX},${b.screenY})->${b.outcome}`).join(' '));
+        check('FIX 5 — the pack on the survivor is tappable at all', packHits > 0,
+            `${column.join(' ')}   |  taps the game actually saw: ${trail || '(none)'}`);
         //  ...and it must NOT swallow the column. A tap on bare ground beside the survivor is
         //  the player's "never mind", and it stays theirs.
         check('FIX 5 — tapping bare ground beside the survivor is still empty-ground, not the pack', packHits < column.length, column.join(' '));

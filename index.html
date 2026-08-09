@@ -396,6 +396,26 @@
         .panel.visible { opacity: 1; }
         .panel.leaving { opacity: 0; }
 
+        /* ARMING: a panel ignores hit-tested input while it is still fading in.
+
+           Every panel is `inset: 0` and is created DURING the tap that opens it, so the
+           browser's trailing compatibility click for that same touch lands on the panel that
+           just appeared underneath the finger. A device probe measured it: tapping the pack
+           on the survivor's back opened the Backpack and the stray click pressed
+           `.growth-btn`, switching it to Skills before the thumb had left the glass.
+
+           THE BUTTON RULE IS THE WHOLE POINT. `#ui button { pointer-events: auto }` above is
+           MORE specific than a plain `.panel { pointer-events: none }`, so guarding only the
+           container does nothing at all — the first attempt at this fix set the container
+           inline and the panel went on pressing itself, with `pe=none` sitting in the probe's
+           own readout. These selectors carry the `#ui` id precisely so they outrank it.
+
+           Hit-testing only: `element.click()` dispatches directly and is unaffected, which is
+           the right line to draw — a stray click is a hit on a surface nobody aimed at, while
+           a programmatic press is somebody naming the button. */
+        #ui .panel.arming,
+        #ui .panel.arming button { pointer-events: none; }
+
         .panel h1 { font-size: clamp(30px, 9vw, 46px); letter-spacing: 0.14em; margin: 0; }
         .panel h2 { font-size: 25px; margin: 0; }
         .panel p { margin: 0; line-height: 1.55; font-size: 17px; }

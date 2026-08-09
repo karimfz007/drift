@@ -286,12 +286,47 @@ function vitalMarkup(key: string, name: string): string {
  * "Every panel must remember to reveal itself" is the invariant that failed, so the helper
  * that creates panels now owns it. No call site can get it wrong again.
  */
+/**
+ * A PANEL IS BORN UNDER THE FINGER THAT OPENED IT, and for 300 ms it must not answer to it.
+ *
+ * THE DEFECT THIS FIXES, measured rather than reasoned about. Every panel here is
+ * `position: absolute; inset: 0` — full screen — and it is created DURING the tap that opens
+ * it. The browser then dispatches that same touch's compatibility `click`, and by the time it
+ * lands the panel exists underneath it. So the gesture that opened the panel also PRESSES it.
+ *
+ * A device probe caught it on the backpack: tapping the pack on the survivor's back opened
+ * the Backpack, and the trailing click landed on `.growth-btn` — "What the island has taught
+ * you" — which sits at that pixel. The panel switched itself to Skills before the player's
+ * thumb had left the glass. Two pixels higher and it presses **Build**. The `pointerdown`
+ * guard below cannot stop it: the panel did not exist when `pointerdown` fired, so there is
+ * nothing to stop propagating — the click is dispatched straight to the new element.
+ *
+ * That is FIX 5's whole mystery, carried unexplained across many sweeps as "the pack is not
+ * tappable". The pack was always tappable. The panel it opened was pressing its own buttons.
+ *
+ * WHY A CLASS AND NOT AN INLINE STYLE. The first attempt set `pointerEvents = 'none'` on
+ * the container and changed nothing: `#ui button { pointer-events: auto }` is more specific,
+ * so every button inside stayed hit-testable while the probe's own readout said `pe=none`.
+ * The `.arming` rules in `index.html` carry the `#ui` id so they outrank it.
+ *
+ * WHY `pointer-events` AT ALL, and why it is the right instrument. It blocks HIT-TESTED input — a
+ * real finger, a real stray click — and leaves DIRECT DISPATCH alone, so `element.click()`
+ * still works. That is exactly the distinction that matters: the stray click is a hit test on
+ * a surface the player never aimed at, while a programmatic press is somebody naming the
+ * button. It needs no `isTrusted` sniffing and no special case for the harness.
+ *
+ * THE WINDOW IS THE FADE-IN, not an invented number: `.panel` transitions opacity over 300 ms
+ * (`index.html`), so this is precisely "while it is still appearing". A player cannot
+ * deliberately press a button that is not yet fully on screen, and a touch that lands there
+ * anyway is one they aimed at the world behind it.
+ */
 function panel(overlay: HTMLElement, className: string): HTMLElement {
     const element = document.createElement('div');
-    element.className = `panel ${className}`;
+    element.className = `panel ${className} arming`;
     overlay.appendChild(element);
     element.addEventListener('pointerdown', (event) => event.stopPropagation());
     requestAnimationFrame(() => element.classList.add('visible'));
+    window.setTimeout(() => element.classList.remove('arming'), TUNE.panelArmDelayMs);
     return element;
 }
 
@@ -975,10 +1010,29 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
                 <button class="quiet hand-chip" data-hand="right" data-tool="${t}" type="button">R: ${t}</button>`).join('')}</div>`}
         </div>`;
 
+    //  THE MEDICAL STORE SITS FIRST WHEN THERE IS ONE TO TAKE — D-053's precedent, applied
+    //  to the surface an ill survivor actually comes to.
+    //
+    //  Rest was hoisted to the top of the Build panel for exactly this reason: the card grew
+    //  past the 412 px fold and a device probe found the sleep button rendering below it,
+    //  reachable only by scrolling. The panels are scrollable by [[D-052]]'s design so nothing
+    //  was unreachable — but *"a primary action a tired player is hunting for should not need
+    //  a scroll to be seen"*. `WRECK 6` has been red since [[D-125]] reading `off-screen`,
+    //  left red on purpose because whether a medical store is that kind of action was a
+    //  design call rather than the builder's. It has now been ruled: it is. Illness is a real
+    //  and sometimes urgent system, and an ill survivor hunting for their medicine is that
+    //  player exactly.
+    //
+    //  CONDITIONAL, and the condition is the action. The row leads only while the sickness is
+    //  PRESSING — while there is something to do about it. A survivor who is well reads their
+    //  body in its natural order and is not greeted by a Sickness heading saying "Well". So
+    //  this hoists an ACTION to where it can be seen, which is what the precedent did; it
+    //  does not reorder a readout.
+    const illnessLeads = Boolean(extra) && extra!.illness.stage !== 'well';
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${rows}${injuryRows}${illnessRow}${handRows}</div>`;
+        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${handRows}</div>`;
 }
 
 export function showLoadout(

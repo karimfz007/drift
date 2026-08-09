@@ -397,6 +397,16 @@ export class Game {
         //  for each interaction raycast, not just for the renderer.
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
         runtime.lastTapOutcome = () => this.tapBreadcrumbs[this.tapBreadcrumbs.length - 1]?.outcome ?? null;
+        //  THE WHOLE TRAIL, not just the last word — read-only, per [[D-075]].
+        //
+        //  `lastTapOutcome` returns the newest breadcrumb, and a tap that never reached
+        //  `onTap` at all leaves no breadcrumb, so the previous tap's answer is served again
+        //  and reads as a fresh one. A probe built on it cannot tell "the gesture missed" from
+        //  "the gesture landed and resolved wrongly" — which is exactly the distinction FIX 5
+        //  and `JUNK 4c` have both been unable to make while being carried unexplained.
+        //  The coordinates are what settle it: a breadcrumb whose pixel is not the pixel you
+        //  touched is a stale one.
+        runtime.tapTrail = () => this.tapBreadcrumbs.map((b) => ({ ...b }));
         runtime.refuge = () => refugeReport(session().state);
         runtime.slideReadout = () => ({
             contact: this.lastContact,
