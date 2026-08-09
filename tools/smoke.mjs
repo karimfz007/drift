@@ -912,6 +912,16 @@ async function main() {
         await waitForScene();
         await sleep(1000);
     };
+    //  HOW LONG THE LAST `goAway` WAS ACTUALLY AWAY, in real ms — the rewind PLUS the boot.
+    //
+    //  `goAway` rewinds `savedAtMs` and then reloads, and `Session.start` diffs `nowMs`
+    //  against it — so the real time the reload itself takes is folded into the absence, on
+    //  top of the minutes asked for. That is the model working, not a gap in it: the survivor
+    //  really was away for that long. But a check that compares against the NOMINAL minutes is
+    //  quietly asserting that Chrome boots instantly, and on a loaded machine a boot runs to
+    //  tens of seconds — which is [[D-128]]'s clock-stamping defect class, in the one helper
+    //  that must NOT stamp because simulating elapsed time is its whole job.
+    let lastAwayRealMs = 0;
     const goAway = async (minutes) => {
         await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
         const before = await page.evaluate(({ key, ms }) => {
@@ -920,9 +930,12 @@ async function main() {
             localStorage.setItem(key, JSON.stringify(env));
             return env.state;
         }, { key: SAVE_KEY, ms: minutes * 60 * 1000 });
+        const rewoundAt = Date.now();
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
         await waitForScene();
         await sleep(1200);
+        //  MEASURED, not assumed: what the game was actually handed as elapsed time.
+        lastAwayRealMs = minutes * 60 * 1000 + (Date.now() - rewoundAt);
         return before;
     };
     const startFresh = async () => {
@@ -1014,7 +1027,7 @@ async function main() {
     //  a FILTERED run a reader gets `undefined` and fails loudly at the first property
     //  access, which is the correct answer: that section genuinely depends on another and
     //  cannot be run alone.
-    let ground, camMinAboveGround, felled, lines, growth, leaked, chips, fired, vitals, skills, returned, reach, switched, close, emptyGround, siteClearUsed, drift, names, afterShelter, afterStorage, failedTapsAfter, quarry, quarryOk, quarryTaps, inReach, approachTrail, dying, revived, moving, frame, still, afterReach, gained, afterHammer, afterKnap, afterAxe, beforeJournal, afterJournal, beforeFellKnowledge, felledForKnowledge, promoted, woodBefore, style, combineViaPlayerPath, opened, armed, mintedBlueprints, attempt, nodes, walkTarget, firstMoveMs, tapResolvedTo, panel, circle, treeProbe, meshes, ghostShown, cardOpen, heldGhost, outward, wreckStart, worked, quarryStillAvailable, diveStart, wentUnder, surfacedAgain;
+    let ground, camMinAboveGround, felled, lines, growth, leaked, chips, fired, vitals, skills, returned, reach, switched, close, emptyGround, siteClearUsed, drift, names, afterShelter, afterStorage, quarry, quarryOk, quarryTaps, inReach, approachTrail, dying, revived, moving, frame, still, afterReach, gained, afterHammer, afterKnap, afterAxe, beforeJournal, afterJournal, beforeFellKnowledge, felledForKnowledge, promoted, woodBefore, style, combineViaPlayerPath, opened, armed, mintedBlueprints, attempt, nodes, walkTarget, firstMoveMs, tapResolvedTo, panel, circle, treeProbe, meshes, ghostShown, cardOpen, heldGhost, outward, wreckStart, worked, quarryStillAvailable, diveStart, wentUnder, surfacedAgain;
 
     if (section("A6 — ground truth (grounding + colliders + camera never clips)")) {
     const grounding = await page.evaluate(() => {
@@ -2498,7 +2511,7 @@ async function main() {
     const failedTapsBefore = (await live()).trace.failedInteractionTaps;
     await tapWorld(failLoudTree.x, failLoudTree.y, 55);
     await sleep(600);
-    failedTapsAfter = (await live()).trace.failedInteractionTaps;
+    const failedTapsAfter = (await live()).trace.failedInteractionTaps;
     check('fail-loud — a tap that reaches something real but has nothing to do explains why and traces it, never silently', failedTapsAfter > failedTapsBefore, `${failedTapsBefore} → ${failedTapsAfter}`);
     await editSave('state.tools.axe = true;'); // the axe is a precondition for later sections
 
@@ -3353,7 +3366,19 @@ async function main() {
     check('the morning report is on screen', await panelOpen());
     const reopened = await live();
     const gh = reopened.gameHoursElapsed - beforeAway.gameHoursElapsed;
-    check('the absence advanced the clock at the tuned rate', Math.abs(gh - (4 * 60) / TUNE.realSecondsPerGameHour) < 0.2, `${gh.toFixed(2)} game hours`);
+    //  THE RATE IS THE CLAIM, so it is compared against the absence that actually happened.
+    //
+    //  This read `(4 * 60) / realSecondsPerGameHour` — 1.6 game hours — with a +/-0.2 band,
+    //  which silently assumed the reload was free. It is not: the boot time lands on the
+    //  survivor as real elapsed time, and on a loaded machine that is tens of seconds. The
+    //  check read 1.67 on a fast run and 2.07 on a slow one, and neither number said anything
+    //  about the RATE, which is the only thing it set out to test. Measuring the away window
+    //  makes the assertion tight (+/-0.05) instead of loose-and-still-wrong.
+    const expectedGh = (lastAwayRealMs / 1000) / TUNE.realSecondsPerGameHour;
+    check('the absence advanced the clock at the tuned rate',
+        Math.abs(gh - expectedGh) < 0.05,
+        `${gh.toFixed(2)} game hours against ${expectedGh.toFixed(2)} expected`
+        + ` — 4 min rewound + ${((lastAwayRealMs - 4 * 60 * 1000) / 1000).toFixed(1)} s of real boot`);
     check('vitals drifted during the absence but nobody died', reopened.thirst < 60 && reopened.health > 0 && reopened.trace.deaths === revived.trace.deaths, `thirst ${reopened.thirst.toFixed(1)}, health ${reopened.health}`);
     const shortReportTap = await realTapDom('.report button');
     check('the short report\'s dismiss button is reachable by a real tap', shortReportTap.ok, shortReportTap.reason ?? '');
@@ -4344,7 +4369,11 @@ async function main() {
 
     //  §9 INPUT SAFETY, the hard law: closing the panel must NOT leak a world tap. The
     //  close button sits over the world; before the fix its own release fell through.
-    await editSave('state.trace.failedInteractionTaps = 0;');
+    //  NO LONGER ZEROED. This used to `editSave('state.trace.failedInteractionTaps = 0;')`
+    //  first, which was never needed — the check below reads its own `tapsBeforeClose` a few
+    //  lines down and compares a DELTA, so any baseline works. The reset destroyed a counter
+    //  fourteen sections of other work were sharing, and F1 read the wreckage as a defect.
+    //  A section that changes a global owes the sections after it the global it was given.
     await realTapDom('.carried-button');
     await sleep(400);
     const tapsBeforeClose = (await live()).trace.failedInteractionTaps;
@@ -4529,6 +4558,25 @@ async function main() {
     }
     if (section("F1/F2 — the regression lock on the director's passed verdicts")) {
 
+    //  THE BASELINE FOR F1c, TAKEN HERE — where the section it measures begins.
+    //
+    //  This check reads "no input went missing during the FEEL SECTION" and compared against
+    //  `failedTapsAfter`, captured FOURTEEN SECTIONS upstream at the fail-loud check. It has
+    //  been red for a long stretch, carried every sweep as "a counter compared across
+    //  sections", and the cause is deterministic rather than mysterious: the D-063 INPUT
+    //  SAFETY section in between does `editSave('state.trace.failedInteractionTaps = 0;')` —
+    //  it deliberately zeroes the counter to measure its own delta. So F1 compared a
+    //  pre-reset number against a post-reset one and reported a DECREASE.
+    //
+    //  A DECREASE CAN NEVER BE THE DEFECT THIS CHECK EXISTS TO CATCH. Input going missing
+    //  makes the counter go UP. Every red this check has produced was definitionally not the
+    //  thing it guards, which is why nothing was ever found by chasing it.
+    //
+    //  Measuring its own section is what the check always claimed to do. Nothing about the
+    //  assertion is relaxed — the bar is still "not one more swallowed tap" — and it now
+    //  cannot be moved by any section before it.
+    const feelSectionFailedTaps = (await live()).trace.failedInteractionTaps;
+
     //  --- F1a: tap-to-response latency. The tap sets an intention; the castaway must start
     //  moving promptly enough that the tap reads as the cause of the movement.
     //  ROOT CAUSE of this check's "NEVER MOVED": it tapped BARE GROUND and expected a walk.
@@ -4629,9 +4677,16 @@ async function main() {
     //  the bar here is that it has not grown since. Reading the trace field directly rather
     //  than a hook that does not exist: `?? 0` would have made this check permanently green.
     const swallowedNow = (await live()).trace.failedInteractionTaps;
+    //  ...AND WHEN IT GROWS, SAY WHICH TAPS. A bare count cannot distinguish a swallowed
+    //  gesture from a mis-resolved one from a fixture that moved the number underneath the
+    //  check — the same blindness `tapTrail` was added for during FIX 5's investigation, and
+    //  the reason this check spent so long red without anybody being able to name a cause.
+    const feelTrail = await page.evaluate(() => (window.__drift.tapTrail?.() ?? []).slice(-8)
+        .map((b) => `(${b.screenX},${b.screenY})->${b.outcome}`).join(' '));
     check('F1 — no input went missing during the feel section',
-        typeof swallowedNow === 'number' && swallowedNow === failedTapsAfter,
-        `failedInteractionTaps ${failedTapsAfter} at the fail-loud check, ${swallowedNow} now`);
+        typeof swallowedNow === 'number' && swallowedNow === feelSectionFailedTaps,
+        `failedInteractionTaps ${feelSectionFailedTaps} at the top of this section, ${swallowedNow} now`
+        + `   |  taps the game actually saw: ${feelTrail || '(none)'}`);
 
     //  --- F2: the expedition loop, leg by leg, each with a progress assertion. The pleasure
     //  of the loop is not measurable; DEAD TIME inside it certainly kills that pleasure, so
