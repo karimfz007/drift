@@ -26,6 +26,38 @@ const DEFINITION_RE = /^\*\*D-(\d+)\s*·/;
 const REFERENCE_RE = /D-(\d+)\b/g;
 
 /**
+ * THE CODE CITES THE LEDGER TOO, AND NOTHING HAS EVER CHECKED THAT HALF.
+ *
+ * This file's own header says the decisions log is "the one place a `D-NNN` reference is
+ * defined" and that "every other living doc only ever cites one" — but the SOURCE cites one
+ * far more often than the docs do: 83 distinct decisions across 138 files, in the comments
+ * that carry this project's reasoning. None of them was ever checked against anything.
+ *
+ * THE FAILURE THIS COMES FROM. `[[D-126]]`, `[[D-127]]` and `[[D-128]]` sat in `runtime.ts`,
+ * `game.ts`, `island.ts`, `entities.ts` and `tune.ts` for NINE SHIPPED COMMITS pointing at
+ * entries that did not exist — the ledger had stopped at D-125 while the commit series ran on
+ * to D-135. Every one of those commits ran this check and every one passed, because the
+ * dangling citations were in the half nobody was looking at. Same shape as [[D-097]]'s
+ * founding case: a green check that witnesses something other than its target.
+ *
+ * Cheap, because it is the same set membership already computed for the docs.
+ */
+const SOURCE_DIRS = ['src', 'tools', 'tests'];
+const SOURCE_EXT_RE = /\.(ts|tsx|mjs|js|html)$/;
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.smoke', 'archive']);
+
+function sourceFiles(dir, out = []) {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+    for (const e of entries) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) sourceFiles(p, out); }
+        else if (SOURCE_EXT_RE.test(e.name)) out.push(p);
+    }
+    return out;
+}
+
+/**
  * THE EFFECTIVITY LAW'S MISSING WITNESS (build law 12, D-076; C3 finding A6).
  *
  * D-076 names its own witness as "the docs-integrity check plus C3's audit reading",
@@ -99,6 +131,23 @@ function main() {
         for (const ref of findReferences(text)) {
             if (!defined.has(ref.id)) {
                 dangling.push({ file, ...ref });
+            }
+        }
+    }
+
+    //  ...and the source, which cites the ledger more often than the docs do. See the header
+    //  above `sourceFiles` for the nine-commit gap this closes.
+    let sourceFileCount = 0;
+    const sourceCited = new Set();
+    for (const dir of SOURCE_DIRS) {
+        for (const abs of sourceFiles(join(ROOT, dir))) {
+            sourceFileCount++;
+            const text = readFileSync(abs, 'utf8');
+            for (const ref of findReferences(text)) {
+                sourceCited.add(ref.id);
+                if (!defined.has(ref.id)) {
+                    dangling.push({ file: abs.slice(ROOT.length).replace(/\\/g, '/'), ...ref });
+                }
             }
         }
     }
@@ -189,7 +238,9 @@ function main() {
         process.exit(1);
     }
 
-    console.log(`Docs-integrity check passed: ${defined.size} decisions defined, every D-reference across ${files.length} living docs resolves, and all ${governed} decision(s) under build law 12 declare an effectivity class.`);
+    console.log(`Docs-integrity check passed: ${defined.size} decisions defined, every D-reference across ${files.length} living docs`
+        + ` AND ${sourceFileCount} source files (${sourceCited.size} distinct decisions cited from code) resolves,`
+        + ` and all ${governed} decision(s) under build law 12 declare an effectivity class.`);
 }
 
 main();
