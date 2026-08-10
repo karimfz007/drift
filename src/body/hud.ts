@@ -7,7 +7,7 @@
  * the interface names them and gets out of the way.
  */
 
-import { formatClock, levelProgress, type Food, type MorningReport, type Skills } from '../brain';
+import { formatClock, levelProgress, type Food, type MorningReport, type RadioPanelView, type Skills } from '../brain';
 
 /** Player-facing names for the shipped skills. */
 const SKILL_LABEL: Record<string, string> = { woodcutting: 'Woodcutting', foraging: 'Foraging' };
@@ -864,6 +864,9 @@ const MATERIAL_LABEL: Record<string, string> = {
 };
 
 export interface LoadoutPanelView {
+    /** DROP 5 — the receiver, derived by `radioPanelView`. Absent for an older caller.
+     *  Note the shape has no send half: see `RadioPanelView`. */
+    radio?: RadioPanelView;
     zones: Array<{ zone: string; tools: string[]; materials: Array<{ kind: string; count: number }> }>;
     massKg: number;
     bulk: number;
@@ -1055,7 +1058,12 @@ export function showLoadout(
     //  leaving it inert — a hook nothing calls is the next reader's false lead.
     tab: BackpackTab = 'inventory',
     onTab: (next: BackpackTab) => void = () => {},
-    onMake: () => void = () => {}
+    onMake: () => void = () => {},
+    //  DROP 5 — appended at the END, like every optional handler here, so no existing
+    //  positional call site shifts. Inserting them mid-list broke two of them at once.
+    /** Toggle the receiver. There is no send counterpart, by design. */
+    onListen: () => void = () => {},
+    onLogSignal: (signalId: string) => void = () => {}
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1120,12 +1128,35 @@ export function showLoadout(
            </div>`
         : '';
 
+    //  DROP 5 — THE SET, on the Inventory tab because a receiver is a thing you CARRY.
+    //
+    //  Register named per [[D-138]]: one rung of ENDING E03. The shape is Drop 4's — what it
+    //  is, what handling it tells you, and where you stand — observations and open questions,
+    //  never a finished answer. NOTHING HERE SENDS, and there is no view field a send control
+    //  could bind to even if somebody reached for one.
+    const radioRow = !view.radio?.owned ? '' : `
+        <div class="build-item radio-item">
+            <div class="build-head"><strong>The receiver</strong><span class="standing-chip">${view.radio.listening ? 'Listening' : 'Off'}</span></div>
+            <p class="subtitle">${view.radio.sight}</p>
+            <p class="subtitle radio-charge">${view.radio.charge}</p>
+            <p class="subtitle radio-note">${view.radio.note}</p>
+            <p class="subtitle radio-read">${view.radio.lines.join('  ·  ')}</p>
+            <button class="primary listen-btn" type="button" ${view.radio.blocker && !view.radio.listening ? 'disabled' : ''}>${
+                view.radio.listening ? 'Stop listening' : (view.radio.blocker ?? 'Listen')}</button>
+            ${view.radio.heard.length === 0 ? '' : `
+            <div class="radio-heard">${view.radio.heard.map((h: RadioPanelView['heard'][number]) => `
+                <p class="subtitle radio-fragment">${h.callSign} — ${h.text}</p>
+                ${h.loggable ? `<button class="quiet log-signal-btn" data-signal="${h.id}" type="button">Write down ${h.callSign}</button>` : ''}`).join('')}
+            ${view.radio.writeBlocker ? `<p class="subtitle radio-writeblock">${view.radio.writeBlocker}</p>` : ''}</div>`}
+        </div>`;
+
     const inventoryBody = `
         <h2>${view.atStorage ? 'The store box' : 'Carried'}</h2>
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
         ${storageRow}
         ${equipRow}
         ${view.maker.visible ? `<button class="primary make-btn" type="button">${view.maker.label}</button>` : ''}
+        ${radioRow}
         <button class="quiet growth-btn" type="button">What the island has done to you</button>
         ${combineRow}
         ${dropRow}
@@ -1156,6 +1187,20 @@ export function showLoadout(
     const medBtn = el.querySelector<HTMLButtonElement>('.medicine-btn');
     if (medBtn && !medBtn.disabled) {
         medBtn.addEventListener('click', () => { onTakeMedicine(); fade(el, onClose); });
+    }
+    //  DROP 5 — the two radio controls, re-queried on each render for the same reason the
+    //  hand chips and the medical store are: the panel re-renders in place on every tab
+    //  switch, so a listener attached once at construction is stranded the first time the
+    //  player looks at Skills and comes back.
+    const listenBtn = el.querySelector<HTMLButtonElement>('.listen-btn');
+    if (listenBtn && !listenBtn.disabled) {
+        listenBtn.addEventListener('click', () => { onListen(); fade(el, onClose); });
+    }
+    for (const btn of el.querySelectorAll<HTMLButtonElement>('.log-signal-btn')) {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.signal;
+            if (id) { onLogSignal(id); fade(el, onClose); }
+        });
     }
     for (const chip of el.querySelectorAll<HTMLButtonElement>('.drop-chip')) {
         chip.addEventListener('click', () => {

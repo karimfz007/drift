@@ -775,6 +775,70 @@ export const ROCKS: ReadonlyArray<readonly [number, number, number]> = [
 ];
 
 /** The cold-open card (charter §I.18 rule 1: contextual onboarding, no tutorial panel). */
+/**
+ * WHAT IS ON THE AIR — DROP 5, one rung of **ENDING E03** ("A Voice in the Static").
+ *
+ * REGISTER NAMED per [[D-138]]: ENDING E03, not the CAPABILITY register's E03.
+ *
+ * THREE FRAGMENTS, AND NONE OF THEM IS FOR YOU. A call sign, a schedule, a bearing — the three
+ * things that prove a timetable exists without proving anybody knows you do. Read them in
+ * order and what accumulates is not hope: it is the shape of a world still running, kept by
+ * people who have never heard of this island.
+ *
+ * NOBODY ANSWERS, and the writing carries that rather than relying on the mechanics to. Every
+ * line is somebody talking to somebody else. There is no address, no acknowledgement, no
+ * silence-then-reply. The set cannot transmit; the prose must not imply that it could.
+ *
+ * THE HOURS ARE SPREAD ACROSS THE DAY on purpose — one before dawn, one in the afternoon, one
+ * late — so learning the timetable means listening at three different costs of daylight, and
+ * so no single sitting can collect them all.
+ */
+export interface Signal {
+    id: string;
+    /** Island-clock hour this traffic keeps. The window is `radioTrafficWindowGameHours`. */
+    atHourOfDay: number;
+    callSign: string;
+    /** What comes through the speaker, in their words. */
+    text: string;
+    /** What a survivor would actually write in a journal about it. */
+    logged: string;
+}
+
+export const SIGNALS: readonly Signal[] = [
+    {
+        id: 'sg-schedule',
+        atHourOfDay: 5,
+        callSign: 'MARIA ELENA',
+        text: 'Maria Elena, Maria Elena — position as scheduled, nets down at first light. '
+            + 'Nothing further.',
+        logged: 'A working boat. Keeps to a schedule and says so out loud.',
+    },
+    {
+        id: 'sg-bearing',
+        atHourOfDay: 14,
+        callSign: 'STATION NINE',
+        //  NO SECOND PERSON, anywhere. The first cut ended "Advise you stand off until the
+        //  turn" — addressed to all traffic, but the suite's own guard read the `you` and was
+        //  right to: a listener who is not being spoken to must never find a word aimed their
+        //  way, however incidentally it got there.
+        text: 'Station Nine to all traffic: bearing two-seven-zero from the light, '
+            + 'set is running hard. Advise standing off until the turn.',
+        logged: 'Station Nine. Bearing two-seven-zero from a light. There is a light somewhere.',
+    },
+    {
+        id: 'sg-callsign',
+        atHourOfDay: 22,
+        callSign: 'KESTREL',
+        //  "We have you" was the first cut, and the `you` is Kestrel — but a listener reads it
+        //  as theirs for a beat before the sentence corrects them, and that beat is the exact
+        //  softening this drop must not make. Third person throughout, and the good night is
+        //  still said. It is simply said to somebody else.
+        text: 'Kestrel, Kestrel — signal received, loud and clear. Same time tomorrow. '
+            + 'Good night, Kestrel.',
+        logged: 'Kestrel. Someone had them, and said good night. Same time tomorrow.',
+    },
+];
+
 export const COLD_OPEN = {
     title: 'THE FIRST NIGHT',
     body: 'You wash ashore at dusk.\nCold is coming.'

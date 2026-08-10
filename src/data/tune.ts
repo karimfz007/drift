@@ -1132,6 +1132,45 @@ export const TUNE = {
      *  against it, so the two cannot drift apart. */
     panelArmDelayMs: 300,
 
+    // ---- DROP 5 — THE STATIC: one rung of ENDING E03 ------------------------
+    //
+    //  REGISTER NAMED per [[D-138]]. Six constants: what the cell holds, what listening costs,
+    //  when there is anything to hear, what weather does to it, and how long you have to sit
+    //  with it. There is no transmit constant because there is no transmit.
+
+    /** [TUNE] Which wreck part the receiver comes out of. `wr3` has been "the instrument
+     *  housing, off the bow" since [[D-124]] authored the six, and already yields glass and
+     *  wiring — the set is the thing that housing was built to hold. Named here rather than
+     *  hardcoded in `radio.ts` so the authored world and the rule cannot drift apart. */
+    radioSalvageNodeId: 'wr3',
+    /** [TUNE] What the one salvaged cell holds. The scale is arbitrary; what matters is the
+     *  ratio to the drain below, which is what decides how many scheduled hours it buys. */
+    radioChargeMax: 100,
+    /** [TUNE] Charge burned per game hour of listening.
+     *
+     *  BASIS, COUNTED: at 26/gh a full cell is 3.85 game hours of listening. Three signals sit
+     *  at 05, 14 and 22, each with a 0.6 gh window, so hearing all three costs at minimum
+     *  3 x `radioCatchGameHours` (0.75 gh) of listening IN the windows — about a fifth of the
+     *  cell. The other four-fifths are what a survivor spends by listening at the wrong hours.
+     *  That gap IS the fair-challenge asymmetry, and `tests/radio.test.ts` measures it. */
+    radioDrainPerGameHour: 26,
+    /** [TUNE] Half-width of a signal's window, in game hours. Basis: 0.6 gh is comfortably
+     *  more than `radioCatchGameHours` (0.25), so a survivor who arrives at the right hour has
+     *  real slack to sit through it — the schedule is a thing to learn, not a reflex test. */
+    radioTrafficWindowGameHours: 0.6,
+    /** [TUNE] Game hours of continuous LEGIBLE listening needed to make a fragment out.
+     *  Basis: long enough that flicking the set on and off hears only hiss, short enough to
+     *  fit inside a window twice over. */
+    radioCatchGameHours: 0.25,
+    /** [TUNE] How much clarity full rain costs, 0..1. Basis: at 0.7, `rainIntensity` above
+     *  ~0.79 puts clarity under `radioClarityFloor` — so the storm's COMMITTED and IMPACT
+     *  stages black the band out and its two free warning stages do not. Weather takes the
+     *  air away exactly when it is already taking everything else. */
+    radioRainClarityLoss: 0.7,
+    /** [TUNE] Below this clarity nothing is legible — a voice is there and cannot be made
+     *  out, which is a different and worse thing than silence. */
+    radioClarityFloor: 0.45,
+
     // ---- DROP 4 — THE PULL: the way home, visible ---------------------------
     //
     //  TWO CONSTANTS, and that is the whole of this drop's tuning surface. The boat is a

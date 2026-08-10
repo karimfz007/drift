@@ -10,6 +10,7 @@ import { disturb, harmFromWorking } from './wreck';
 import { submerge } from './dive';
 import { freshFishing } from './fishing';
 import { freshStorm } from './storm';
+import { freshRadio, salvageReceiver } from './radio';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
@@ -111,6 +112,7 @@ export function createInitialState(nowMs: number): GameState {
         fishing: freshFishing(),
         //  RAIN & WET ESCALATION — clear skies, and the first storm a comfortable way off.
         storm: freshStorm(),
+        radio: freshRadio(),
         freshUntil: {},
         injuries: freshInjuries(),
         illness: freshIllness(),
@@ -390,6 +392,8 @@ export interface GatherResult {
     gained: Partial<Inventory>;
     /** True if this gather opened the crash box (found the flask). */
     foundFlask: boolean;
+    /** DROP 5 — this hold was the one that found the receiver in the instrument housing. */
+    foundReceiver: boolean;
     /** The skill trained, the XP granted, and the levels it earned. */
     skill: keyof Skills | null;
     xpGained: number;
@@ -422,13 +426,14 @@ export function submergeForNode(state: GameState, nodeId: string): boolean {
 export function gatherNode(state: GameState, nodeId: string): GatherResult {
     const blocked = gatherBlockedReason(state, nodeId);
     if (blocked) {
-        return { ok: false, reason: blocked, kind: null, gained: {}, foundFlask: false, skill: null, xpGained: 0, levelsGained: 0, learned: null };
+        return { ok: false, reason: blocked, kind: null, gained: {}, foundFlask: false, foundReceiver: false, skill: null, xpGained: 0, levelsGained: 0, learned: null };
     }
 
     const node = findNode(state, nodeId)!;
     const spec = NODE_SPECS[node.kind];
     const gained: Partial<Inventory> = {};
     let foundFlask = false;
+    let foundReceiver = false;
 
     //  FIX-1 (Living Island Track A): charge the per-action energy cost up front, before
     //  the yield switch below — every effortful (hold) kind pays; every tap kind pays
@@ -558,6 +563,11 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             //  ...and only NOW does the hull shift. Rises on an action, never over time —
             //  which is what makes D-011 structural here (see `wreck.ts`).
             state.wreck = disturb(state.wreck, state.gameHoursElapsed);
+            //  DROP 5 — THE STATIC. The receiver comes out of the instrument housing, once,
+            //  through this same hold: no new verb for the taking, and it costs the crossing
+            //  and the hull's own risk exactly as every other thing here does. Register named
+            //  per [[D-138]]: this is one rung of ENDING E03.
+            foundReceiver = salvageReceiver(state, node.id);
             //  Working a wreck is seamanship, and it is the third producer for a domain that
             //  had none before the Maritime Slice.
             recordTrying(state, 'navigationSeamanship');
@@ -678,7 +688,7 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
         levelsGained = grantXp(state.skills[spec.skill], xpGained);
     }
 
-    return { ok: true, reason: null, kind: node.kind, gained, foundFlask, skill: spec.skill, xpGained, levelsGained, learned };
+    return { ok: true, reason: null, kind: node.kind, gained, foundFlask, foundReceiver, skill: spec.skill, xpGained, levelsGained, learned };
 }
 
 // ---- Renewability law (D-051) -------------------------------------------

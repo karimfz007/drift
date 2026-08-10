@@ -7350,6 +7350,209 @@ async function main() {
     }
     }
 
+    // ================= DROP 5 — THE STATIC (one rung of ENDING E03) =================
+    //
+    //  REGISTER NAMED per [[D-138]]: ENDING E03 ("A Voice in the Static"), not the CAPABILITY
+    //  register's E03 ("Defended homestead"). A bare E03 is not a citation.
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the schedule, the clarity model, the
+    //  charge economy's asymmetry, the journal rules and D-011 (tests/radio.test.ts, 25 checks,
+    //  six planted defects proven red — two of which exposed real gaps in the suite itself).
+    //  What it cannot witness is that a PLAYER can reach any of it: that the set comes out of
+    //  the housing under a real hold, that a real finger switches it on, that words arrive on
+    //  a screen, and that a real tap puts a call sign in the journal.
+    //
+    //  THREE REACHABILITY PROOFS, one per new verb, because the brief names this class
+    //  non-negotiable at four confirmed instances ([[D-114]]).
+    if (section("DROP 5 — THE STATIC: a voice that is not for you")) {
+    const radioHook = await page.evaluate(() => window.__drift.radio?.() ?? null);
+    check('STATIC 1 — the served build has the band, on a schedule rather than all day',
+        radioHook !== null && radioHook.signalCount >= 3
+        && new Set(radioHook.hours).size === radioHook.hours.length,
+        radioHook === null ? 'NO radio hook — the check could not run'
+            : `${radioHook.signalCount} signal(s) at hours ${radioHook.hours.join(', ')}`);
+
+    if (radioHook !== null) {
+    // ---- 1. REACHABILITY: the set comes out of the housing under a REAL hold ----
+    //
+    //  Staged at the wreck rather than paddled to, for the same reason the far island's own
+    //  section stages: the crossing is device-proven elsewhere (MARITIME 6 paddles it under
+    //  the real stick) and re-swimming 115 m per assertion would add minutes to prove nothing
+    //  new. What is NOT staged is the salvage itself — that is a real approach and a real hold.
+    //  THE SET IS PUT BACK IN THE HOUSING by the fixture below, and that line is here because
+    //  the FULL SWEEP caught its absence. THE WRECK section works wreck parts hundreds of
+    //  checks earlier and had already salvaged the receiver, so this read "owned true -> true"
+    //  and proved nothing: the claim is that a real hold HANDS IT OVER, which is unobservable
+    //  if the survivor already has one. Standalone it passed, because standalone nobody had
+    //  been to the wreck. A fixture must state the world it needs rather than inherit one.
+    //
+    //  (The explanation lives OUT here: a backtick inside an editSave template literal closes
+    //  it, and the first cut of this comment quoted the reading in backticks and broke the
+    //  file's parse. Prose about a fixture does not belong inside the fixture.)
+    await editSave(`
+        state.player = { x: 40, y: 232 };
+        state.raft = { built: true, x: 40, y: 232, grade: 'serviceable', aboard: false };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80; state.wet = 0;
+        state.wreck = { ...state.wreck, reached: true, instability: 0 };
+        for (const n of state.nodes) if (n.id === '${radioHook.salvageNodeId}') { n.available = true; }
+        state.radio = { ...state.radio, owned: false, charge: 0, listening: false, heard: [], logged: [] };
+    `);
+    const housing = (await live()).nodes.find((n) => n.id === radioHook.salvageNodeId);
+    const beforeSalvage = await page.evaluate(() => window.__drift.radio().owned);
+    let salvage = { ok: false, reason: 'no housing node' };
+    if (housing) {
+        await approach(housing.x, housing.y, 25);
+        await faceNode(housing.x, housing.y);
+        salvage = await harvest('wreckpart', 40);
+    }
+    const afterSalvage = await page.evaluate(() => window.__drift.radio());
+    await shot('static-01-salvaged');
+    check('STATIC 2 — REACHABILITY: a REAL hold on the instrument housing hands over the set',
+        beforeSalvage === false && salvage.ok === true && afterSalvage.owned === true
+        && afterSalvage.charge > 0,
+        `owned ${beforeSalvage} -> ${afterSalvage.owned}, worked ${salvage.ok} ${salvage.reason ?? ''},`
+        + ` cell ${afterSalvage.charge}`);
+
+    // ---- 2. IT IS A RECEIVER, and the screen offers no way to answer ----
+    //
+    //  The cap, witnessed on the rendered DOM rather than only in the module's exports. If a
+    //  send control ever appears it will appear HERE, on the surface a player touches.
+    await realTapDom('.carried-button');
+    await sleep(500);
+    const panelText = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout');
+        if (!el) return null;
+        return {
+            text: el.textContent.replace(/\s+/g, ' ').trim(),
+            buttons: Array.from(el.querySelectorAll('button')).map((b) => (b.textContent || '').trim()),
+            hasRadio: Boolean(el.querySelector('.radio-item')),
+            hasListen: Boolean(el.querySelector('.listen-btn')),
+        };
+    });
+    await shot('static-02-panel');
+    const sendish = /transmit|send|broadcast|call for|answer|reply|mayday|s\.?o\.?s\.?/i;
+    check('STATIC 3 — the set is offered, and NOTHING on the panel offers a way to answer',
+        panelText !== null && panelText.hasRadio === true && panelText.hasListen === true
+        && !panelText.buttons.some((b) => sendish.test(b)),
+        panelText === null ? 'panel ABSENT'
+            : `radio row ${panelText.hasRadio}, listen ${panelText.hasListen},`
+              + ` buttons: ${panelText.buttons.join(' | ')}`);
+
+    // ---- 3. REACHABILITY: a REAL tap switches it on ----
+    const listenTap = await realTapDom('.listen-btn');
+    await sleep(700);
+    const listeningNow = await page.evaluate(() => window.__drift.radio());
+    check('STATIC 4 — REACHABILITY: a REAL tap on the set switches it on and it starts drawing',
+        listenTap.ok === true && listeningNow.listening === true,
+        `tap ${listenTap.ok} ${listenTap.reason ?? ''}, listening ${listeningNow.listening},`
+        + ` cell ${listeningNow.charge.toFixed(1)}`);
+
+    //  ...and the cell is genuinely finite: it goes DOWN while the set is on.
+    await sleep(2500);
+    const drained = await page.evaluate(() => window.__drift.radio());
+    check('STATIC 4b — ...and listening burns the cell, measurably',
+        drained.charge < listeningNow.charge,
+        `cell ${listeningNow.charge.toFixed(1)} -> ${drained.charge.toFixed(1)} over ~2.5 s of listening`);
+
+    // ---- 4. WHAT IS HEARD, IN WORDS, ON THE SCREEN ----
+    //
+    //  Put the island clock ON a scheduled hour and sit through it. The words have to reach a
+    //  screen: "the brain returns a fragment" and "the player hears somebody" are not the same
+    //  sentence, and only the second one is the drop.
+    const onAirHour = radioHook.hours[0];
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80; state.wet = 0;
+        state.storm = { ...state.storm, stage: 'clear' };
+        state.radio = { ...state.radio, owned: true, charge: 100, listening: false, heard: [], logged: [] };
+        //  startHourOfDay is 18, so this lands the clock on the first scheduled hour.
+        state.gameHoursElapsed = ${(onAirHour - 18 + 48) % 24} + 0.001;
+    `);
+    const onAir = await page.evaluate(() => window.__drift.radio());
+    await realTapDom('.carried-button');
+    await sleep(450);
+    await realTapDom('.listen-btn');
+    await sleep(900);
+    //  Sit with it. The catch needs real listening time inside the window.
+    let heardText = '';
+    const heardDeadline = Date.now() + 45_000;
+    while (Date.now() < heardDeadline) {
+        const r = await page.evaluate(() => window.__drift.radio());
+        if (r.heard.length > 0) break;
+        if (!r.listening) break;
+        await sleep(600);
+    }
+    heardText = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+    const caught = await page.evaluate(() => window.__drift.radio());
+    await shot('static-03-heard');
+    check('STATIC 5 — sitting through a scheduled hour puts SOMEBODY ELSE\'S traffic on the screen',
+        caught.heard.length > 0 && heardText.length > 10,
+        `on air at hour ${onAir.hourOfDay.toFixed(1)}: ${onAir.onAirNow},`
+        + ` heard [${caught.heard.join(', ')}], screen: "${heardText}"`);
+
+    //  NOBODY ANSWERS — and it is asserted against the words that actually reached the page.
+    check('STATIC 5b — ...and not one word of it is addressed to the survivor',
+        !/\byou\b|\byour\b|come in\b|do you (read|copy)/i.test(heardText),
+        `on screen: "${heardText}"`);
+
+    // ---- 5. WEATHER TAKES THE AIR AWAY — Rain's own stages, no second system ----
+    await page.evaluate(() => window.__drift.setStorm('impact', 0));
+    await sleep(600);
+    const stormy = await page.evaluate(() => window.__drift.radio());
+    check('STATIC 6 — a storm degrades reception through Rain\'s own stage, not a second model',
+        stormy.clarity < caught.clarity && stormy.clarity < 0.45,
+        `clarity ${caught.clarity.toFixed(2)} clear -> ${stormy.clarity.toFixed(2)} in impact`);
+    await page.evaluate(() => window.__drift.setStorm('clear', 0));
+    await sleep(400);
+
+    // ---- 6. REACHABILITY: a REAL tap writes a call sign into the journal ----
+    //  THE ID COMES FROM WHAT WAS ACTUALLY HEARD above, never from a literal — a fixture that
+    //  names a signal the run never caught would test the writing path against a fiction.
+    const toWrite = caught.heard[0] ?? null;
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.fire = { ...state.fire, built: true, fuel: 12, x: 0, y: 60 };
+        state.journal = { ...state.journal, exists: true, condition: 1, carried: true, entries: [] };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.radio = { ...state.radio, owned: true, charge: 80, listening: false,
+                        heard: ${JSON.stringify(toWrite ? [toWrite] : [])}, logged: [] };
+    `);
+    const beforeWrite = await live();
+    await realTapDom('.carried-button');
+    await sleep(500);
+    const logTap = await realTapDom('.log-signal-btn');
+    await sleep(800);
+    const afterWrite = await live();
+    await shot('static-04-written');
+    check('STATIC 7 — REACHABILITY: a REAL tap writes the call sign into the Survivor\'s Journal',
+        logTap.ok === true
+        && afterWrite.journal.entries.length > beforeWrite.journal.entries.length
+        && afterWrite.radio.logged.length > 0,
+        `tap ${logTap.ok} ${logTap.reason ?? ''}, entries ${beforeWrite.journal.entries.length}`
+        + ` -> ${afterWrite.journal.entries.length}, logged [${afterWrite.radio.logged.join(', ')}]`);
+
+    check('STATIC 7b — ...as a plain observation, not a technique a successor could build from',
+        afterWrite.journal.entries.length === 0
+        || afterWrite.journal.entries[afterWrite.journal.entries.length - 1].topic === null,
+        `topic ${JSON.stringify(afterWrite.journal.entries[afterWrite.journal.entries.length - 1]?.topic)}`);
+
+    // ---- 7. D-011 ON DEVICE ----
+    const radioBefore = await page.evaluate(() => window.__drift.radio());
+    await goAway(240);
+    const radioBack = await page.evaluate(() => window.__drift.radio());
+    check('STATIC 8 — D-011: four hours away spends no cell and delivers no traffic',
+        radioBack.charge >= radioBefore.charge && radioBack.heard.length === radioBefore.heard.length,
+        `cell ${radioBefore.charge.toFixed(1)} -> ${radioBack.charge.toFixed(1)},`
+        + ` heard ${radioBefore.heard.length} -> ${radioBack.heard.length}`);
+    check('STATIC 8b — ...and the set comes back OFF, never left running',
+        radioBack.listening === false,
+        `listening on return: ${radioBack.listening}`);
+    }
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

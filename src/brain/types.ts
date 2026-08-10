@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -696,6 +696,8 @@ export interface GameState {
      * a storm rather than running one, because nobody stood in the rain for eight hours.
      */
     storm: StormState;
+    /** DROP 5 — the receiver. See `RadioState`: there is no transmit half. */
+    radio: RadioState;
 
     /**
      * HOW LONG EACH PERISHABLE HAS LEFT, in game hours, keyed by material.
@@ -903,6 +905,26 @@ export interface SurvivorRecord {
  * would have written — never a recipe listing, because a survivor writing at night writes
  * what they did, not a specification.
  */
+/**
+ * THE RECEIVER — Drop 5, one rung of ENDING E03 (register named per [[D-138]]).
+ *
+ * NO TRANSMIT FIELD, AND THAT ABSENCE IS THE TYPE'S MAIN STATEMENT. There is no power-out, no
+ * aerial, no key, no outbound queue. The set receives; the shape says so before any function
+ * does, so the day somebody reaches for a send path they have to add a field and notice.
+ */
+export interface RadioState {
+    owned: boolean;
+    /** The one salvaged cell, 0..`radioChargeMax`. There is no second one this drop. */
+    charge: number;
+    listening: boolean;
+    /** Signal ids made out at least once. */
+    heard: string[];
+    /** Signal ids written into the journal. */
+    logged: string[];
+    /** Game hours of continuous legible listening on the current signal. Online only. */
+    dwellGameHours?: number;
+}
+
 export interface JournalEntry {
     /** Which survivor wrote it. */
     author: number;

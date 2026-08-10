@@ -7,8 +7,9 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, airCapacityOf, atBoat, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
-import { BOAT, DIVE_SITE, FAR_ISLAND, MANUALS, isPlaceablePoint } from '../data/world';
+import { SAVE_KEY, Session, airCapacityOf, atBoat, clarityNow, signalAtHour, timeOfDay, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { BOAT, DIVE_SITE, FAR_ISLAND, MANUALS, SIGNALS, isPlaceablePoint } from '../data/world';
+import { TUNE } from '../data/tune';
 import { RENDER } from './theme';
 
 /**
@@ -443,6 +444,31 @@ function installDebugHook(): void {
     junkSites: () => junkSites().map((j) => ({
         id: j.id, x: j.x, y: j.y, kind: j.kind, hasNote: j.note !== null,
     })),
+    //  DROP 5 — THE STATIC. READ-ONLY, per [[D-075]]. It answers what the set is, what is on
+    //  the air and what has been heard; it never listens, never spends the cell and never
+    //  writes a journal entry. The harness drives every one of those with a real finger.
+    //
+    //  AND IT HAS NO SEND HALF, like everything else in this drop.
+    radio: () => {
+        const st = runtime.session?.state;
+        return {
+            signalCount: SIGNALS.length,
+            hours: SIGNALS.map((s) => s.atHourOfDay),
+            salvageNodeId: TUNE.radioSalvageNodeId,
+            ...(st
+                ? {
+                    owned: st.radio.owned,
+                    charge: st.radio.charge,
+                    listening: st.radio.listening,
+                    heard: [...st.radio.heard],
+                    logged: [...st.radio.logged],
+                    clarity: clarityNow(st),
+                    onAirNow: signalAtHour(timeOfDay(st.gameHoursElapsed).hourOfDay)?.id ?? null,
+                    hourOfDay: timeOfDay(st.gameHoursElapsed).hourOfDay,
+                }
+                : { owned: false, charge: 0, listening: false, heard: [], logged: [], clarity: 0, onAirNow: null, hourOfDay: 0 }),
+        };
+    },
     //  DROP 4 — THE BROKEN FISHING BOAT. READ-ONLY, per [[D-075]]. It answers where she is,
     //  what stage she is at, and which routes the survivor has actually taken. It does NOT
     //  inspect her: the harness walks a real survivor over and taps the hull with a finger,

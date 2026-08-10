@@ -18,6 +18,7 @@ export * from './placement';
 export * from './vulnerability';
 export * from './upkeep';
 export * from './storm';
+export * from './radio';
 export * from './boat';
 export * from './illness';
 export * from './confidence';

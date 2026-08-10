@@ -16,6 +16,7 @@ import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshJournal } from './state';
 import { createBoars } from './fauna';
+import { freshRadio } from './radio';
 import { createNodes } from '../data/world';
 import { freshInjuries } from './injury';
 import { freshMatterWear } from './matter';
@@ -117,6 +118,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 26) current = migrateV26toV27(current);
     if (current.schemaVersion === 27) current = migrateV27toV28(current);
     if (current.schemaVersion === 28) current = migrateV28toV29(current);
+    if (current.schemaVersion === 29) current = migrateV29toV30(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -909,6 +911,24 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * storm that was notionally due while nobody was playing — which is [[D-011]]'s spirit applied
  * to a schedule rather than to a rate.
  */
+/**
+ * v29 → v30 (Drop 5, THE STATIC). The receiver MIGRATES IN ABSENT, and that is the only
+ * honest default: salvaging it costs a crossing to the wreck and a hold on the instrument
+ * housing, so a save that has never done that has never had one. A returning survivor finds
+ * the set exactly where every other survivor finds it.
+ *
+ * `charge` is 0 rather than full for the same reason — there is no cell without the salvage
+ * that brings it. Nothing else in the save is touched.
+ */
+function migrateV29toV30(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return {
+        ...envelope,
+        schemaVersion: 30,
+        state: { ...old, radio: freshRadio() },
+    };
+}
+
 function migrateV28toV29(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
     const state: GameState = {
@@ -967,6 +987,7 @@ function hydrate(state: GameState): GameState {
         dive: { ...base.dive, ...state.dive },
         fishing: { ...base.fishing, ...state.fishing },
         storm: { ...base.storm, ...state.storm },
+        radio: { ...base.radio, ...state.radio },
         freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

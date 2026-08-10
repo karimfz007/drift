@@ -9,6 +9,7 @@
 import { TUNE } from '../data/tune';
 import { realSecondsFromGameHours } from './clock';
 import { recordTrying } from './knowledge';
+import { advanceListening, clearListeningOnAbsence } from './radio';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, isFireLit, isShelteredSleep, updateCavePresence } from './state';
@@ -71,9 +72,17 @@ function afterAbsence(state: GameState): void {
     //  hours, and a survivor who returns into the middle of an impact they never experienced
     //  would be paying for time they were not here. Absence making things better is legal.
     clearOnAbsence(state);
+
+    //  DROP 5 — and the receiver is OFF. Nobody left a radio running for eight hours, and
+    //  a cell that drained while nobody listened would be [[D-011]]'s offline cost wearing a
+    //  different coat. Absence making things better is legal; this is that.
+    clearListeningOnAbsence(state);
 }
 
 export class Session {
+    private lastCaught: string | null = null;
+    private lastWentFlat = false;
+
     constructor(
         private readonly repo: SaveRepository,
         public state: GameState
@@ -214,6 +223,11 @@ export class Session {
         //  begin one, escalate one, or wet anybody — and `afterAbsence` actively ENDS one
         //  rather than leaving a survivor to walk back into rain they never stood in.
         this.advanceStorm(outcome.result.elapsedGameHours);
+        //  DROP 5 — THE STATIC. Charge is spent and traffic is caught on the ONLINE TICK
+        //  and nowhere else, by the same shape as the boars, the water, the air, the
+        //  defects and the weather. `reconcile` has no radio term at all: no absence can
+        //  spend a percent of the cell, and none can deliver a word of traffic.
+        this.advanceRadio(outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -560,6 +574,33 @@ export class Session {
      * meeting through one number is the only way they can meet without one re-deriving the
      * other, and re-deriving it is how the refuge report became "the liar" in the first place.
      */
+    /**
+     * DROP 5 — THE STATIC. The one function that spends the cell or catches a fragment.
+     *
+     * `lastCaught` and `lastWentFlat` are read by the body for the announcement, and are
+     * cleared by reading them: a fragment is news exactly once. See `radio.ts`'s header for
+     * why every line of this lives on the online tick.
+     */
+    private advanceRadio(gameHours: number): void {
+        const step = advanceListening(this.state, gameHours);
+        if (step.caught) this.lastCaught = step.caught.id;
+        if (step.wentFlat) this.lastWentFlat = true;
+    }
+
+    /** What the set just made out, consumed by reading. */
+    takeCaught(): string | null {
+        const id = this.lastCaught;
+        this.lastCaught = null;
+        return id;
+    }
+
+    /** Whether the cell just died, consumed by reading. */
+    takeWentFlat(): boolean {
+        const flat = this.lastWentFlat;
+        this.lastWentFlat = false;
+        return flat;
+    }
+
     private advanceStorm(gameHours: number): void {
         const s = this.state;
         if (!(gameHours > 0)) return;

@@ -143,6 +143,14 @@ import {
     boatSight,
     boatUnderstandingNote,
     boatWorkBlocker,
+    beginListening,
+    canLogSignal,
+    listenBlockedReason,
+    logSignal,
+    heardSignals,
+    radioPanelView,
+    receptionNow,
+    stopListening,
     isStormActive,
     stormNote,
     diveNote,
@@ -730,6 +738,8 @@ export class Game {
             showLoadout(
             this.overlay,
             {
+                //  DROP 5 — derived once, in the brain. The panel re-derives nothing.
+                radio: radioPanelView(s),
                 zones: view.zones.map((z) => ({ zone: z.zone, tools: z.tools, materials: z.materials })),
                 massKg: view.massKg,
                 bulk: view.bulk,
@@ -833,7 +843,35 @@ export class Game {
             //  through the gap, which is the leak D-063's INPUT SAFETY law exists to stop.
             tab,
             (next) => this.openLoadout(atStorage, next, true),
-            () => this.endPanel(() => this.openBuildCard())
+            () => this.endPanel(() => this.openBuildCard()),
+            //  DROP 5 — THE STATIC. Toggle the receiver. There is deliberately no send
+            //  counterpart here or anywhere: see `radio.ts`'s header.
+            () => {
+                const st = session().state;
+                if (st.radio.listening) {
+                    stopListening(st);
+                    this.showHint('You switch it off. The cell has that much more in it.');
+                } else if (beginListening(st)) {
+                    this.showHint(receptionNow(st).note);
+                } else {
+                    this.explain(listenBlockedReason(st) ?? 'Nothing to listen with.');
+                    return;
+                }
+                session().persist(now());
+                this.lastActivityAt = now();
+            },
+            (signalId: string) => {
+                const st = session().state;
+                if (!logSignal(st, signalId)) {
+                    this.explain(canLogSignal(st).reason ?? 'Nothing to write down.');
+                    return;
+                }
+                this.cues.play(CUES.craft);
+                this.floatText('written down');
+                this.showHint('A call sign and an hour, in your own hand. It will outlast you.');
+                session().persist(now());
+                this.lastActivityAt = now();
+            }
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -1778,6 +1816,10 @@ export class Game {
 
         if (result.gained.wood) session().markFirstWood(msSinceControl());
         if (result.foundFlask) this.showHint('A water flask — fill it at the pond, carry a drink inland.');
+        //  DROP 5 — the set, out of the instrument housing. Said the moment it is found,
+        //  because a thing that appears in a panel with no announcement is a thing the
+        //  player never learns they have.
+        if (result.foundReceiver) this.showHint('A receiver, out of the housing — and a cell with it. It only listens.');
         if (result.levelsGained > 0 && result.skill) {
             const level = session().state.skills[result.skill].level;
             levelToast(this.overlay, result.skill === 'woodcutting' ? 'Woodcutting' : 'Foraging', level);
@@ -1814,6 +1856,7 @@ export class Game {
         if (g.coconut) parts.push(`+${g.coconut} coconut`);
         if (g.shellfish) parts.push(`+${g.shellfish} shellfish`);
         if (result.foundFlask) parts.push('+ flask');
+        if (result.foundReceiver) parts.push('+ receiver');
         return parts.join('  ');
     }
 
@@ -2510,6 +2553,28 @@ export class Game {
 
     // ---- Frame -----------------------------------------------------------
 
+    /**
+     * DROP 5 — the two things the receiver can tell you, and neither is a reply.
+     *
+     * A fragment is somebody else's traffic, said once and then available in the panel. A flat
+     * cell is the end of the whole affordance and is said plainly rather than left to be
+     * discovered by a dead button — [[D-042]], applied to a resource running out.
+     */
+    private announceRadio(): void {
+        const caught = session().takeCaught();
+        if (caught) {
+            const sig = heardSignals(session().state).find((x) => x.id === caught);
+            if (sig) {
+                this.cues.play(CUES.target);
+                this.showHint(`${sig.callSign}: ${sig.text}`);
+                this.floatText('heard');
+            }
+        }
+        if (session().takeWentFlat()) {
+            this.showHint('The cell dies mid-sentence. That was the last of it.');
+        }
+    }
+
     private frame(): void {
         const stamp = now();
         const deltaMs = stamp - this.lastFrameAt;
@@ -2520,6 +2585,11 @@ export class Game {
         const died = s.tick(stamp);
         const state = s.state;
         if (died && !this.deathShown) this.openDeath();
+
+        //  DROP 5 — THE STATIC. What the set made out this tick, said ONCE. `takeCaught`
+        //  and `takeWentFlat` are consumed by reading, so a fragment is news exactly once —
+        //  the same shape the boar stage announcements use.
+        this.announceRadio();
 
         this.guardPanelLock(stamp);
 
