@@ -839,6 +839,20 @@ export const SIGNALS: readonly Signal[] = [
     },
 ];
 
+/**
+ * THE FOREST CRASH SITE — Drop 3B(i), and a DIFFERENT PLACE from the Wreck.
+ *
+ * TRAJECTORY, NOT A ROLL. It comes down on the same bearing the wreck lies on — something on
+ * the route that the sea already has one of — and carries on over the island to fall inland.
+ * The coordinates below are that line continued past the shore, so the smoke, the site and the
+ * direction it came from can never disagree with each other.
+ *
+ * INSIDE THE TREELINE on purpose (`WORLD.treelineRadius` is 66): the column has to rise OVER
+ * the trees to be the announcement Law 26 asks for. A crash on open sand would be a thing you
+ * simply see, which is a different and much smaller beat.
+ */
+export const CRASH_SITE = { x: -18, y: 34 } as const;
+
 export const COLD_OPEN = {
     title: 'THE FIRST NIGHT',
     body: 'You wash ashore at dusk.\nCold is coming.'

@@ -27,7 +27,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 
 import { timeOfDay } from '../brain';
 import { TUNE } from '../data/tune';
-import { BOAT, FAR_ISLAND, JUNK_SITES, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach, surfaceHeightAt } from '../data/world';
+import { BOAT, CRASH_SITE, FAR_ISLAND, JUNK_SITES, POND, POND_SURFACE_Y, ROCKS, SURF_LINE_RADIUS, TRACE_SITES, TREES, WORLD, WRECK, groundHeight, isBeach, surfaceHeightAt } from '../data/world';
 import { FOG, PALETTE, RENDER, SEA, SKY_KEYS, type SkyKey } from './theme';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
@@ -40,6 +40,8 @@ export interface Obstacle {
 }
 
 export class Island {
+    private crashParts: Mesh[] = [];
+    private crashColumn: Mesh | null = null;
     readonly sun: DirectionalLight;
     private ambient: HemisphericLight;
     private seaMaterial: StandardMaterial;
@@ -81,6 +83,7 @@ export class Island {
         this.buildFarIsland();
         this.buildTraceSites();
         this.buildBoat();
+        this.buildCrashSite();
 
         scene.fogMode = Scene.FOGMODE_EXP2;
     }
@@ -419,6 +422,71 @@ export class Island {
         transom.metadata = { boat: true };
 
         for (const m of [hull, rail, hole, transom]) m.freezeWorldMatrix();
+    }
+
+    /**
+     * DROP 3B(i) — THE APPOINTMENT, drawn as two things: wreckage on the ground, and a SMOKE
+     * COLUMN over it. The column is the announcement (Law 26 — the world before the interface),
+     * so it is built tall and thin and is visible from the beach across the treeline.
+     *
+     * BOTH ARE HIDDEN UNTIL THE CRASH HAPPENS and the wreckage is hidden again once the forest
+     * has taken it. `update` below owns that, so the drawn world and `crash.stage` cannot
+     * disagree — a site still standing after `overgrown` would be the world contradicting the
+     * rule, which is the world-truth law's exact prohibition.
+     */
+    private buildCrashSite(): void {
+        const y = groundHeight(CRASH_SITE.x, CRASH_SITE.y);
+        const metal = this.flatMaterial('crashMetal');
+        metal.diffuseColor = new Color3(0.36, 0.36, 0.39);
+        const scorch = this.flatMaterial('crashScorch');
+        scorch.diffuseColor = new Color3(0.09, 0.08, 0.08);
+
+        //  A section of airframe, down on its side among the trees.
+        const hull = CreateBox('crash_hull', { width: 2.4, height: 1.8, depth: 6.4 }, this.scene);
+        hull.material = metal;
+        hull.position.set(CRASH_SITE.x, y + 0.7, CRASH_SITE.y);
+        hull.rotation.y = 0.8;
+        hull.rotation.z = 0.34;
+        hull.isPickable = true;
+        hull.metadata = { crash: true };
+
+        //  The burn under it. Near-black geometry, for the same reason the boat's hole is:
+        //  a scorch reads as a scorch because it is darker than everything round it.
+        const burn = CreateBox('crash_burn', { width: 7.5, height: 0.06, depth: 7.5 }, this.scene);
+        burn.material = scorch;
+        burn.position.set(CRASH_SITE.x, y + 0.03, CRASH_SITE.y);
+        burn.isPickable = false;
+
+        //  THE COLUMN. Tall enough to clear the treeline from the far side of the island —
+        //  this is the thing the drop is announced by, and it has to be seen before it is named.
+        const column = CreateCylinder('crash_smoke', { height: 44, diameterTop: 9, diameterBottom: 2.4, tessellation: 8 }, this.scene);
+        const smokeMat = this.flatMaterial('crashSmoke');
+        smokeMat.diffuseColor = new Color3(0.22, 0.22, 0.24);
+        smokeMat.alpha = 0.72;
+        column.material = smokeMat;
+        column.position.set(CRASH_SITE.x, y + 22, CRASH_SITE.y);
+        column.isPickable = false;
+
+        this.crashParts = [hull, burn];
+        this.crashColumn = column;
+        for (const m of [hull, burn]) m.freezeWorldMatrix();
+        this.setCrashVisible('none');
+    }
+
+    /** The drawn world follows `crash.stage`, never its own idea of what is out there. */
+    setCrashVisible(stage: string): void {
+        const workable = stage === 'fresh' || stage === 'picked-over';
+        const smoking = stage === 'sighted' || stage === 'standing' || workable;
+        for (const m of this.crashParts) m.setEnabled(workable || smoking);
+        this.crashColumn?.setEnabled(smoking);
+        if (this.crashColumn) {
+            //  Thins as the forest takes it — the same curve `crashSighting` reports.
+            const column = stage === 'sighted' ? 1 : stage === 'standing' ? 0.8
+                : stage === 'fresh' ? 0.5 : stage === 'picked-over' ? 0.2 : 0;
+            this.crashColumn.scaling.y = Math.max(0.15, column);
+            const mat = this.crashColumn.material as StandardMaterial | null;
+            if (mat) mat.alpha = 0.25 + 0.5 * column;
+        }
     }
 
     private buildTraceSites(): void {

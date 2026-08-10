@@ -1132,6 +1132,44 @@ export const TUNE = {
      *  against it, so the two cannot drift apart. */
     panelArmDelayMs: 300,
 
+    // ---- DROP 3B(i) — THE APPOINTMENT: the island's first deadline -----------
+    //
+    //  STRUCTURAL HALF ONLY. These are the durations and yields the MECHANISM needs to exist
+    //  and to be provable; the pressure pass (Drop 3B(ii)) is explicitly held on the
+    //  director's own play, and nothing here guesses at hunger, thirst or the night curve.
+
+    /** [TUNE] Island-clock hour the column goes up, on a fresh run. Basis: comfortably past
+     *  the first night, so a castaway meets the island's first deadline having already met
+     *  cold, thirst and dark — an appointment on night one would be a second emergency
+     *  during the first, which is what Laws 115-117's arrival profile exists to prevent. */
+    crashFirstAtGameHours: 30,
+    /** [TUNE] The column at its thickest, in game hours. FREE — nothing is at stake yet. */
+    crashSightedGameHours: 4,
+    /** [TUNE] The column holding, in game hours. FREE, and the longest of the run-up: this is
+     *  the preparation window, and reading the sky has to be worth more than reacting to it —
+     *  Rain's own reasoning ([[D-133]]) applied to a deadline instead of a hazard. */
+    crashStandingGameHours: 10,
+    /** [TUNE] How long the site stays FRESH. The whole of the reward for having set out
+     *  during the free stages. */
+    crashFreshGameHours: 14,
+    /** [TUNE] How long it stays workable but picked over. Deliberately longer than `fresh`:
+     *  a survivor who arrives late still finds SOMETHING, so being slow is a worse outcome
+     *  rather than a wasted journey. */
+    crashPickedGameHours: 20,
+    /** [TUNE] Tap forgiveness at the site, in metres. Basis: matched to `boatTapRadiusM`
+     *  (4.5) — a scatter of wreckage across the trees is at least as big as a beached hull
+     *  and must never be fiddly to reach. */
+    crashSiteRadiusM: 4.5,
+
+    //  WHAT ONE ARMFUL IS WORTH. Wreck-era families only ([[D-124]]) — no new material enters
+    //  the game here. Fresh beats picked-over on every line, and that gap IS the asymmetry the
+    //  fair-challenge review measures.
+    crashFreshMetal: 3,
+    crashFreshWiring: 2,
+    crashFreshGlass: 2,
+    crashPickedMetal: 1,
+    crashPickedWiring: 1,
+
     // ---- DROP 5 — THE STATIC: one rung of ENDING E03 ------------------------
     //
     //  REGISTER NAMED per [[D-138]]. Six constants: what the cell holds, what listening costs,

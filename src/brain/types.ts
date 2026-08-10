@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -698,6 +698,8 @@ export interface GameState {
     storm: StormState;
     /** DROP 5 — the receiver. See `RadioState`: there is no transmit half. */
     radio: RadioState;
+    /** DROP 3B(i) — the appointment. Advanced on the online tick ONLY. */
+    crash: CrashState;
 
     /**
      * HOW LONG EACH PERISHABLE HAS LEFT, in game hours, keyed by material.
@@ -912,6 +914,23 @@ export interface SurvivorRecord {
  * aerial, no key, no outbound queue. The set receives; the shape says so before any function
  * does, so the day somebody reaches for a send path they have to add a field and notice.
  */
+/**
+ * THE APPOINTMENT — Drop 3B(i). Six stages, Rain's own grammar, and a terminal end.
+ *
+ * `overgrown` is not a stage that ends; it is the end. There is no field for a second crash
+ * because there is no second crash — the shape says so before any function does.
+ */
+export type CrashStage = 'none' | 'sighted' | 'standing' | 'fresh' | 'picked-over' | 'overgrown';
+
+export interface CrashState {
+    stage: CrashStage;
+    inStageGameHours: number;
+    /** Island-clock reading at which the column goes up. */
+    nextAtGameHours: number;
+    /** How many armfuls have come off it. Diagnostic, never a gate. */
+    worked: number;
+}
+
 export interface RadioState {
     owned: boolean;
     /** The one salvaged cell, 0..`radioChargeMax`. There is no second one this drop. */

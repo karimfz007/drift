@@ -11,6 +11,7 @@ import { submerge } from './dive';
 import { freshFishing } from './fishing';
 import { freshStorm } from './storm';
 import { freshRadio, salvageReceiver } from './radio';
+import { freshCrash } from './crash';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
@@ -113,6 +114,7 @@ export function createInitialState(nowMs: number): GameState {
         //  RAIN & WET ESCALATION — clear skies, and the first storm a comfortable way off.
         storm: freshStorm(),
         radio: freshRadio(),
+        crash: freshCrash(),
         freshUntil: {},
         injuries: freshInjuries(),
         illness: freshIllness(),

@@ -17,6 +17,7 @@ import { freshConfidence } from './confidence';
 import { freshJournal } from './state';
 import { createBoars } from './fauna';
 import { freshRadio } from './radio';
+import { freshCrash } from './crash';
 import { createNodes } from '../data/world';
 import { freshInjuries } from './injury';
 import { freshMatterWear } from './matter';
@@ -119,6 +120,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 27) current = migrateV27toV28(current);
     if (current.schemaVersion === 28) current = migrateV28toV29(current);
     if (current.schemaVersion === 29) current = migrateV29toV30(current);
+    if (current.schemaVersion === 30) current = migrateV30toV31(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -920,6 +922,29 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * `charge` is 0 rather than full for the same reason — there is no cell without the salvage
  * that brings it. Nothing else in the save is touched.
  */
+/**
+ * v30 → v31 (Drop 3B(i), THE APPOINTMENT). The crash migrates in UNSTARTED, and its clock is
+ * measured from the RETURNING survivor's own island time rather than from a save written
+ * before the event existed. An old save that has already run past the authored first-crash
+ * hour must not have its appointment fire on the boot tick it comes back on: the world tells
+ * you first, and it cannot do that while the loading screen is up.
+ */
+function migrateV30toV31(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const crash = freshCrash();
+    return {
+        ...envelope,
+        schemaVersion: 31,
+        state: {
+            ...old,
+            crash: {
+                ...crash,
+                nextAtGameHours: (old.gameHoursElapsed ?? 0) + TUNE.crashFirstAtGameHours,
+            },
+        },
+    };
+}
+
 function migrateV29toV30(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
     return {
@@ -988,6 +1013,7 @@ function hydrate(state: GameState): GameState {
         fishing: { ...base.fishing, ...state.fishing },
         storm: { ...base.storm, ...state.storm },
         radio: { ...base.radio, ...state.radio },
+        crash: { ...base.crash, ...state.crash },
         freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

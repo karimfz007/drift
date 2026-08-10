@@ -69,6 +69,7 @@
  * walking into a storm they never stood in was delivering one, and its own test caught it.
  */
 import { TUNE } from '../data/tune';
+import { stepStaged } from './staged';
 import type { GameState, StormStage, StormState } from './types';
 import type { RefugeProfile } from './vulnerability';
 
@@ -215,31 +216,27 @@ export function stepStorm(state: GameState, gameHours: number, refuge: RefugePro
     const idle: StormStep = { stage: storm.stage, changed: false, wetGained: 0, justFinishedImpact: false };
     if (!(gameHours > 0)) return idle;
 
-    if (storm.stage === 'clear') {
-        if (state.gameHoursElapsed < storm.nextAtGameHours) return idle;
-        state.storm = { stage: 'precursor', inStageGameHours: 0, nextAtGameHours: storm.nextAtGameHours };
-        return { stage: 'precursor', changed: true, wetGained: 0, justFinishedImpact: false };
-    }
-
-    const gained = wetGainPerGameHour(storm.stage, refuge) * gameHours;
-    const elapsed = storm.inStageGameHours + gameHours;
-    if (elapsed < stageDuration(storm.stage)) {
-        state.storm = { ...storm, inStageGameHours: elapsed };
-        return { stage: storm.stage, changed: false, wetGained: gained, justFinishedImpact: false };
-    }
-
-    const to = nextStage(storm.stage);
-    const finishedImpact = storm.stage === 'impact';
-    state.storm = {
-        stage: to,
-        inStageGameHours: 0,
-        //  The next storm is scheduled from the moment this one ends, so a long storm does not
-        //  eat into the quiet that follows it.
-        nextAtGameHours: to === 'clear'
-            ? state.gameHoursElapsed + TUNE.stormIntervalGameHours
-            : storm.nextAtGameHours,
+    //  THE CLOCK IS `staged.ts`'S NOW, and the weather is still this file's. Drop 3B(i) needed
+    //  the same "scheduled, staged, one boundary per call" machinery for an appointment, and
+    //  the instruction was to extend rather than parallel — so the shape moved out and this
+    //  reads its stages from it. Behaviour is unchanged: the idle stage still transitions on
+    //  the clock without consuming the span, and a call still crosses at most one boundary.
+    const gained = storm.stage === 'clear' ? 0 : wetGainPerGameHour(storm.stage, refuge) * gameHours;
+    const { next, step } = stepStaged<StormStage>(storm, state.gameHoursElapsed, gameHours, {
+        idle: 'clear',
+        first: 'precursor',
+        durationOf: stageDuration,
+        nextOf: nextStage,
+        intervalAfter: TUNE.stormIntervalGameHours,
+    });
+    if (next === storm) return idle;
+    state.storm = next;
+    return {
+        stage: step.stage,
+        changed: step.changed,
+        wetGained: gained,
+        justFinishedImpact: step.changed && step.from === 'impact',
     };
-    return { stage: to, changed: true, wetGained: gained, justFinishedImpact: finishedImpact };
 }
 
 /**

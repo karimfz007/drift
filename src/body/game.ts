@@ -143,6 +143,11 @@ import {
     boatSight,
     boatUnderstandingNote,
     boatWorkBlocker,
+    crashBlockedReason,
+    crashGone,
+    crashSighting,
+    crashWorkable,
+    workCrashSite,
     beginListening,
     canLogSignal,
     listenBlockedReason,
@@ -165,7 +170,7 @@ import {
     type GameState
 } from '../brain';
 import { TUNE } from '../data/tune';
-import { BOAT, COLD_OPEN, POND, WORLD, surfaceHeightAt } from '../data/world';
+import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
@@ -204,6 +209,7 @@ type Pending =
     //  where the Default-Verb Law quietly stops applying.
     | { kind: 'raft' }
     | { kind: 'boat' }
+    | { kind: 'crash' }
     //  THE FAR ISLAND — a trace site. Same tap/hold/circle machinery as everything else; a
     //  note somebody left is not special-cased into its own input path.
     | { kind: 'trace'; id: string }
@@ -312,6 +318,7 @@ export class Game {
     //  from the director's own phone instead of guessed at blind. Never persisted, never sent
     //  anywhere — read only via the settings panel's "Copy debug info" button, on request.
     private tapBreadcrumbs: TapBreadcrumb[] = [];
+    private lastCuePlayed: string | null = null;
 
     private lastActivityAt = now();
     private lastFrameAt = now();
@@ -405,6 +412,12 @@ export class Game {
         //  for each interaction raycast, not just for the renderer.
         runtime.tapTargetAt = (x: number, y: number) => this.tapTargetAt(x, y);
         runtime.lastTapOutcome = () => this.tapBreadcrumbs[this.tapBreadcrumbs.length - 1]?.outcome ?? null;
+        //  WHAT THE WORLD LAST SAID OUT LOUD — read-only, per [[D-075]]. Law 26 asks the
+        //  world to speak before the interface does, and sound is the half of that which
+        //  needs no gesture: a survivor facing the sea still HEARS something come down
+        //  inland. Without this the audible half was unwitnessable and only the visible
+        //  half — which needs a camera tilt — could be checked at all.
+        runtime.lastCue = () => this.lastCuePlayed;
         //  THE WHOLE TRAIL, not just the last word — read-only, per [[D-075]].
         //
         //  `lastTapOutcome` returns the newest breadcrumb, and a tap that never reached
@@ -1109,10 +1122,24 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash'; d: number };
         const candidates: Candidate[] = [];
+        {
+            //  DROP 3B(i) — the appointment. A candidate ONLY while there is something out
+            //  there: before the crash and after the forest has taken it, a tap on that
+            //  ground is ordinary ground, which is what the world-truth law requires.
+            //  ...AND WHILE IT IS GONE, TOO, for as long as the survivor is standing on the
+            //  scar. Arriving to find the forest has closed over it is the emotional payload
+            //  of a deadline, and a generic "Nothing to do there." throws it away — the device
+            //  run caught exactly that. `crashGone` is a candidate so the handler can say the
+            //  one true sentence; before the crash it is ordinary ground and stays so.
+            if (crashWorkable(s.crash.stage) || crashGone(s.crash.stage)) {
+                const d = distance(point.x, point.z, CRASH_SITE.x, CRASH_SITE.y);
+                if (d <= TUNE.crashSiteRadiusM) candidates.push({ kind: 'crash', d });
+            }
+        }
         {
             //  DROP 4 — the broken fishing boat. Always a candidate: unlike the fire, the
             //  shelter and the crate, she is not built and cannot be absent. She has been on
@@ -1455,6 +1482,8 @@ export class Game {
         //  The raft above returns null when unbuilt; the boat has no such state. She was on
         //  that beach before the survivor washed up and she will be there at the end of it.
         if (this.pending.kind === 'boat') return { x: BOAT.x, z: BOAT.y };
+        //  DROP 3B(i) — the site does not move, and is only ever a target while it is there.
+        if (this.pending.kind === 'crash') return { x: CRASH_SITE.x, z: CRASH_SITE.y };
 
         if (this.pending.kind === 'boar') {
             //  A boar MOVES, so its target point is read fresh every frame rather than
@@ -1527,6 +1556,17 @@ export class Game {
         if (this.pending.kind === 'boat') {
             this.pending = null;
             this.doInspectBoat();
+            return;
+        }
+
+        //  ---- DROP 3B(i): THE APPOINTMENT. Working it IS the verb ----
+        //
+        //  A tap does it, for the same reason the trace and the boat do: there is exactly one
+        //  thing to want from a burning aeroplane in a forest, and the Default-Verb Law's
+        //  simplest case is a target with one option.
+        if (this.pending.kind === 'crash') {
+            this.pending = null;
+            this.doWorkCrashSite();
             return;
         }
 
@@ -2123,6 +2163,28 @@ export class Game {
         this.lastActivityAt = now();
     }
 
+    /**
+     * DROP 3B(i) — ONE ARMFUL OFF THE SITE.
+     *
+     * AND IT ALWAYS ANSWERS. The three refusals — nothing has come down, too far, the forest
+     * has closed over it — are three genuinely different facts, and each says which one it is.
+     * [[D-042]]'s fail-loud law applied to a window that closes: a survivor who arrives a day
+     * late must be TOLD they are late, not left tapping at trees.
+     */
+    private doWorkCrashSite(): void {
+        const s = session().state;
+        const gained = workCrashSite(s);
+        if (!gained) { this.explain(crashBlockedReason(s) ?? 'Nothing to do there.'); return; }
+        this.cues.play(CUES.pickup);
+        const parts = Object.entries(gained).map(([k, n]) => `${n} ${k}`).join(', ');
+        this.floatText(parts || 'nothing');
+        this.showHint(s.crash.stage === 'fresh'
+            ? `Still warm. ${parts}.`
+            : `The forest has been at it. ${parts}.`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     private doBoardRaft(): void {
         const state = session().state;
         if (!canBoardRaft(state)) {
@@ -2560,6 +2622,33 @@ export class Game {
      * cell is the end of the whole affordance and is said plainly rather than left to be
      * discovered by a dead button — [[D-042]], applied to a resource running out.
      */
+    /**
+     * DROP 3B(i) — the appointment, announced by the WORLD and then by a sentence.
+     *
+     * The drawn column follows `crash.stage` every frame, so the sky and the rule can never
+     * disagree. The words come only on a boundary, and they never say where to go: what a
+     * survivor gets is smoke in a direction, which is what a person standing on a beach has.
+     */
+    private announceAppointment(state: ReturnType<typeof session>['state']): void {
+        this.island.setCrashVisible(state.crash.stage);
+        const crossed = session().takeCrashStage();
+        if (!crossed) return;
+        const look = crashSighting(state);
+        if (!look.note) return;
+        //  THE SOUND FIRST, and `fell` rather than the ordinary target chime: what the survivor
+        //  hears is something heavy coming down in the trees. Reused rather than newly
+        //  generated — it is already the island's "a big thing just hit the ground" noise.
+        //
+        //  AND THE SOUND IS THE HALF THAT NEEDS NO GESTURE. A device probe measured the column:
+        //  at the camera's resting pitch NOTHING above the horizon is in frame ([[D-135]] found
+        //  the same thing looking for the far island), so the smoke is seen only once a player
+        //  tilts up. A noise is what makes them tilt up. That is the announcement working, not
+        //  a hole in it — but it is why the audible half is wired first and witnessed.
+        this.lastCuePlayed = crossed === 'sighted' ? CUES.fell : CUES.target;
+        this.cues.play(crossed === 'sighted' ? CUES.fell : CUES.target);
+        this.showHint(look.note);
+    }
+
     private announceRadio(): void {
         const caught = session().takeCaught();
         if (caught) {
@@ -2590,6 +2679,10 @@ export class Game {
         //  and `takeWentFlat` are consumed by reading, so a fragment is news exactly once —
         //  the same shape the boar stage announcements use.
         this.announceRadio();
+
+        //  DROP 3B(i) — THE WORLD BEFORE THE INTERFACE (Law 26). The smoke is drawn and the
+        //  sighting is SPOKEN on the tick the stage crosses; nothing names it before that.
+        this.announceAppointment(state);
 
         this.guardPanelLock(stamp);
 

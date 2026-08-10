@@ -165,6 +165,7 @@ const TUNE = new Proxy({
     diveFailingAir: 16,
     divePartEffortEnergy: 11,
     cameraPitchMaxDeg: 62,
+    cameraPitchMinDeg: -12,
     //  FISHING (D-130) — mirrors src/data/tune.ts, same duplication convention.
     fishingLineFiberCost: 2,
     fishingLineBladeCost: 1,
@@ -7550,6 +7551,252 @@ async function main() {
     check('STATIC 8b — ...and the set comes back OFF, never left running',
         radioBack.listening === false,
         `listening on return: ${radioBack.listening}`);
+    }
+    }
+
+    // ================= DROP 3B(i) — THE APPOINTMENT =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the six stages, the two free warnings,
+    //  the yields, the fair-challenge asymmetry, arrival canon and D-011 (tests/crash.test.ts,
+    //  23 checks, seven planted defects proven red). What it cannot witness is the half this
+    //  drop is actually about: that the WORLD ANNOUNCES IT — a column of smoke a player can
+    //  see over the treeline before any interface names it — and that a real finger can walk
+    //  in and work the site inside its window.
+    //
+    //  THE STAGE IS STAGED, THE VERBS ARE NOT. A window measured in game-days cannot be waited
+    //  out in a device run, so `setCrash` places the world exactly as `setStorm` does for the
+    //  weather. Every VERB below is a real approach and a real tap.
+    if (section("DROP 3B(i) — THE APPOINTMENT: the island's first deadline")) {
+    const crashHook = await page.evaluate(() => window.__drift.crash?.() ?? null);
+    check('APPT 1 — the served build has a crash site, inland and not the wreck',
+        crashHook !== null && Math.hypot(crashHook.x, crashHook.y) < 66
+        && Math.hypot(crashHook.x - 40, crashHook.y - 240) > 100,
+        crashHook === null ? 'NO crash hook — the check could not run'
+            : `at ${crashHook.x},${crashHook.y} (r ${Math.hypot(crashHook.x, crashHook.y).toFixed(1)}), stage ${crashHook.stage}`);
+
+    if (crashHook !== null) {
+    //  A survivor on the beach, a long way from the site, with the world quiet.
+    const onTheShore = async (stage, inStage = 0) => {
+        await editSave(`
+            state.player = { x: 0, y: 96 };
+            state.energy = 100; state.health = 100; state.warmth = 90;
+            state.hunger = 70; state.thirst = 80; state.wet = 0;
+            state.gameHoursElapsed = 40;
+            state.storm = { ...state.storm, stage: 'clear' };
+        `);
+        await page.evaluate(([s, i]) => window.__drift.setCrash(s, i), [stage, inStage]);
+        await sleep(400);
+    };
+
+    // ---- 1. NOTHING IS THERE BEFORE IT COMES DOWN ------------------------------
+    //  THE CLOCK GOES BACK BEFORE THE APPOINTMENT, and that line is here because the first
+    //  cut left it at 40 game hours — past `crashFirstAtGameHours` — so the very next online
+    //  tick correctly opened the window and the check read a crash it had itself caused. The
+    //  model was right; the fixture was standing in the wrong hour.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.gameHoursElapsed = 2;
+        state.crash = { ...state.crash, stage: 'none', inStageGameHours: 0, nextAtGameHours: 900 };
+    `);
+    await sleep(500);
+    const beforeIt = await page.evaluate(() => ({
+        sighting: window.__drift.crash().sighting,
+    }));
+    check('APPT 2 — before the crash there is nothing in the sky and nothing to say',
+        beforeIt.sighting?.visible === false && beforeIt.sighting?.note === null,
+        `visible ${beforeIt.sighting?.visible}, note ${JSON.stringify(beforeIt.sighting?.note)}`);
+
+    // ---- 2. THE WORLD TELLS YOU FIRST (Law 26) ---------------------------------
+    //
+    //  The column has to be a thing a player SEES from the beach, before any interface names
+    //  it. Read off the rendered mesh's own projection, facing the site from the shore.
+    await onTheShore('sighted');
+    await faceNode(crashHook.x, crashHook.y);
+    const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+    const onScreen = (p) => p !== null && p.x >= 0 && p.y >= 0 && p.x <= view.w && p.y <= view.h;
+
+    //  THE HALF THAT NEEDS NO GESTURE IS THE SOUND, and this check says so because a device
+    //  probe measured the other half honestly: at the camera's resting pitch NOTHING above the
+    //  horizon is in frame ([[D-135]] found the same looking for the far island), so the column
+    //  is seen only once a player tilts up. The first cut of this check asserted the foot of
+    //  the column was on screen unprompted; it reads y = -129 in a 412-tall frame, and no
+    //  amount of wanting it makes that true.
+    //
+    //  So the announcement is: a heavy noise inland, then smoke when you look. That is Law 26
+    //  intact — the world speaks before the interface — and it is what the brief describes
+    //  ("smoke column visible over the treeline, AUDIBLE from a distance").
+    //  POISED, NOT PLACED. `setCrash` writes a stage directly and therefore never CROSSES one,
+    //  so nothing announces — the first cut read `lastCue: null` and was measuring its own
+    //  staging. The RAIN section learned this first ("poised at the very end of the previous
+    //  stage, so the next real tick crosses into the one under test and the game ANNOUNCES
+    //  it"). Same trick: leave it idle with its appointment already due, and let a real online
+    //  tick open the window.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.gameHoursElapsed = 40;
+        state.crash = { ...state.crash, stage: 'none', inStageGameHours: 0, nextAtGameHours: 40 };
+    `);
+    await sleep(1500);
+    const heard = await page.evaluate(() => window.__drift.lastCue?.() ?? null);
+    const crossedTo = await page.evaluate(() => window.__drift.crash().stage);
+    await shot('appt-01a-heard-it');
+    check('APPT 3 — THE WORLD FIRST: something is HEARD coming down, with no gesture at all',
+        heard === 'fell' && crossedTo === 'sighted',
+        `a real tick crossed into ${crossedTo}; the world's own sound: ${JSON.stringify(heard)}`);
+
+    //  ...AND LOOKING UP FINDS THE COLUMN ITSELF. A 44 m column seen from 65 m is mostly SKY,
+    //  and the camera rests pitched DOWN ([[D-135]] measured the horizon sitting off the top of
+    //  the frame), so its centre is above the viewport until a player tilts up — which is
+    //  exactly what a person does when something catches their eye over the trees.
+    const raisedPitch = await lookDown((TUNE.cameraPitchMinDeg * Math.PI) / 180);
+    await sleep(400);
+    //  THE FOOT, not the mesh's centre. A 44 m column's centre sits 22 m up and lands within a
+    //  pixel or two of the top edge even at full tilt — the first cut read `659,-2` and failed
+    //  on a rounding wobble while the player was plainly looking straight at a column of smoke.
+    //  What "you can see it" actually means is that its BASE is in frame and it rises out of
+    //  the top of the view, which is what these two readings say together.
+    const tiltedFoot = await page.evaluate(([x, z]) => window.__drift.screenOf(x, z), [crashHook.x, crashHook.y]);
+    const column = await page.evaluate(() => window.__drift.screenOfMesh('crash_smoke'));
+    await shot('appt-01-smoke-from-the-beach');
+    check('APPT 3a — ...and tilting up puts the column in frame, rising out of the trees',
+        onScreen(tiltedFoot) && column !== null && column.y < tiltedFoot.y,
+        `its base at ${tiltedFoot ? `${tiltedFoot.x.toFixed(0)},${tiltedFoot.y.toFixed(0)}` : 'off'}`
+        + ` and the column above it at ${column ? `${column.x.toFixed(0)},${column.y.toFixed(0)}` : 'no mesh'}`
+        + ` in ${view.w}x${view.h} at pitch ${(raisedPitch * 180 / Math.PI).toFixed(1)}deg`);
+
+    const said = await page.evaluate(() => window.__drift.crash().sighting);
+    check('APPT 3b — ...and what it says is smoke in a direction, never a destination',
+        typeof said?.note === 'string' && /smoke|came down/i.test(said.note)
+        && !/\bgo\b|\bhead\b|\bmarker|\bwaypoint/i.test(said.note),
+        `note "${said?.note}", bearing ${said?.bearingDeg?.toFixed?.(0)} deg, ${said?.distanceM?.toFixed?.(0)} m off`);
+
+    // ---- 3. THE TWO FREE STAGES COST NOTHING -----------------------------------
+    const freeBefore = await live();
+    await onTheShore('standing');
+    await sleep(1200);
+    const freeAfter = await live();
+    check('APPT 4 — the two warning stages cost NOTHING — reading the sky is free',
+        freeAfter.health >= freeBefore.health - 0.5 && freeAfter.inventory.metal === freeBefore.inventory.metal,
+        `health ${freeBefore.health.toFixed(1)} -> ${freeAfter.health.toFixed(1)},`
+        + ` metal ${freeBefore.inventory.metal} -> ${freeAfter.inventory.metal}`);
+
+    //  ...and the site itself is not workable yet: a warning stage with salvage in it would
+    //  be a warning stage with stakes, which is the contract inverted.
+    const earlyWork = await page.evaluate(() => window.__drift.crash().workable);
+    check('APPT 4b — ...and there is nothing to work yet, so the warning is a warning',
+        earlyWork === false, `workable during 'standing': ${earlyWork}`);
+
+    // ---- 4. REACHABILITY: a REAL walk in, and a REAL tap on the wreckage --------
+    //
+    //  [[D-114]]'s class, named non-negotiable in the brief at four confirmed instances. The
+    //  survivor starts on the shore and walks in under the stick; the salvage is a real tap.
+    await onTheShore('fresh');
+    const startedFar = await page.evaluate(() => window.__drift.crash().sighting.distanceM);
+    const beforeWork = await live();
+    const walked = await approach(crashHook.x, crashHook.y, 40);
+    await faceNode(crashHook.x, crashHook.y);
+    const workTap = await tapMesh('crash_hull', 55);
+    await sleep(900);
+    const afterWork = await live();
+    const workedHook = await page.evaluate(() => window.__drift.crash());
+    await shot('appt-02-worked');
+    check('APPT 5 — REACHABILITY: a survivor walks in from the shore and a REAL tap takes salvage',
+        startedFar > 40 && walked < 5 && workTap.ok === true
+        && workedHook.worked > 0
+        && (afterWork.inventory.metal + afterWork.inventory.wiring + afterWork.inventory.glass)
+           > (beforeWork.inventory.metal + beforeWork.inventory.wiring + beforeWork.inventory.glass),
+        `started ${startedFar.toFixed(0)} m off, walked to ${walked.toFixed(1)} m, tap ${workTap.ok} ${workTap.why ?? ''},`
+        + ` worked ${workedHook.worked}, metal ${beforeWork.inventory.metal} -> ${afterWork.inventory.metal},`
+        + ` wiring ${beforeWork.inventory.wiring} -> ${afterWork.inventory.wiring}`);
+
+    // ---- 5. FAIR CHALLENGE: fresh pays better than picked-over -----------------
+    //
+    //  The asymmetry, on device: the same real tap, the same site, two different arrival
+    //  times. Reading the smoke and setting out has to be worth something measurable.
+    const takeOne = async (stage) => {
+        await editSave(`
+            state.player = { x: ${crashHook.x}, y: ${crashHook.y} };
+            state.energy = 100; state.health = 100; state.warmth = 90;
+            state.hunger = 70; state.thirst = 80;
+            state.inventory = { ...state.inventory, metal: 0, wiring: 0, glass: 0 };
+            state.gameHoursElapsed = 40;
+        `);
+        await page.evaluate(([s]) => window.__drift.setCrash(s, 0), [stage]);
+        await sleep(400);
+        await faceNode(crashHook.x, crashHook.y);
+        await tapMesh('crash_hull', 55);
+        await sleep(800);
+        const st = await live();
+        return st.inventory.metal + st.inventory.wiring + st.inventory.glass;
+    };
+    const freshHaul = await takeOne('fresh');
+    const pickedHaul = await takeOne('picked-over');
+    check('APPT 6 — FAIR CHALLENGE: arriving while it is FRESH pays measurably better than late',
+        freshHaul > pickedHaul && pickedHaul > 0,
+        `fresh ${freshHaul} unit(s) vs picked-over ${pickedHaul} — and late still finds something`);
+
+    // ---- 6. ONCE OVERGROWN IT IS GONE, AND THE WORLD AGREES --------------------
+    await editSave(`
+        state.player = { x: ${crashHook.x}, y: ${crashHook.y} };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.gameHoursElapsed = 40;
+    `);
+    await page.evaluate(() => window.__drift.setCrash('overgrown', 0));
+    await sleep(600);
+    const goneHook = await page.evaluate(() => ({
+        crash: window.__drift.crash(),
+        smoke: window.__drift.screenOfMesh('crash_smoke'),
+    }));
+    await faceNode(crashHook.x, crashHook.y);
+    const goneTap = await tapWorld(crashHook.x, crashHook.y, 55);
+    await sleep(700);
+    const goneSaid = await page.evaluate(() => window.__drift.hints?.()?.last ?? '');
+    await shot('appt-03-overgrown');
+    check('APPT 7 — once overgrown the site is GONE, and a tap says so rather than doing nothing',
+        goneHook.crash.gone === true && goneHook.crash.workable === false
+        && goneHook.crash.sighting.visible === false
+        && /closed over|nothing here/i.test(goneSaid),
+        `gone ${goneHook.crash.gone}, smoke visible ${goneHook.crash.sighting.visible},`
+        + ` tap ${goneTap}, said "${goneSaid}"`);
+
+    // ---- 7. D-011 ON DEVICE: an absence cannot run the window ------------------
+    //
+    //  THE STRICTEST FORM IN THE GAME, and the reason it is stricter than the storm: a storm
+    //  you were not there for is weather you did not stand in, but an appointment you were not
+    //  there for would be a deadline missed for NOT PLAYING.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.gameHoursElapsed = 40;
+    `);
+    await page.evaluate(() => window.__drift.setCrash('fresh', 0));
+    await sleep(500);
+    const windowBefore = await page.evaluate(() => window.__drift.crash());
+    await goAway(240);
+    const windowBack = await page.evaluate(() => window.__drift.crash());
+    //  MEASURED AGAINST THE ABSENCE, not against zero — [[D-137]]'s lesson, and the first cut
+    //  of this check needed it. Four real minutes away is 96 GAME HOURS the window could have
+    //  been eaten by. What it actually advances is the BOOT, which is online time and on this
+    //  machine runs to a minute or more; asserting "not one minute" was asserting that Chrome
+    //  boots instantly. The claim D-011 makes is that the ABSENCE contributes nothing, and
+    //  that is what is compared.
+    const absenceGameHours = (240 * 60) / TUNE.realSecondsPerGameHour;
+    const advanced = windowBack.inStageGameHours - windowBefore.inStageGameHours;
+    check('APPT 8 — D-011: an absence does not advance the window',
+        windowBack.stage === windowBefore.stage && advanced < absenceGameHours * 0.05,
+        `stage ${windowBefore.stage} -> ${windowBack.stage}; the window advanced`
+        + ` ${advanced.toFixed(2)} gh across an absence worth ${absenceGameHours.toFixed(0)} gh`
+        + ` — the remainder is the boot, which is online time`);
+
+    check('APPT 8b — ...and the site is STILL THERE to be worked on the way back',
+        windowBack.workable === true && windowBack.gone === false,
+        `workable ${windowBack.workable}, gone ${windowBack.gone}`);
     }
     }
 

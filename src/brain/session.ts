@@ -8,8 +8,10 @@
 
 import { TUNE } from '../data/tune';
 import { realSecondsFromGameHours } from './clock';
+import type { CrashStage } from './types';
 import { recordTrying } from './knowledge';
 import { advanceListening, clearListeningOnAbsence } from './radio';
+import { advanceCrash } from './crash';
 import { composeMorningReport, type MorningReport } from './morningReport';
 import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, isFireLit, isShelteredSleep, updateCavePresence } from './state';
@@ -81,6 +83,7 @@ function afterAbsence(state: GameState): void {
 
 export class Session {
     private lastCaught: string | null = null;
+    private lastCrashStage: CrashStage | null = null;
     private lastWentFlat = false;
 
     constructor(
@@ -228,6 +231,14 @@ export class Session {
         //  defects and the weather. `reconcile` has no radio term at all: no absence can
         //  spend a percent of the cell, and none can deliver a word of traffic.
         this.advanceRadio(outcome.result.elapsedGameHours);
+        //  DROP 3B(i) — THE APPOINTMENT, on the ONLINE TICK and nowhere else, and here the
+        //  consequence is stronger than for any hazard before it: the window cannot OPEN,
+        //  RUN or CLOSE while the game is closed. `reconcile` has no crash term, and
+        //  `afterAbsence` deliberately does not touch it either — unlike the storm, which an
+        //  absence ends. A storm you were not there for is weather you did not stand in; an
+        //  appointment you were not there for would be a DEADLINE MISSED FOR NOT PLAYING,
+        //  which is [[D-011]]'s offline death in its most plausible disguise.
+        this.advanceAppointment(outcome.result.elapsedGameHours);
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -599,6 +610,24 @@ export class Session {
         const flat = this.lastWentFlat;
         this.lastWentFlat = false;
         return flat;
+    }
+
+    /**
+     * DROP 3B(i) — one span of the appointment, and the announcement when it crosses.
+     *
+     * `lastCrashStage` is read by the body for the world-first announcement (Law 26: the smoke
+     * before the interface) and is consumed by reading, so a stage change is news exactly once.
+     */
+    private advanceAppointment(gameHours: number): void {
+        const step = advanceCrash(this.state, gameHours);
+        if (step.changed) this.lastCrashStage = step.stage;
+    }
+
+    /** The stage the appointment just crossed into, consumed by reading. */
+    takeCrashStage(): CrashStage | null {
+        const stage = this.lastCrashStage;
+        this.lastCrashStage = null;
+        return stage;
     }
 
     private advanceStorm(gameHours: number): void {

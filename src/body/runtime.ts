@@ -7,8 +7,8 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, airCapacityOf, atBoat, clarityNow, signalAtHour, timeOfDay, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
-import { BOAT, DIVE_SITE, FAR_ISLAND, MANUALS, SIGNALS, isPlaceablePoint } from '../data/world';
+import { SAVE_KEY, Session, airCapacityOf, atBoat, clarityNow, crashGone, crashSighting, crashWorkable, signalAtHour, timeOfDay, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { BOAT, CRASH_SITE, DIVE_SITE, FAR_ISLAND, MANUALS, SIGNALS, isPlaceablePoint } from '../data/world';
 import { TUNE } from '../data/tune';
 import { RENDER } from './theme';
 
@@ -126,6 +126,7 @@ export const runtime = {
     //  Comparing them is the only way to catch the two paths drifting apart, which they
     //  have now done three times (C3 finding A9).
     lastTapOutcome: (() => null) as () => string | null,
+    lastCue: (() => null) as () => string | null,
     tapTrail: (() => []) as () => Array<{ tMs: number; screenX: number; screenY: number; outcome: string }>,
     //  Slice 1 feel-court: whether the last movement frame touched an obstacle, whether the
     //  dead-on deflection fired, and how many frames of each. A READ, not a driver — the
@@ -299,6 +300,7 @@ function installDebugHook(): void {
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
+        lastCue: () => runtime.lastCue(),
         tapTrail: () => runtime.tapTrail(),
         slideReadout: () => runtime.slideReadout(),
         armPressTrace: (capacity?: number) => runtime.pressTrace.arm(capacity),
@@ -444,6 +446,35 @@ function installDebugHook(): void {
     junkSites: () => junkSites().map((j) => ({
         id: j.id, x: j.x, y: j.y, kind: j.kind, hasNote: j.note !== null,
     })),
+    //  DROP 3B(i) — THE APPOINTMENT. READ-ONLY, per [[D-075]]. It answers where the site is,
+    //  what stage the window is at and what can be seen from here; it never advances the
+    //  clock, never works the site and never sets a stage. `setCrash` below is a STAGING hook
+    //  in the same family as `setStorm`: the harness cannot wait real days for a window, so it
+    //  places the world and then drives every VERB with a real finger.
+    crash: () => {
+        const st = runtime.session?.state;
+        return {
+            x: CRASH_SITE.x,
+            y: CRASH_SITE.y,
+            ...(st
+                ? {
+                    stage: st.crash.stage,
+                    inStageGameHours: st.crash.inStageGameHours,
+                    nextAtGameHours: st.crash.nextAtGameHours,
+                    worked: st.crash.worked,
+                    workable: crashWorkable(st.crash.stage),
+                    gone: crashGone(st.crash.stage),
+                    sighting: crashSighting(st),
+                }
+                : { stage: 'none', inStageGameHours: 0, nextAtGameHours: 0, worked: 0, workable: false, gone: false, sighting: null }),
+        };
+    },
+    setCrash: (stage: string, inStage = 0) => {
+        const st = runtime.session?.state;
+        if (!st) return null;
+        st.crash = { ...st.crash, stage: stage as typeof st.crash.stage, inStageGameHours: inStage };
+        return { ...st.crash };
+    },
     //  DROP 5 — THE STATIC. READ-ONLY, per [[D-075]]. It answers what the set is, what is on
     //  the air and what has been heard; it never listens, never spends the cell and never
     //  writes a journal entry. The harness drives every one of those with a real finger.
