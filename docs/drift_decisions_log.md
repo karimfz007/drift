@@ -3,6 +3,44 @@
 
 ---
 
+**D-140 · 2026-08-09 — Sequencing self-correction (C1).**
+
+Drop 3B was named as the next thing to build, then Drop 5 was briefed instead without reasserting or correcting the sequence — a genuine skip, caught and recorded rather than silently overwritten. Drop 3B(i) resumes as the actual next item; Drop 3B(ii) (the pressure pass) is deliberately held on the director's own play. The gate after Drop 5 — a director verdict before anything further off the Drop spine — is now enforced explicitly: nothing past Drop 3B is scoped, costed, or built until one lands.
+
+**RECORDED, NOT REPAIRED.** Drop 5 shipped ([[D-139]]) and is not being unwound; the skip is a fact about the sequence, and the correction is where the sequence resumes rather than what it undoes. Same shape as [[D-097]]'s clause (e) and [[D-082]]'s "local is not live": the failure worth writing down is the one that looked exactly like success at the time.
+
+**Class: OPERATIVE** — the gate governs immediately, and its mechanism is the verdict itself: no brief past Drop 3B may be scoped, costed or built until one lands.
+
+**D-139 · 2026-08-10 — DROP 5, "THE STATIC": a voice on the air, and it is not for you. One rung of ENDING E03.**
+
+**REGISTER NAMED per [[D-138]]** — ENDING E03 ("A Voice in the Static"), not the CAPABILITY register's E03 ("Defended homestead"). One rung of it, not the ending.
+
+**THE RECEIVER COMES OUT OF THE WRECK, and that was a choice between two offered sources.** `wr3` has been *"the instrument housing, off the bow"* since [[D-124]] authored the six parts, and already yields `glass` and `wiring` — the set is the thing that housing was built to hold. It arrives through the SHIPPED hold, so there is no new verb for the taking and the crossing already gates it. The boat was the alternative and was refused: [[D-135]] caps her at stage B0 with no restoration mechanics, and hanging salvage on her hull would have implied exactly the work that cap exists to prevent.
+
+**IT CANNOT TRANSMIT, AND THAT IS ENFORCED RATHER THAN INTENDED.** No send function, no key, no aerial, no power-out term, and no field on `RadioState` a control could bind to. A unit test sweeps the module's exported surface for anything that could send; a device check sweeps the RENDERED panel's buttons, because if a send control ever appears it will appear on the surface a player touches, not in a type.
+
+**POWER IS THE COST.** One salvaged cell, no generator, no solar, no bench. Listening burns it; a flat cell switches the set off and says so rather than leaving a dead button to be discovered.
+
+**RECEPTION IS CONDITIONAL, NEVER A MENU.** Traffic exists at three authored hours (05, 14, 22) and nowhere else, and weather degrades it through Rain's own `rainIntensity` ([[D-133]]) read directly — there is no weather term in this module. Tuned so the storm's two FREE warning stages leave the band alone and only its costed stages black it out: a warning stage that took the air away would make a free stage expensive, which the fair-challenge contract forbids.
+
+**NOBODY ANSWERS, and the suite enforces the prose as hard as the mechanics.** Two fragments were rewritten because the suite's own second-person guard caught them: *"Advise you stand off"*, and *"we have you"* — the second addressed to Kestrel rather than the listener, but a listener reads it as theirs for a beat, and that beat is the softening this drop must not make.
+
+**THE JOURNAL CARRIES IT.** A heard call sign writes as `topic: null` — the shipped shape for a plain observation, which is exactly what it is: nothing a successor could build from, just the fact that at that hour somebody was talking. It inherits the journal's condition, legibility floor, light rule and succession for free. v0.11 §10.6's *"physical evidence they left behind"*, as a consequence of what already ships rather than as a system of its own.
+
+**FAIR CHALLENGE ON THE CHARGE ECONOMY, measured like the storm's asymmetry.** A survivor who listens at the scheduled hours hears all three fragments for about a fifth of the cell; one who leaves it running hears fewer and spends the lot. The test compares signals-per-unit-charge and requires better than 2×.
+
+**[[D-011]] STRUCTURALLY.** `advanceListening` is the only function that spends charge or catches a fragment and it runs on the online tick alone; `reconcile` has no radio term. An absence spends nothing (the offline-death half) and delivers nothing (the offline-GIFT half), and switches the set off. Save schema **v29 → v30**; the receiver migrates in ABSENT, because salvaging it costs a crossing.
+
+**MY OWN FAIL-THEN-PASS FOUND TWO REAL GAPS IN THE SUITE.** Three of six planted defects survived the first round. One plant was a no-op of mine; the other two were genuine. A drain planted in `afterAbsence` passed every D-011 check, because they all call `reconcile` directly and `afterAbsence` lives in `Session.start` and `Session.resume` — **[[D-129]]'s exact defect, one drop later.** And the *"a flick of the switch hears nothing"* check derived its dwell from the constant it was guarding, so setting that constant to 0 made the flick zero-length and the plant passed. Both closed; all six then proven red and restored.
+
+**AND THE FULL SWEEP CAUGHT A DEFECT IN THE FIXTURE.** `STATIC 2` read *"owned true -> true"*: THE WRECK section works wreck parts hundreds of checks earlier and had already salvaged the set, so the claim — that a real hold HANDS IT OVER — was unobservable. It passed standalone because standalone nobody had been to the wreck. The fixture now states the world it needs rather than inheriting one.
+
+**Class: OPERATIVE** (mechanism: `src/brain/radio.ts`, `SIGNALS` in `src/data/world.ts`, `advanceListening` on `Session`'s online tick, and the Inventory-tab surface; shipped in this batch).
+
+**DEFERRED, named rather than implied:** no transmitter, no two-way, no mast, no authentication, no extraction, no ending fires. One representative thread of ENDING E03, not the 32-ending catalogue. No second cell, no recharging, no direction finding, and nothing that turns a bearing into a destination.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — purity (52 brain files), docs-integrity, tune-mirror, typecheck, build. **UNIT: ran. 1251/1251 across 65 files**, including 25 new radio checks with **six planted defects each proven red and restored**. **DEVICE: ran. Full sweep 460/463 with all 13 STATIC checks green**, then re-witnessed **120/120** from THE WRECK onward after the fixture fix, with `owned false -> true`. **THREE REACHABILITY PROOFS, one per new verb** ([[D-114]]'s class, named non-negotiable in the brief): a real hold on the housing hands over the set; a real tap switches it on; a real tap writes the call sign into the journal. The two remaining sweep reds are the established tap/approach-landing family — the quarry setup never moved, and `UPKEEP 4b`'s tap landed on a Build hint — at **1.06 GB free**, under [[D-116]]'s ~2 GB condition, and both upstream of a section that runs last. **The two FEEL COURT reds carried from [[D-137]] did NOT recur**, which corroborates that characterisation. **LIVE: witnessed** — pushed and served as `ae73071`.*
+
 **D-138 · 2026-08-10 — THE E-CODE COLLISION: every citation names its register (C1, ratified hazard).**
 
 **`E03` MEANS TWO UNRELATED THINGS.** In the ENDING register (v0.6/v0.7) it is *"A Voice in the Static"*. In v2.3's CAPABILITY register it is *"Defended homestead"*. Nothing distinguishes them at the point of citation, so a bare `E03` in a brief, a ledger entry or a source comment is ambiguous by construction — and the reader who resolves it wrongly is reading about a radio when the text meant a palisade.
