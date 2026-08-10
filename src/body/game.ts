@@ -1913,9 +1913,9 @@ export class Game {
         if (fireObstacle) out.push(fireObstacle);
         const shelterObstacle = this.shelter.obstacle(state);
         if (shelterObstacle) out.push(shelterObstacle);
-        //  The bluff is solid; its obstacle is offset back so the MOUTH stays walkable.
-        const caveObstacle = this.cave.obstacle(state);
-        if (caveObstacle) out.push(caveObstacle);
+        //  The bluff is solid ALL ROUND, with a doorway where the mouth is — a ring of blocks
+        //  rather than the single offset circle that left its sides and face walk-through.
+        out.push(...this.cave.obstacles(state));
         const storageObstacle = this.storage.obstacle(state);
         if (storageObstacle) out.push(storageObstacle);
         //  DROP 1 FIX — the boar is SOLID. It shipped as a ghost: the player walked straight

@@ -480,3 +480,41 @@ describe('save — a v12 save migrates to v13 (Slice 2B Stage B: capacities + co
         expect(Object.keys(s.capacities)).toHaveLength(8);
     });
 });
+
+// ---------------------------------------------------------------------------
+describe('THE BACKPACK GATE — fresh versus continued, which is the whole of findings 1 and 2', () => {
+    //  WHY THIS TEST EXISTS. A verdict reported the survivor already carrying a backpack, and
+    //  the question "fresh game or continued save?" decided whether that was a REGRESSION or
+    //  correctly migrated behaviour. The two paths are deterministic and opposite, so the
+    //  answer is readable off the code rather than off anybody's memory — and now off a test,
+    //  so it stays readable.
+    //
+    //  [[D-113]] made the backpack EARNED: a fresh castaway has none. The same ruling migrated
+    //  existing saves in ALREADY CARRYING ONE, deliberately — taking a tool out of a hand
+    //  mid-run is the one thing a migration must never do.
+    it('a FRESH castaway has no backpack and must make one', () => {
+        const s = createInitialState(1_770_000_000_000);
+        expect(s.tools.backpack, 'a fresh game handed over a backpack').toBe(false);
+    });
+
+    it('a PRE-v19 save migrates in already carrying one — by design, not by accident', () => {
+        const old = {
+            schemaVersion: 18,
+            savedAtMs: 1_770_000_000_000,
+            state: { ...createInitialState(1_770_000_000_000), tools: { axe: true } },
+        } as unknown as Parameters<typeof migrate>[0];
+        const out = migrate(old);
+        expect(out).not.toBeNull();
+        expect(out!.state.tools.backpack,
+            'a continued save had its backpack taken away by a migration').toBe(true);
+    });
+
+    it('...so "already has a backpack" identifies a CONTINUED save, and nothing else', () => {
+        //  The discriminator, stated as the test: there is no path by which a fresh run
+        //  produces one. If a report says the survivor started with a backpack, the save is
+        //  pre-v19 — and the schema version in Copy Debug Info settles it in one look.
+        const freshRun = createInitialState(1_770_000_000_000);
+        expect(freshRun.tools.backpack).toBe(false);
+        expect(SCHEMA_VERSION).toBeGreaterThan(19);
+    });
+});

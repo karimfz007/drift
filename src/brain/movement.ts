@@ -122,6 +122,56 @@ export interface MoveStep {
  * "exactly on the centre" branch keeps its deterministic angle, and its convention is the same
  * one `deflectionSide` uses below, so a dead-centre spawn and a dead-on approach agree.
  */
+/**
+ * A WALL WITH A DOORWAY IN IT — a ring of colliders around a hollow structure, open on one
+ * bearing. Pure, so the shape is testable without a renderer.
+ *
+ * THE DEFECT THIS FIXES. The cave shipped with ONE circle, radius 4.2, offset 2.6 m back from
+ * the mouth so the opening stayed walkable. That kept the mouth open and left everything else
+ * open too: the bluff's base is 9.6 m across, so a point on its own rim at the side sits
+ * 5.46 m from that circle's centre and a point at the face sits 7.4 m — both outside 4.2. The
+ * survivor could walk through the SIDES and the FRONT of a solid rock bluff. Offsetting a
+ * single radius trades one wrong answer for another: cover the mass and you wall the player
+ * out of the only place they are trying to reach ([[D-051]]'s unminable quarry); shrink it and
+ * the rock is a ghost.
+ *
+ * A ring answers both at once. The wall is continuous where there is rock, and there is a real
+ * doorway where the mouth is — which is what the geometry always said and the collider never did.
+ *
+ * ADJACENT COLLIDERS MUST OVERLAP or the wall has gaps a player can squeeze through, and that
+ * is a property of the arithmetic rather than of the caller's care — `ringIsContinuous` below
+ * states it so a future retune cannot quietly open one.
+ */
+export function ringObstacles(
+    cx: number,
+    cz: number,
+    opts: { ringRadius: number; count: number; radius: number; openBearingRad: number; openHalfAngleRad: number },
+): Obstacle[] {
+    const out: Obstacle[] = [];
+    for (let i = 0; i < opts.count; i += 1) {
+        const bearing = (i / opts.count) * Math.PI * 2;
+        //  Shortest angular distance to the opening, on a circle.
+        let delta = Math.abs(bearing - opts.openBearingRad) % (Math.PI * 2);
+        if (delta > Math.PI) delta = Math.PI * 2 - delta;
+        if (delta <= opts.openHalfAngleRad) continue;
+        out.push({
+            x: cx + Math.sin(bearing) * opts.ringRadius,
+            z: cz + Math.cos(bearing) * opts.ringRadius,
+            radius: opts.radius,
+        });
+    }
+    return out;
+}
+
+/**
+ * Do neighbouring colliders on such a ring actually touch? A wall with gaps is not a wall.
+ * Compared rather than asserted, so retuning the ring cannot open a seam silently.
+ */
+export function ringIsContinuous(ringRadius: number, count: number, radius: number): boolean {
+    const centreToCentre = 2 * ringRadius * Math.sin(Math.PI / count);
+    return centreToCentre <= radius * 2;
+}
+
 export function pushOut(x: number, z: number, radius: number, obstacles: readonly Obstacle[]): { x: number; z: number } {
     let px = x;
     let pz = z;

@@ -611,6 +611,22 @@ export const TUNE = {
      *  would wall the survivor out of the only place they are trying to get into, which is
      *  the quarry's own unminable-at-any-legal-distance defect (D-051) wearing new geometry. */
     caveCollisionRadiusM: 4.2,
+    /** [TUNE] The bluff's collider RING — how far each block sits from the cave's centre.
+     *  Basis: the bluff's base is 9.6 m across (radius 4.8); a ring at 3.6 with blocks of
+     *  1.6 puts their outer edge at 5.2, just proud of the rock, and their inner edge at 2.0,
+     *  which leaves the mouth's own recess clear. */
+    caveWallRingRadiusM: 3.6,
+    /** [TUNE] How many blocks make the wall. Eight at 45 degrees, with a 3.6 m ring and 1.6 m
+     *  blocks, puts neighbouring centres 2.76 m apart against a 3.2 m reach — they OVERLAP,
+     *  which is what makes it a wall rather than a picket fence. `ringIsContinuous` checks it. */
+    caveWallBlocks: 8,
+    /** [TUNE] Each block's radius, metres. See the ring radius above for the arithmetic. */
+    caveWallBlockRadiusM: 1.6,
+    /** [TUNE] Half-width of the DOORWAY, in radians, centred on the mouth's own bearing.
+     *  Basis: 0.62 rad (~35 deg) drops exactly the one block facing the mouth and leaves a
+     *  ~1.9 m gap between its neighbours' edges — wider than the survivor and narrower than
+     *  the 3.2 m mouth, so the opening reads as the opening and the rock reads as rock. */
+    caveMouthOpenHalfAngleRad: 0.62,
 
     // ---- Drop 3 Part 2 item 3: the LDOE placement bar ----
     /** [TUNE] Property 3 — "I can tell if a spot is good from a reasonable distance." Metres at

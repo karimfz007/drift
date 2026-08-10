@@ -26,7 +26,7 @@ import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
 //  constructed, started, and never drawn — the deep-import tree-shaking trap.
 import '@babylonjs/core/Particles/particleSystemComponent';
 
-import { isFireLit, regrowProgress, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
+import { isFireLit, regrowProgress, ringObstacles, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
 import { defectStage } from '../brain';
 import { WORLD, surfaceHeightAt } from '../data/world';
@@ -1246,17 +1246,27 @@ export class CaveView {
     }
 
     /**
-     * The bluff is solid; the MOUTH is not.
+     * THE BLUFF IS SOLID — all of it — AND THE MOUTH IS A DOORWAY.
      *
-     * A single collision radius over the whole thing would wall the survivor out of the one
-     * place they are trying to reach, and `updateCavePresence` would then never fire — the
-     * feature would be visible, walkable-to, and impossible to enter. So the obstacle is offset
-     * back into the rock, leaving the mouth side open. Same lesson as the quarry's 2.4 m radius
-     * making it unminable at any legal standing distance (D-051): geometry that looks right and
-     * forbids the verb.
+     * This returned ONE circle of radius 4.2 offset 2.6 m back into the rock. That kept the
+     * mouth walkable and left the rest walkable too: the base is 9.6 m across, so its own rim
+     * at the side sits 5.46 m from that circle's centre and at the face 7.4 m — both outside
+     * 4.2. A survivor could walk in through the SIDES and out through the FRONT of a solid
+     * rock bluff, which is the world contradicting itself.
+     *
+     * A ring of blocks with the mouth's sector left out answers both halves at once, and
+     * `ringObstacles` is pure so the shape is provable without a renderer. The mouth's bearing
+     * is +z in the bluff's own local frame (see the mouth mesh below), which is +y in the
+     * brain's coordinates — so the opening is at bearing zero.
      */
-    obstacle(state: GameState): Obstacle | null {
-        return { x: state.cave.x, z: state.cave.y - 2.6, radius: TUNE.caveCollisionRadiusM };
+    obstacles(state: GameState): Obstacle[] {
+        return ringObstacles(state.cave.x, state.cave.y, {
+            ringRadius: TUNE.caveWallRingRadiusM,
+            count: TUNE.caveWallBlocks,
+            radius: TUNE.caveWallBlockRadiusM,
+            openBearingRad: 0,
+            openHalfAngleRad: TUNE.caveMouthOpenHalfAngleRad,
+        });
     }
 
     update(state: GameState, groundY: number): void {

@@ -3,6 +3,34 @@
 
 ---
 
+**D-141 · 2026-08-10 — DROP 3B(i): THE APPOINTMENT. The island's first deadline, and the storm's own clock extracted to run it.**
+
+**A NEW SITE, AND NOT THE WRECK.** The Wreck ([[D-124]]/[[D-125]]) is a permanent structure in open water, worked over and over as the tide shifts it. This is a forest crash on LAND, and it is the opposite kind of thing: it exists for a few days and then it does not. Nothing here touches `state.wreck`, its nodes or its instability — a test asserts that working the site moves neither. The only thing the two share is the material economy, which is the point: wreck-era metal, cable and glass are what falls out of the sky as well as out of the sea.
+
+**TRAJECTORY, NOT A SPAWN ROLL.** `CRASH_SITE` is authored inland on the bearing the wreck already lies on — that line continued past the shore — so the smoke, the site and the direction it came down on cannot disagree.
+
+**THE WORLD TELLS YOU FIRST (Law 26), AND A DEVICE PROBE CORRECTED ME ON HOW.** I first asserted the column was on screen from the beach unprompted. It is not: at the camera's resting pitch nothing above the horizon is in frame — [[D-135]] measured the same thing looking for the far island — and the foot of the column reads y = −129 in a 412-tall frame. So the announcement is what the brief actually describes: something **HEARD** coming down (a heavy impact, needing no gesture at all), and then smoke when you look up. `runtime.lastCue` is new so the audible half is witnessable rather than asserted.
+
+**SIX STAGES, RAIN'S OWN GRAMMAR:** none / sighted / standing / fresh / picked-over / overgrown. **TWO FREE STAGES** before anything is at stake, and `standing` — the preparation window — is the longer of them, because reading the sky has to be worth more than reacting to it. Once overgrown it is **GONE FOR GOOD**: a terminal stage, no second crash, no reschedule.
+
+**NO THIRD SCHEDULING SYSTEM, per the brief's explicit instruction.** The storm already owned *"scheduled at a game-hour, staged, one boundary per call"*. That shape is now `staged.ts`, and BOTH run on it — the storm's 32 checks pass unchanged on the extracted primitive. Extended, not paralleled.
+
+**WORKING IT NEITHER SHORTENS NOR EXTENDS THE WINDOW.** That is what makes it a deadline rather than a resource bar: a survivor cannot buy time by hurrying.
+
+**ABANDON IS A LEGITIMATE ANSWER**, and `abandonCost()` returns zero with a test on it — because "no penalty" is exactly the kind of absence somebody later softens with a small one. A survivor who reads the smoke, weighs a day's walk against what they already have, and stays home has played the loop correctly and loses nothing.
+
+**AND A LATE ARRIVAL IS TOLD IT IS LATE.** The device run caught the overgrown site falling through to a generic *"Nothing to do there."* — throwing away the emotional payload of a deadline. The scar stays a tap candidate while gone, so the game says the one true sentence: *"The forest has closed over it."*
+
+**[[D-011]], STRICTER THAN ANY HAZARD BEFORE IT.** `advanceCrash` runs on the online tick alone and `reconcile` has no crash term, so the window cannot open, run or close while the game is closed — **missing it while away is structurally impossible.** Deliberately unlike the storm, which an absence ENDS: a storm you were not there for is weather you did not stand in, but an appointment you were not there for would be a deadline missed for not playing. A month offline leaves it untouched with the whole window still to be had. Schema **v30 → v31**.
+
+**WRECKFALL IS ALWAYS EMPTY OF THE LIVING** — arrival canon, swept by a test over every authored line.
+
+**Class: OPERATIVE** (mechanism: `src/brain/crash.ts` and `src/brain/staged.ts`, `CRASH_SITE` in `src/data/world.ts`, `advanceCrash` on `Session`'s online tick, and the site and column in `src/body/island.ts`; shipped in this batch).
+
+**HELD, NOT BUILT:** Drop 3B(ii), the pressure pass, per [[D-140]] — nothing here guesses at hunger, thirst or the night curve.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — purity (54 brain files), docs-integrity, tune-mirror, typecheck, build. **UNIT: ran. 1274/1274 across 66 files**, including 23 new crash checks with **seven planted defects each proven red and restored**. **DEVICE: ran. FULL SWEEP 475/475 — zero graded failures, zero console errors** — with all 12 APPT checks green. The reachability proof is a real walk in from the shore (65 m) and a real tap on the wreckage. The two FEEL COURT reds carried since [[D-137]] did not recur, and neither did the tap-landing family from [[D-139]]'s sweep: this is the first fully clean sweep in the series. **LIVE: witnessed** — pushed and served as `d642d6c`.*
+
 **D-140 · 2026-08-09 — Sequencing self-correction (C1).**
 
 Drop 3B was named as the next thing to build, then Drop 5 was briefed instead without reasserting or correcting the sequence — a genuine skip, caught and recorded rather than silently overwritten. Drop 3B(i) resumes as the actual next item; Drop 3B(ii) (the pressure pass) is deliberately held on the director's own play. The gate after Drop 5 — a director verdict before anything further off the Drop spine — is now enforced explicitly: nothing past Drop 3B is scoped, costed, or built until one lands.
