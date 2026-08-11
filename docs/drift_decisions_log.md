@@ -3,6 +3,26 @@
 
 ---
 
+**D-145 · 2026-08-11 — CANON FILING PASS: v2.6 and v2.7 filed, the v2.7 version collision ruled, and one-document-per-version made standing practice.**
+
+**SEVEN FILES FILED, each verified byte-identical against its source and each grepped at ORIGIN after the push per [[D-097]]'s clause (e).**
+
+To `docs/reference/`: `the_first_night_design_bible_v2_6_body_water_work_and_survival_manufacture.md`, `the_first_night_design_bible_v2_7_civilization_weave_and_second_life.md`, `the_first_night_bible_v2_7_amendment_sheet_laws_201_206.md`, `drift_canon_filing_manifest_and_build_brief.md`, and `handover_challenge_sprint.md`. To `docs/reference/model/`: `the_first_night_body_water_work_manufacture_model_v2_6.xlsx`, `the_first_night_civilization_weave_model_v2_7.xlsx`.
+
+**THE HANDOVER WAS NEVER MISSING — IT WAS MIS-NAMED.** Ordered twice and 404 twice, and reported here rather than retired: the source exists as `the_first_night_handover_challenge_sprint.md`, carrying the project-wide `the_first_night_` prefix that every Bible and weave document uses. Both prior orders searched for the bare name. Filed under the ordered name, `handover_challenge_sprint.md`, so the citation that has been failing now resolves. **It is NOT retired**; there was nothing wrong with it but a prefix.
+
+**ONE FILE COULD NOT BE FILED.** `drift_design_vs_shipped_audit_v2_7.xlsx` **does not exist** anywhere reachable — a wide search across the repository, Downloads, Desktop and Documents returns nothing under that name or under `design_vs_shipped`. Named as absent rather than substituted: the nearest thing present is `drift_bible_vs_shipped.csv`, which is a DIFFERENT artefact and is not filed in its place. It is owed.
+
+**AND ONE PLACEMENT CORRECTED.** The v2.6 model was filed to `docs/reference/` earlier in this same session under the previous order; this pass moves it to `docs/reference/model/`, which is where every model belongs and where the v2.5 model already sits.
+
+**THE VERSION RULING.** *"Civilization Weave and Second Life"* is **canonical v2.7** and holds **Laws 163–200**. C1's *"Skills, Salvage, Forge and Depth"* is **WITHDRAWN IN FULL**; its additive content survives as **Laws 201–206** in the amendment sheet filed above. **Nothing may cite Laws 163–200 against the withdrawn document** — those law numbers belong to the Civilization Weave alone.
+
+**THE STANDING RULE, and this is the THIRD register collision.** **ONE DOCUMENT PER VERSION NUMBER.** Two documents both claiming v2.7 is what produced this ruling, and the pattern is now unmistakable: [[D-081]] separated three vocabularies that had collided on the word OPERATIVE; [[D-138]] required every E-code citation to name its register after `E03` meant two unrelated things; and a version number is the same kind of short identifier used as though it were unique. A version is only unambiguous if exactly one document bears it.
+
+**Class: OPERATIVE** — the ruling and the rule govern immediately; the mechanism is the filed set itself plus the citation discipline it establishes.
+
+**NO DESIGN WORK IN THIS PASS**, per the order. Wave 0 — six defects, four half-built nodes, three water rungs — is briefed in the filing manifest's Part Three and starts next session. The brain-layer work that was in flight when this order landed is preserved OFF MAIN on branch `wave0/p0-brain` at `8780f79`, unshipped and unwitnessed, the same preservation [[D-108]] used for `resolver/one-body`.
+
 **D-144 · 2026-08-10 — DROP 6, "THE READOUT": what the body knows, made perceivable. One grammar, not eight patches.**
 
 **SIX FINDINGS SAID THE SAME THING IN DIFFERENT WORDS.** The game develops the survivor and never tells them: mastery speeds the swing, breath lengthens the dive, capacities climb — all of it shipped, all of it invisible. `src/brain/readout.ts` is the single answer, and every surface reads from it rather than deriving its own version. Six surfaces each deriving their own reading is how a screen comes to disagree with the hands, which is what `refugeReport` was called *"the liar"* for.
