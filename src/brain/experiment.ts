@@ -38,6 +38,10 @@ export type ExperimentOutcome =
     | 'failed-attempt' // a real combination, but this attempt did not come off
     | 'no-relationship' // these two do not belong together; journaled as a null
     | 'already-known' // this pair has been tried before — free, because the answer is known
+    //  P0-1 — the pile makes two things the survivor ALREADY KNOWS how to make, so the game
+    //  refuses to pick for them. Not a failure and not an attempt: nothing is spent, and the
+    //  body offers the options `knownMatches` returns.
+    | 'choose'
     | 'refused'; // could not attempt at all
 
 export interface ExperimentResult {
@@ -141,6 +145,41 @@ function assignable(materials: MaterialKind[], slots: RecipeSlot[], used: Set<st
  *      a hint.
  *   3. **Otherwise the first**, unchanged, so nothing that worked before behaves differently.
  */
+/**
+ * P0-1 — WHEN THE SURVIVOR ALREADY KNOWS TWO ANSWERS, THE CHOICE IS THEIRS.
+ *
+ * THE DEFECT, director-confirmed in play: five wood and five stone silently became STORAGE
+ * when he wanted a STONE HAMMER. Both are exactly woodwork+masonry, so nothing separates them
+ * by arity, and `resolveRecipe`'s last tie-break rotates on `experimentCount` — a rule that is
+ * right for DISCOVERY and wrong for a survivor who already holds both plans. Bible §11.4 step
+ * 4 is "choose/apply an operation", and the choosing was the game's.
+ *
+ * THE LINE IS KNOWN VERSUS UNKNOWN, and it is the whole of the ruling. A recipe the survivor
+ * has a blueprint for is a thing they know how to make; two of those from one pile is a
+ * QUESTION, and the game must ask it. A recipe they have never made is not an option to be
+ * offered — offering it would name the product and hand over the catalogue, which is what
+ * Law 95 and the invention pivot forbid. So this returns known matches ONLY, and everything
+ * about the discovery path below is untouched: unknown patterns still resolve exactly as they
+ * did, still show property hints and nothing else.
+ *
+ * Fewer than two known matches means there is nothing to ask about, and the caller proceeds.
+ */
+export function knownMatches(state: GameState, materials: MaterialKind[]): Recipe[] {
+    const candidates = recipesMatching(materials);
+    if (candidates.length <= 1) return [];
+    //  Exact-arity first, the same narrowing `resolveRecipe` does — a three-slot recipe is not
+    //  an answer to a two-material pile just because it overlaps.
+    const exact = candidates.filter((r) => r.slots.length === materials.length);
+    const pool = exact.length > 0 ? exact : candidates;
+    const known = pool.filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
+    return known.length >= 2 ? known : [];
+}
+
+/** Is this pile a question rather than an attempt? */
+export function isAmbiguousToPlayer(state: GameState, materials: MaterialKind[]): boolean {
+    return knownMatches(state, materials).length >= 2;
+}
+
 export function resolveRecipe(state: GameState, materials: MaterialKind[]): Recipe | null {
     const candidates = recipesMatching(materials);
     if (candidates.length <= 1) return candidates[0] ?? null;
@@ -251,13 +290,46 @@ export function tryCombine(state: GameState, a: MaterialKind, b: MaterialKind): 
 }
 
 /** Two to four materials. `tryCombine` delegates here, so there is one execution path. */
-export function tryCombineWith(state: GameState, materials: MaterialKind[]): ExperimentResult {
+/**
+ * P0-1 — MAKE THE ONE THEY PICKED. The same execution path as an ordinary attempt, with the
+ * recipe SUPPLIED instead of resolved.
+ *
+ * Guarded rather than trusted: the choice must be one of the recipes this pile actually makes
+ * and one the survivor actually knows, so a body that offered a stale list — or a caller that
+ * invented an id — cannot mint something out of nothing.
+ */
+export function makeChosen(state: GameState, materials: MaterialKind[], recipeId: string): ExperimentResult {
+    const offered = knownMatches(state, materials);
+    if (!offered.some((r) => r.id === recipeId)) {
+        return refuse('That is not one of the things these make.');
+    }
+    return tryCombineWith(state, materials, recipeId);
+}
+
+export function tryCombineWith(state: GameState, materials: MaterialKind[], chosenRecipeId?: string): ExperimentResult {
     const blocked = canExperimentWith(state, materials);
     if (blocked) return refuse(blocked);
 
+    //  P0-1 — NEVER AUTO-RESOLVE A CHOICE THE SURVIVOR CAN MAKE. Two things they already know
+    //  how to make, from one pile, is a question; answering it for them is what silently built
+    //  storage when the director wanted a hammer. The body offers the two and calls
+    //  `makeChosen` below. Costs NOTHING here: being asked is not an attempt.
+    if (chosenRecipeId === undefined && isAmbiguousToPlayer(state, materials)) {
+        return {
+            ok: false,
+            outcome: 'choose',
+            reason: 'You know two ways to use these. Which are you making?',
+            blueprint: null,
+            recipeId: null,
+            spent: null,
+        };
+    }
+
     const [a, b] = materials;
     const key = experimentKeyFor(materials);
-    const recipe = resolveRecipe(state, materials);
+    const recipe = chosenRecipeId !== undefined
+        ? (recipesMatching(materials).find((r) => r.id === chosenRecipeId) ?? null)
+        : resolveRecipe(state, materials);
 
     //  A pair already journaled as a dead end short-circuits — D-055's own law, applied to
     //  the experiment verb. Free, because the answer is already known; it is not a discount
@@ -450,6 +522,14 @@ export function announcementFor(result: ExperimentResult): ExperimentAnnouncemen
                 text: result.blueprint ? `${result.blueprint.name} — you see how it works` : 'Something works',
                 triumphant: true,
                 presentation: 'float',
+            };
+        //  P0-1 — a question, not an outcome. The body is expected to open the chooser rather
+        //  than announce this; the case exists so the switch stays total AND so a body that
+        //  forgets says the question out loud instead of going silent ([[D-042]]).
+        case 'choose':
+            return {
+                text: result.reason ?? 'You know two ways to use these. Which are you making?',
+                triumphant: false, presentation: 'explain',
             };
         case 'failed-attempt':
             return {

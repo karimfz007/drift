@@ -260,6 +260,50 @@ export function illnessImpairmentShare(ill: IllnessState): number {
  * make the illness arbitrary in exactly the way the design forbids: the player has to be able
  * to trace it, and the first two rungs exist so they can be told before it costs them.
  */
+/**
+ * P0-6 — WHAT THE BODY FEELS, as evidence rather than as a label (Law 145, Bible §6.5).
+ *
+ * THE DEFECT, director-confirmed: he drank pond water, got ill, and felt nothing. Not because
+ * the illness was not real — `drinkAtPond` has called `onsetFrom('bad-water')` since Drop 3 —
+ * but because the only channel it had was the goal line, and the goal line speaks an illness
+ * ONLY once `illnessCosts` is true. That guard is correct and stays: a costless `unsettled`
+ * once starved "Exhausted to the bone" off the screen, which is the priority-starvation class
+ * [[D-040]] and [[D-042]] already fixed. The consequence, though, was total silence across
+ * both FREE stages — so the fair-challenge grammar's two warnings were being given to nobody.
+ *
+ * §6.5 IS EXPLICIT: *"The game must not hide the condition."* Its minimum embodied feedback is
+ * a guarded abdomen, cramps that interrupt, appetite aversion, more frequent thirst. So the
+ * warning stages get a channel of their own — announced once, at the crossing — and what they
+ * say is a SENSATION. No diagnosis, no cause named, no stage word: a survivor who has drunk
+ * bad water knows their stomach is turning over long before they know why, and the inference
+ * is the player's to make. `illnessNote` keeps the diagnostic voice for the stages that cost.
+ */
+export function illnessSymptom(ill: IllnessState): string | null {
+    const stage = illnessStage(ill);
+    if (stage === 'well') return null;
+    const cause = ill.cause ?? 'chill';
+    if (stage === 'unsettled') return SYMPTOM_FIRST[cause];
+    if (stage === 'ailing') return SYMPTOM_WORSE[cause];
+    //  Past the warning stages the diagnostic voice takes over — see `illnessNote`.
+    return null;
+}
+
+/** First sensation. Nothing is costing anything yet; the body has simply noticed. */
+const SYMPTOM_FIRST: Record<IllnessCause, string> = {
+    'bad-water': 'Your stomach turns over, and does not settle.',
+    chill: 'You cannot get warm, even out of the wind.',
+    'spoiled-food': 'Your gut tightens. Whatever that was, it is not sitting right.',
+    exhaustion: 'Your hands are slow to do what you tell them.',
+};
+
+/** Second sensation — worse, and still free. The last warning before it starts costing. */
+const SYMPTOM_WORSE: Record<IllnessCause, string> = {
+    'bad-water': 'Cramps double you over, and pass, and come back. You are thirsty again already.',
+    chill: 'Shivering you cannot stop, and the cold has got into your joints.',
+    'spoiled-food': 'The thought of food turns your stomach. Cramps come in waves now.',
+    exhaustion: 'Everything costs more than it should, and rest is not touching it.',
+};
+
 export function illnessNote(ill: IllnessState): string | null {
     const stage = illnessStage(ill);
     if (stage === 'well') return null;
