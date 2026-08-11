@@ -3,6 +3,44 @@
 
 ---
 
+**D-147 · 2026-08-11 — WAVE 0 PART ONE LANDS: the choice, the spear, the felt illness. Merged, not rebuilt.**
+
+**THREE DIRECTOR-CONFIRMED DEFECTS, AND ALL THREE ARE ONE SHAPE** — a system that works perfectly and cannot be reached, seen or felt. None was a missing feature. The branch `wave0/p0-brain` was merged as preserved at `8780f79` per the order; everything after it is body wiring, tests and device proof.
+
+**P0-1 — THE GAME STOPS CHOOSING.** 5 wood + 5 stone silently built a crate when the director wanted a hammer: both match, both were known, and `resolveRecipe` picked. When staged materials satisfy more than one pattern the survivor ALREADY knows, the game now **offers the choice** through the shipped radial circle — two positions, no third, no new interaction system. **Being asked costs nothing**, proven on device: wood 9 → 9, stone 9 → 9, nothing built while the question is open. **Discovery is untouched**: a survivor who knows neither thing is still inventing, still sees property hints and never a menu of named products, because the offer is filtered to recipes they already hold blueprints for.
+
+**AND `makeChosen`'s GUARD WAS WRONG ON ITS FIRST DAY.** It checked the choice against `knownMatches`, which returns nothing below two — so naming the thing you meant was REFUSED whenever the pile was unambiguous, and three shipped tests caught it at once. Naming what you are making is legal whenever the recipe matches the pile and the survivor knows it; **ambiguity is what makes the game ASK, not what makes an answer valid.**
+
+**P0-4 — THE SPEAR, AND THE NINTH INSTANCE.** It kills a boar, so it exists; it was absent from `TOOL_IDS`, and that list is the only thing reaching the pack readout and the equip path. Owned, usable, invisible — [[D-114]]'s class in its purest form, after `craftSpear`, `makeBackpack`, `submergedDepthM`, `fishRingSpent`, the trace tap, `manuals()`, `BOAT_LADDER` and the boat's undertuned technique route. On device it now shows as a chip and a real tap puts it in the hand, two-handed, leaving the support hand free.
+
+**THE INVARIANT IS WRITTEN FOR THE LIST, NOT THE SPEAR** — and it found three more names before it found its shape. Not every tool is HELD: a backpack is worn, a line and a net are deployed. Those are legitimately outside `TOOL_IDS` and legitimately visible, because each has a Build-panel row. So the rule is the union: **every tool the model can own must be reachable EITHER by hand OR by panel.** The spear was in neither. Adding a tool now forces that decision instead of allowing it to be forgotten. My first probe asked `revealedInPanel`, which gates on the LADDER and answered false for every non-held tool — the catalogue, not this survivor, is what decides whether a panel can show a thing.
+
+**P0-6 — ILLNESS IS FELT BEFORE IT IS NAMED.** The goal line only ever spoke an illness once it was COSTING, so both free warning stages were silent and the director drank pond water and felt nothing. `illnessSymptom` gives the two free stages a sensation — *"Your stomach turns over, and does not settle."* — read off the screen on device with **no panel open**, and swept to prove it never says "bad water", "dysentery" or "illness" (Law 145: symptoms as evidence, never labels). Watched centrally on `Session` rather than per cause, because drinking happens in a VERB and not on the tick — a hook beside the chill term would have missed the one actually reported.
+
+**THE BREADCRUMB IS WHAT CRACKED THE LAST FAILURE.** A pick that resolved correctly looked identical to a pick that never happened: circle gone, nothing built, hint unchanged. `chose:stonehammer:invented` in the tap trail settled it in one run — the choice had worked end to end and **my check asserted the wrong consequence.** Combining yields a BLUEPRINT; building the object is a separate verb. The claim was corrected to the director's own — the game must act on the HAMMER and leave the crate alone — which is what is now asserted.
+
+**AND THREE SHIPPED TESTS ENCODED THE OLD LAW.** Once a survivor holds both plans wood+fibre makes (the torch and the backpack share that gesture), the pile is a question — so tests that looped attempts never saw a failure again. Rewritten to attempt normally and NAME the torch once the pile becomes ambiguous, per [[D-113]]'s precedent: rewritten to the new law rather than deleted, so a silent revert of P0-1 still fails there.
+
+**Class: OPERATIVE** (mechanism: `knownMatches`/`isAmbiguousToPlayer`/`makeChosen` in `src/brain/experiment.ts`, `TOOL_IDS` in `src/brain/loadout.ts`, `illnessSymptom` in `src/brain/illness.ts` with `watchIllness` on `Session`, and their surfaces in `src/body/game.ts`; shipped in this batch).
+
+**NOT BUILT, and named rather than implied:** P0-2 (the bandage verb from Vitals), P0-3 (dropped items surfaced and recovered) and P0-5 (the journal's first contact) are root-caused and unbuilt. The four half-built nodes and the three water rungs of the filing manifest's Part Three are untouched. Wave 0 part two.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — purity (55 brain files), docs-integrity, tune-mirror, typecheck, build. **UNIT: ran. 1313/1313 across 69 files**, including 15 new Wave 0 checks with **six planted defects each proven red and restored — among them the spear's exact pre-fix `TOOL_IDS`**. **DEVICE: WAVE 0 17/17**, three reachability proofs, one per defect: a real tap through to the spear in hand, a real combine that offers the choice and a real segment press that acts on the named thing, and bad water felt on the screen with no panel open. **LIVE: see the push SHA and the deploy's served-SHA gate in this batch's report.***
+
+**D-146 · 2026-08-11 — THE HANDOVER WAS MIS-NAMED, NEVER MISSING. Absence asserted from a grep on a guessed filename.**
+
+**THE RECORD IS CORRECTED.** `handover_challenge_sprint.md` was ordered twice and reported 404 twice. It was never absent. The source exists as **`the_first_night_handover_challenge_sprint.md`**, carrying the `the_first_night_` prefix that every Bible, weave and model document in this project uses. Both prior orders searched the bare name, found nothing, and reported the document as lost. [[D-145]] filed it under the ordered name; this entry names the CAUSE, because the filing fixed an instance and the cause is what will otherwise repeat.
+
+**THE CAUSE: ABSENCE ASSERTED FROM A GREP ON A GUESSED FILENAME.** The search term was constructed from how the document was referred to in prose, not from how it was written to disk. A grep that finds nothing proves the pattern did not match — it does not prove the thing does not exist, and the gap between those two sentences is the whole defect. Two orders' worth of "retire it formally, the source no longer exists" rested on it.
+
+**SAME CLASS AS THE THREE COLLISIONS, IN A FILENAME.** [[D-081]] separated three vocabularies that had collided on the word OPERATIVE. [[D-138]] required every E-code to name its register after `E03` meant two unrelated things. [[D-145]] ruled one document per version number after two documents both claimed v2.7. This is the fourth: **a short identifier used as though it were unique and canonical when it was neither**. A filename is an identifier like any other, and the prose name and the disk name were two different registers all along.
+
+**THE RULE THAT FALLS OUT OF IT.** A document is ABSENT only when a search that could not have missed it comes back empty — by content, by prefix-insensitive stem, or by directory listing. Never on a single exact-name grep. This is [[D-097]] clause (e) pointed the other way: an edit must witness its landing, and **an absence must witness its own search**.
+
+**Class: OPERATIVE** — the correction and the search rule govern immediately; the mechanism is the filed document at [[D-145]] plus this record of why two orders missed it.
+
+**STILL GENUINELY ABSENT:** `drift_design_vs_shipped_audit_v2_7.xlsx`. Ordered again this pass and searched again by stem (`design_vs_shipped`, `audit_v2_7`) across the repository, Downloads, Desktop and Documents — nothing, under any prefix. It is not on disk, and unlike the handover it is not hiding behind a name. Owed.
+
 **D-145 · 2026-08-11 — CANON FILING PASS: v2.6 and v2.7 filed, the v2.7 version collision ruled, and one-document-per-version made standing practice.**
 
 **SEVEN FILES FILED, each verified byte-identical against its source and each grepped at ORIGIN after the push per [[D-097]]'s clause (e).**

@@ -299,9 +299,19 @@ export function tryCombine(state: GameState, a: MaterialKind, b: MaterialKind): 
  * invented an id — cannot mint something out of nothing.
  */
 export function makeChosen(state: GameState, materials: MaterialKind[], recipeId: string): ExperimentResult {
-    const offered = knownMatches(state, materials);
-    if (!offered.some((r) => r.id === recipeId)) {
-        return refuse('That is not one of the things these make.');
+    //  THE GUARD IS "MATCHES AND IS KNOWN", not "is one of two". My first cut checked the
+    //  choice against `knownMatches`, which returns nothing at all below two — so naming the
+    //  thing you meant was REFUSED whenever the pile was unambiguous, and three shipped tests
+    //  caught it at once: a survivor who holds one plan could no longer re-derive it by name.
+    //  Naming what you are making is a legal act whenever the recipe genuinely matches the
+    //  pile and the survivor genuinely knows it; ambiguity is what makes the game ASK, not
+    //  what makes an answer valid.
+    const chosen = recipesMatching(materials).find((r) => r.id === recipeId);
+    if (!chosen) return refuse('That is not one of the things these make.');
+    //  ...and still nothing can be minted out of nothing: an unknown recipe is not choosable,
+    //  which is what keeps a body offering a stale list from handing over the catalogue.
+    if (!state.blueprints.some((bp) => bp.recipeId === recipeId)) {
+        return refuse('You have not worked that out yet.');
     }
     return tryCombineWith(state, materials, recipeId);
 }
@@ -475,6 +485,21 @@ function workmanshipFor(seed: number): ItemGrade {
 
 /** Plain names for the plans the current tree can yield. A plan is a named thing (§10.6),
  *  never "recipe #4". */
+/**
+ * THE ONE PLACE A RECIPE GETS A HUMAN NAME.
+ *
+ * Exported for P0-1's chooser, deliberately rather than duplicated: the two options a survivor
+ * is offered must carry the SAME words as the blueprints they already hold, or the circle and
+ * the plan are two names for one thing and the player has to work out that they match.
+ *
+ * NAMING THESE LEAKS NOTHING. The chooser only ever offers recipes the survivor has ALREADY
+ * made, so every name in it is a name they gave themselves — which is exactly the gate that
+ * keeps Law 95's never-attempted patterns showing property hints and nothing else.
+ */
+export function recipeDisplayName(recipeId: string): string {
+    return blueprintNameFor(recipeId);
+}
+
 function blueprintNameFor(recipeId: string): string {
     switch (recipeId) {
         case 'axe': return 'Hafted axe';

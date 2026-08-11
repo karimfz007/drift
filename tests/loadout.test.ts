@@ -33,6 +33,10 @@ function run(): GameState {
 function fullyEquipped(): GameState {
     const s = run();
     s.tools.axe = true;
+    //  P0-4 — the spear joins TOOL_IDS, so "fully equipped" has to mean it too. Without this
+    //  the fixture's own name became a lie and `zoneOf` correctly returned null for a tool
+    //  nobody owned; widening the list is what made that visible.
+    s.tools.spear = true;
     s.tools.stoneHammer = true;
     s.tools.flask = true;
     s.torch = { owned: true, lit: false, fuelGameHoursRemaining: 3, grade: 'serviceable' };

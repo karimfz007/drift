@@ -148,6 +148,10 @@ import {
     readoutRows,
     noticedOnSurfacing,
     slowWorkNote,
+    illnessSymptom,
+    knownMatches,
+    recipeDisplayName,
+    makeChosen,
     crashBlockedReason,
     crashGone,
     crashSighting,
@@ -929,6 +933,39 @@ export class Game {
         //  (Babylon; the purity law). So the decision moved to `announcementFor`, where a
         //  test can reach it, and this is now rendering only.
         const result = tryCombineWith(session().state, materials as 'wood'[]);
+
+        //  P0-1 — THE QUESTION, ASKED. `choose` is not an outcome to announce; it is the game
+        //  declining to pick for the player, which is what silently built a crate when the
+        //  director wanted a hammer. The shipped radial circle carries it — two positions, one
+        //  choice, no new interaction system and no third position ([[D-087]]'s own surface,
+        //  which exists precisely so a target with two verbs never has to be arbitrated).
+        //
+        //  NOTHING IS SPENT YET. Cancelling leaves the pile exactly as it was, because being
+        //  asked a question is not an attempt.
+        if (result.outcome === 'choose') {
+            const offered = knownMatches(session().state, materials as 'wood'[]);
+            const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
+            this.showHint(result.reason ?? 'Which are you making?');
+            showVerbCircle(this.overlay, offered.map((r) => ({ id: r.id, label: recipeDisplayName(r.id), available: true, reason: null })),
+                at.x, at.y,
+                (id: string) => {
+                    //  A CHOICE IS A TAP OUTCOME, so it leaves the same breadcrumb every other
+                    //  resolved gesture does ([[D-136]]'s `tapTrail`). Without it, a pick that
+                    //  silently does nothing is indistinguishable from a pick that never
+                    //  happened — which is exactly what the first device run could not tell.
+                    const chosen = makeChosen(session().state, materials as 'wood'[], id);
+                    this.recordTap(at.x, at.y, `chose:${id}:${chosen.outcome}`);
+                    session().persist(now());
+                    const named = announcementFor(chosen);
+                    if (named.presentation === 'float') this.floatText(named.text);
+                    else this.explain(named.text);
+                    if (named.triumphant) this.cues.play(CUES.unlock);
+                    this.lastActivityAt = now();
+                },
+                () => { this.lastActivityAt = now(); });
+            return;
+        }
+
         session().persist(now());
         const said = announcementFor(result);
         if (said.presentation === 'float') this.floatText(said.text);
@@ -2660,6 +2697,22 @@ export class Game {
      * disagree. The words come only on a boundary, and they never say where to go: what a
      * survivor gets is smoke in a direction, which is what a person standing on a beach has.
      */
+    /**
+     * P0-6 — the illness, FELT. Announced once per crossing, in the survivor's own body.
+     *
+     * The two free stages get a sensation; past them `illnessNote`'s diagnostic voice takes
+     * over, so the two never talk over each other.
+     */
+    private announceIllness(state: ReturnType<typeof session>['state']): void {
+        const crossed = session().takeIllnessStage();
+        if (!crossed) return;
+        const felt = illnessSymptom(state.illness);
+        if (!felt) return;
+        this.lastReadoutSaid = felt;
+        this.cues.play(CUES.denied);
+        this.showHint(felt);
+    }
+
     private announceAppointment(state: ReturnType<typeof session>['state']): void {
         this.island.setCrashVisible(state.crash.stage);
         const crossed = session().takeCrashStage();
@@ -2714,6 +2767,12 @@ export class Game {
         //  DROP 3B(i) — THE WORLD BEFORE THE INTERFACE (Law 26). The smoke is drawn and the
         //  sighting is SPOKEN on the tick the stage crosses; nothing names it before that.
         this.announceAppointment(state);
+
+        //  P0-6 — WHAT THE BODY FEELS, on the tick the stage is crossed and before any
+        //  panel names it. The goal line only ever spoke an illness once it was COSTING,
+        //  so both free warning stages were silent and the director drank pond water and
+        //  felt nothing at all. Symptoms are sensation, never diagnosis (Law 145).
+        this.announceIllness(state);
 
         this.guardPanelLock(stamp);
 

@@ -7963,6 +7963,174 @@ async function main() {
         + ` (a seven-sided bluff whose rim runs 4.32-4.80 m; the old collider let this reach 1.94 m)`);
     }
 
+    // ================= WAVE 0 PART ONE — P0-1, P0-4, P0-6 =================
+    //
+    //  THREE DIRECTOR-CONFIRMED DEFECTS, and all three are the same shape: a system that works
+    //  perfectly and cannot be reached, seen or felt. The unit suite owns the rules
+    //  (tests/wave0.test.ts, 15 checks, six planted defects proven red — including the spear's
+    //  exact pre-fix state). What it cannot witness is the only thing the director reported:
+    //  whether a human can get at any of it.
+    //
+    //  So every check below is a REACHABILITY PROOF. P0-4 is the NINTH instance of one live
+    //  list standing between a working system and an invisible one, which is why the invariant
+    //  is in the suite and the finger is here.
+    if (section("WAVE 0 — P0-1 the choice, P0-4 the spear, P0-6 the felt illness")) {
+
+    // ---- P0-4: THE SPEAR IS VISIBLE AND CAN BE HELD ---------------------------
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.tools = { ...state.tools, spear: true, axe: true, backpack: true };
+        state.loadout = { ...state.loadout, activeHand: null, supportHand: null };
+    `);
+    const packForSpear = await realTapDom('.carried-button');
+    await sleep(500);
+    const vitalsForSpear = await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(500);
+    const spearChip = await page.evaluate(() => {
+        const chips = Array.from(document.querySelectorAll('.hand-chip'));
+        return {
+            all: chips.map((c) => c.dataset.tool + ':' + c.dataset.hand),
+            spear: chips.some((c) => c.dataset.tool === 'spear'),
+        };
+    });
+    await shot('wave0-01-spear-visible');
+    check('P0-4 — REACHABILITY: a survivor holding a spear can SEE it on the Vitals tab',
+        packForSpear.ok && vitalsForSpear.ok && spearChip.spear === true,
+        `pack ${packForSpear.ok}, vitals ${vitalsForSpear.ok}, chips: ${spearChip.all.join(', ') || '(none)'}`);
+
+    //  ...and a REAL tap puts it in the hand. The equip path is the other half TOOL_IDS gates.
+    const equipSpear = await realTapDom('.hand-chip[data-tool="spear"][data-hand="right"]');
+    await sleep(700);
+    const heldSpear = (await live()).loadout;
+    check('P0-4 — ...and a REAL tap puts the spear in the hand',
+        equipSpear.ok && heldSpear.activeHand === 'spear',
+        `tap ${equipSpear.ok} ${equipSpear.reason ?? ''}, hands L:${heldSpear.supportHand} R:${heldSpear.activeHand}`);
+
+    check('P0-4 — ...and it is two-handed, so the support hand stays free of a second tool',
+        heldSpear.supportHand === null,
+        `support hand: ${heldSpear.supportHand}`);
+
+    // ---- P0-1: THE GAME ASKS INSTEAD OF CHOOSING ------------------------------
+    //
+    //  THE DIRECTOR'S OWN REPORT: 5 wood + 5 stone silently built STORAGE when he wanted a
+    //  STONE HAMMER. Both match, both were known, and `resolveRecipe` picked. Staged with both
+    //  plans already held, because that is the exact state the report came from.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.inventory = { ...state.inventory, wood: 9, stone: 9 };
+        state.tools = { ...state.tools, backpack: true };
+        state.blueprints = [
+            { recipeId: 'storage', discoveredAtGameHours: 1, author: 'them', name: 'Storage crate', version: 1 },
+            { recipeId: 'stonehammer', discoveredAtGameHours: 2, author: 'them', name: 'Stone hammer', version: 1 }
+        ];
+        state.storage = { ...state.storage, built: false };
+        state.tools.stoneHammer = false;
+    `);
+    //  ITS OWN DRIVE, not the hoisted `combineViaPlayerPath`. That binding is assigned inside
+    //  the D-063 section, which `--only` skips — so depending on it made this section crash
+    //  standalone with "combineViaPlayerPath is not a function", which is the harness telling
+    //  the truth about a cross-section dependency ([[D-126]]'s own note). A section that can be
+    //  run alone is worth more than one shared closure, and the gesture is five lines.
+    const combineHere = async (a, b) => {
+        const opened = await realTapDom('.carried-button');
+        if (!opened.ok) return { ok: false, reason: `pack: ${opened.reason}` };
+        await sleep(500);
+        const pickA = await realTapDom(`.combine-chip[data-mat="${a}"]`);
+        const pickB = await realTapDom(`.combine-chip[data-mat="${b}"]`);
+        if (!pickA.ok || !pickB.ok) return { ok: false, reason: `chips: ${pickA.reason ?? ''} ${pickB.reason ?? ''}` };
+        const pressed = await realTapDom('.panel.loadout .try-combine-btn');
+        await sleep(900);
+        return { ok: pressed.ok, reason: pressed.reason ?? null };
+    };
+
+    const beforeChoice = await live();
+    const combined = await combineHere('wood', 'stone');
+    await sleep(800);
+    const circle = await page.evaluate(() => {
+        const opts = Array.from(document.querySelectorAll('.verb-circle .verb-seg'));
+        return { count: opts.length, labels: opts.map((o) => o.dataset.verb + ':' + (o.textContent || '').trim()) };
+    });
+    await shot('wave0-02-the-choice');
+    check('P0-1 — REACHABILITY: two known patterns from one pile OFFER THE CHOICE, never auto-resolve',
+        combined.ok !== false && circle.count >= 2,
+        `combine ${JSON.stringify(combined).slice(0, 90)}, offered ${circle.count}: ${circle.labels.join(' | ')}`);
+
+    //  BEING ASKED COSTS NOTHING — the pile is untouched while the question is open.
+    const duringChoice = await live();
+    check('P0-1 — ...and being ASKED spends nothing: the pile is exactly as it was',
+        duringChoice.inventory.wood === beforeChoice.inventory.wood
+        && duringChoice.inventory.stone === beforeChoice.inventory.stone
+        && duringChoice.storage.built === false && duringChoice.tools.stoneHammer === false,
+        `wood ${beforeChoice.inventory.wood} -> ${duringChoice.inventory.wood},`
+        + ` stone ${beforeChoice.inventory.stone} -> ${duringChoice.inventory.stone},`
+        + ` crate ${duringChoice.storage.built}, hammer ${duringChoice.tools.stoneHammer}`);
+
+    //  ...AND ANSWERING IT BUILDS THE THING THE PLAYER NAMED. The director wanted the hammer.
+    const pickedHammer = await page.evaluate(() => {
+        const opts = Array.from(document.querySelectorAll('.verb-circle .verb-seg'));
+        const want = opts.find((o) => o.dataset.verb === 'stonehammer');
+        if (!want) return { ok: false, saw: opts.map((o) => o.dataset.verb || '?') };
+        want.click();
+        return { ok: true, saw: [] };
+    });
+    await sleep(900);
+    const afterChoice = await live();
+    //  WHAT THE GAME SAID when the segment was pressed — a refusal is a sentence, and reading
+    //  it is the difference between "the pick did nothing" and knowing why.
+    const afterPickSaid = await page.evaluate(() => ({
+        hint: window.__drift.hints?.()?.last ?? '',
+        circleStillUp: Boolean(document.querySelector('.verb-circle')),
+        panelUp: Boolean(document.querySelector('.panel.loadout')),
+        trail: (window.__drift.tapTrail?.() ?? []).slice(-3).map((b) => b.outcome).join(' > '),
+    }));
+    await shot('wave0-03-hammer-chosen');
+    //  THE CONSEQUENCE IS THE PLAN, not the object — and my first cut asserted the wrong one.
+    //  Post-pivot, combining materials yields a BLUEPRINT; building the thing is a separate
+    //  verb on the Build panel. The breadcrumb settled it: `chose:stonehammer:invented` proved
+    //  the pick ran and resolved, while `tools.stoneHammer` was never going to move here. The
+    //  claim that matters is the director's own — he wanted the hammer and got the crate — so
+    //  what is asserted is that the game acted on the HAMMER and left the crate alone.
+    const actedOnHammer = (afterPickSaid.trail ?? '').includes('chose:stonehammer:');
+    const hammerPlan = afterChoice.blueprints.filter((b) => b.recipeId === 'stonehammer').length;
+    const cratePlanBefore = beforeChoice.blueprints.filter((b) => b.recipeId === 'storage').length;
+    const cratePlanAfter = afterChoice.blueprints.filter((b) => b.recipeId === 'storage').length;
+    check('P0-1 — ...and choosing the HAMMER acts on the hammer, never the crate',
+        pickedHammer.ok && actedOnHammer && hammerPlan >= 1
+        && cratePlanAfter === cratePlanBefore && afterChoice.storage.built === false,
+        `picked ${pickedHammer.ok} ${(pickedHammer.saw ?? []).join('|')},`
+        + ` hammer plans ${hammerPlan}, crate plans ${cratePlanBefore} -> ${cratePlanAfter},`
+        + ` crate built ${beforeChoice.storage.built} -> ${afterChoice.storage.built}`
+        + `  |  said "${afterPickSaid.hint}", circle up ${afterPickSaid.circleStillUp},`
+        + ` pack up ${afterPickSaid.panelUp}, trail: ${afterPickSaid.trail}`);
+
+    // ---- P0-6: THE ILLNESS IS FELT --------------------------------------------
+    //
+    //  POISED, NOT PLACED. A stage written straight in never CROSSES one, so nothing announces
+    //  — the lesson [[D-141]]'s smoke column taught. Left just below the first threshold so the
+    //  next real tick crosses into it and the body speaks.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.illness = { severity: 0.001, cause: 'bad-water', gameHoursSick: 0 };
+    `);
+    await sleep(2500);
+    const feltIll = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
+    const panelDuringIllness = await page.evaluate(() => Boolean(document.querySelector('.panel')));
+    await shot('wave0-04-felt-illness');
+    check('P0-6 — REACHABILITY: bad water is FELT, in the body, with no panel open',
+        feltIll.length > 5 && panelDuringIllness === false,
+        `panel open ${panelDuringIllness}, said "${feltIll}"`);
+
+    check('P0-6 — ...and it is a SENSATION, never a diagnosis (Law 145)',
+        !/bad.?water|dysentery|infection|\billness\b/i.test(feltIll),
+        `said "${feltIll}"`);
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

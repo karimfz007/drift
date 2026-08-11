@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import {
     freshMatterWear, isNearlySpent, stressedMaterial, transformOnFailure, transformationFor,
 } from '../src/brain/matter';
-import { tryCombineWith } from '../src/brain/experiment';
+import { isAmbiguousToPlayer, makeChosen, tryCombineWith } from '../src/brain/experiment';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 import type { GameState, MaterialKind } from '../src/brain/types';
@@ -137,7 +137,16 @@ describe('through the real verb, not just the helper', () => {
         for (let i = 0; i < 40 && !sawFailure; i++) {
             s.inventory.wood = 10; s.inventory.fiber = 10; s.energy = 100;
             const before = { ...s.matterWear };
-            const r = tryCombineWith(s, ['wood', 'fiber']);
+            //  P0-1: attempt normally, and NAME the torch only once the pile has become a
+            //  question — which it does after the second invention, because the torch and the
+            //  backpack share wood+fibre. Naming it earlier is refused (you cannot choose a
+            //  plan you have not worked out), and not naming it later returns `choose`, which
+            //  is not an attempt. Either way this stays a real attempt on a real relationship,
+            //  which is the claim. Rewritten to the new law rather than deleted, so a silent
+            //  revert of P0-1 still fails here.
+            const r = isAmbiguousToPlayer(s, ['wood', 'fiber'])
+                ? makeChosen(s, ['wood', 'fiber'], 'torch')
+                : tryCombineWith(s, ['wood', 'fiber']);
             if (r.outcome === 'failed-attempt') {
                 sawFailure = true;
                 expect(r.matter, 'the failure carries a matter outcome').toBeTruthy();

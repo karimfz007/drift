@@ -7,6 +7,8 @@ import {
     relationshipFor,
     successChanceFor,
     tryCombine,
+    isAmbiguousToPlayer,
+    makeChosen,
     announcementFor,
     type ExperimentResult
 } from '../src/brain/experiment';
@@ -214,7 +216,13 @@ describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () 
         inventTorch(s);
         expect(torchPlans()).toHaveLength(1);
         const v1 = torchPlans()[0].version;
-        inventTorch(s);
+        //  P0-1 — NAMED, not left to the resolver. Once a survivor holds BOTH plans wood+fibre
+        //  makes (the torch and the backpack share that gesture), the pile is a QUESTION and the
+        //  game refuses to answer it — which is the whole of P0-1. This test's claim is
+        //  unchanged; what changed is that re-attempting a pattern you already know both ways
+        //  now goes through the choice, exactly as a player does. Rewritten to the new law
+        //  rather than deleted, so a silent revert of P0-1 still fails here.
+        makeChosen(s, ['wood', 'fiber'], 'torch');
         expect(torchPlans(), 'still ONE torch plan').toHaveLength(1);
         expect(torchPlans()[0].version).toBeGreaterThan(v1);
     });
@@ -258,7 +266,17 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
             novice.energy = TUNE.energyMax;
             novice.inventory.wood = 20;
             novice.inventory.fiber = 20;
-            if (tryCombine(novice, 'wood', 'fiber').outcome === 'failed-attempt') failures += 1;
+            //  P0-1: attempt normally, and NAME the torch only once the pile has become a
+            //  question — which it does after the second invention, because the torch and the
+            //  backpack share wood+fibre. Naming it earlier is refused (you cannot choose a
+            //  plan you have not worked out), and not naming it later returns `choose`, which
+            //  is not an attempt. Either way this stays a real attempt on a real relationship,
+            //  which is the claim. Rewritten to the new law rather than deleted, so a silent
+            //  revert of P0-1 still fails here.
+            const attempt = isAmbiguousToPlayer(novice, ['wood', 'fiber'])
+                ? makeChosen(novice, ['wood', 'fiber'], 'torch')
+                : tryCombine(novice, 'wood', 'fiber');
+            if (attempt.outcome === 'failed-attempt') failures += 1;
         }
         expect(failures).toBeGreaterThan(0);
     });
