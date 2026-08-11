@@ -1148,6 +1148,25 @@ export const TUNE = {
      *  against it, so the two cannot drift apart. */
     panelArmDelayMs: 300,
 
+    // ---- DROP 6 — THE READOUT: what the body knows, made perceivable --------
+    //
+    //  ONE constant, because this drop adds no mechanic — everything else it says is a pure
+    //  reading of models that already ship.
+
+    /** [TUNE] How much a piece of work must have improved before the game says so, in seconds.
+     *
+     *  Basis: below about a second a survivor cannot tell a real gain from ordinary variation,
+     *  so speaking would be noise; above it, the change is one they have just felt in their
+     *  hands. A game that narrates every ordinary moment has no way left to raise its voice —
+     *  the same reasoning that keeps `holding` silent in the dive and `swimming` silent in the
+     *  water. This is the threshold that keeps the readout worth reading. */
+    readoutNoticeableSeconds: 1.0,
+    /** [TUNE] The reference job the panel quotes its seconds against, in seconds.
+     *  Basis: `deadfallHoldSeconds`-scale work — a piece of ordinary island labour, so the
+     *  figure a survivor reads is the figure their own hands have been feeling. Quoting an
+     *  abstract unit would be a score with a costume on. */
+    readoutAxeReferenceSeconds: 6,
+
     // ---- DROP 3B(i) — THE APPOINTMENT: the island's first deadline -----------
     //
     //  STRUCTURAL HALF ONLY. These are the durations and yields the MECHANISM needs to exist

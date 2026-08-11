@@ -393,6 +393,13 @@
             .build-item .primary { min-height: 40px; }
         }
 
+        /* DROP 6 — the progression indicator. A BAR, because "seen, not inferred" is the whole
+           ask and four band names alone still make a player hold the ladder in their head. It
+           carries no number: the sentence beside it is the concrete change, and the bar is only
+           how far through the bands they are. */
+        .readout-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.14); margin-top: 6px; overflow: hidden; }
+        .readout-bar span { display: block; height: 100%; background: #8fbf7a; border-radius: 3px; }
+
         .panel.visible { opacity: 1; }
         .panel.leaving { opacity: 0; }
 

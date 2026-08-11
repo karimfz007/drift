@@ -3,6 +3,60 @@
 
 ---
 
+**D-144 · 2026-08-10 — DROP 6, "THE READOUT": what the body knows, made perceivable. One grammar, not eight patches.**
+
+**SIX FINDINGS SAID THE SAME THING IN DIFFERENT WORDS.** The game develops the survivor and never tells them: mastery speeds the swing, breath lengthens the dive, capacities climb — all of it shipped, all of it invisible. `src/brain/readout.ts` is the single answer, and every surface reads from it rather than deriving its own version. Six surfaces each deriving their own reading is how a screen comes to disagree with the hands, which is what `refugeReport` was called *"the liar"* for.
+
+**IT ADDS NO STATE AND NO MECHANIC.** Every reading is a pure derivation from models that already ship — `masteryFor`, `airCapacityOf`, `standingOf`. No XP, no tree, no counter, no field, no migration. A test sweeps the module's exports for anything that could grant, award, spend or level, and another asserts that reading it never mutates the thing it reads.
+
+**THE COMPARISON IS AGAINST THE DAY THEY LANDED, which is what makes it sayable without storing anything.** `masteryFor` is exactly 1 at the innate floor by construction, so *"what would this have cost me on day one?"* is a derivation rather than a memory. No previous-best field, no running average.
+
+**WORLD FIRST (Law 26), and witnessed as such.** The act reads differently before any panel confirms it: felling a tree says *"1.3 seconds faster than your first — steadier with it now"* **with no panel open at any point**, and surfacing says what the lungs have become. Silent until the gain clears `readoutNoticeableSeconds`, so the first few swings say nothing and the one that has genuinely got easier says so — the same rule that keeps `holding` silent in the dive.
+
+**CONCRETE, NEVER NUMERIC (Bible v2.3).** Experience rewards INFORMATION GAINED, so what a survivor is told is a change they can feel and a band they can see themselves moving through. On device the Skills tab reads *"With the axe [practised] — 2.9 seconds faster than your first"* with a bar at 80%, and *"On and under the water [practised] — 8.5 seconds longer under than your first breath"* at 87%. A survivor who has done nothing reads *"No steadier than the day you washed ashore"* at 0%. **No score reaches the screen**, and a check sweeps the rendered panel to prove it.
+
+**THREE REAL BUGS, EACH CAUGHT BY THE THING BUILT TO CATCH IT.** (1) The breath baseline was ZERO, so a survivor who had never dived was told they could hold their breath 1.1 s longer — `freshCapacities()` starts every capacity AT the innate floor, and zero is a body that has never existed. The unit suite caught it on its first run. (2) The hands reading was passed the ALREADY-MASTERED hold as its baseline and multiplied the discount in a second time, understating the saving to 0.85 s — under its own one-second threshold, so a practised feller was told nothing. The device check caught it, and the boulder note firing throughout is what proved the wiring was live and the arithmetic was not. (3) My anti-drift test then passed the FRESH survivor's hold into the corrected contract — my own misuse of the rule I had just written.
+
+**THE BOULDER IS SLOW ON PURPOSE, AND THE SENTENCE SAYS SO HONESTLY.** Measured before writing a word: one node, 2 stone a swing, inexhaustible, **5.5 s by hand against 3.0 s with a stone hammer**. So the hammer is an ACCELERATOR, never a gate, and the note says *"Slow work by hand — it gives, just grudgingly. A stone hammer would halve it, and the face never runs out."* A test forbids the words "required" and "need a", because the false sentence would send a survivor away from a face working perfectly well for them.
+
+**A READOUT NEEDS ITS OWN WITNESS.** It is SHOWN as a hint, which is the right surface and the wrong instrument: the standing-hint system legitimately replaces it moments later, and the first device check read an empty string off a readout that had fired perfectly. `runtime.lastReadout` is read-only ([[D-075]]) and keeps the readout's own words — the same lesson `runtime.lastCue` learned for the crash's audible half at [[D-141]].
+
+**IT TAKES ITS TONE FROM [[D-143]].** An inert iron wedge bought real excitement in the director's own play; a readout that says *"2.9 seconds faster"* rather than a number is the same bet — that a survivor engages with a concrete, felt thing far harder than with a score.
+
+**Class: OPERATIVE** (mechanism: `src/brain/readout.ts`, the world-first announcements in `src/body/game.ts`, and the Skills tab's readout rows; shipped in this batch).
+
+**DEFERRED, named rather than implied:** the FIRST-CONTACT nudges for the boat and the shelter site (the brief's item 4) are NOT built — they are evidence-led copy work on two existing surfaces and want their own pass rather than a tail-end addition to this one. No numeric XP economy and no skill tree, per the brief: that fork is the director's, and nothing here forecloses it.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — purity (55 brain files), docs-integrity, tune-mirror, typecheck, build. **UNIT: ran. 1297/1297 across 68 files**, including 12 new readout checks. **DEVICE: ran. DROP 6 16/16**, including the reachability proof — a real tap through to Skills, words on the rendered page — and the world-first line landing with no panel open. `READOUT 6` carries [[D-142]]'s cave fix onto the device: pressed at the side, the survivor now stops at 4.77 m of centre where the old collider let them reach 1.94 m, three metres inside solid rock. **LIVE: see the push SHA and the deploy's served-SHA gate in this batch's report.***
+
+**D-143 · 2026-08-10 — THE INERT IRON WEDGE WORKED. Atmosphere earning engagement, validated in the director's own play.**
+
+**THE REACTION WAS EXCITEMENT, THEN CONFUSION — and both were the design.** The rusted iron head from the Junk & Flavour Catalogue ([[D-131]]) does nothing mechanically: it yields `{}`, holds no note, moves no ladder, and answers the hundredth tap exactly as it answered the first. In the director's own playtest it produced real excitement on being found and real confusion on turning out to be inert. **That is the intended reaction, on content that is mechanically empty** — which is the whole claim the catalogue was built to test.
+
+**IT VALIDATES LAWS 65-69's REPRESENTATIVE APPROACH.** A family opens with one honest representative rather than a catalogue, and the representative earns the family. Six objects that do nothing bought a genuine emotional response — so atmosphere is load-bearing rather than decoration, and it earns engagement as hard as a mechanic does. Worth recording because the cheap conclusion from "the player was confused" is to make the object DO something, and doing so would spend exactly the thing that worked.
+
+**IT SHOULD SHAPE THE TONE OF WHAT FOLLOWS**, and it shaped [[D-144]]'s directly: a readout that says *"2.9 seconds faster than your first"* rather than a number is the same bet — that a survivor engages with a concrete, felt thing far harder than with a score.
+
+**Class: OPERATIVE** — the finding governs tone from here; its mechanism is the catalogue already shipped at [[D-131]] and unchanged by this entry.
+
+**D-142 · 2026-08-10 — PART 0 TRIAGE: the save question answered from the code, and the cave made genuinely solid.**
+
+**FRESH VERSUS CONTINUED SAVE — ANSWERED FROM EVIDENCE, AND THE EVIDENCE IS DETERMINISTIC.** The director's save is not in this repository and his device cannot be read from here, so the question was settled the only way that actually decides it: by what the two paths DO. `createInitialState` ships `backpack: false` — a fresh castaway has none and must make one ([[D-113]]). `migrateV18toV19` ships `backpack: old.tools?.backpack ?? true` — a pre-v19 save migrates in **already carrying one**, deliberately, because taking a tool out of a hand mid-run is the one thing a migration must never do.
+
+There is therefore **no path by which a fresh run produces a backpack**. A report of the survivor already having one identifies a CONTINUED, correctly-migrated save and nothing else. The two findings that turned on it are expected behaviour: **closed, no fix needed**, and the gate on the rest of the batch is discharged rather than assumed away. Three tests now lock the discriminator so the next person reads it instead of remembering it, and `schemaVersion` in Copy Debug Info settles any future instance in one look.
+
+**THE CAVE WAS GENUINELY NOT SOLID, AND THE NUMBER IS 1.94 METRES.** Walking a survivor in from each bearing and resolving collision every step — which is what the game does, and is not the same as sampling points — the collider that shipped gave: mouth **1.94 m** of centre, side **1.94 m**, side **1.94 m**, back 7.14 m. The bluff's base is 9.6 m across. So a survivor could walk in from either SIDE and stand **three metres inside solid rock**.
+
+**ONE CIRCLE COULD NEVER FIX IT.** Cover the mass and the player is walled out of the one place they are trying to reach — [[D-051]]'s unminable quarry in new geometry, and the reason the offset existed at all. Shrink it and the rock is a ghost. `ringObstacles` is a pure primitive — a wall of overlapping blocks with the mouth's sector left out — so the shape is provable without a renderer, and `ringIsContinuous` states the overlap as arithmetic so a retune cannot open a seam silently. After: side **5.54 m**, back 5.54 m, and the mouth still admits the survivor to the centre.
+
+**MY FIRST PROBE WAS WRONG AND SAID SO LOUDLY.** It SAMPLED points at each distance and asked whether `pushOut` moved them, which reported the new wall as letting everything through — a point dropped at the cave's centre is inside no block and is left alone. Teleporting is not walking, and a collision model only means anything against motion. The suite keeps the old collider so the defect stays reproducible rather than remembered.
+
+**THE BOULDER WORKS — checked, not assumed.** One node at (38, −34): 2 stone a swing, repeatable and inexhaustible, **5.5 s by hand against 3.0 s with a stone hammer**. It is a legibility item rather than a defect, and it carries a correction: **the hammer is not required, it is an accelerator.** The honest sentence is *"slow by hand, faster with a hammer, and never used up"* — see [[D-144]], which ships it.
+
+**Class: OPERATIVE** (mechanism: `ringObstacles`/`ringIsContinuous` in `src/brain/movement.ts` and the cave's wall in `src/body/entities.ts`; shipped in this batch).
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — purity (54 brain files), docs-integrity, tune-mirror, typecheck. **UNIT: ran. 1285/1285 across 67 files** — 8 new cave-wall checks including the old collider's defect reproduced as its own test, and 3 backpack-gate checks. **DEVICE: carried into [[D-144]]'s run**, where `READOUT 6` presses the survivor at the bluff's side on a real device and stops them at 4.77 m of centre. **LIVE: pushed as `99c692d`.***
+
 **D-141 · 2026-08-10 — DROP 3B(i): THE APPOINTMENT. The island's first deadline, and the storm's own clock extracted to run it.**
 
 **A NEW SITE, AND NOT THE WRECK.** The Wreck ([[D-124]]/[[D-125]]) is a permanent structure in open water, worked over and over as the tide shifts it. This is a forest crash on LAND, and it is the opposite kind of thing: it exists for a few days and then it does not. Nothing here touches `state.wreck`, its nodes or its instability — a test asserts that working the site moves neither. The only thing the two share is the material economy, which is the point: wreck-era metal, cable and glass are what falls out of the sky as well as out of the sea.

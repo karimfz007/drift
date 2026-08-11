@@ -143,6 +143,11 @@ import {
     boatSight,
     boatUnderstandingNote,
     boatWorkBlocker,
+    masteryDomainForNodeKind,
+    noticedAtWork,
+    readoutRows,
+    noticedOnSurfacing,
+    slowWorkNote,
     crashBlockedReason,
     crashGone,
     crashSighting,
@@ -319,6 +324,7 @@ export class Game {
     //  anywhere — read only via the settings panel's "Copy debug info" button, on request.
     private tapBreadcrumbs: TapBreadcrumb[] = [];
     private lastCuePlayed: string | null = null;
+    private lastReadoutSaid: string | null = null;
 
     private lastActivityAt = now();
     private lastFrameAt = now();
@@ -418,6 +424,11 @@ export class Game {
         //  inland. Without this the audible half was unwitnessable and only the visible
         //  half — which needs a camera tilt — could be checked at all.
         runtime.lastCue = () => this.lastCuePlayed;
+        //  DROP 6 — the last thing the READOUT said, read-only ([[D-075]]). A hint is the
+        //  right surface for it and the wrong witness: the standing-hint system legitimately
+        //  replaces it moments later, so a device check reading `hints().last` measures
+        //  whichever sentence happened to be most recent. This keeps the readout's own.
+        runtime.lastReadout = () => this.lastReadoutSaid;
         //  THE WHOLE TRAIL, not just the last word — read-only, per [[D-075]].
         //
         //  `lastTapOutcome` returns the newest breadcrumb, and a tap that never reached
@@ -753,6 +764,8 @@ export class Game {
             {
                 //  DROP 5 — derived once, in the brain. The panel re-derives nothing.
                 radio: radioPanelView(s),
+                //  DROP 6 — the same readings the world-first announcements use.
+                readout: readoutRows(s),
                 zones: view.zones.map((z) => ({ zone: z.zone, tools: z.tools, materials: z.materials })),
                 massKg: view.massKg,
                 bulk: view.bulk,
@@ -1851,6 +1864,20 @@ export class Game {
             const crossed = Math.floor(result.learned.techniqueAfter) > Math.floor(result.learned.techniqueBefore);
             if (crossed) this.floatText(`${DOMAIN_LABEL[result.learned.domain] ?? 'skill'} sharpens`);
         }
+        //  DROP 6 — THE READOUT, world first (Law 26). "Skill sharpens" says something HAPPENED
+        //  and nothing about WHAT; this says what the hands actually bought, in the seconds the
+        //  survivor has just felt, at the moment the work lands and before any panel is opened.
+        //  Silent until the gain clears `readoutNoticeableSeconds`, so the first few swings say
+        //  nothing and the one that has genuinely got easier says so.
+        const workDomain = masteryDomainForNodeKind(view.node.kind);
+        if (workDomain) {
+            const felt = noticedAtWork(session().state, workDomain, nodeHoldSeconds(session().state, view.node));
+            if (felt) { this.lastReadoutSaid = felt; this.showHint(felt); }
+        }
+        //  ...and a face that is SLOW ON PURPOSE says so, because a player cannot tell slow
+        //  from broken. Measured: 5.5 s by hand against 3.0 s with a hammer, 2 stone a swing,
+        //  never used up — so the sentence says accelerator, never requirement.
+        if (view.node.kind === 'boulder') { const note = slowWorkNote(session().state); this.lastReadoutSaid = note; this.showHint(note); }
         this.floatText(this.gainLabel(result));
         this.firstPickupToast(view.node.kind);
 
@@ -2038,6 +2065,10 @@ export class Game {
         session().persist(now());
         this.cues.play(CUES.pickup);
         this.explain('You break the surface and breathe.');
+        //  DROP 6 — what the lungs have become, said as the breath ends rather than found in
+        //  a panel later. Same grammar as the hands, same silence until it is worth saying.
+        const longer = noticedOnSurfacing(s);
+        if (longer) { this.lastReadoutSaid = longer; this.showHint(longer); }
         this.lastActivityAt = now();
     }
 

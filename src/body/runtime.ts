@@ -127,6 +127,7 @@ export const runtime = {
     //  have now done three times (C3 finding A9).
     lastTapOutcome: (() => null) as () => string | null,
     lastCue: (() => null) as () => string | null,
+    lastReadout: (() => null) as () => string | null,
     tapTrail: (() => []) as () => Array<{ tMs: number; screenX: number; screenY: number; outcome: string }>,
     //  Slice 1 feel-court: whether the last movement frame touched an obstacle, whether the
     //  dead-on deflection fired, and how many frames of each. A READ, not a driver — the
@@ -301,6 +302,7 @@ function installDebugHook(): void {
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
         lastCue: () => runtime.lastCue(),
+        lastReadout: () => runtime.lastReadout(),
         tapTrail: () => runtime.tapTrail(),
         slideReadout: () => runtime.slideReadout(),
         armPressTrace: (capacity?: number) => runtime.pressTrace.arm(capacity),

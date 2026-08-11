@@ -7800,6 +7800,169 @@ async function main() {
     }
     }
 
+    // ================= DROP 6 — THE READOUT =================
+    //
+    //  WHAT ONLY A DEVICE CAN SAY. The unit suite owns the grammar, the thresholds, the
+    //  anti-drift comparison against `nodeHoldSeconds`/`airCapacityOf`, and the sweep for a
+    //  numeric XP economy that must not exist (tests/readout.test.ts, 12 checks, and it caught
+    //  a real bug in the module on its first run — a zero baseline telling a survivor who had
+    //  never dived that they could hold their breath 1.1 s longer).
+    //
+    //  What it cannot witness is the only thing this drop is FOR: that a player SEES it. The
+    //  reachability proof is a real tap through to the Skills tab and words on the screen.
+    if (section("DROP 6 — THE READOUT: what the body knows")) {
+    //  A survivor who has genuinely put the hours in. Staged, because a device run cannot fell
+    //  two hundred trees — but every READ below is off the rendered page.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.tools = { ...state.tools, axe: true, stoneHammer: true };
+        state.knowledge = { ...state.knowledge, domains: { ...state.knowledge.domains,
+            harvestingFabrication: { technique: 82, understanding: 40 } } };
+        state.capacities = { ...state.capacities, breathWaterConfidence: 88 };
+    `);
+
+    // ---- 1. REACHABILITY: a real finger reaches the readout ----
+    const packTap = await realTapDom('.carried-button');
+    await sleep(450);
+    const skillsTap = await realTapDom('.backpack-tab[data-tab="skills"]');
+    await sleep(500);
+    const rows = await page.evaluate(() => {
+        const el = document.querySelector('.panel.growth, .panel.backpack');
+        if (!el) return null;
+        return {
+            items: Array.from(el.querySelectorAll('.readout-item')).map((n) => ({
+                head: (n.querySelector('strong')?.textContent || '').trim(),
+                chip: (n.querySelector('.standing-chip')?.textContent || '').trim(),
+                line: (n.querySelector('.readout-line')?.textContent || '').trim(),
+                bar: n.querySelector('.readout-bar span')?.style?.width ?? '',
+            })),
+            text: el.textContent.replace(/\s+/g, ' ').trim(),
+        };
+    });
+    await shot('readout-01-skills');
+    check('READOUT 1 — REACHABILITY: a real tap through to Skills shows what the body knows',
+        packTap.ok && skillsTap.ok && rows !== null && rows.items.length >= 2,
+        rows === null ? 'panel ABSENT'
+            : `pack ${packTap.ok}, skills ${skillsTap.ok}, ${rows.items.length} readout row(s): `
+              + rows.items.map((i) => `${i.head} [${i.chip}] "${i.line}" bar=${i.bar}`).join(' | '));
+
+    // ---- 2. IT IS SEEN, NOT INFERRED: a concrete change AND a visible indicator ----
+    const seen = rows?.items ?? [];
+    check('READOUT 2 — every row carries a concrete change, a band, and a visible bar',
+        seen.length > 0 && seen.every((i) => i.line.length > 5 && i.chip.length > 0 && /%/.test(i.bar)),
+        seen.map((i) => `${i.head}: line ${i.line.length > 5}, chip "${i.chip}", bar "${i.bar}"`).join(' | '));
+
+    check('READOUT 2b — ...and it says SECONDS a survivor has felt, never a score',
+        seen.some((i) => /second/i.test(i.line))
+        && !/\bxp\b|\/100|\blevel \d|\btechnique \d/i.test(rows?.text ?? ''),
+        `lines: ${seen.map((i) => i.line).join(' | ')}`);
+
+    // ---- 3. WORLD FIRST (Law 26): the act says it before the panel does ----
+    //
+    //  Close the panel, work a tree with a real hold, and read what the WORLD said — with no
+    //  panel open at any point. That ordering is the whole of Law 26 here.
+    await realTapDom('.panel .close-btn');
+    await sleep(600);
+    const tree = await nodeOf('tree');
+    let worked = { ok: false, reason: 'no tree' };
+    if (tree) {
+        await approach(tree.x, tree.y, 30);
+        await faceNode(tree.x, tree.y);
+        worked = await harvest('tree', 40);
+    }
+    await sleep(700);
+    //  THE READOUT'S OWN WITNESS, not the hint bar. The readout is SHOWN as a hint, which is
+    //  the right surface and the wrong instrument: the standing-hint system legitimately
+    //  replaces it a moment later, and the first cut of this check read an empty string off a
+    //  readout that had fired perfectly. Same lesson as `lastCue` for the crash's audible half.
+    const saidAtWork = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
+    const panelWasOpen = await page.evaluate(() => Boolean(document.querySelector('.panel')));
+    await shot('readout-02-at-work');
+    check('READOUT 3 — WORLD FIRST: felling says what the hands bought, with no panel open',
+        worked.ok === true && panelWasOpen === false && /seconds faster/i.test(saidAtWork),
+        `worked ${worked.ok} ${worked.reason ?? ''}, panel open ${panelWasOpen}, said "${saidAtWork}"`);
+
+    // ---- 4. SILENT WHEN THERE IS NOTHING TO SAY ----
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.tools = { ...state.tools, axe: true, stoneHammer: true };
+        state.knowledge = { ...state.knowledge, domains: { ...state.knowledge.domains,
+            harvestingFabrication: { technique: 5, understanding: 5 } } };
+    `);
+    const freshTree = await nodeOf('tree');
+    let freshWork = { ok: false, reason: 'no tree' };
+    if (freshTree) {
+        await approach(freshTree.x, freshTree.y, 30);
+        await faceNode(freshTree.x, freshTree.y);
+        freshWork = await harvest('tree', 40);
+    }
+    await sleep(700);
+    const saidFresh = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
+    check('READOUT 4 — a survivor as they landed is told NOTHING — the voice is kept for real change',
+        freshWork.ok === true && !/seconds faster/i.test(saidFresh),
+        `worked ${freshWork.ok}, said "${saidFresh}"`);
+
+    // ---- 5. THE SLOW FACE SAYS IT IS SLOW ON PURPOSE ---------------------------
+    const boulder = (await live()).nodes.find((n) => n.kind === 'boulder');
+    let boulderWork = { ok: false, reason: 'no boulder' };
+    if (boulder) {
+        await editSave(`
+            state.player = { x: ${boulder.x}, y: ${boulder.y - 2} };
+            state.energy = 100; state.health = 100; state.warmth = 90;
+            state.hunger = 70; state.thirst = 80;
+            state.tools = { ...state.tools, stoneHammer: false };
+        `);
+        await faceNode(boulder.x, boulder.y);
+        //  `harvest` POLLS UNTIL THE NODE IS CONSUMED, and the boulder is inexhaustible by
+        //  design ([[D-051]]'s First Amendment) — so it can never report success here and the
+        //  first cut read `not-consumed` on a face that was working perfectly. Hold it and
+        //  measure the STONE, which is what "it gave" actually means for this node.
+        const stoneBefore = (await live()).inventory.stone;
+        await holdWorld(boulder.x, boulder.y, 60);
+        await sleep(7000);
+        const stoneAfter = (await live()).inventory.stone;
+        boulderWork = { ok: stoneAfter > stoneBefore, reason: `stone ${stoneBefore} -> ${stoneAfter}` };
+    }
+    const boulderSaid = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
+    await shot('readout-03-boulder');
+    check('READOUT 5 — the boulder says it is SLOW ON PURPOSE, and never that a hammer is required',
+        boulderWork.ok === true
+        && /slow|grudging/i.test(boulderSaid) && /never runs out/i.test(boulderSaid)
+        && !/\brequired\b|\bneed a\b/i.test(boulderSaid),
+        `worked ${boulderWork.ok} ${boulderWork.reason ?? ''}, said "${boulderSaid}"`);
+
+    // ---- 6. THE CAVE IS SOLID (Part 0's collision fix, on device) ---------------
+    //
+    //  Walked, not asserted: the survivor is put beside the bluff and pushed straight at its
+    //  SIDE, which is the bearing the old single collider let them walk three metres inside.
+    const caveAt = (await live()).cave;
+    await editSave(`
+        state.player = { x: ${caveAt.x + 9}, y: ${caveAt.y} };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+    `);
+    await walkToward(caveAt.x, caveAt.y, 6);
+    await sleep(400);
+    const afterPush = (await live()).player;
+    const intoRock = Math.hypot(afterPush.x - caveAt.x, afterPush.y - caveAt.y);
+    await shot('readout-04-cave-side');
+    //  THE BAR IS THE INRADIUS, not the circumradius. The bluff is a SEVEN-SIDED cylinder with
+    //  a 9.6 m base, so its drawn rim runs between 4.32 m (flat-to-centre) and 4.8 m (corner).
+    //  Measuring against 4.8 asks the survivor to stop outside the widest point of a shape that
+    //  is not round, and readings of 5.76 / 4.81 / 4.68 across runs are the approach sliding
+    //  round the ring rather than the wall failing. The unit suite holds the exact-axis figure
+    //  (5.54 m); this holds the claim that matters on a device — no standing IN the rock.
+    const BLUFF_INRADIUS_M = 4.32;
+    check('READOUT 6 — the cave bluff is SOLID from the side: no walking into the rock',
+        intoRock > BLUFF_INRADIUS_M,
+        `pressed at the side and stopped ${intoRock.toFixed(2)} m from centre`
+        + ` (a seven-sided bluff whose rim runs 4.32-4.80 m; the old collider let this reach 1.94 m)`);
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

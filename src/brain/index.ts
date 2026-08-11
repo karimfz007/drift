@@ -20,6 +20,7 @@ export * from './upkeep';
 export * from './storm';
 export * from './radio';
 export * from './crash';
+export * from './readout';
 export * from './staged';
 export * from './boat';
 export * from './illness';

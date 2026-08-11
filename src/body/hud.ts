@@ -7,7 +7,7 @@
  * the interface names them and gets out of the way.
  */
 
-import { formatClock, levelProgress, type Food, type MorningReport, type RadioPanelView, type Skills } from '../brain';
+import { formatClock, levelProgress, type Food, type MorningReport, type RadioPanelView, type ReadoutRow, type Skills } from '../brain';
 
 /** Player-facing names for the shipped skills. */
 const SKILL_LABEL: Record<string, string> = { woodcutting: 'Woodcutting', foraging: 'Foraging' };
@@ -864,6 +864,8 @@ const MATERIAL_LABEL: Record<string, string> = {
 };
 
 export interface LoadoutPanelView {
+    /** DROP 6 — what the body knows, derived by `readoutRows`. */
+    readout?: ReadoutRow[];
     /** DROP 5 — the receiver, derived by `radioPanelView`. Absent for an older caller.
      *  Note the shape has no send half: see `RadioPanelView`. */
     radio?: RadioPanelView;
@@ -1163,7 +1165,7 @@ export function showLoadout(
         <div class="zones">${zoneRows}</div>`;
 
     const activeBody = tab === 'vitals' ? vitalsBody(view.vitals, view.vitalsExtra)
-        : tab === 'skills' ? growthBody(view.skills, view.playerSkills)
+        : tab === 'skills' ? growthBody(view.skills, view.playerSkills, view.readout)
         : inventoryBody;
 
     el.innerHTML = `${tabBar(tab)}${activeBody}
@@ -1288,7 +1290,25 @@ export function showGrowthCard(
  * The Skills tab's body, extracted so the Backpack hub renders exactly what the standalone
  * card did — the same markup, not a second copy that drifts from it.
  */
-function growthBody(report: GrowthReportView, skills?: Skills): string {
+function growthBody(report: GrowthReportView, skills?: Skills, readout?: ReadoutRow[]): string {
+    //  NOT `growth-item`. These rows carried it in the first cut and the full sweep caught
+    //  it immediately: the harness counts `.growth-item` to assert §12's EIGHT capacities,
+    //  and three readout rows made it eleven. [[D-113]] recorded this exact defect once
+    //  already — skill rows reusing the capacity class — so this is the second time the
+    //  class has been borrowed and the second time a count caught it. Its own class only.
+    //  DROP 6 — WHAT THE BODY KNOWS, at the top of the tab because it is the answer to the
+    //  question the tab is opened to ask. Concrete change, then a band, then a bar — and
+    //  every one of them read from `readoutRows`, the SAME function the world-first
+    //  announcements use. Six surfaces each deriving their own version is how the screen
+    //  comes to disagree with the hands, which is the failure this pass exists to avoid.
+    const readoutRowsHtml = !readout?.length ? '' : `
+        <div class="build-list readout-list">${readout.map((r) => `
+            <div class="readout-item standing-${r.reading.standing.replace(/\s+/g, '-')}">
+                <div class="build-head"><strong>${r.label}</strong><span class="standing-chip">${r.reading.standing}</span></div>
+                <p class="subtitle readout-line">${r.reading.sentence}</p>
+                <div class="readout-bar"><span style="width:${Math.round(r.reading.progress * 100)}%"></span></div>
+            </div>`).join('')}</div>`;
+
     const capacityRows = report.capacities.map((c) => `
         <div class="growth-item standing-${c.standing.replace(/\s+/g, '-')}">
             <div class="build-head"><strong>${c.label}</strong><span class="standing-chip">${c.standing}</span></div>
@@ -1330,6 +1350,7 @@ function growthBody(report: GrowthReportView, skills?: Skills): string {
 
     return `
         <h2>What the island has done to you</h2>
+        ${readoutRowsHtml}
         <p class="subtitle growth-summary">${report.summary}</p>
         <div class="build-list">
             ${skillRows ? `<div class="growth-divider">What you are practising</div>${skillRows}<div class="growth-divider">What it has made of you</div>` : ''}
