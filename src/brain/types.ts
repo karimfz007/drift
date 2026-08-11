@@ -448,7 +448,7 @@ export interface LoadoutState {
 }
 
 /** Every tool that can occupy a physical access position (v0_7 §9, D-063). */
-export type ToolId = 'axe' | 'stoneHammer' | 'torch' | 'flask';
+export type ToolId = 'axe' | 'spear' | 'stoneHammer' | 'torch' | 'flask';
 
 /**
  * A Blueprint (v0_7 §10.5/§10.6, D-063): the NAMED PLAN a successful prototype becomes.

@@ -1916,6 +1916,10 @@ export const TUNE = {
      *  is noise against a 1 kg flask). */
     toolMassKg: {
         axe: 1.8,
+        //  P0-4 — the spear had no mass because it had never been a tool. A shaft plus a
+        //  knapped head is lighter than the axe and longer than everything else: cheap to
+        //  carry, and the reason a survivor keeps one on their back rather than at camp.
+        spear: 1.2,
         flask: 0.9,
         stoneHammer: 1.5,
         torch: 0.7
@@ -1998,7 +2002,10 @@ export const TUNE = {
         medicine: 0.3
     },
     /** [TUNE] §9 — bulk per tool, same units. */
-    toolBulk: { axe: 5, flask: 1.5, stoneHammer: 4, torch: 2.5 },
+    //  P0-4 — the spear is the BULKIEST thing a survivor carries and among the lightest.
+    //  That asymmetry is the point: a two-metre shaft is awkward on a full pack long
+    //  before it is heavy, which is exactly why it lives in a hand rather than in the bag.
+    toolBulk: { axe: 5, spear: 6, flask: 1.5, stoneHammer: 4, torch: 2.5 },
     /** [TUNE] §9 — a pocket is for SMALL items only: anything bulkier than this cannot be
      *  assigned to one. The axe and hammer are deliberately above it; the flask and a
      *  knapped blade are deliberately below. */

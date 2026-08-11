@@ -38,12 +38,19 @@ export const ACCESS_ZONES: AccessZone[] = ['activeHand', 'supportHand', 'belt', 
 
 /** Every tool that can occupy a physical position. Materials live in the backpack as
  *  stacks; tools are the things you hold. */
-export const TOOL_IDS: ToolId[] = ['axe', 'stoneHammer', 'torch', 'flask'];
+//  P0-4 — THE SPEAR WAS MISSING FROM THIS LIST, and this list is the only thing that reaches
+//  the pack readout and the equip path. `state.tools.spear` has existed since Drop 1 and kills
+//  a boar with it, so the tool was real, owned and usable — and invisible, because `ownedTools`
+//  filters TOOL_IDS and TOOL_IDS did not mention it. [[D-114]]'s defect class in its purest
+//  form: the field exists, the verb exists, and the one line reaching them does not.
+export const TOOL_IDS: ToolId[] = ['axe', 'spear', 'stoneHammer', 'torch', 'flask'];
 
-/** The axe and the stone hammer are swung with both hands — holding either leaves the
- *  support hand unavailable, which is the whole reason `supportHand` is modelled at all. */
+/** The axe, the spear and the stone hammer are worked with both hands — holding any of them
+ *  leaves the support hand unavailable, which is the whole reason `supportHand` is modelled at
+ *  all. The spear joins them because a thrust is a two-handed act: Drop 1's own answer to a
+ *  charge is a braced thrust, not a one-handed jab. */
 export function isTwoHanded(tool: ToolId): boolean {
-    return tool === 'axe' || tool === 'stoneHammer';
+    return tool === 'axe' || tool === 'spear' || tool === 'stoneHammer';
 }
 
 export function toolBulk(tool: ToolId): number {
@@ -61,6 +68,7 @@ export function fitsInPocket(tool: ToolId): boolean {
 export function ownsTool(state: GameState, tool: ToolId): boolean {
     switch (tool) {
         case 'axe': return state.tools.axe;
+        case 'spear': return state.tools.spear;
         case 'stoneHammer': return state.tools.stoneHammer;
         case 'flask': return state.tools.flask;
         //  The torch is the interesting one: it is CONSUMED, not merely put down. When it

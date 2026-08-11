@@ -8,7 +8,7 @@
 
 import { TUNE } from '../data/tune';
 import { realSecondsFromGameHours } from './clock';
-import type { CrashStage } from './types';
+import type { CrashStage, IllnessStage } from './types';
 import { recordTrying } from './knowledge';
 import { advanceListening, clearListeningOnAbsence } from './radio';
 import { advanceCrash } from './crash';
@@ -17,7 +17,7 @@ import { reconcile, type ReconcileOutcome } from './reconcile';
 import { canSleep, createInitialState, isFireLit, isShelteredSleep, updateCavePresence } from './state';
 import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
 import { injuriesFromCharge, stepInjuries } from './injury';
-import { onsetFrom, stepIllness } from './illness';
+import { illnessStage, onsetFrom, stepIllness } from './illness';
 import { thermalStrain } from './thermal';
 import { pruneDropped } from './dropped';
 import { developFromPaddling, developFromSwimming, isAtWreck, waterCostsFor } from './water';
@@ -84,6 +84,8 @@ function afterAbsence(state: GameState): void {
 export class Session {
     private lastCaught: string | null = null;
     private lastCrashStage: CrashStage | null = null;
+    private lastIllnessStage: IllnessStage | null = null;
+    private announcedIllnessStage: IllnessStage | null = null;
     private lastWentFlat = false;
 
     constructor(
@@ -239,6 +241,13 @@ export class Session {
         //  appointment you were not there for would be a DEADLINE MISSED FOR NOT PLAYING,
         //  which is [[D-011]]'s offline death in its most plausible disguise.
         this.advanceAppointment(outcome.result.elapsedGameHours);
+
+        //  P0-6 — THE ILLNESS CROSSING, watched centrally rather than per cause. Drinking
+        //  happens in a VERB and not on the tick, so a hook beside the chill and exhaustion
+        //  terms would have missed the one the director actually reported. Comparing the
+        //  stage against the last one ANNOUNCED catches every cause and every path, and
+        //  announces once per crossing rather than once per tick.
+        this.watchIllness();
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -621,6 +630,29 @@ export class Session {
     private advanceAppointment(gameHours: number): void {
         const step = advanceCrash(this.state, gameHours);
         if (step.changed) this.lastCrashStage = step.stage;
+    }
+
+    /**
+     * P0-6 — the illness stage the body just crossed INTO, consumed by reading.
+     *
+     * Announced on a crossing only, so a survivor is told once when their stomach turns over
+     * rather than every tick for the rest of the day — the same rule that keeps `holding`
+     * silent in the dive and `standing` quiet in the appointment.
+     */
+    takeIllnessStage(): IllnessStage | null {
+        const stage = this.lastIllnessStage;
+        this.lastIllnessStage = null;
+        return stage;
+    }
+
+    /** Notice when the body crosses into a new illness stage, whatever put it there. */
+    private watchIllness(): void {
+        const stage = illnessStage(this.state.illness);
+        if (stage === this.announcedIllnessStage) return;
+        this.announcedIllnessStage = stage;
+        //  `well` is a crossing too — coming right is worth saying — but it has no symptom,
+        //  so the body reads `illnessSymptom` and stays quiet when there is nothing to feel.
+        this.lastIllnessStage = stage;
     }
 
     /** The stage the appointment just crossed into, consumed by reading. */
