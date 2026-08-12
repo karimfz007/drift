@@ -113,6 +113,8 @@ export class PlayerView {
     private axe: Mesh;
     private axeShown = false;
     private axeGradeMat: StandardMaterial;
+    private spear: Mesh;
+    private spearShown = false;
     private torchHaft: Mesh;
     private torchTip: Mesh;
     private torchFlame: ParticleSystem;
@@ -159,6 +161,33 @@ export class PlayerView {
         this.axe.position.set(-0.3, -0.1, -0.3);
         this.axe.rotation.set(0.3, 0, Math.PI / 2.6);
         this.axe.setEnabled(false);
+
+        //  THE SPEAR — P0-B, AND THE TENTH INSTANCE OF THE ZERO-CALLER CLASS.
+        //
+        //  P0-4 (D-147) put the spear in `TOOL_IDS`, on the Vitals tab, and into a hand slot,
+        //  and its check passed 17/17 — because the check witnessed the LIST and the PANEL. The
+        //  spear has had a recipe, a craft function, a verb, a Build row and a name in the
+        //  loadout since Drop 1, and it has never had a single line of render code. Owned,
+        //  equipped, invisible. The panel said "spear:right" over a character holding nothing.
+        //
+        //  So this is the surface that was missing, built to the rule the axe set: no equip
+        //  step, owning it is wearing it. Across the BACK on the opposite diagonal to the axe's
+        //  hip, because a spear is two-handed (`isTwoHanded('spear')`) and a two-handed shaft on
+        //  a hip reads as a walking stick. Shaft plus a knapped point, which is exactly what
+        //  the recipe says it is — a shaft and a knapped edge, lashed tight.
+        const shaft = CreateCylinder('spearShaft', { height: 1.55, diameter: 0.04, tessellation: 6 }, scene);
+        shaft.material = flat(scene, 'spearShaftMat', PALETTE.deadfall);
+        shaft.isPickable = false;
+        const point = CreateCylinder('spearPoint', { height: 0.2, diameterTop: 0.005, diameterBottom: 0.06, tessellation: 5 }, scene);
+        point.material = flat(scene, 'spearPointMat', PALETTE.rock);
+        point.parent = shaft;
+        point.position.set(0, 0.86, 0);
+        point.isPickable = false;
+        this.spear = shaft;
+        this.spear.parent = this.root;
+        this.spear.position.set(0.13, 0.02, -0.34);
+        this.spear.rotation.set(0.24, 0, -Math.PI / 5);
+        this.spear.setEnabled(false);
 
         //  The torch (FIX-5, Living Island Track A): same "no equip step, owning it is
         //  carrying it" rule the axe already set, on the opposite hip so the two never
@@ -247,6 +276,13 @@ export class PlayerView {
         this.axeShown = hasAxe;
         this.axe.setEnabled(hasAxe);
         if (hasAxe) this.axeGradeMat.diffuseColor = colour(GRADE_COLOR[grade]);
+    }
+
+    /** Show or hide the carried spear (P0-B). Same gate as the axe: owning it is wearing it. */
+    syncSpear(hasSpear: boolean): void {
+        if (hasSpear === this.spearShown) return;
+        this.spearShown = hasSpear;
+        this.spear.setEnabled(hasSpear);
     }
 
     /** Show/hide the carried torch and its flame+light, following the tip each frame while
@@ -1226,7 +1262,23 @@ export class CaveView {
         //  The bluff: a broad, squat mass. Deliberately not a sphere — a rounded hill reads as
         //  terrain, and this has to read as rock you could walk into.
         this.root = CreateCylinder('caveBluff', { height: 7.2, diameterTop: 6.4, diameterBottom: 9.6, tessellation: 7 }, scene);
-        this.root.material = flat(scene, 'caveRockMat', PALETTE.caveRock);
+        //  P0-F, SECOND ATTEMPT — AND D-142 FIXED THE OTHER HALF.
+        //
+        //  D-142 closed this from OUTSIDE: the ring of obstacles below stopped a survivor
+        //  walking in through the sides of a solid bluff. It never touched the material, and
+        //  the material was the half the Director was actually reporting. A Babylon mesh culls
+        //  back faces by default, so a cylinder is a one-way surface: stand inside it — which
+        //  the mouth exists to let you do — and every wall around you is simply not drawn. The
+        //  island shows straight through the rock. Nothing was transparent; the inside faces
+        //  were never rendered at all, which looks identical and has a different cause.
+        //
+        //  Culling off draws both sides. It is the same fix `island.ts` already applies to the
+        //  terrain and `entities.ts` to the fire ring, for the same reason. Witnessed from
+        //  INSIDE this time — a camera reading taken standing in the mouth, not a collision
+        //  probe taken from the beach.
+        const rockMat = flat(scene, 'caveRockMat', PALETTE.caveRock);
+        rockMat.backFaceCulling = false;
+        this.root.material = rockMat;
         this.root.isPickable = true;
         this.root.metadata = { cave: true };
 

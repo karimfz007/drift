@@ -1750,6 +1750,16 @@ export const TUNE = {
      *  numbers only in practice — one tap with wood in hand is one repair. */
     repairDurabilityPerWood: 15,
 
+    // ---- Fire sound falloff (P0-G) ----------------------------------------
+    /** [TUNE] P0-G — within this many metres of the fire, the loop plays at full authored
+     *  volume. Roughly the firelight's own useful circle: if you can warm your hands at it,
+     *  you hear it properly. */
+    fireSoundFullAtM: 6,
+    /** [TUNE] P0-G — beyond this, the fire is inaudible. It was audible from ANYWHERE before,
+     *  at a fixed gain, which is why a fire on the far beach sat on top of the whole mix.
+     *  Between the two radii the factor falls off linearly. */
+    fireSoundSilentAtM: 34,
+
     // ---- Renewability law (D-051) — no resource is globally exhaustible ----
     /** [TUNE] D-051 — game hours for a spent node of each kind to regrow. First-pass
      *  numbers; revisit at the next TUNE feedback pass. Ordered fast-to-slow. */
@@ -2118,3 +2128,17 @@ export const gameHoursPerRealSecond = 1 / realSecondsPerGameHour;
 
 /** Real seconds an absence must reach before it earns a morning report. */
 export const morningReportMinRealSeconds = TUNE.morningReportMinRealMinutes * 60;
+
+/**
+ * How loud a fire is from `metres` away, 0..1 (P0-G).
+ *
+ * Pure, and here rather than in `game.ts`, because the device bench CANNOT witness this: audio
+ * never decodes headless, so the gain node does not exist and reading it returns null forever.
+ * The arithmetic is provable in a unit test; the WIRING is witnessed on device by the factor the
+ * game last handed the mixer. Splitting the claim is the only honest way to cover both halves.
+ */
+export function fireLoudnessAt(metres: number): number {
+    if (metres <= TUNE.fireSoundFullAtM) return 1;
+    if (metres >= TUNE.fireSoundSilentAtM) return 0;
+    return 1 - (metres - TUNE.fireSoundFullAtM) / (TUNE.fireSoundSilentAtM - TUNE.fireSoundFullAtM);
+}

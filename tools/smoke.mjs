@@ -8325,6 +8325,257 @@ async function main() {
         `the injuries row reads: "${woundRow?.text}"`);
     }
 
+
+    // ============ DEVICE VERDICT ON ae0f62d — the surfaces, not the lists ============
+    //
+    //  EVERY ITEM HERE FAILED BECAUSE A CHECK WATCHED THE WRONG THING. P0-4's spear check
+    //  passed 17/17 with the spear invisible: it witnessed `TOOL_IDS` and a Build row, and the
+    //  spear had no mesh at all. So nothing in this section asks the brain whether something is
+    //  true — it asks the MESH whether it is drawn, the MATERIAL whether it has an inside, and
+    //  the BUTTON whether it is on screen.
+    if (section("DEVICE VERDICT ae0f62d — the held spear, the cave's inside, the silent tap")) {
+
+    // ---- P0-B: THE SPEAR IS DRAWN ON THE BODY --------------------------------
+    //
+    //  The tenth instance of the zero-caller class and the first found INSIDE the harness.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.tools = { ...state.tools, spear: false, backpack: true };
+    `);
+    const spearBefore = await page.evaluate(() => window.__drift.meshInfo?.('spearShaft') ?? null);
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.tools = { ...state.tools, spear: true, backpack: true };
+    `);
+    await sleep(900);
+    const spearAfter = await page.evaluate(() => window.__drift.meshInfo?.('spearShaft') ?? null);
+    const spearPoint = await page.evaluate(() => window.__drift.meshInfo?.('spearPoint') ?? null);
+    const spearOnScreen = await page.evaluate(() => window.__drift.screenOfMesh?.('spearShaft') ?? null);
+    await shot('verdict-01-spear');
+    check('P0-B — REACHABILITY: a survivor who owns a spear is DRAWN holding one',
+        spearAfter !== null && spearAfter.enabled === true,
+        `owned:false -> ${spearBefore === null ? 'no such mesh' : 'enabled ' + spearBefore.enabled};`
+        + ` owned:true -> ${spearAfter === null ? 'NO SUCH MESH — the spear still has no render' : 'enabled ' + spearAfter.enabled}`);
+
+    check('P0-B — ...and it is a shaft AND a knapped point, which is what the recipe says it is',
+        spearPoint !== null && spearPoint.enabled === true,
+        `spearPoint ${spearPoint === null ? 'missing' : 'enabled ' + spearPoint.enabled}`);
+
+    //  BOUND-CHECKED, because the first cut was not and stayed GREEN with the render planted
+    //  out: the mesh is built in the constructor either way, so `screenOfMesh` still returned a
+    //  finite point — at y = -35, thirty-five pixels above the top of the screen. "Finite" is
+    //  not "in frame", and a check that cannot tell those apart is the vacuous kind this whole
+    //  section exists to replace.
+    const vpSpear = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+    const spearInFrame = spearOnScreen !== null
+        && spearOnScreen.x > 0 && spearOnScreen.x < vpSpear.w
+        && spearOnScreen.y > 0 && spearOnScreen.y < vpSpear.h;
+    check('P0-B — ...and it projects INSIDE the viewport, so it is genuinely on screen',
+        spearInFrame,
+        `screenOfMesh(spearShaft) = ${JSON.stringify(spearOnScreen)} in ${vpSpear.w}x${vpSpear.h}`);
+
+    check('P0-B — ...and NOT drawn on a survivor who does not own one (the other half of the gate)',
+        spearBefore === null || spearBefore.enabled === false,
+        `unowned -> ${spearBefore === null ? 'no mesh yet' : 'enabled ' + spearBefore.enabled}`);
+
+    // ---- P0-F: THE CAVE HAS AN INSIDE ---------------------------------------
+    //
+    //  D-142 proved the collision from OUTSIDE and called the defect closed. The Director was
+    //  reporting the material: a culled cylinder is a one-way wall, and standing in it you see
+    //  the island through the rock. Witnessed from INSIDE this time — the camera reading is
+    //  taken with the survivor actually in the mouth.
+    const caveAt = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { x: s.cave.x, y: s.cave.y };
+    });
+    await editSave(`
+        state.player = { x: ${caveAt.x}, y: ${caveAt.y} };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.cave = { ...state.cave, found: true };
+    `);
+    await sleep(900);
+    const inside = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const cam = window.__drift.cameraPosition();
+        return {
+            fromCaveM: Math.hypot(s.player.x - s.cave.x, s.player.y - s.cave.y),
+            camFromCaveM: Math.hypot(cam.x - s.cave.x, cam.z - s.cave.y),
+            bluff: window.__drift.meshInfo?.('caveBluff') ?? null,
+            mouth: window.__drift.meshInfo?.('caveMouth') ?? null,
+        };
+    });
+    await shot('verdict-02-cave-inside');
+    check('P0-F — the survivor is genuinely INSIDE the bluff for this reading, not beside it',
+        inside.fromCaveM < 3,
+        `survivor ${inside.fromCaveM.toFixed(2)} m from the cave centre, camera ${inside.camFromCaveM.toFixed(2)} m`);
+
+    check('P0-F — REACHABILITY: from inside, the rock has inner faces to see — it is two-sided',
+        inside.bluff !== null && inside.bluff.twoSided === true,
+        `caveBluff twoSided ${inside.bluff === null ? 'no mesh' : inside.bluff.twoSided}`
+        + ` (false or null means every wall around the survivor is culled and undrawn)`);
+
+    // ---- P0-1: A BARE-GROUND TAP IS NOT SILENT ------------------------------
+    //
+    //  The Director's log opens with EIGHT of these and the counter read zero for all eight,
+    //  because `failedInteractionTaps` only counts `explain()`. Nothing here reads that number.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.trace = { ...state.trace, groundTaps: 0 };
+    `);
+    await sleep(700);
+    const beforeGround = await page.evaluate(() => ({
+        groundTaps: window.__drift.state().trace.groundTaps,
+        facing: window.__drift.meshInfo('player')?.rotY ?? null,
+    }));
+    //  Bare sand a short step from the survivor. NOT `tapWorld` at a distance: that helper
+    //  returns true whenever `screenOf` yields any point at all, including one off the
+    //  viewport, and an off-screen touch dispatches no pointer event — the vacuous true the
+    //  helper's own comment warns about, and the first cut of this check walked straight into
+    //  it (trail [], dispatched true). The point is projected, BOUND-CHECKED, then tapped, and
+    //  the coordinates go in the detail line so this can never be ambiguous again.
+    const groundPt = await screenOf(-6, 91);
+    const vp = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+    const onScreen = Boolean(groundPt) && groundPt.x > 0 && groundPt.y > 0 && groundPt.x < vp.w && groundPt.y < vp.h;
+    if (onScreen) await tapAt(groundPt.x, groundPt.y, 55);
+    const groundTap = onScreen;
+    await sleep(700);
+    const afterGround = await page.evaluate(() => {
+        const trail = window.__drift.tapTrail();
+        return {
+            groundTaps: window.__drift.state().trace.groundTaps,
+            lastOutcome: window.__drift.lastTapOutcome?.() ?? null,
+            trail: trail.slice(-1).map((t) => t.outcome),
+            facing: window.__drift.meshInfo('player')?.rotY ?? null,
+        };
+    });
+    await shot('verdict-03-ground-tap');
+    check('P0-1 — the tap really did land on bare ground (the case, established)',
+        groundTap && afterGround.trail[0] === 'empty-ground',
+        `point ${groundPt ? groundPt.x.toFixed(0) + ',' + groundPt.y.toFixed(0) : 'none'} in ${vp.w}x${vp.h},`
+        + ` on-screen ${onScreen}, trail [${afterGround.trail.join(', ')}], outcome ${afterGround.lastOutcome}`);
+
+    check('P0-1 — REACHABILITY: a bare-ground tap is now COUNTED, where eight of them read zero',
+        afterGround.groundTaps === beforeGround.groundTaps + 1,
+        `trace.groundTaps ${beforeGround.groundTaps} -> ${afterGround.groundTaps}`);
+
+    //  WITNESSED ON THE BODY, NOT ON A CUE HOOK. The first cut asked `lastCue()`, which is
+    //  assigned in exactly ONE place in the whole game — the boar sighting — so it can never
+    //  report anything else, and the check was red against a working fix. That is the same
+    //  mistake as P0-4's spear check in the same session, made by me, in the check written to
+    //  catch it. `meshInfo('player').rotY` is the DRAWN heading, and audio decodes to nothing
+    //  headless anyway, so the visible half is the only honest witness here.
+    const turned = beforeGround.facing !== null && afterGround.facing !== null
+        && Math.abs(afterGround.facing - beforeGround.facing) > 0.05;
+    check('P0-1 — ...and it ANSWERS: the survivor turns to look where they were told',
+        turned,
+        `drawn facing ${beforeGround.facing === null ? 'null' : beforeGround.facing.toFixed(3)}`
+        + ` -> ${afterGround.facing === null ? 'null' : afterGround.facing.toFixed(3)} rad`
+        + ` (unchanged means the tap was still silent)`);
+
+    // ---- P0-A: THE FIRE BUTTON IS NOT OFFERED TO A SURVIVOR WHO CANNOT BUILD ONE ----
+    //
+    //  Director's log 1: clock 0.34 h, no deaths, msToFireLit null — and the button was there.
+    //  The brain said no the whole time; the HUD asked a different question.
+    //  WARMTH PINNED BELOW THE COLD THRESHOLD IN BOTH FIXTURES, and that is not decoration.
+    //  The torch route's need is `isNight || warmth < warmthLowThreshold`, so a warm survivor in
+    //  daylight is not offered fire NO MATTER how much wood they carry — Law 113 working exactly
+    //  as written. The first cut left warmth at 90 and passed standalone (a fresh run opens at
+    //  night) and failed in the full sweep hours later, which would have read as the fix being
+    //  wrong. Holding the need constant is what makes these two checks isolate the MATTER half,
+    //  which is the half P0-A is about. It also finishes the Director's story: the button they
+    //  saw at 0.34 h WAS during the first night, when the need is genuinely felt.
+    const fireBtn = async () => page.evaluate(() => {
+        try {
+        const b = document.querySelector('.action');
+        if (!b) return { present: false, label: '', shown: false };
+        const style = window.getComputedStyle(b);
+        return {
+            present: true,
+            label: (b.textContent || '').trim(),
+            shown: style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05,
+        };
+        } catch (e) { return { present: false, label: 'READ FAILED: ' + String(e), shown: false }; }
+    });
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 20;
+        state.hunger = 70; state.thirst = 70;
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.torch = { ...state.torch, owned: false, lit: false };
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 1, fiber: 1 };
+    `);
+    await sleep(900);
+    const oneStick = await fireBtn();
+    await shot('verdict-04-onestick');
+    check('P0-A — REACHABILITY: one stick and one strand is NOT offered a fire (Law 130)',
+        !(oneStick.shown && /build fire/i.test(oneStick.label)),
+        `with wood 1, fiber 1 the primary action reads "${oneStick.label}" shown=${oneStick.shown}`);
+
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 20;
+        state.hunger = 70; state.thirst = 70;
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.torch = { ...state.torch, owned: false, lit: false };
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 9, fiber: 2 };
+    `);
+    await sleep(900);
+    const enoughWood = await fireBtn();
+    check('P0-A — ...and a survivor who CAN build one still is, with no countdown label',
+        enoughWood.shown && /build fire/i.test(enoughWood.label) && !/short/i.test(enoughWood.label),
+        `with wood 9, fiber 2 the primary action reads "${enoughWood.label}" shown=${enoughWood.shown}`);
+
+    // ---- P0-G: THE FIRE GETS QUIETER AS YOU WALK AWAY ----------------------
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.fire = { built: true, fuel: 30, x: 0, y: 60 };
+    `);
+    await sleep(800);
+    const atFire = await page.evaluate(() => window.__drift.fireLoudness?.() ?? null);
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.fire = { built: true, fuel: 30, x: 0, y: 78 };
+    `);
+    await sleep(800);
+    const midway = await page.evaluate(() => window.__drift.fireLoudness?.() ?? null);
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 70;
+        state.fire = { built: true, fuel: 30, x: 0, y: 130 };
+    `);
+    await sleep(800);
+    const farAway = await page.evaluate(() => window.__drift.fireLoudness?.() ?? null);
+    //  READ OFF THE GAIN NODE, not off the function that computes the factor. The first cut
+    //  read the computation and passed with the line that applies it removed.
+    const near = atFire ?? 0;
+    const mid = midway ?? 0;
+    const far = farAway ?? 0;
+    //  WHAT THIS CAN AND CANNOT SEE, stated rather than implied. Audio never decodes on the
+    //  bench, so the gain node does not exist and reading it returns null forever — the curve
+    //  itself is proven in tests/verdict-ae0f62d.test.ts instead. What IS witnessable here is
+    //  that the mixer was TOLD, with a falling value, which is the wiring the plant removes.
+    check('P0-G — REACHABILITY: the mixer is handed a falling factor as the survivor walks away',
+        atFire === 1 && midway !== null && midway > 0 && midway < 1 && farAway === 0,
+        `factor handed to the fire bed: beside it ${atFire === null ? 'never told' : near.toFixed(3)},`
+        + ` 18 m away ${midway === null ? 'never told' : mid.toFixed(3)},`
+        + ` 70 m away ${farAway === null ? 'never told' : far.toFixed(3)}`
+        + ` — the gain node itself is unwitnessable headless (no audio decode)`);
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

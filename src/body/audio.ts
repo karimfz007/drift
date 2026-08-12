@@ -30,7 +30,7 @@ const VOLUME: Record<CueKey, number> = {
     gather: 0.42,
     collected: 0.6,
     ignition: 0.7,
-    fireloop: 0.26,
+    fireloop: 0.16,
     denied: 0.5,
     drink: 0.55,
     eat: 0.5,
@@ -44,6 +44,7 @@ export class Cues {
     private master: GainNode | null = null;
     private buffers = new Map<CueKey, AudioBuffer>();
     private beds = new Map<CueKey, AudioBufferSourceNode>();
+    private bedGains = new Map<CueKey, GainNode>();
     private ready = false;
 
     /** Fetch and decode every cue. Safe to call before the first user gesture. */
@@ -102,6 +103,38 @@ export class Cues {
         source.connect(gain).connect(this.master);
         source.start();
         this.beds.set(key, source);
+        //  P0-G. The gain node was created, set once, and dropped on the floor — only the
+        //  source was kept, so a bed could be started and stopped and never turned DOWN. A
+        //  fire therefore sounded identical from beside it and from across the island, at a
+        //  fixed 0.26, which is the whole of the Director's "no attenuation, too loud".
+        this.bedGains.set(key, gain);
+    }
+
+    /**
+     * Scale a running bed by distance (P0-G). `factor` is 0..1 and multiplies the cue's own
+     * volume, so the mix stays authored in one place. Ramped rather than assigned: a step
+     * change in gain is an audible click, and a fire that clicks as you walk past it trades
+     * one artefact for another.
+     */
+    setBedFactor(key: CueKey, factor: number): void {
+        const gain = this.bedGains.get(key);
+        if (!gain || !this.context) return;
+        const target = VOLUME[key] * Math.max(0, Math.min(1, factor));
+        if (Math.abs(gain.gain.value - target) < 0.002) return;
+        gain.gain.setTargetAtTime(target, this.context.currentTime, 0.08);
+    }
+
+    /**
+     * The gain a running bed is ACTUALLY carrying, or null if it is not running.
+     *
+     * Added because the first cut of the P0-G check read `fireLoudness()` — the intended
+     * factor — and stayed GREEN with the call that applies it planted out. It was witnessing
+     * arithmetic, not audio, which is the same mistake as witnessing `TOOL_IDS` instead of the
+     * spear. This reads the node in the graph.
+     */
+    bedGain(key: CueKey): number | null {
+        const gain = this.bedGains.get(key);
+        return gain ? gain.gain.value : null;
     }
 
     stopBed(key: CueKey): void {
@@ -113,6 +146,7 @@ export class Cues {
             /* already stopped */
         }
         this.beds.delete(key);
+        this.bedGains.delete(key);
     }
 
     stopAllBeds(): void {

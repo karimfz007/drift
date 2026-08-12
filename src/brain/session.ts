@@ -745,6 +745,20 @@ export class Session {
         this.state.trace.failedInteractionTaps += 1;
     }
 
+    /** A tap that reached bare ground. See `trace.groundTaps` for why this is its own number. */
+    markGroundTap(): void {
+        this.state.trace.groundTaps += 1;
+    }
+
+    /** A wound actually bound, and sips actually boiled — see `trace.woundsBound`. */
+    markWoundBound(): void {
+        this.state.trace.woundsBound += 1;
+    }
+
+    markSipsBoiled(count: number): void {
+        this.state.trace.sipsBoiled += count;
+    }
+
     markSteelThreadComplete(): void {
         this.state.trace.steelThreadComplete = true;
     }

@@ -349,6 +349,26 @@ export interface TraceState {
     msToFirstDrink: number | null;
     msToFirstCraft: number | null;
     failedInteractionTaps: number;
+    /**
+     * Taps that resolved to bare ground — P0-1, and the number whose absence cost three
+     * sessions. `failedInteractionTaps` counts only `explain()` calls, so it sees a refusal
+     * that spoke and is blind to a tap that did nothing at all. The Director's log opened with
+     * EIGHT consecutive bare-ground taps and the counter read zero for every one of them, which
+     * is how "a new player's first eight interactions fail" stayed invisible in telemetry that
+     * was working exactly as written. Counted separately because it is a different fact: a
+     * never-mind gesture is legal, and eight in a row before anything lands is not.
+     */
+    groundTaps: number;
+    /**
+     * Did the survivor ever USE the last two drops? C1 asked whether the Director found D-148's
+     * bandage verb and drank boiled water, and the answer was unknowable: nothing in `vessel.ts`
+     * or `injury.ts` touched the trace, the debug export dumps only this object, and a DOM button
+     * press never reaches `recordTap` — so a shipped verb could go completely unused and look
+     * identical to one that worked. Two counters, so the question is answerable next time
+     * instead of argued about. Silence about a feature is not evidence that it works.
+     */
+    woundsBound: number;
+    sipsBoiled: number;
     controlModeSwitches: number;
     steelThreadComplete: boolean;
     /** How many times the castaway has died and washed back ashore. */

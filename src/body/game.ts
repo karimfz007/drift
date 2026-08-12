@@ -20,7 +20,6 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import {
     axeShortfall,
     buildFire,
-    fireIsKnown,
     buildShelter,
     buildStorage,
     canBuildFire,
@@ -188,7 +187,7 @@ import {
     traceSites,
     type GameState
 } from '../brain';
-import { TUNE } from '../data/tune';
+import { TUNE, fireLoudnessAt } from '../data/tune';
 import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
@@ -338,6 +337,8 @@ export class Game {
     //  anywhere — read only via the settings panel's "Copy debug info" button, on request.
     private tapBreadcrumbs: TapBreadcrumb[] = [];
     private lastCuePlayed: string | null = null;
+    /** The last factor handed to the fire bed (P0-G). Null until one is sent. */
+    private lastFireBedFactor: number | null = null;
     private lastReadoutSaid: string | null = null;
 
     private lastActivityAt = now();
@@ -474,6 +475,7 @@ export class Game {
             .filter((o) => Math.hypot(o.x - x, o.z - z) - o.radius <= within)
             .map((o) => ({ x: o.x, z: o.z, radius: o.radius }));
         runtime.stickReadout = () => this.controls.read();
+        runtime.fireLoudness = () => this.lastFireBedFactor;
         runtime.velocityReadout = () => ({ x: this.velX, z: this.velZ });
         runtime.fovReadout = () => (this.camera.fov * 180) / Math.PI;
         runtime.holdReadout = () => {
@@ -521,24 +523,27 @@ export class Game {
          * object because it asks the object. `projectToScreen` stays for callers that only have
          * a ground position, and is now the special case rather than the rule.
          */
+        //  This block was written out TWICE, identically, the first copy overwritten by the
+        //  second before it could ever be called. Harmless and still wrong; collapsed here.
+        //
+        //  `twoSided` is added for P0-F. A surface that is invisible from inside is not
+        //  "transparent" — its inner faces are culled and never drawn — so the property that
+        //  decides whether a survivor standing in the cave can see the rock around them is
+        //  the material's, not the mesh's. The check reads it from INSIDE, which is the half
+        //  D-142 never witnessed.
         runtime.meshInfo = (meshName: string) => {
             const mesh = this.scene.getMeshByName(meshName);
             if (!mesh) return null;
             return {
                 enabled: mesh.isEnabled(),
                 rotZ: mesh.rotation.z,
+                //  The DRAWN heading. `place()` writes `root.rotation.y` from `this.facing`, so
+                //  this is the body's own facing as rendered — the only way a check can witness
+                //  "the survivor turned to look" without trusting a field it cannot see.
+                rotY: mesh.rotation.y,
                 scaleZ: mesh.scaling.z,
                 y: mesh.position.y,
-            };
-        };
-        runtime.meshInfo = (meshName: string) => {
-            const mesh = this.scene.getMeshByName(meshName);
-            if (!mesh) return null;
-            return {
-                enabled: mesh.isEnabled(),
-                rotZ: mesh.rotation.z,
-                scaleZ: mesh.scaling.z,
-                y: mesh.position.y,
+                twoSided: mesh.material ? mesh.material.backFaceCulling === false : null,
             };
         };
         runtime.screenOfMesh = (meshName: string) => {
@@ -1447,11 +1452,44 @@ export class Game {
             return;
         }
 
-        //  Empty ground: just look there — and drop any pending intention. This is the
-        //  player's explicit "never mind" gesture now that manual steering no longer cancels
-        //  a pending on its own (FIX 1, 2026-07-23 handoff).
+        //  EMPTY GROUND — P0-1, AND THE ONE OUTCOME IN THIS METHOD THAT SAID NOTHING.
+        //
+        //  This comment has always read "just look there", and nothing ever looked anywhere.
+        //  Every other branch above acts, plays a cue, or explains itself; this one called
+        //  `clearPending()` — which sets two fields and cancels a hold — and returned. No cue,
+        //  no hint, no visible change, and no telemetry: `markFailedTap` is only reachable from
+        //  `explain()`, so bare-ground taps were not in `failedInteractionTaps` either.
+        //
+        //  That is the Director's opening signature exactly. A new survivor's first taps land on
+        //  sand — there is nothing else within reach of the landing beach — and the game answered
+        //  eight of them with absolute silence while the counter read zero. It reads as a dead
+        //  game, and it is a [[D-042]] breach hiding in the one branch nobody thought of as an
+        //  interaction: silence is never a legal outcome, and "never mind" is still an outcome.
+        //
+        //  So the gesture now does what it always claimed. The survivor TURNS to face the point,
+        //  which is real feedback (the body moves), costs nothing, cannot nag, and is useful —
+        //  `onBuildFire` and `onBuildShelter` both place by `this.facing`, so looking somewhere
+        //  is how you aim where the fire goes. Facing is safe to write here: `stepMovement`
+        //  returns before its own slerp whenever the survivor is standing still, so nothing
+        //  overwrites this until they walk.
         this.clearPending();
+        this.faceToward(point.x, point.z);
+        //  `target` rather than a new asset: it is already the "you aimed at something" cue and
+        //  the quietest in the set, and looking is the degenerate case of aiming. The audible
+        //  half is garnish either way — the body turning is the visible mirror the cue rule
+        //  (§I.18 rule 7) actually requires, so this stays fully legible on mute.
+        this.cues.play(CUES.target);
+        session().markGroundTap();
         this.recordTap(screenX, screenY, 'empty-ground');
+    }
+
+    /** Turn the body to look at a world point. The visible half of the never-mind gesture. */
+    private faceToward(x: number, z: number): void {
+        const s = session().state;
+        const dx = x - s.player.x;
+        const dz = z - s.player.y;
+        if (Math.hypot(dx, dz) < 0.05) return;
+        this.facing = Math.atan2(dx, dz);
     }
 
     /**
@@ -1836,7 +1874,7 @@ export class Game {
                 : `${defectCue(out.mended.id, out.mended.to)} Another piece of wood would finish it.`);
         } else {
             this.floatText(`+${TUNE.repairDurabilityPerWood} durability`);
-            this.explain('You go over the frame and tighten what you can reach.');
+            this.say('You go over the frame and tighten what you can reach.');
         }
         this.lastActivityAt = now();
     }
@@ -2124,7 +2162,7 @@ export class Game {
         if (!surface(s)) return;
         session().persist(now());
         this.cues.play(CUES.pickup);
-        this.explain('You break the surface and breathe.');
+        this.say('You break the surface and breathe.');
         //  DROP 6 — what the lungs have become, said as the breath ends rather than found in
         //  a panel later. Same grammar as the hands, same silence until it is worth saying.
         const longer = noticedOnSurfacing(s);
@@ -2143,7 +2181,7 @@ export class Game {
         if (!castHandline(s)) { this.explain(this.fishingReason('cast-line')); return; }
         session().persist(now());
         this.cues.play(CUES.target);
-        this.explain('The line goes out. Now you wait.');
+        this.say('The line goes out. Now you wait.');
         this.lastActivityAt = now();
     }
 
@@ -2159,7 +2197,7 @@ export class Game {
         if (!setNet(s)) { this.explain(this.fishingReason('set-net')); return; }
         session().persist(now());
         this.cues.play(CUES.craft);
-        this.explain('The net is set. Leave it to soak — and stay within reach of it.');
+        this.say('The net is set. Leave it to soak — and stay within reach of it.');
         this.lastActivityAt = now();
     }
 
@@ -2295,7 +2333,7 @@ export class Game {
         const intoWater = leaveRaftIsIntoWater(state);
         if (!leaveRaft(state)) return;
         session().persist(now());
-        this.explain(intoWater ? 'You slip into the water beside it.' : 'You step onto solid ground.');
+        this.say(intoWater ? 'You slip into the water beside it.' : 'You step onto solid ground.');
         this.lastActivityAt = now();
     }
 
@@ -2362,6 +2400,7 @@ export class Game {
         const refused = boilRefusalFor(s);
         if (refused) { this.explain(refused); return; }
         const sips = boil(s);
+        session().markSipsBoiled(sips);
         this.cues.play(CUES.craft);
         this.floatText(`${sips} boiled`);
         //  WORLD FIRST, then the readout: what changed is that this water is now safe, and that
@@ -2399,9 +2438,10 @@ export class Game {
     private doBindWound(): void {
         const s = session().state;
         if (!bindWound(s)) { this.explain('Nothing to bind, or nothing to bind it with.'); return; }
+        session().markWoundBound();
         this.cues.play(CUES.craft);
         this.floatText('bound');
-        this.explain('You wrap it tight. The bleeding stops.');
+        this.say('You wrap it tight. The bleeding stops.');
         session().persist(now());
         this.lastActivityAt = now();
     }
@@ -2718,10 +2758,34 @@ export class Game {
 
     // ---- Feedback --------------------------------------------------------
 
-    /** State the reason an interaction did not happen (D-042). */
+    /**
+     * State the reason an interaction did NOT happen (D-042), and count it.
+     *
+     * `markFailedTap` is reachable from here and nowhere else, so this method alone defines what
+     * `trace.failedInteractionTaps` means — and roughly fifteen call sites were using it to
+     * announce things that had just SUCCEEDED. "You break the surface and breathe." "The net is
+     * set." "You wrap it tight. The bleeding stops." Every one of those incremented the failure
+     * counter, and the denied cue played over a success.
+     *
+     * So the Director's headline number is not what it says it is: `failedInteractionTaps: 25`
+     * counts calls to this method, not taps that failed, and an unknown share of those 25 were
+     * successful actions reporting themselves. `say()` below is the non-counting half that
+     * should always have existed. Splitting them is what makes the number mean its own name.
+     */
     private explain(message: string): void {
         session().markFailedTap();
         this.cues.play(CUES.denied);
+        this.showHint(message);
+    }
+
+    /**
+     * Say what happened when it DID happen. Same channel, no failure count, no denied cue.
+     *
+     * Deliberately additive rather than a rename: `explain` keeps counting, so no genuine
+     * refusal silently stops being counted while these are reclassified one verified site at a
+     * time. Under-counting refusals would trade a known distortion for an invisible one.
+     */
+    private say(message: string): void {
         this.showHint(message);
     }
 
@@ -3292,7 +3356,27 @@ export class Game {
         const s = session().state;
         this.player.place(s.player.x, this.drawHeightFor(s), s.player.y, this.facing);
         this.player.syncTools(s.tools.axe, s.tools.axeGrade);
+        this.player.syncSpear(s.tools.spear);
         this.player.syncTorch(s.torch.owned, s.torch.lit, this.nightFactor(s.gameHoursElapsed), s.torch.grade);
+        //  Recorded as it is handed over, so the device bench can witness that the mixer was
+        //  actually TOLD — the one half of this it can see. Reading the gain node itself is
+        //  impossible headless (no audio decode, so no node), and reading `fireLoudness(s)`
+        //  proved vacuous: it stayed green with this very line planted out.
+        this.lastFireBedFactor = this.fireLoudness(s);
+        this.cues.setBedFactor(CUES.fireloop, this.lastFireBedFactor);
+    }
+
+    /**
+     * How loud the fire should be from where the survivor is standing (P0-G).
+     *
+     * Full inside `fireSoundFullAtM`, silent past `fireSoundSilentAtM`, linear between. The
+     * fire's position is the one the brain believes, not the mesh's, so this agrees with every
+     * other distance rule in the game rather than inventing a second opinion about where the
+     * fire is. Returns 0 when nothing is burning so a stopped bed cannot be left holding gain.
+     */
+    private fireLoudness(s: GameState): number {
+        if (!isFireLit(s)) return 0;
+        return fireLoudnessAt(Math.hypot(s.fire.x - s.player.x, s.fire.y - s.player.y));
     }
 
     /** See `placePlayerFromState`. Also the camera's own reference height, so the view rides
@@ -3341,10 +3425,25 @@ export class Game {
         //  a known verb. The brain gate alone was not enough: `canBuildFire` said no while
         //  this said yes, and the device check caught the disagreement. Same shape as the
         //  growth panel a session ago — a law enforced in one layer is enforced nowhere.
+        //  P0-A — AND THE FIX ABOVE WAS HALF-APPLIED. The note above is accurate about the
+        //  disease and wrong about the cure: it added `fireIsKnown` and LEFT `visible` reading
+        //  `state.inventory.wood > 0`. So the disagreement it describes never actually closed.
+        //  `suspicionFor(state, 'torch')` flips suspected at ONE wood and ONE fibre — need is
+        //  felt from the first second ashore — so a survivor holding a single stick and a single
+        //  strand satisfied the knowledge half, `wood > 0` satisfied the visibility half, and the
+        //  button appeared reading "Build fire (4 short)" at 0.34 h on a life with no deaths.
+        //  That is precisely Law 130's "no survivor begins with Build Fire in a menu", still
+        //  broken, two fixes later.
+        //
+        //  `canBuildFire` is the brain's own answer to this exact question — its comment says
+        //  "May this be OFFERED to the player? Knowledge and matter both" — so the HUD now asks
+        //  it instead of re-deriving half of it. The "(N short)" pre-announcement goes with it,
+        //  deliberately: a button that appears before it can be used IS the menu Law 130
+        //  forbids, and counting down to fire-making is how a survivor is taught they already
+        //  know how. What is short belongs in the world's own voice, not on the affordance.
         let action = { label: '', visible: false, ready: false };
-        if (!state.fire.built && fireIsKnown(state)) {
-            const short = Math.max(0, TUNE.woodPerFire - state.inventory.wood);
-            action = { label: short === 0 ? 'Build fire' : `Build fire (${short} short)`, visible: state.inventory.wood > 0, ready: short === 0 };
+        if (canBuildFire(state)) {
+            action = { label: 'Build fire', visible: true, ready: true };
         }
 
         //  Build: one entry point to the Build panel (axe, shelter, storage, torch), visible

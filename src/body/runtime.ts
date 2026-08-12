@@ -94,7 +94,8 @@ export const runtime = {
     screenOfMesh: (() => null) as (meshName: string) => { x: number; y: number } | null,
     meshSizeM: (() => null) as (meshName: string) => { x: number; y: number; z: number } | null,
     /** A rendered mesh's own transform — the cue as DRAWN, not the state behind it. */
-    meshInfo: (() => null) as (meshName: string) => { enabled: boolean; rotZ: number; scaleZ: number; y: number } | null,
+    meshInfo: (() => null) as (meshName: string) =>
+        { enabled: boolean; rotZ: number; rotY: number; scaleZ: number; y: number; twoSided: boolean | null } | null,
     ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
     groundAt: (() => 0) as (x: number, z: number) => number,
     playerFeetY: (() => 0) as () => number,
@@ -166,6 +167,9 @@ export const runtime = {
     //  Gate 0 sweep: the camera's actual field of view, in degrees, read from the live
     //  camera rather than from the tune table — so the check tests what is rendered.
     fovReadout: (() => 0) as () => number,
+    /** P0-G — how loud the fire bed should be from where the survivor stands, 0..1. READ only
+     *  (D-075): the check moves the survivor with real input and asks what the mix decided. */
+    fireLoudness: (() => null) as () => number | null,
     //  Item 6 (quarry three-taps): the tap path is already exonerated — per-tap data shows
     //  two of three taps setting a real pending node intention. What is not visible from
     //  outside is whether the HOLD then starts, runs and completes. This reads that.
@@ -349,6 +353,8 @@ function installDebugHook(): void {
     //  not whether the state that should have driven it is correct. Reading the mesh rather
     //  than the state is the difference between witnessing the fix and witnessing the intent.
     meshInfo: (meshName: string) => runtime.meshInfo(meshName),
+    /** P0-G — the fire's distance-scaled loudness, read only. */
+    fireLoudness: () => runtime.fireLoudness(),
     //  RAIN & WET ESCALATION — READ-ONLY ([[D-075]]). It answers what the sky is doing and
     //  when the next one is due; it cannot start, stop or advance a storm. The harness stages
     //  weather through the save exactly as it stages everything else.
