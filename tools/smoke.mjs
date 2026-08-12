@@ -2556,7 +2556,14 @@ async function main() {
     //  rock ratio, not a hardcoded 5, so pinning the total here would break every time the
     //  world is retuned. What matters for D-050 is that the export says ZERO are standing.
     check('the debug-export text reports 0 standing trees remaining, explaining the silence at a glance', /tree: 0\/\d+/.test(debugInfo), debugInfo.split('\n').find((l) => l.includes('tree:')) ?? 'no tree line found');
-    check('the debug-export text includes the tap log', /last \d+ taps/.test(debugInfo) && debugInfo.includes('->'), '');
+    //  A DETAIL LINE THAT CAN TELL THE TWO CAUSES APART. This shipped with '' and went red in a
+    //  full sweep while passing standalone, saying nothing about why. It is the tap-landing
+    //  family again: a modal panel left open over the canvas swallows the section's one tap, so
+    //  no breadcrumb is recorded and the log is empty — not a broken exporter. Now it says which.
+    const tapLogLine = debugInfo.split('\n').find((l) => /last \d+ taps/.test(l)) ?? 'no tap-log header';
+    const overCanvas = await page.evaluate(() => document.querySelector('.panel.visible, .panel.death, .panel.loadout')?.className ?? 'none');
+    check('the debug-export text includes the tap log', /last \d+ taps/.test(debugInfo) && debugInfo.includes('->'),
+        `"${tapLogLine}", panel over the canvas: ${overCanvas}`);
     check('the debug-export text includes the trace', debugInfo.includes('trace:') && debugInfo.includes('failedInteractionTaps'), '');
 
     //  The settings panel's real button, reachable by a real tap — not just the text existing.
@@ -6911,7 +6918,12 @@ async function main() {
         afterMend.shelter.defects.footing < beforeMend.shelter.defects.footing
         && afterMend.inventory.wood === beforeMend.inventory.wood - 1
         && /footing/i.test(saidMend),
-        `footing ${beforeMend.shelter.defects.footing.toFixed(2)} -> ${afterMend.shelter.defects.footing.toFixed(2)},`
+        //  WHETHER THE TAP LANDED IS HALF THE ANSWER, and this line did not carry it. UPKEEP 4
+        //  proves the segment is THERE; if 4b then reads no change, the two possible stories are
+        //  "the tap missed" and "the verb refused" — and without `mendTap` they are the same
+        //  sentence. The tap-landing family costs a full sweep every time a detail can't say.
+        `tap ${mendTap.ok} ${mendTap.reason ?? ''},`
+        + ` footing ${beforeMend.shelter.defects.footing.toFixed(2)} -> ${afterMend.shelter.defects.footing.toFixed(2)},`
         + ` wood ${beforeMend.inventory.wood} -> ${afterMend.inventory.wood}, said "${saidMend}"`);
 
     check('UPKEEP 4c — ...and one wood does not finish a FAILING place. The debt is trips',
@@ -8129,6 +8141,188 @@ async function main() {
     check('P0-6 — ...and it is a SENSATION, never a diagnosis (Law 145)',
         !/bad.?water|dysentery|infection|\billness\b/i.test(feltIll),
         `said "${feltIll}"`);
+    }
+
+    // ================= WAVE 0 PART TWO — THE WATER RUNGS, AND THE BANDAGE =================
+    //
+    //  THE ANSWER TO "BOIL IT WITH WHAT?", walked end to end by a real finger: open a coconut at
+    //  the water, fill it, carry it to a fire, boil it, drink it. Four verbs, four proofs — the
+    //  defect class is at nine instances and every one of them was a verb that existed and could
+    //  not be reached, so nothing here is trusted to the unit suite alone.
+    //
+    //  The unit suite owns the rungs, the capacities, the refusals and D-011 (tests/vessel.test.ts,
+    //  16 checks, six planted defects proven red including an absence that boils for you).
+    if (section("WAVE 0 PART TWO — the water rungs, and the bandage")) {
+    const pondAt = await page.evaluate(() => window.__drift.pond?.() ?? { x: -22, y: 8 });
+
+    //  A survivor at the water with a coconut and an edge — W1's matter line exactly.
+    await editSave(`
+        state.player = { x: ${pondAt.x}, y: ${pondAt.y} };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 70; state.thirst = 45;
+        state.inventory = { ...state.inventory, coconut: 2, sharpblade: 1, wood: 8 };
+        state.tools = { ...state.tools, backpack: true };
+        state.water = { vessel: null, rawSips: 0, cleanSips: 0 };
+        state.fire = { built: true, fuel: 30, x: ${(pondAt.x + 14).toFixed(1)}, y: ${pondAt.y} };
+    `);
+
+    //  THE FIRE IS NOT IN THE POND, and the first cut of this fixture put it there — same
+    //  coordinate as the water. Its collider pushed the survivor off the pond, `isAtPond` went
+    //  false, and every pond verb vanished: the circle came back EMPTY and read as "no
+    //  make-cup segment" when the real fault was where I had stood them. Fourteen metres away
+    //  is also truer to the rung — you fill at the water and boil at the hearth.
+
+    //  THE SHIPPED HOLD GESTURE, not `holdWorld`. `SLICE 2 — HOLDING the pond opens the circle`
+    //  has driven this since Slice 2 with a raw `tapAt` held past `tapMaxMs`, and that is the
+    //  gesture proven to set `pendingWasHold`. My first two cuts used `holdWorld`, which landed
+    //  its touch (`ok:true` at 457,351) with the survivor exactly on the pond — and opened no
+    //  circle at all. Copying the proven gesture rather than inventing a second one.
+    const openCircleOn = async (wx, wz) => {
+        const at = await screenOf(wx, wz);
+        if (!at) return { ok: false, why: 'no pixel on screen' };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await sleep(600);
+        const segs = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')));
+        return { ok: segs.length > 0, why: segs.length ? null : 'no circle opened', segs };
+    };
+    const pressSeg = async (verb) => page.evaluate((v) => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+        if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
+        if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
+        seg.click();
+        return { ok: true, why: null };
+    }, verb);
+
+    //  HOLD THE WATER, NOT THE FISH. `fp-pond` is authored at EXACTLY `POND.x, POND.y`, so a
+    //  hold on the pond's centre resolves to the fishing spot every time and opens
+    //  [cast-line, set-net, spear-fish] — the pond's own circle is unreachable there. Four runs
+    //  read that as "no circle opened" because the earlier filtered runs never got far enough
+    //  to print the segments; the full sweep printed them and named the cause in one line.
+    //  Held six metres out instead, which is still the pond (radius 9) and clear of the spot.
+    const waterX = pondAt.x + 6;
+    const waterY = pondAt.y;
+
+    // ---- W1: OPEN A COCONUT, at the water ------------------------------------
+    await faceNode(waterX, waterY);
+    const cupTap = await openCircleOn(waterX, waterY);
+    await sleep(200);
+    const pondCircle = cupTap.segs ?? [];
+    const madeCup = await pressSeg('make-cup');
+    await sleep(900);
+    const afterCup = await live();
+    await shot('wave0b-01-cup');
+    check('W1 — REACHABILITY: a HOLD on the water offers "open a coconut", and a real press makes a cup',
+        cupTap.ok && madeCup.ok && afterCup.water.vessel === 'shell-cup' && afterCup.inventory.coconut === 1,
+        `hold ${JSON.stringify({ ok: cupTap.ok, why: cupTap.why })}, at pond ${(await live()).player.x.toFixed(1)},${(await live()).player.y.toFixed(1)},`
+        + ` circle [${pondCircle.join(', ')}], press ${madeCup.ok} ${madeCup.why ?? ''},`
+        + ` vessel ${afterCup.water.vessel}, coconut 2 -> ${afterCup.inventory.coconut}`);
+
+    check('W1 — ...and the blade is NOT consumed: opening a shell does not eat a knife',
+        afterCup.inventory.sharpblade === 1,
+        `sharpblade 1 -> ${afterCup.inventory.sharpblade}`);
+
+    // ---- W1: FILL IT ---------------------------------------------------------
+    await faceNode(waterX, waterY);
+    await openCircleOn(waterX, waterY);
+    const filled = await pressSeg('fill-vessel');
+    await sleep(900);
+    const afterFill = await live();
+    check('W1 — REACHABILITY: a real press fills the cup, and the water is marked UNTREATED',
+        filled.ok && afterFill.water.rawSips > 0 && afterFill.water.cleanSips === 0,
+        `press ${filled.ok} ${filled.why ?? ''}, raw ${afterFill.water.rawSips}, clean ${afterFill.water.cleanSips}`);
+
+    // ---- W2a: BOIL IT, on the fire's own circle ------------------------------
+    const fireAt = (await live()).fire;
+    await approach(fireAt.x, fireAt.y, 25);
+    await faceNode(fireAt.x, fireAt.y);
+    const fireHold = await openCircleOn(fireAt.x, fireAt.y);
+    const fireCircle = fireHold.segs ?? [];
+    const boiled = await pressSeg('boil-water');
+    await sleep(1000);
+    const afterBoil = await live();
+    const boilSaid = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
+    await shot('wave0b-02-boiled');
+    check('W2a — REACHABILITY: a HOLD on the fire offers "boil water", and a real press boils it',
+        boiled.ok && afterBoil.water.cleanSips > 0 && afterBoil.water.rawSips === 0,
+        `circle [${fireCircle.join(', ')}], press ${boiled.ok} ${boiled.why ?? ''},`
+        + ` raw ${afterFill.water.rawSips} -> ${afterBoil.water.rawSips},`
+        + ` clean ${afterFill.water.cleanSips} -> ${afterBoil.water.cleanSips}`);
+
+    check('W2a — ...and the world says what happened, in the survivor\'s own terms',
+        /rolling boil|dead/i.test(boilSaid), `said "${boilSaid}"`);
+
+    // ---- P-CLEAN-WATER: DRINK IT, from the tab that reads the body -----------
+    const thirstBefore = (await live()).thirst;
+    const packTap = await realTapDom('.carried-button');
+    await sleep(500);
+    const vitalsTap = await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(500);
+    const waterRow = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout') || document.querySelector('.panel');
+        if (!el) return { present: false, text: '(no panel)', hasButton: false };
+        const line = Array.from(el.querySelectorAll('.vital-line')).find((n) => /Water/.test(n.textContent || ''));
+        return {
+            present: Boolean(line),
+            text: line ? (line.textContent || '').replace(/\s+/g, ' ').trim() : '',
+            hasButton: Boolean(el.querySelector('.drink-clean-btn')),
+        };
+    });
+    const drankTap = await realTapDom('.drink-clean-btn');
+    await sleep(900);
+    const afterDrink = await live();
+    await shot('wave0b-03-drank');
+    check('P-CLEAN-WATER — REACHABILITY: the Vitals tab shows the treated water and a real tap drinks it',
+        packTap.ok && vitalsTap.ok && waterRow?.present === true && waterRow.hasButton === true
+        && drankTap.ok && afterDrink.thirst > thirstBefore
+        && afterDrink.water.cleanSips === afterBoil.water.cleanSips - 1,
+        `row ${waterRow?.present} "${waterRow?.text}", tap ${drankTap.ok} ${drankTap.reason ?? ''},`
+        + ` thirst ${thirstBefore.toFixed(1)} -> ${afterDrink.thirst.toFixed(1)},`
+        + ` clean ${afterBoil.water.cleanSips} -> ${afterDrink.water.cleanSips}`);
+
+    check('P-CLEAN-WATER — ...and it cost no illness, which is the whole reward for the rung',
+        afterDrink.illness.severity <= 0,
+        `illness severity after drinking boiled water: ${afterDrink.illness.severity}`);
+
+    // ---- P0-2 / A-BANDAGE: bind from the tab that READS the wound ------------
+    //
+    //  The verb has existed since Drop 2 and had no surface here: the tab described a walk to
+    //  the shelter that the rule never required. Bound deliberately AWAY from the shelter.
+    await editSave(`
+        state.player = { x: 0, y: 60 };
+        state.shelter = { ...state.shelter, built: true, x: 40, y: -40 };
+        state.energy = 100; state.health = 80; state.warmth = 90;
+        state.hunger = 70; state.thirst = 80;
+        state.injuries = { bleeding: 2, limp: 0, pain: 0 };
+        state.inventory = { ...state.inventory, fiber: 6 };
+        state.tools = { ...state.tools, backpack: true };
+    `);
+    const bindPack = await realTapDom('.carried-button');
+    await sleep(500);
+    const bindVitals = await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(500);
+    const woundRow = await page.evaluate(() => {
+        const el = document.querySelector('.panel.loadout') || document.querySelector('.panel');
+        if (!el) return { text: '(no panel)', hasButton: false };
+        const line = Array.from(el.querySelectorAll('.vital-line')).find((n) => /Injur/.test(n.textContent || ''));
+        return {
+            text: line ? (line.textContent || '').replace(/\s+/g, ' ').trim() : '',
+            hasButton: Boolean(el.querySelector('.bind-btn')),
+        };
+    });
+    const bindTap = await realTapDom('.bind-btn');
+    await sleep(900);
+    const afterBind = await live();
+    await shot('wave0b-04-bound');
+    check('P0-2 — REACHABILITY: a real tap on Vitals binds the wound, 90 m from the shelter',
+        bindPack.ok && bindVitals.ok && woundRow?.hasButton === true
+        && bindTap.ok && afterBind.injuries.bleeding === 0 && afterBind.inventory.fiber < 6,
+        `button ${woundRow?.hasButton}, tap ${bindTap.ok} ${bindTap.reason ?? ''},`
+        + ` bleeding 2 -> ${afterBind.injuries.bleeding}, fibre 6 -> ${afterBind.inventory.fiber}`);
+
+    check('P0-2 — ...and the readout no longer sends them to the shelter it never needed',
+        woundRow !== null && !/shelter/i.test(woundRow.text),
+        `the injuries row reads: "${woundRow?.text}"`);
     }
 
     // ---- Hygiene ----

@@ -1148,6 +1148,34 @@ export const TUNE = {
      *  against it, so the two cannot drift apart. */
     panelArmDelayMs: 300,
 
+    // ---- WAVE 0 — THE THREE WATER RUNGS (v2.6's Water Craft Tree) ------------
+    //
+    //  EVERY NUMBER HERE IS READ OFF THE FILED MODEL, not invented. The sheet gives matter,
+    //  prerequisites, operations and an active-time seed per rung; what it does not give is a
+    //  sip count, because the model measures capability rather than our thirst units. So the
+    //  capacities are derived from the sheet's own SIZE language — W1 is "small; cracks; spills"
+    //  and W2c is scarce recovered cookware — against the shipped flask's one sip.
+
+    /** [TUNE] W1 — a coconut for the shell cup. The sheet's matter line is "Coconut + cutting
+     *  edge", and one coconut is one shell. */
+    shellCupCoconutCost: 1,
+    /** [TUNE] W1 — a cutting edge to open it. NOT consumed: the sheet's operations are
+     *  open/clean/stabilize and none of those eats a knife, so this is a requirement rather
+     *  than a cost. */
+    shellCupBladeCost: 1,
+    /** [TUNE] W1 capacity, in sips. Basis: the sheet says "small", and the shipped flask holds
+     *  1 — so the first vessel a survivor can MAKE holds a little more than the one they might
+     *  find, which is what makes building it worth the coconut. */
+    shellCupSips: 2,
+    /** [TUNE] W2c — recovered recognised cookware, in wreck-era metal. Basis: 1 is the whole of
+     *  the scarcity, because `metal` has exactly one source in the game and it is across 115 m
+     *  of open water. The sheet's own limit line is "Scarce; corrosion/coating". */
+    foundPanMetalCost: 1,
+    /** [TUNE] W2c capacity, in sips. Basis: the pan is the better vessel on the sheet's own
+     *  ladder — more volume per boil, which is the reason to carry one at all. Kept modest so a
+     *  pan is an improvement rather than an end to the water problem. */
+    foundPanSips: 4,
+
     // ---- DROP 6 — THE READOUT: what the body knows, made perceivable --------
     //
     //  ONE constant, because this drop adds no mechanic — everything else it says is a pure

@@ -12,6 +12,7 @@ import { freshFishing } from './fishing';
 import { freshStorm } from './storm';
 import { freshRadio, salvageReceiver } from './radio';
 import { freshCrash } from './crash';
+import { freshWater } from './vessel';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
@@ -115,6 +116,7 @@ export function createInitialState(nowMs: number): GameState {
         storm: freshStorm(),
         radio: freshRadio(),
         crash: freshCrash(),
+        water: freshWater(),
         freshUntil: {},
         injuries: freshInjuries(),
         illness: freshIllness(),

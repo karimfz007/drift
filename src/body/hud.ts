@@ -962,6 +962,13 @@ export interface VitalsExtraView {
      *  anywhere, which is the whole payoff of the crossing, so it must not be bound to a
      *  world object the way binding a wound is bound to the shelter. */
     medicine: { held: number; usable: boolean; blocker: string | null };
+    /** P0-2 — the bandage, offered where the wound is READ. The verb has existed since Drop 2
+     *  and had no surface here: the tab described a walk to the shelter that the rule never
+     *  required, and gave no way to act. */
+    bandage: { canBind: boolean; blocker: string | null };
+    /** WAVE 0 — treated water, carried. Read here because a sip is a thing you do to your
+     *  body, and because boiled water is the one drink that follows you inland. */
+    water: { note: string | null; canDrink: boolean };
     activeHand: string | null;
     supportHand: string | null;
     equippable: string[];
@@ -982,7 +989,11 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
         : `
         <div class="vital-line pressing">
             <div class="build-head"><strong>Injuries</strong><span class="standing-chip">Hurt</span></div>
-            ${extra.injuries.bleeding > 0 ? '<p class="subtitle vital-cause">Bleeding — bind it with fibre at the shelter.</p>' : ''}
+            ${extra.injuries.bleeding > 0 ? `
+                <p class="subtitle vital-cause">Bleeding. Fibre, wound tight.</p>
+                ${extra.bandage.canBind
+                    ? '<button class="primary bind-btn" type="button">Bind it</button>'
+                    : `<p class="subtitle vital-cause">${extra.bandage.blocker ?? 'Nothing to bind it with.'}</p>`}` : ''}
             ${extra.injuries.limp > 0 ? `<p class="subtitle vital-cause">Limping — about ${Math.ceil(extra.injuries.limp)} more hour(s).</p>` : ''}
             ${extra.injuries.pain > 0 ? '<p class="subtitle vital-cause">In pain — every job is costing you more.</p>' : ''}
         </div>`;
@@ -1001,6 +1012,16 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
             ${extra.medicine.held > 0 ? `
                 <p class="subtitle">Medical store: ${extra.medicine.held} — salvaged from the wreck.</p>
                 <button class="primary medicine-btn" type="button" ${extra.medicine.usable ? '' : 'disabled'}>${extra.medicine.usable ? 'Take the medicine' : (extra.medicine.blocker ?? 'Not now')}</button>` : ''}
+        </div>`;
+
+    //  WAVE 0 — WHAT YOU ARE CARRYING TO DRINK, and whether it is safe. Untreated water says
+    //  so; boiled water offers the sip. The row is absent entirely when there is no vessel,
+    //  because a survivor who has made nothing should not read an empty slot.
+    const waterRow = !extra || extra.water.note === null ? '' : `
+        <div class="vital-line${extra.water.canDrink ? '' : ' pressing'}">
+            <div class="build-head"><strong>Water</strong></div>
+            <p class="subtitle vital-cause">${extra.water.note}</p>
+            ${extra.water.canDrink ? '<button class="primary drink-clean-btn" type="button">Drink it</button>' : ''}
         </div>`;
 
     //  BOTH HANDS, equippable from here. Reuses the shipped carriage mechanism rather than a
@@ -1037,7 +1058,7 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${handRows}</div>`;
+        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}</div>`;
 }
 
 export function showLoadout(
@@ -1065,7 +1086,14 @@ export function showLoadout(
     //  positional call site shifts. Inserting them mid-list broke two of them at once.
     /** Toggle the receiver. There is no send counterpart, by design. */
     onListen: () => void = () => {},
-    onLogSignal: (signalId: string) => void = () => {}
+    onLogSignal: (signalId: string) => void = () => {},
+    //  P0-2 — bind the wound from where it is READ. Appended at the END of this positional
+    //  list on purpose: inserting it beside `onTakeMedicine`, where it belongs by subject,
+    //  silently shifted every later argument by one and handed `onPreview`'s function to a
+    //  `() => void` slot. A long positional signature only grows safely at its tail.
+    onBindWound: () => void = () => {},
+    /** WAVE 0 — drink the water you treated. Appended at the tail, as `onBindWound` was. */
+    onDrinkClean: () => void = () => {}
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1190,6 +1218,13 @@ export function showLoadout(
     if (medBtn && !medBtn.disabled) {
         medBtn.addEventListener('click', () => { onTakeMedicine(); fade(el, onClose); });
     }
+    //  P0-2 — re-queried on each render for exactly the reason the medicine button is: the
+    //  Vitals tab re-renders in place on every tab switch, so a listener bound once at
+    //  construction is stranded the first time the player looks at Skills and comes back.
+    const bindBtn = el.querySelector<HTMLButtonElement>('.bind-btn');
+    if (bindBtn) bindBtn.addEventListener('click', () => { onBindWound(); fade(el, onClose); });
+    const drinkBtn = el.querySelector<HTMLButtonElement>('.drink-clean-btn');
+    if (drinkBtn) drinkBtn.addEventListener('click', () => { onDrinkClean(); fade(el, onClose); });
     //  DROP 5 — the two radio controls, re-queried on each render for the same reason the
     //  hand chips and the medical store are: the panel re-renders in place on every tab
     //  switch, so a listener attached once at construction is stranded the first time the

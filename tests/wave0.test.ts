@@ -14,6 +14,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     TOOL_IDS,
+    bindBlocker,
+    bindWound,
+    canBindWound,
     createInitialState,
     illnessNote,
     illnessStage,
@@ -28,6 +31,7 @@ import {
     type ToolId,
 } from '../src/brain';
 import { allRecipes } from '../src/brain/recipes';
+import { TUNE } from '../src/data/tune';
 import { fullBody } from './_baseline';
 
 const NOW = 1_770_000_000_000;
@@ -202,5 +206,48 @@ describe('P0-6 — illness is FELT before it is diagnosed', () => {
             expect(illnessSymptom(sick(cause as 'chill', 0.1).illness), `${cause} first`).toBeTruthy();
             expect(illnessSymptom(sick(cause as 'chill', 0.3).illness), `${cause} worse`).toBeTruthy();
         }
+    });
+});
+
+// ---------------------------------------------------------------------------
+describe('P0-2 / A-BANDAGE — the bandage verb, and the prose that lied about it', () => {
+    //  CAUGHT BY ITS OWN FAIL-THEN-PASS. Planting "You would need to be at the shelter." into
+    //  `bindBlocker` left the suite GREEN — nothing tested it at all. The Vitals tab had said
+    //  exactly that sentence for two drops while `canBindWound` has never had a location term,
+    //  so a bleeding survivor was sent on a walk they did not need and given no button when
+    //  they arrived. This is the check that makes the prose answerable to the rule.
+    const bleeding = (fiber: number): GameState => {
+        const s = fresh();
+        s.injuries = { ...s.injuries, bleeding: 2 };
+        s.inventory.fiber = fiber;
+        return s;
+    };
+
+    it('NEVER names a place — binding has no location requirement and never had one', () => {
+        for (const fiber of [0, 1, 5, 20]) {
+            const said = bindBlocker(bleeding(fiber)) ?? '';
+            expect(said, `"${said}" sends the survivor somewhere`)
+                .not.toMatch(/shelter|fire|camp|go to|walk|at the/i);
+        }
+    });
+
+    it('names FIBRE when fibre is the missing thing, and nothing when it is not', () => {
+        expect(bindBlocker(bleeding(0))).toMatch(/fibre/i);
+        expect(bindBlocker(bleeding(TUNE.injuryBindFiberCost))).toBeNull();
+    });
+
+    it('and the verb itself works anywhere — the rule the prose was contradicting', () => {
+        for (const at of [{ x: 0, y: 96 }, { x: -40, y: -40 }, { x: 20, y: 10 }]) {
+            const s = bleeding(TUNE.injuryBindFiberCost);
+            s.player = at;
+            expect(canBindWound(s), `refused at ${at.x},${at.y}`).toBe(true);
+            expect(bindWound(s)).toBe(true);
+            expect(s.injuries.bleeding).toBe(0);
+        }
+    });
+
+    it('a survivor who is not bleeding is not told anything', () => {
+        expect(bindBlocker(fresh())).toBeNull();
+        expect(canBindWound(fresh())).toBe(false);
     });
 });

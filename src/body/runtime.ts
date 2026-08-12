@@ -8,7 +8,7 @@
  */
 
 import { SAVE_KEY, Session, airCapacityOf, atBoat, clarityNow, crashGone, crashSighting, crashWorkable, signalAtHour, timeOfDay, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
-import { BOAT, CRASH_SITE, DIVE_SITE, FAR_ISLAND, MANUALS, SIGNALS, isPlaceablePoint } from '../data/world';
+import { BOAT, CRASH_SITE, DIVE_SITE, FAR_ISLAND, MANUALS, POND, SIGNALS, isPlaceablePoint } from '../data/world';
 import { TUNE } from '../data/tune';
 import { RENDER } from './theme';
 
@@ -392,6 +392,11 @@ function installDebugHook(): void {
     //  that DROVE the reading would prove the brain works and say nothing about whether a
     //  human can reach it, which is exactly the gap standing hazard 4 is named after.
     farIsland: () => ({ x: FAR_ISLAND.x, y: FAR_ISLAND.y, radius: FAR_ISLAND.radius }),
+    //  WAVE 0 — where the water is. Read-only ([[D-075]]), and it exists so the harness does
+    //  not carry a fourth hand-written copy of a world constant: the water rungs are all
+    //  driven at the pond, and a duplicated coordinate is the drift `check-tune-mirror`
+    //  was built to catch in the numbers.
+    pond: () => ({ x: POND.x, y: POND.y, radius: POND.radius }),
     //  ---- THE UNDERWATER SLICE — READ-ONLY, same rule ----
     //
     //  Where the site is and how deep it is. Neither goes under, neither surfaces, neither

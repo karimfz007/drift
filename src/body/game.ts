@@ -80,6 +80,16 @@ import {
     previewFor,
     pickUpDropped,
     dropAll,
+    boil,
+    canDrinkClean,
+    boilRefusalFor,
+    drinkClean,
+    fillVessel,
+    makeShellCup,
+    shellCupBlocker,
+    waterNote,
+    bindBlocker,
+    canBindWound,
     bindWound,
     nearestBoar,
     thrustSpear,
@@ -800,6 +810,11 @@ export class Game {
                 vitalsExtra: {
                     injuries: { bleeding: s.injuries.bleeding, limp: s.injuries.limp, pain: s.injuries.pain },
                     injuryNote: injuryNote(s.injuries),
+                    //  P0-2 — the rule answers, so the readout cannot describe a requirement
+                    //  the rule does not have. It said "at the shelter" for two drops.
+                    bandage: { canBind: canBindWound(s), blocker: bindBlocker(s) },
+                    //  WAVE 0 — read from `vessel.ts`, never re-derived here.
+                    water: { note: waterNote(s), canDrink: canDrinkClean(s) },
                     illness: { stage: illnessStage(s.illness), note: illnessNote(s.illness) },
                     activeHand: s.loadout.activeHand,
                     supportHand: s.loadout.supportHand,
@@ -901,7 +916,12 @@ export class Game {
                 this.showHint('A call sign and an hour, in your own hand. It will outlast you.');
                 session().persist(now());
                 this.lastActivityAt = now();
-            }
+            },
+            //  P0-2 — bind the wound, from the tab that reads it. Routed to the SAME
+            //  `doBindWound` the shelter's circle already uses: one verb, one place, not a
+            //  second implementation beside it.
+            () => this.doBindWound(),
+            () => this.doDrinkClean()
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -1443,6 +1463,9 @@ export class Game {
         switch (id) {
             case 'drink': this.doDrink(); break;
             case 'fill-flask': this.doFillFlask(); break;
+            case 'fill-vessel': this.doFillVessel(); break;
+            case 'boil-water': this.doBoil(); break;
+            case 'make-cup': this.doMakeShellCup(); break;
             case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
             case 'sleep': this.trySleep(); break;
             case 'mend': this.tryRepair('shelter'); break;
@@ -2310,6 +2333,65 @@ export class Game {
         if (!near || !pickUpDropped(s, near.id)) { this.explain('There is nothing here to pick up.'); return; }
         this.cues.play(CUES.pickup);
         this.floatText(`+${near.amount} ${near.kind}`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * WAVE 0 / W1 — fill the vessel a survivor MADE, beside the flask they may have found.
+     */
+    private doFillVessel(): void {
+        const s = session().state;
+        if (!fillVessel(s)) { this.explain('There is nothing to fill, or it is already full.'); return; }
+        this.cues.play(CUES.drink);
+        this.floatText('filled');
+        this.showHint(waterNote(s) ?? '');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * WAVE 0 / W2a — THE BOIL, and the answer to "boil it with what?".
+     *
+     * The refusal comes from `boilRefusalFor`, which names which of the four prerequisites is
+     * missing — vessel, water, fire, flame — rather than a flat "you cannot". A survivor who
+     * carried a cup all the way to a dead fire is told it is the fire.
+     */
+    private doBoil(): void {
+        const s = session().state;
+        const refused = boilRefusalFor(s);
+        if (refused) { this.explain(refused); return; }
+        const sips = boil(s);
+        this.cues.play(CUES.craft);
+        this.floatText(`${sips} boiled`);
+        //  WORLD FIRST, then the readout: what changed is that this water is now safe, and that
+        //  is worth saying in the survivor's own terms rather than as a number in a panel.
+        this.lastReadoutSaid = 'It comes to a rolling boil, and holds it. Whatever was in it is dead.';
+        this.showHint(this.lastReadoutSaid);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** WAVE 0 — drink what you treated. The one water in the game that costs nothing. */
+    private doDrinkClean(): void {
+        const s = session().state;
+        if (!drinkClean(s)) { this.explain('There is no boiled water left.'); return; }
+        this.cues.play(CUES.drink);
+        this.floatText('clean water');
+        this.showHint(waterNote(s) ?? '');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** WAVE 0 / W1 — open a coconut into a cup. Made, never found. */
+    private doMakeShellCup(): void {
+        const s = session().state;
+        const blocked = shellCupBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        if (!makeShellCup(s)) { this.explain('That will not open cleanly.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('a cup');
+        this.showHint('Half a shell, scraped smooth. It holds water — and it will hold a boil.');
         session().persist(now());
         this.lastActivityAt = now();
     }

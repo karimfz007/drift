@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -700,6 +700,8 @@ export interface GameState {
     radio: RadioState;
     /** DROP 3B(i) — the appointment. Advanced on the online tick ONLY. */
     crash: CrashState;
+    /** WAVE 0 — the water rungs. Every change happens inside a verb; see `vessel.ts`. */
+    water: WaterState;
 
     /**
      * HOW LONG EACH PERISHABLE HAS LEFT, in game hours, keyed by material.
@@ -921,6 +923,18 @@ export interface SurvivorRecord {
  * because there is no second crash — the shape says so before any function does.
  */
 export type CrashStage = 'none' | 'sighted' | 'standing' | 'fresh' | 'picked-over' | 'overgrown';
+
+/**
+ * THE THREE WATER RUNGS (v2.6's Water Craft Tree). ONE vessel, and two quantities: what you
+ * dipped and what you boiled. Two numbers rather than a treated flag, because the Treatment
+ * Matrix's qualification is "completed boil + clean cooling/storage" — treated water is a
+ * different thing from raw, not the same water wearing a label.
+ */
+export interface WaterState {
+    vessel: 'shell-cup' | 'found-pan' | null;
+    rawSips: number;
+    cleanSips: number;
+}
 
 export interface CrashState {
     stage: CrashStage;

@@ -18,6 +18,7 @@ import { freshJournal } from './state';
 import { createBoars } from './fauna';
 import { freshRadio } from './radio';
 import { freshCrash } from './crash';
+import { freshWater } from './vessel';
 import { createNodes } from '../data/world';
 import { freshInjuries } from './injury';
 import { freshMatterWear } from './matter';
@@ -121,6 +122,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 28) current = migrateV28toV29(current);
     if (current.schemaVersion === 29) current = migrateV29toV30(current);
     if (current.schemaVersion === 30) current = migrateV30toV31(current);
+    if (current.schemaVersion === 31) current = migrateV31toV32(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -929,6 +931,16 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * hour must not have its appointment fire on the boot tick it comes back on: the world tells
  * you first, and it cannot do that while the loading screen is up.
  */
+/**
+ * v31 → v32 (Wave 0, the water rungs). The vessel migrates in ABSENT and both quantities at
+ * zero: a returning survivor has not made a cup and is not carrying boiled water, because
+ * neither existed to be made. Handing them one would be the migration inventing history.
+ */
+function migrateV31toV32(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return { ...envelope, schemaVersion: 32, state: { ...old, water: freshWater() } };
+}
+
 function migrateV30toV31(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
     const crash = freshCrash();
@@ -1014,6 +1026,7 @@ function hydrate(state: GameState): GameState {
         storm: { ...base.storm, ...state.storm },
         radio: { ...base.radio, ...state.radio },
         crash: { ...base.crash, ...state.crash },
+        water: { ...base.water, ...state.water },
         freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

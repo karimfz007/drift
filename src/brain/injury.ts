@@ -93,6 +93,22 @@ export function settleInjuriesOffline(_inj: InjuryState): InjuryState {
 }
 
 /** Can the survivor bind a wound? Fibre, and something to bind. */
+/**
+ * P0-2 — WHY YOU CANNOT BIND, in one sentence, or null when you can.
+ *
+ * Written because the Vitals tab said *"Bleeding — bind it with fibre at the shelter"* and
+ * `canBindWound` has never had a location term: the prose sent a bleeding survivor on a walk
+ * they did not need to take, and offered no button when they got there. Both halves of that are
+ * fixed by having the readout ask the RULE what is missing instead of describing it from memory.
+ */
+export function bindBlocker(state: GameState): string | null {
+    if (state.injuries.bleeding <= 0) return null;
+    if (state.inventory.fiber < TUNE.injuryBindFiberCost) {
+        return `You would need ${TUNE.injuryBindFiberCost} fibre to bind it.`;
+    }
+    return null;
+}
+
 export function canBindWound(state: GameState): boolean {
     return state.injuries.bleeding > 0 && state.inventory.fiber >= TUNE.injuryBindFiberCost;
 }

@@ -23,6 +23,7 @@ import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
 import { canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater } from './state';
 import { canBindWound } from './injury';
+import { boilRefusalFor, canBoil, canFillVessel, canMakeShellCup, shellCupBlocker } from './vessel';
 import { defectPlace, worstDefect } from './upkeep';
 import { handlineBlocker, haulNetBlocker, nearestSpot, setNetBlocker, spearFishBlocker } from './fishing';
 import { nearestBoar } from './fauna';
@@ -267,6 +268,28 @@ function pondVerbs(state: GameState): VerbOption[] {
                     : state.tools.flaskSips >= TUNE.flaskCapacitySips ? 'The flask is already full.' : null),
         },
         {
+            //  WAVE 0 / W1 — OPEN A COCONUT INTO A CUP, offered at the water because that is
+            //  where a survivor is standing when they need one. Deliberately NOT a Build-panel
+            //  row: every row there is discovery-gated on a recipe, and the cup is not a recipe
+            //  in the catalogue — inventing one would drag the invention pivot's rules into a
+            //  rung the model describes as a plain operation (open/clean/stabilize).
+            id: 'make-cup',
+            label: 'Open a coconut',
+            available: canMakeShellCup(state),
+            reason: shellCupBlocker(state),
+        },
+        {
+            //  WAVE 0 / W1 — fill the made vessel, beside the found flask. Two carriers, one
+            //  water: the flask is what you find, the cup is what you make.
+            id: 'fill-vessel',
+            label: 'Fill cup',
+            available: canFillVessel(state),
+            reason: notThere
+                ?? (state.water.vessel === null
+                    ? 'You have no vessel of your own yet.'
+                    : 'It is already full.'),
+        },
+        {
             //  THE POND'S OWN FISH SEGMENT, which existed from Slice 2 and never did
             //  anything. It now routes to the same handline the fishing spot beside the pond
             //  offers, so a player who taps the water they already drink from finds the verb
@@ -425,6 +448,16 @@ function fireVerbs(state: GameState): VerbOption[] {
     const notBuilt = built ? null : 'There is no fire here yet.';
     const lit = state.fire.fuel > 0;
     return [
+        {
+            //  WAVE 0 / W2a — THE BOIL. On the fire's own circle, because the model's
+            //  prerequisite is "Fire + viable vessel + observed boil" and the fire is the part
+            //  a survivor walks to. `boilRefusalFor` supplies the nearest true reason, so the
+            //  segment never says "you cannot" without saying which of the four things is missing.
+            id: 'boil-water',
+            label: 'Boil water',
+            available: canBoil(state),
+            reason: boilRefusalFor(state),
+        },
         {
             id: 'feed-fire',
             label: 'Feed',
