@@ -477,9 +477,74 @@ function section(name) {
         run = fromReached;
     }
 
-    if (run) { sectionLog.ran.push(name); console.log('\n' + name); }
+    if (run) { sectionLog.ran.push(name); console.log('\n' + name); markSectionStart(name); }
     else sectionLog.skipped.push(name);
     return run;
+}
+
+/**
+ * BENCH RELIABILITY — the instrument, because the bench had none.
+ *
+ * A session logged three wildly different sweep speeds, a spurious felling red, a clock-drift
+ * red and a four-minute navigation timeout, and every claim about WHY was based on watching a
+ * log file grow. That is a symptom described, not a cause found. Timing-sensitive checks break
+ * FIRST when the bench slows — the budgeted `approach` loops, the radio's scheduled hour — so
+ * "the bench got slower" is not a footnote, it decides whether a red means anything at all.
+ *
+ * So each section is timed, and the PAGE is measured at every boundary: heap, DOM nodes, event
+ * listeners, documents. Those four separate the hypotheses that actually differ —
+ *
+ *   - a leak in the HARNESS's navigation pattern (`editSave` runs a full `page.goto` each time,
+ *     and a sweep does that a hundred-odd times) shows as documents or listeners climbing
+ *     monotonically and never coming back down;
+ *   - a leak in the GAME shows as heap and nodes climbing while documents stay flat;
+ *   - machine contention shows as time varying with NO memory signal at all — the one shape
+ *     that would make this genuinely external, and the one that cannot be claimed without this.
+ *
+ * Written to JSON as well as the console so it can be analysed rather than eyeballed, which is
+ * the same reason `pressTrace` exists.
+ */
+/** A gap longer than this between two measurement points is not the bench working — it is the
+ *  bench waiting on something outside it. 90 s is far past any legitimate single step (the
+ *  slowest deliberate wait in this file is a 30 s `approach` budget) and well short of the
+ *  multi-minute stalls that actually occur, so it catches the real thing without crying wolf. */
+const STALL_MS = 90_000;
+const sectionTimings = [];
+const benchSamples = [];
+let currentSection = null;
+
+function markSectionStart(name) {
+    closeCurrentSection();
+    currentSection = { name, startedAt: Date.now() };
+}
+
+function closeCurrentSection() {
+    if (!currentSection) return;
+    currentSection.ms = Date.now() - currentSection.startedAt;
+    sectionTimings.push(currentSection);
+    currentSection = null;
+}
+
+/** Sample the page's own accounting. NEVER throws — a probe that can break a run is worse than
+ *  no probe, and this is diagnostics, not a check. */
+async function sampleBench(page, label) {
+    try {
+        const m = await page.metrics();
+        const sample = {
+            label,
+            atMs: Date.now(),
+            heapMB: +(m.JSHeapUsedSize / 1048576).toFixed(2),
+            nodes: m.Nodes,
+            listeners: m.JSEventListeners,
+            documents: m.Documents,
+            frames: m.Frames,
+            rssMB: +(process.memoryUsage().rss / 1048576).toFixed(2),
+        };
+        benchSamples.push(sample);
+        return sample;
+    } catch {
+        return null;
+    }
 }
 
 /** True when this run saw a filter at all — the summary reads differently if so. */
@@ -952,7 +1017,15 @@ async function main() {
         await waitForScene();
         await sleep(900);
     };
-    const shot = (n) => page.screenshot({ path: join(SHOT_DIR, `${n}.png`) });
+    //  BENCH RELIABILITY — every screenshot is also a measurement point. `shot` is called
+    //  through the whole sweep and already awaits the page, so sampling here costs one extra
+    //  CDP round trip and gives a dense timeline rather than one reading per section. The
+    //  sample never throws and never gates anything: it is instrumentation, not a check.
+    const shot = async (n) => {
+        const png = await page.screenshot({ path: join(SHOT_DIR, `${n}.png`) });
+        await sampleBench(page, n);
+        return png;
+    };
 
     /**
      * Tap-to-use: walk near, tap once, and poll until the node is consumed. Works the same
@@ -2580,6 +2653,71 @@ async function main() {
     //  never appeared, and the next line's `.copy-debug` was legitimately not-found. A check
     //  that cannot fail for its own cause is exactly what the Vacuity Law forbids, so it now
     //  asserts the OUTCOME: the settings panel is present and genuinely visible.
+    //  ---- THE PRECONDITION, ESTABLISHED RATHER THAN HOPED FOR --------------------------
+    //
+    //  THESE THREE WERE NEVER FLAKY. They failed together, in consecutive full sweeps, for one
+    //  reason the detail line said out loud every time: `panels=[panel backpack loadout
+    //  visible]`. A loadout panel left up by the storage section was still on screen, and
+    //  `openSettings` refused — SILENTLY, until this batch — so the check was measuring "is
+    //  another panel open?" while claiming to measure "does the Look button work?".
+    //
+    //  Testing a button with a modal covering it does not produce an intermittent result. It
+    //  produces a WRONG one, reliably, and the `measuredIntermittent` label turned that into a
+    //  ratio and stopped anyone looking. So the precondition is now MADE true and then
+    //  ASSERTED, and these go back to being ordinary checks that mean what they say.
+    const strayPanels = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.panel')).map((e) => e.className));
+    if (strayPanels.length > 0) {
+        for (const sel of ['.panel.backpack .close-btn', '.panel.build .close-btn',
+                           '.panel.growth .close-btn', '.panel .close-btn']) {
+            if (await page.$(sel)) { await realTapDom(sel); await sleep(380); }
+        }
+    }
+    const panelsBeforeLook = await page.evaluate(() => ({
+        //  CALLED, not read. `__drift.panelOpen` is a function on the debug surface; reading
+        //  it bare printed `[object Object]` and would have compared a truthy function object
+        //  against `false` forever — a precondition check that could never hold.
+        open: window.__drift.panelOpen(),
+        panels: Array.from(document.querySelectorAll('.panel')).map((e) => e.className),
+    }));
+    check('SETTINGS — the precondition is real: nothing else is covering the Look button',
+        panelsBeforeLook.open === false && panelsBeforeLook.panels.length === 0,
+        `stray on arrival [${strayPanels.join(' | ')}] -> after cleanup panelOpen=${panelsBeforeLook.open},`
+        + ` panels=[${panelsBeforeLook.panels.join(' | ')}]`);
+
+    //  ---- IS THE GUARD EVEN REACHABLE? The question the first two cuts skipped. ----------
+    //
+    //  `openSettings` refused in silence, and I called that a player-facing bug. Before that
+    //  claim can stand, one thing has to be true: a player must be able to PRESS the button
+    //  while a panel is open. If the panel covers it, the guard is defensive code no hand can
+    //  reach, and "silent refusal" is a defect nobody can experience.
+    //
+    //  The first cut asserted the refusal via `clickDom`, which clicks at coordinates and
+    //  therefore lands on whatever is on top. It reported "settings stayed shut" and an EMPTY
+    //  hint — i.e. it proved the button was never pressed, while claiming the refusal worked.
+    //  Vacuous in the other direction, and exactly the shape this project keeps paying for.
+    //
+    //  So this measures REACHABILITY with `realTapDom`, which respects occlusion, and reports
+    //  what is actually true either way rather than asserting a conclusion.
+    const packForRefusal = await realTapDom('.carried-button');
+    await sleep(600);
+    const packUp = await page.evaluate(() => window.__drift.panelOpen());
+    const hintBeforeLook = await page.evaluate(() => window.__drift.hints().last);
+    const lookUnderPanel = await realTapDom('.settings-button');
+    await sleep(450);
+    const refusal = await page.evaluate(() => ({
+        hint: window.__drift.hints().last,
+        settingsUp: Boolean(document.querySelector('.panel.settings')),
+    }));
+    const spoke = /close it first/i.test(refusal.hint ?? '') && refusal.hint !== hintBeforeLook;
+    check('SETTINGS — with a panel open, the Look button is EITHER unreachable or it speaks',
+        packUp === true && (lookUnderPanel.ok === false || spoke),
+        `pack open ${packUp}; a real tap on Look ${lookUnderPanel.ok ? 'LANDED' : 'was refused: ' + (lookUnderPanel.reason ?? '?')};`
+        + ` settings up ${refusal.settingsUp}; it said "${refusal.hint ?? ''}"`
+        + ` — silence WITH a landed tap is the defect`);
+    await realTapDom('.panel.backpack .close-btn');
+    await sleep(500);
+
     const lookClicked = await clickDom('.settings-button');
     await sleep(500);
     const settingsPanelUp = await page.evaluate(() => {
@@ -2614,17 +2752,21 @@ async function main() {
             + 'checks, F2 the expedition loop, F3 the Build card. No regression lock depends on '
             + 'an intermittent check.',
     };
-    measuredIntermittent('the Look button opens settings', lookClicked && settingsPanelUp.open && settingsPanelUp.opacity > 0.5,
-        `clicked=${lookClicked}, settings=${settingsPanelUp.open}, opacity=${settingsPanelUp.opacity}, panels=[${settingsPanelUp.panels.join(' | ')}]`,
-        PANEL_CLUSTER_RECORD);
+    //  PROMOTED BACK TO REAL CHECKS. With the precondition established above they have no
+    //  timing component left to be intermittent ABOUT: either the button opens Settings or it
+    //  does not. `PANEL_CLUSTER_RECORD` is kept immediately above as the record of what was
+    //  believed and for how long — deleting it would erase the evidence that this was carried
+    //  as flaky across sessions, which is the part worth remembering.
+    check('the Look button opens settings', lookClicked && settingsPanelUp.open && settingsPanelUp.opacity > 0.5,
+        `clicked=${lookClicked}, settings=${settingsPanelUp.open}, opacity=${settingsPanelUp.opacity}, panels=[${settingsPanelUp.panels.join(' | ')}]`);
     await sleep(400);
     const copyDebugTap = await realTapDom('.copy-debug');
-    measuredIntermittent('the "Copy debug info" button is reachable by a real tap', copyDebugTap.ok,
-        copyDebugTap.reason ?? '', PANEL_CLUSTER_RECORD);
+    check('the "Copy debug info" button is reachable by a real tap', copyDebugTap.ok,
+        copyDebugTap.reason ?? '');
     await sleep(200);
     const copiedVisible = await page.evaluate(() => { const el = document.querySelector('.debug-copied'); return el ? !el.hasAttribute('hidden') : false; });
-    measuredIntermittent('tapping it confirms the copy (clipboard write succeeded or a fallback message shows)',
-        copiedVisible, '', PANEL_CLUSTER_RECORD);
+    check('tapping it confirms the copy (clipboard write succeeded or a fallback message shows)',
+        copiedVisible, '');
 
     //  THE BUILD STAMP (C1 item 0b), guarded at both ends.
     //
@@ -8828,6 +8970,69 @@ async function main() {
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
     check('no console errors during the whole run', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
+
+    //  BENCH RELIABILITY — close the last section and write the instrument's data out before
+    //  the browser goes away, so a crashed or filtered run still leaves whatever it managed to
+    //  measure. A diagnostic that only survives a clean finish cannot diagnose a run that
+    //  timed out, which is exactly the run this exists for.
+    closeCurrentSection();
+    await sampleBench(page, 'final');
+    try {
+        writeFileSync('.smoke/bench-profile.json', JSON.stringify({
+            argv: process.argv.slice(2),
+            filtered: isFilteredRun(),
+            sections: sectionTimings,
+            samples: benchSamples,
+        }, null, 2), 'utf8');
+        //  ---- THE STALL VERDICT, and the actionable half of the whole investigation ------
+        //
+        //  WHAT THE DATA SAID. Across a 2 h 8 m sweep the page did NOT leak: heap moved +7 MB,
+        //  RSS went DOWN, listeners went down, documents went 4 to 9. The bench also got
+        //  FASTER as it ran — median gap between screenshots fell 60 s to 16 s across the
+        //  quarters — which is the opposite of progressive degradation and rules out both leak
+        //  hypotheses outright.
+        //
+        //  What actually happens is STALLS: twelve gaps over ninety seconds in one run, the
+        //  worst of them 29.7 MINUTES, each landing while the machine sat at or above its
+        //  commit limit with as little as 277 MB of physical memory free. Windows grew the
+        //  pagefile from 28,672 MB to 32,636 MB mid-run to cope. A pagefile grow is a
+        //  synchronous disk operation, and everything that allocates — Chrome navigating, most
+        //  of all — waits for it.
+        //
+        //  THAT IS THE FOUR-MINUTE NAVIGATION TIMEOUT, the felling budget that ran out, and the
+        //  radio's scheduled hour drifting past. One external cause, three symptoms that each
+        //  looked like a game defect. The harness cannot fix the machine. What it CAN do is
+        //  stop letting a red from such a run be read as a product failure, so it now measures
+        //  its own stalls and says so where the count is printed.
+        const gaps = [];
+        for (let i = 1; i < benchSamples.length; i++) {
+            gaps.push({ ms: benchSamples[i].atMs - benchSamples[i - 1].atMs, at: benchSamples[i].label });
+        }
+        const stalls = gaps.filter((g) => g.ms > STALL_MS).sort((a, b) => b.ms - a.ms);
+        if (stalls.length > 0) {
+            console.log('');
+            console.log('=== BENCH STALLED DURING THIS RUN — TIMING-SENSITIVE REDS ARE SUSPECT ===');
+            console.log(`  ${stalls.length} stall(s) over ${(STALL_MS / 1000).toFixed(0)}s. Worst: ${stalls.slice(0, 3).map((g) => `${(g.ms / 1000).toFixed(0)}s before ${g.at}`).join(' | ')}`);
+            console.log('  A stall this long is the machine paging, not the game. Any red that depends on a');
+            console.log('  budget, a deadline or a scheduled hour should be re-run alone before it is believed.');
+        }
+
+        const slowest = [...sectionTimings].sort((a, b) => b.ms - a.ms).slice(0, 5);
+        const first = benchSamples[0], last = benchSamples[benchSamples.length - 1];
+        console.log('');
+        console.log('BENCH PROFILE  (.smoke/bench-profile.json)');
+        console.log(`  sections timed : ${sectionTimings.length}, total ${(sectionTimings.reduce((t, x) => t + x.ms, 0) / 1000).toFixed(0)} s`);
+        console.log(`  slowest        : ${slowest.map((x) => `${x.name.slice(0, 28)} ${(x.ms / 1000).toFixed(0)}s`).join(' | ')}`);
+        if (first && last) {
+            console.log(`  page heap      : ${first.heapMB} -> ${last.heapMB} MB`);
+            console.log(`  DOM nodes      : ${first.nodes} -> ${last.nodes}`);
+            console.log(`  listeners      : ${first.listeners} -> ${last.listeners}`);
+            console.log(`  documents      : ${first.documents} -> ${last.documents}`);
+            console.log(`  node rss       : ${first.rssMB} -> ${last.rssMB} MB`);
+        }
+    } catch (e) {
+        console.log('BENCH PROFILE could not be written: ' + String(e));
+    }
 
     await browser.close();
     const openCount = results.filter((r) => r.knownOpen).length;

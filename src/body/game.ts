@@ -1019,7 +1019,22 @@ export class Game {
 
 
     private openSettings(): void {
-        if (runtime.panelOpen) return;
+        //  IT SAID NOTHING, AND THAT IS THE DEFECT UNDER THE "FLAKY" LABEL.
+        //
+        //  Three device checks — the Look button, the debug-info button, and the copy
+        //  confirmation — have been carried as `measuredIntermittent` across sessions. They are
+        //  not intermittent: they fail TOGETHER, always, whenever a panel is still up, because
+        //  this line refused in complete silence. `openSiteCard` two hundred lines below has
+        //  said "Something else is open. Close it first." since it was written; this button and
+        //  the Build card never learned to.
+        //
+        //  IT IS A PLAYER-FACING BUG, not a harness artefact. A survivor with the inventory
+        //  panel open who taps Look gets NOTHING — no panel, no cue, no reason — which is
+        //  [[D-042]]'s fail-loud law broken in the same shape as the bare-ground tap fixed last
+        //  session: a button indistinguishable from a broken one. The label hid it, exactly as
+        //  the director suspected, because "flaky" is a story about timing and this was never
+        //  about timing.
+        if (runtime.panelOpen) { this.explain('Something else is open. Close it first.'); return; }
         this.beginPanel();
         showSettings(this.overlay, this.testSpeedEnabled,
             (value) => { this.testSpeedEnabled = value; writeTestSpeed(value); },
@@ -2592,7 +2607,13 @@ export class Game {
      * buildables, so a shared slot here would only invite the same bug again.
      */
     private openBuildCard(): void {
-        if (runtime.panelOpen) return;
+        //  The same silent refusal as `openSettings`, and the same fix. Found by grepping the
+        //  guard rather than by another report: two of the four panel entry points spoke and
+        //  two did not, which is this project's recurring "a law enforced in one layer is
+        //  enforced nowhere" shape. `stepIdleHint`'s guard stays silent deliberately — an idle
+        //  hint is not a player action, and nobody is owed an explanation for a hint that
+        //  declined to interrupt them.
+        if (runtime.panelOpen) { this.explain('Something else is open. Close it first.'); return; }
         this.beginPanel();
         this.clearPending();
         const s = session().state;
