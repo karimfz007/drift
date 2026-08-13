@@ -555,6 +555,9 @@ export class Game {
             const mesh = this.scene.getMeshByName(meshName);
             if (!mesh) return null;
             const centre = mesh.getBoundingInfo().boundingBox.centerWorld;
+            //  Same guard, same reason: a mesh behind the camera is not at a negative pixel,
+            //  it is nowhere. The spear check ran into this exact shape at y = -35.
+            if (!isInFrontOfCamera(centre)) return null;
             const projected = Vector3.Project(
                 centre,
                 Matrix.Identity(),
@@ -584,14 +587,44 @@ export class Game {
             return { x: Math.abs(span.x), y: Math.abs(span.y), z: Math.abs(span.z) };
         };
 
+        /**
+         * IS THIS POINT IN FRONT OF THE CAMERA AT ALL? The guard both projections lacked.
+         *
+         * THE DEFECT, and it is the whole of the quarry cluster. `Vector3.Project` does the
+         * perspective divide unconditionally: for a point BEHIND the camera the w term goes
+         * negative, the divide flips sign, and it returns a confident-looking coordinate that
+         * is pure nonsense — `pt=3265,3433` and `pt=-1279,1617` on a 915x412 viewport, while
+         * the survivor stood TWO METRES from the node. Nothing was wrong with the maths. It was
+         * asked a question with no answer and made one up.
+         *
+         * That is this project's oldest recurring shape: a function returning a plausible value
+         * instead of admitting it cannot answer. `tapWorld`'s own comment in the harness already
+         * describes the downstream symptom — "a touch dispatched off-screen produces NO pointer
+         * event, so the gesture silently does not happen while the helper reports success" — and
+         * the fix was applied at that caller, by bound-checking, and never here at the source.
+         * So every OTHER caller stayed exposed, and the quarry checks paid for it for sessions
+         * under the label "screen-projection fragility".
+         *
+         * Returning null is the honest answer, and it is what makes `onCanvas=false` become
+         * `pt=null`: a helper that says "I cannot aim at that from here" instead of aiming at a
+         * pixel that does not exist.
+         */
+        const isInFrontOfCamera = (target: Vector3): boolean => {
+            const forward = this.camera.getDirection(Vector3.Forward());
+            return Vector3.Dot(target.subtract(this.camera.position), forward) > 0;
+        };
+
         runtime.projectToScreen = (worldX: number, worldZ: number) => {
             //  [[D-124]] — the SURFACE, not the terrain. This read `heightAt(worldX, worldZ)`,
             //  which is the seabed once you are past the shelf, so aiming at anything afloat
             //  pointed metres underwater. See `surfaceHeightAt`'s header for the whole defect.
             //  On land the two are identical, so every existing aimed check is untouched.
             const y = surfaceHeightAt(worldX, worldZ) + 0.4;
+            const target = new Vector3(worldX, y, worldZ);
+            //  Behind the camera has no screen position. Say so, rather than inventing one.
+            if (!isInFrontOfCamera(target)) return null;
             const projected = Vector3.Project(
-                new Vector3(worldX, y, worldZ),
+                target,
                 Matrix.Identity(),
                 this.scene.getTransformMatrix(),
                 this.camera.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight())

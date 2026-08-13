@@ -2856,6 +2856,21 @@ async function main() {
     const reachDist = await (async () => { const st = await live(); return Math.hypot(st.player.x - quarry.x, st.player.y - quarry.y); })();
     check('setup — the player actually REACHED the quarry before the repeat-mining taps begin', inReach, `${reachDist.toFixed(2)} m (reach ${TUNE.interactRadiusM}) — ${approachTrail.join(' ')}`);
 
+    //  ---- WHY THIS WAS "INTERMITTENT", AND IT WAS NEVER TIMING -------------------------
+    //
+    //  The block approaches the quarry and then taps it, and it NEVER FACED IT. Every other
+    //  aimed check in this file calls `faceNode` first; this one inherited whatever heading the
+    //  approach happened to end on. Face the node and the projection is on-screen; end the
+    //  approach facing away and the node is BEHIND THE CAMERA, where `projectToScreen` used to
+    //  return a garbage coordinate rather than null — `pt=3265,3433` on a 915x412 viewport with
+    //  the survivor 2 m away. The tap dispatched into nowhere, `pending=none`, the hold never
+    //  started, and stone stayed 0. The two depletion checks then failed downstream because the
+    //  pool was never spent.
+    //
+    //  So the cluster is one cause with three faces, exactly like the settings cluster: whether
+    //  a run passed depended on which way the survivor happened to be looking. That is not a
+    //  ratio to be recorded, it is a missing line.
+    await faceNode(quarry.x, quarry.y);
     for (let i = 0; i < 3; i++) {
         const before = await live();
         const pt = await screenOf(quarry.x, quarry.y);
@@ -2888,6 +2903,9 @@ async function main() {
         if (!landed) quarryOk = false;
         const after = await live();
         if (!after.nodes.find((n) => n.id === quarry.id)?.available) quarryStillAvailable = false;
+        //  Re-face between taps rather than only once: the survivor drifts while working, and a
+        //  check that establishes its aim only for the first of three taps is two thirds luck.
+        await faceNode(quarry.x, quarry.y);
     }
     const quarryDiag = await page.evaluate(() => {
         const s = window.__drift.state();
@@ -2913,8 +2931,23 @@ async function main() {
         locksNothing: 'The quarry verb is separately covered by the depletion pair and by '
             + 'tests/renewability.test.ts (18/18); no law rests on this check.',
     };
-    measuredIntermittent('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)} | ${quarryTaps.join(' ; ')}`,
-        QUARRY_MINABLE_RECORD);
+    //  ---- CAUSE FOUND, SO THE RATIO RETIRES ------------------------------------------
+    //
+    //  `QUARRY_MINABLE_RECORD` above guessed "screen-projection fragility ... suspect camera
+    //  state at projection time, not the projection maths". Half right, and the half it missed
+    //  is the half that mattered: it IS camera state, and the maths had no guard for it.
+    //  `Vector3.Project` divides by w unconditionally, so a node BEHIND the camera came back as
+    //  a confident coordinate thousands of pixels off a 915x412 viewport — `pt=3265,3433` with
+    //  the survivor two metres away. The block then never faced the node at all, unlike every
+    //  other aimed check here, so which way it happened to be looking decided the run.
+    //
+    //  Both are fixed: `projectToScreen` and `screenOfMesh` return NULL for anything behind the
+    //  camera, and this block faces the node before the first tap and again between taps. A
+    //  deliberate face-away plus the guard removed reproduces the old signature exactly
+    //  (`pt=-669,-10697 onCanvas=false`, stone 0), which is the fail-then-pass.
+    //
+    //  So this is a plain check again. It has no ratio because it has a cause.
+    check('REGRESSION — the quarry is repeat-minable: three real taps in a row all land, none of them silent', quarryOk, `stone now ${(await live()).inventory.stone} | ${JSON.stringify(quarryDiag)} | ${quarryTaps.join(' ; ')}`);
     check('REGRESSION — the quarry stays available across multiple taps (does not single-shot deplete like other nodes)', quarryStillAvailable);
 
     //  Depletes as a whole once its pool is spent, and — the renewability law's actual
@@ -2945,6 +2978,10 @@ async function main() {
     //  mastery inflating the yield past a pool of 4 (disproved above). Something about the
     //  state left by a SUCCESSFUL mining sequence stops the next tap landing — most likely
     //  the same screen-projection fragility the repeat-mine check hits from the other side.
+        //  KEPT AS HISTORY, no longer consulted — the cause is found, so the ratio is
+        //  retired rather than deleted. What it recorded is worth remembering: two checks
+        //  carried a failure rate for sessions while the thing failing was a third check
+        //  upstream of both, and nobody read the detail line that said so every time.
         const QUARRY_DEPLETION_RECORD = {
         pass: 7, fail: 2, runs: 9, sinceSliceCloses: 0,
         hypothesis: 'BRAIN CLEARED, device-side. gatherNode depletes correctly at mastery 1.000 '
@@ -2955,10 +2992,12 @@ async function main() {
         locksNothing: 'D-070 the LAW is separately locked in the brain by tests/renewability.test.ts; '
             + 'this device check is a second, weaker witness, so the law is not resting on it.',
     };
-    measuredIntermittent('REGRESSION — the quarry depletes once its pool is fully spent',
+    //  Downstream of the check above and never independently broken: when the taps landed
+    //  nowhere the pool was never spent, so these reported `available=true pool=4` as a
+    //  consequence rather than as a defect of their own. One cause, three faces.
+    check('REGRESSION — the quarry depletes once its pool is fully spent',
         quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available === false,
-        `available=${quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available}`,
-        QUARRY_DEPLETION_RECORD);
+        `available=${quarryEmptied.nodes.find((n) => n.id === quarry.id)?.available}`);
 
     //  GEOLOGY V2 (D-070): the seam is FINITE. This check used to assert the opposite — that
     //  the quarry regrew to full capacity — and it is inverted rather than deleted, because a
@@ -2971,7 +3010,7 @@ async function main() {
     await sleep(500); // the live frame loop ticks reconcile every frame; give it a beat
     const quarryLater = await live();
     const seam = quarryLater.nodes.find((n) => n.id === quarry.id);
-    measuredIntermittent('D-070 GEOLOGY V2 — a spent seam stays spent, however long passes (finite tier)', seam?.available === false && seam?.pool === 0, `available=${seam?.available} pool=${seam?.pool}`, QUARRY_DEPLETION_RECORD);
+    check('D-070 GEOLOGY V2 — a spent seam stays spent, however long passes (finite tier)', seam?.available === false && seam?.pool === 0, `available=${seam?.available} pool=${seam?.pool}`);
     //  ...and the survival floor is still there: D-051 protects the RESOURCE, not the deposit.
     const surfaceStone = quarryLater.nodes.filter((n) => n.kind === 'rock');
     check('D-070 — and D-051 still holds: renewable surface stone remains', surfaceStone.length > 0 && surfaceStone.some((n) => n.available), `${surfaceStone.filter((n) => n.available).length}/${surfaceStone.length} surface rocks available`);
