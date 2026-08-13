@@ -28,6 +28,7 @@
  */
 
 import { TUNE } from '../data/tune';
+import { capacityEaseOf, practiceShareOf } from './capacities';
 import type { GameState, MaterialKind } from './types';
 
 // ---- Carry weight -------------------------------------------------------
@@ -120,12 +121,54 @@ export function loadEnergyMultiplierForKg(kg: number): number {
     return Math.min(TUNE.loadOverloadEnergyCeiling, banded + extra);
 }
 
+/**
+ * P0-E — CARRYING, FELT. What this load WEIGHS ON THIS BODY, after practice.
+ *
+ * Carrying read no capacity at all before this: `loadTolerance` was developed by hauling,
+ * displayed on the growth panel as "Carrying", and consulted by nothing. A survivor who had
+ * spent a week moving stone was slowed by a full pack exactly as much as one fresh off the
+ * beach — which is Law 234's failing build precisely, and the most conspicuous of the four
+ * because the panel names the capacity after the act.
+ *
+ * EFFECTIVE WEIGHT IS THE HONEST MODEL AND THE SMALLEST ONE. A practised carrier does not
+ * violate physics — the rock still weighs what it weighs — they carry it better: the load sits
+ * where it should, the shoulders have learned it. Expressing that as "this reads as fewer kg to
+ * this body" means BOTH shipped multipliers, speed and energy, pick the gain up at once from
+ * their existing curves. No parallel term, no second grammar, and the band thresholds keep
+ * meaning what they mean.
+ *
+ * It can never reach zero: the relief is a bounded fraction, so a heavy load is always heavy.
+ */
+export function effectiveCarriedKg(state: GameState): number {
+    const actual = carriedWeightKg(state);
+    const relief = TUNE.loadToleranceReliefMax * practiceShareOf(state.capacities?.loadTolerance ?? 0);
+    return actual * (1 - relief);
+}
+
 export function loadSpeedMultiplierOf(state: GameState): number {
-    return loadSpeedMultiplierForKg(carriedWeightKg(state));
+    return loadSpeedMultiplierForKg(effectiveCarriedKg(state));
 }
 
 export function loadEnergyMultiplierOf(state: GameState): number {
-    return loadEnergyMultiplierForKg(carriedWeightKg(state));
+    return loadEnergyMultiplierForKg(effectiveCarriedKg(state));
+}
+
+/**
+ * P0-E — WALKING, FELT. What practice at going far does to the pace of going far.
+ *
+ * Endurance already reached walking, through `demandRelativeToCapacity` — an ENERGY term, and
+ * therefore invisible in the act. Note what is NOT used here: `staminaCeilingFor` raises a
+ * reserve ceiling from this same capacity and has **no production caller anywhere** — it is
+ * tested and read by nothing, because the stamina reserve it shapes was never built. Wiring it
+ * would be a new system, which this batch is explicitly not for; it is named here so the next
+ * reader finds it in one grep instead of rediscovering it.
+ *
+ * So the felt half is pace, on the same line as every other speed multiplier, and it is
+ * deliberately the SMALLEST of the three gains: walking is what a survivor does constantly, and
+ * a large bonus here would rescale the whole island's distances rather than reward practice.
+ */
+export function walkEaseOf(state: GameState): number {
+    return capacityEaseOf(state.capacities?.endurance ?? 0, TUNE.enduranceWalkSpeedGainMax);
 }
 
 /** True once the load is past the top band — the point where extra weight starts costing

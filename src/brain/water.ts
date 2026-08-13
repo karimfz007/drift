@@ -48,7 +48,7 @@
  */
 import { TUNE } from '../data/tune';
 import { WRECK, waterDepthAt } from '../data/world';
-import { developCapacity, trainingStimulus, type CapacityScores, type TrainingContext } from './capacities';
+import { capacityEaseOf, developCapacity, trainingStimulus, type CapacityScores, type TrainingContext } from './capacities';
 import { loadEnergyMultiplierOf } from './body';
 import type { GameState } from './types';
 
@@ -130,6 +130,27 @@ export function swimEfficiencyOf(capacities: CapacityScores): number {
     return 1 - TUNE.swimConfidenceEnergyRelief * c;
 }
 
+/**
+ * P0-E — SWIMMING, FELT. What confidence in the water does to how fast you cross it.
+ *
+ * `swimEfficiencyOf` above is this capacity's ENERGY half and has shipped since the Maritime
+ * Slice; it buys off a fraction of the cost, which is real and is invisible in the act. A
+ * survivor who had swum the crossing a dozen times moved at exactly the pace of one who had
+ * never been in the sea. Law 234 asks whether the growth can be felt without opening a menu,
+ * and a cheaper swim cannot be.
+ *
+ * So this is the pace half, and it is the LARGEST of the three gains on purpose: swimming is
+ * where a beginner is genuinely, frighteningly slow — `swimSpeedMultiplier` is 0.29 — and it is
+ * the one act in the game whose whole character is confidence. Getting better at it should be
+ * the most obvious growth in the game, and this is the act where the water stops winning.
+ *
+ * Bounded, like every other term here: at 100 a swimmer is markedly faster and still far slower
+ * than they are on land, because the sea is the sea.
+ */
+export function swimSpeedEaseOf(capacities: CapacityScores): number {
+    return capacityEaseOf(capacities.breathWaterConfidence ?? 0, TUNE.swimConfidenceSpeedGainMax);
+}
+
 export interface WaterCosts {
     /** Energy per game hour. Positive is a DRAIN — the caller subtracts. */
     energyPerGameHour: number;
@@ -181,13 +202,21 @@ export function waterCostsFor(state: GameState): WaterCosts {
 export function waterSpeedMultiplierOf(state: GameState): number {
     if (state.raft.aboard) return TUNE.raftSpeedMultiplier;
     const stage = swimStageOf(state);
+    //  P0-E — practice applies to SWIMMING, and not to wading or to the raft. Wading is walking
+    //  in water and the raft is a hull doing the work; neither is the act this capacity is
+    //  developed by, and paying out a swimmer's practice on a raft would make the growth
+    //  unreadable at exactly the moment it should be clearest. `ashore` returns a bare 1 for the
+    //  same reason it always did: on dry land there is no water term at all.
+    const ease = swimSpeedEaseOf(state.capacities);
     switch (stage) {
         case 'ashore': return 1;
         case 'wading': return TUNE.wadeSpeedMultiplier;
         case 'spent':
         case 'going-under':
-            return TUNE.swimSpeedMultiplier * TUNE.swimSpentSpeedMultiplier;
-        default: return TUNE.swimSpeedMultiplier;
+            //  Still helps when you are spent — a confident swimmer in trouble is better off
+            //  than a beginner in trouble, which is the whole reason the capacity exists.
+            return TUNE.swimSpeedMultiplier * TUNE.swimSpentSpeedMultiplier * ease;
+        default: return TUNE.swimSpeedMultiplier * ease;
     }
 }
 

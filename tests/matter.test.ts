@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import {
     freshMatterWear, isNearlySpent, stressedMaterial, transformOnFailure, transformationFor,
 } from '../src/brain/matter';
-import { isAmbiguousToPlayer, makeChosen, tryCombineWith } from '../src/brain/experiment';
+import { needsNaming, makeChosen, tryCombineWith } from '../src/brain/experiment';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 import type { GameState, MaterialKind } from '../src/brain/types';
@@ -144,7 +144,12 @@ describe('through the real verb, not just the helper', () => {
             //  is not an attempt. Either way this stays a real attempt on a real relationship,
             //  which is the claim. Rewritten to the new law rather than deleted, so a silent
             //  revert of P0-1 still fails here.
-            const r = isAmbiguousToPlayer(s, ['wood', 'fiber'])
+            //  P0-C widens P0-1: naming is required at ONE held plan, not only at two, so the
+            //  predicate that decides whether this pile must be named is `needsNaming`.
+            //  `isAmbiguousToPlayer` still answers its own narrower question (which of two?) and
+            //  is deliberately not reused here — reading it would fall through to a bare
+            //  `tryCombine` that now returns `choose`, and the attempt would never happen.
+            const r = needsNaming(s, ['wood', 'fiber'])
                 ? makeChosen(s, ['wood', 'fiber'], 'torch')
                 : tryCombineWith(s, ['wood', 'fiber']);
             if (r.outcome === 'failed-attempt') {

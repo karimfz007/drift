@@ -17,7 +17,7 @@
  * the pre-fix tree.
  */
 import { describe, expect, it } from 'vitest';
-import { canExperimentWith, recipesMatching, resolveRecipe, tryCombineWith } from '../src/brain/experiment';
+import { EXPERIMENT_CHOICE, canExperimentWith, hasUnknownRival, makeChosen, recipesMatching, resolveRecipe, tryCombineWith } from '../src/brain/experiment';
 import { DISCOVERY_ROUTES } from '../src/brain/discovery';
 import { ALL_MATERIAL_KINDS } from '../src/brain/materials';
 import { createInitialState } from '../src/brain/state';
@@ -58,12 +58,33 @@ const SETS: MaterialKind[][] = [
     ...DISCOVERY_ROUTES.map((r) => r.makings),
 ];
 
+/**
+ * P0-C — "A RUN THAT KEEPS TRYING" NOW HAS TO ANSWER A QUESTION, and this helper is what makes
+ * that explicit rather than hidden.
+ *
+ * The director's ruling is that staged materials matching a plan the survivor HOLDS must name
+ * the attempt and wait — at one match, not just at two. So a bare `tryCombineWith` loop stalls
+ * the moment the first plan is earned: every later pass returns `choose` and commits nothing.
+ * THIS TEST IS WHAT CAUGHT THAT, going red on `fishingline` — a recipe walled off behind a plan
+ * the survivor already had — and it is why `EXPERIMENT_CHOICE` exists at all.
+ *
+ * A survivor who wants to invent declines the named thing and tries something else, so that is
+ * exactly what the probe does: take the question, and answer it the way someone still
+ * experimenting would. Nothing here reaches past the brain's own front door.
+ */
+function keepTrying(s: GameState, set: MaterialKind[]): void {
+    const first = tryCombineWith(s, set);
+    if (first.outcome !== 'choose') return;
+    //  Decline the known plan and experiment — the ordinary discovery path, unchanged.
+    if (hasUnknownRival(s, set)) makeChosen(s, set, EXPERIMENT_CHOICE);
+}
+
 describe('REACHABILITY — everything with a discovery route can actually be arrived at', () => {
     it('a run that keeps trying reaches EVERY routed recipe, stone hammer included', () => {
         const s = capable();
         for (let i = 0; i < 400; i++) {
             restock(s);
-            for (const set of SETS) tryCombineWith(s, set);
+            for (const set of SETS) keepTrying(s, set);
         }
         const reached = new Set(s.blueprints.map((b) => b.recipeId));
         for (const route of DISCOVERY_ROUTES) {
@@ -75,7 +96,7 @@ describe('REACHABILITY — everything with a discovery route can actually be arr
         const s = capable();
         for (let i = 0; i < 400; i++) {
             restock(s);
-            for (const set of SETS) tryCombineWith(s, set);
+            for (const set of SETS) keepTrying(s, set);
         }
         const reached = new Set(s.blueprints.map((b) => b.recipeId));
         expect(reached.has('stonehammer'), 'no hammer means no blade means no axe').toBe(true);

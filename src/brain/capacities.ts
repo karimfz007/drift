@@ -183,6 +183,48 @@ export function staminaCeilingFor(endurance: number): number {
     return TUNE.staminaCeilingBase + span * clamp01(endurance / 100);
 }
 
+/**
+ * P0-E — HOW MUCH OF A CAPACITY'S PRACTICE IS ACTUALLY IN THE HANDS, 0 at the innate floor and
+ * 1 at 100. The one conversion every "felt" term below is built from.
+ *
+ * WHY IT MEASURES FROM THE FLOOR AND NOT FROM ZERO. Every capacity starts at
+ * `capacityInnateFloor`, never at 0 — a castaway can already walk and lift. Dividing the raw
+ * score by 100 would hand a survivor who has done nothing a fraction of the bonus for free, and
+ * would mean the very first hour of practice moved the number less than washing ashore did.
+ * Measured from the floor, "as you landed" is exactly zero benefit, which is what
+ * `standingOf`'s own first band already promises the player in words.
+ */
+export function practiceShareOf(score: number): number {
+    const span = 100 - TUNE.capacityInnateFloor;
+    if (span <= 0) return 0;
+    return clamp01((score - TUNE.capacityInnateFloor) / span);
+}
+
+/**
+ * P0-E — LAW 234 ("progression must be felt blind"), APPLIED TO THE FOUR ACTS THE DIRECTOR
+ * NAMED. A bounded speed-or-ease gain, from a capacity's practice, in the currency the game
+ * already speaks.
+ *
+ * THE DEFECT: growth was real, recorded, and readable in a menu — and outside forging and
+ * woodcutting it changed nothing a player could feel. Capacities DID reach the simulation, but
+ * only through ENERGY: `swimEfficiencyOf` bought off a fraction of the swim's cost,
+ * `demandRelativeToCapacity` scaled walking demand, and carrying read no capacity at all. Every
+ * one of those is a slower drain on a bar, which is precisely the "hide the number and change
+ * nothing observable" build v2.8 rewrote Law 201 to fail. `airCapacityOf` was the exception and
+ * the proof: more air is felt instantly, because the survivor stays under longer.
+ *
+ * SO THE GAIN IS EXPRESSED AS PACE AND AS EASE, never as a new mechanism. Each caller multiplies
+ * something it already multiplies, and each returns exactly 1 (or 0 relief) at the innate floor,
+ * so a fresh castaway's numbers are bit-for-bit what they were before this existed.
+ *
+ * BOUNDED, per §12's own boundary for every capacity — *"does not extend human physiology
+ * without limit"*. The practised survivor is meaningfully better and never superhuman; there is
+ * no score at which the island becomes free.
+ */
+export function capacityEaseOf(score: number, maxGain: number): number {
+    return 1 + maxGain * practiceShareOf(score);
+}
+
 // ---------------------------------------------------------------------------
 // Development.
 // ---------------------------------------------------------------------------

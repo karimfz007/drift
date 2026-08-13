@@ -45,6 +45,12 @@ export const PALETTE = {
     /** THE WRECK SLICE — corroded steel. Deliberately darker and colder than any island
      *  material, so a workable hull part cannot be mistaken for driftwood at a glance. */
     wreckHull: [0.26, 0.28, 0.31],
+    //  P0-H — the instrument housing. Painted steel rather than corroded plate: a made,
+    //  maintained thing among torn ones, which is what makes it read as equipment.
+    wreckHousing: [0.42, 0.40, 0.34],
+    //  ...and its glass. The only bright value anywhere on the wreck, so at distance this is
+    //  the thing that catches the eye — the whole reason the housing can be FOUND.
+    wreckGlass: [0.68, 0.78, 0.80],
     /** THE UNDERWATER SLICE — what sank. Darker and bluer than the surface hull, because
      *  less light reaches it and because a diver must never confuse the two. */
     diveHull: [0.17, 0.21, 0.26],

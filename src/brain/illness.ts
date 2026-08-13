@@ -256,6 +256,49 @@ export function illnessImpairmentShare(ill: IllnessState): number {
 }
 
 /**
+ * P0-D — HOW MUCH SLOWER A SICK BODY MOVES. 1 when well, floored so no fever soft-locks a run.
+ *
+ * THE DEFECT, director-confirmed: *"the line shows; the body ignores it."* Illness was wired to
+ * `impairmentOf`, which is real but is an ENERGY term — a fevered survivor paid more per hour
+ * out of a ledger they cannot see, and walked at exactly the same speed as a well one. The
+ * whole felt cost of being ill was a sentence on the readout. Law 234's standard is that a
+ * thing must be perceivable IN THE ACT, and "your energy bar drains marginally faster" is not
+ * perceivable in the act by anyone.
+ *
+ * SPEED IS THE CHANNEL THE GAME ALREADY SPEAKS. `speedScale` in the body is a product of
+ * multipliers that each return exactly 1 when their condition is absent — load, water, dive.
+ * This is a fourth term of the same shape and joins the same line: it scales `walkSpeedMps` at
+ * use and never mutates the constant, so a well survivor's walk is bit-for-bit unchanged.
+ *
+ * IT RESPECTS THE FAIR-CHALLENGE LINE EXACTLY AS THE ENERGY TERM DOES. `illnessCosts` is false
+ * through `unsettled` and `ailing`, so both warning rungs remain genuinely free — the survivor
+ * is told twice, and told in sensations, before anything at all is taken. The cost begins at
+ * `feverish`, which is the rung whose own readout says *"It is costing you now."* Before this
+ * that sentence was not true.
+ *
+ * FLOORED, NOT UNBOUNDED. `illnessSlowestMultiplier` is the worst a body ever gets, so even
+ * gravely ill a survivor can still reach the shelter, the fire and the remedy that fix them.
+ * An illness that could strand someone at zero pace would not be a challenge; it would be a
+ * save file quietly ending, which is the opposite of the fair-challenge grammar.
+ */
+export function illnessSpeedMultiplierOf(ill: IllnessState | null | undefined): number {
+    //  GUARDED, because the caller is a PER-FRAME movement term and an older save has no
+    //  `illness` at all. Unguarded, `illnessStage` reads `.severity` off undefined and throws
+    //  inside the frame loop — which would not read as an illness bug at all, but as movement
+    //  mysteriously stopping. `resolver.ts` has guarded this same field since the drop it
+    //  shipped in, and following that precedent is cheaper than proving it can never happen.
+    //
+    //  NOT known to have caused anything. It was added while chasing a felling failure in the
+    //  full sweep, and the console-error log was CLEAN, so this is not that cause — said here
+    //  rather than left implied, because a defensive guard that quietly takes credit for an
+    //  unrelated fix is how a real cause goes unlooked-for.
+    if (!ill) return 1;
+    const share = illnessImpairmentShare(ill);
+    if (share <= 0) return 1;
+    return 1 - (1 - TUNE.illnessSlowestMultiplier) * share;
+}
+
+/**
  * ONE PLAIN SENTENCE, and it NAMES THE CAUSE. A readout that said "you feel unwell" would
  * make the illness arbitrary in exactly the way the design forbids: the player has to be able
  * to trace it, and the first two rungs exist so they can be told before it costs them.

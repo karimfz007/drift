@@ -110,6 +110,9 @@ import {
     panelHints,
     announcementFor,
     loadSpeedMultiplierOf,
+    walkEaseOf,
+    wreckPartSight,
+    illnessSpeedMultiplierOf,
     nodeHoldSeconds,
     nodeSpec,
     recordCombinationAttempts,
@@ -158,7 +161,9 @@ import {
     noticedOnSurfacing,
     slowWorkNote,
     illnessSymptom,
-    knownMatches,
+    heldMatches,
+    hasUnknownRival,
+    EXPERIMENT_CHOICE,
     recipeDisplayName,
     makeChosen,
     crashBlockedReason,
@@ -968,10 +973,23 @@ export class Game {
         //  NOTHING IS SPENT YET. Cancelling leaves the pile exactly as it was, because being
         //  asked a question is not an attempt.
         if (result.outcome === 'choose') {
-            const offered = knownMatches(session().state, materials as 'wood'[]);
+            //  P0-C — `heldMatches`, NOT `knownMatches`. The brain now asks for confirmation at
+            //  ONE held plan as well as two, and `knownMatches` returns an empty list below two
+            //  by design — so reading it here would have opened a circle with no positions in
+            //  it, which is a silent refusal wearing a question's clothes. The list the body
+            //  offers must be the same list the brain asked about.
+            const offered = heldMatches(session().state, materials as 'wood'[]);
             const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
             this.showHint(result.reason ?? 'Which are you making?');
-            showVerbCircle(this.overlay, offered.map((r) => ({ id: r.id, label: recipeDisplayName(r.id), available: true, reason: null })),
+            //  P0-C — ...and the door invention comes through. Offered only when this pile
+            //  genuinely still has an outcome the survivor has not worked out, so a fully known
+            //  pile asks a plain yes-or-no. It names nothing: "try something else" is a refusal
+            //  of the known thing, never a hint that a particular other thing exists.
+            const positions = offered.map((r) => ({ id: r.id, label: recipeDisplayName(r.id), available: true, reason: null }));
+            if (hasUnknownRival(session().state, materials as 'wood'[])) {
+                positions.push({ id: EXPERIMENT_CHOICE, label: 'Try something else', available: true, reason: null });
+            }
+            showVerbCircle(this.overlay, positions,
                 at.x, at.y,
                 (id: string) => {
                     //  A CHOICE IS A TAP OUTCOME, so it leaves the same breadcrumb every other
@@ -1984,6 +2002,13 @@ export class Game {
         //  DROP 5 — the set, out of the instrument housing. Said the moment it is found,
         //  because a thing that appears in a panel with no announcement is a thing the
         //  player never learns they have.
+        //  P0-H — WHAT IT IS, said before what it gave. The housing is a distinct shape in the
+        //  water now, which is what a survivor finds it BY; this is the confirmation that they
+        //  read the wreck right, in the same place and the same way `slowWorkNote` confirms a
+        //  boulder. Said on every working of it, not only the first: the five ordinary parts
+        //  return null here, so this line only ever names the one thing worth naming.
+        const housing = wreckPartSight(view.node.id);
+        if (housing) { this.lastReadoutSaid = housing; this.showHint(housing); }
         if (result.foundReceiver) this.showHint('A receiver, out of the housing — and a cell with it. It only listens.');
         if (result.levelsGained > 0 && result.skill) {
             const level = session().state.skills[result.skill].level;
@@ -3022,7 +3047,22 @@ export class Game {
             //  THE UNDERWATER SLICE, on the same line and by the same rule as every multiplier
             //  above it: it scales `walkSpeedMps` at use and never mutates the constant.
             //  Surfaced returns exactly 1, so nothing about swimming changes.
-            diveSpeedMultiplierOf(state);
+            diveSpeedMultiplierOf(state) *
+            //  P0-D — ILLNESS, on the same line and by the same rule. THE DIRECTOR'S REPORT WAS
+            //  "the line shows; the body ignores it", and this line is why: illness reached the
+            //  ENERGY ledger through `impairmentOf` and reached pace nowhere, so a feverish
+            //  survivor walked at exactly the speed of a well one. Returns exactly 1 through
+            //  both free warning rungs, so the fair-challenge grammar is untouched and only a
+            //  body that has been told twice ever slows down.
+            illnessSpeedMultiplierOf(state.illness) *
+            //  P0-E — AND THE SAME LINE IS WHERE GROWTH BECOMES FELT. Law 234 asks whether
+            //  progression is perceivable in the act; walking practice was reaching the energy
+            //  ledger and nothing else. Returns exactly 1 at the innate floor, so a fresh
+            //  castaway's pace is bit-for-bit what it was. Carrying's own practice is NOT here:
+            //  it goes through `loadSpeedMultiplierOf` above, which now weighs the load as this
+            //  body actually carries it, so the gain arrives through the shipped curve rather
+            //  than as a fourth factor nobody can trace.
+            walkEaseOf(state);
 
         if (stick.magnitude > 0) {
             //  Manual steering overrides the auto-walk DIRECTION, but must not erase the

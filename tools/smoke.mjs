@@ -65,6 +65,12 @@ const LOOK_KEY = 'drift.look.v1';
 const TUNE = new Proxy({
     //  DROP 3 — D-011's own floor, mirrored so the Medicine Slice's absence check can cite
     //  the real constant instead of a hardcoded 25 that would silently drift away from it.
+    //  P0-C / P0-E — mirrored because the new section cites them. The Proxy below CRASHES on
+    //  an unmirrored key rather than yielding undefined, which is what caught these: a check
+    //  reading `undefined` would have compared against NaN and passed on nothing.
+    experimentEnergyCost: 6,
+    experimentGameHours: 0.75,
+    swimDepthM: 1.35,
     healthOfflineFloor: 25,
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
@@ -8574,6 +8580,248 @@ async function main() {
         + ` 18 m away ${midway === null ? 'never told' : mid.toFixed(3)},`
         + ` 70 m away ${farAway === null ? 'never told' : far.toFixed(3)}`
         + ` — the gain node itself is unwitnessable headless (no audio decode)`);
+    }
+
+
+    // ======== THE FOUR REMAINING P0 ITEMS — on the real surfaces ========
+    //
+    //  WRITTEN AGAINST THREE SPECIFIC VACUOUS SHAPES this project has now shipped: green on a
+    //  value that was off-screen (`isFinite` at y = -35), green on the computation instead of
+    //  the real output (the fire's falloff), and green on a hook that answered a different
+    //  question than the one asked (`lastCue`, assigned only by the boar). So: positions are
+    //  bound-checked against the viewport, speeds are measured as DISTANCE ACTUALLY TRAVELLED
+    //  rather than read off the multiplier that produces them, and every hook used here is one
+    //  whose answer is the thing being claimed.
+    if (section("P0 REMAINING — the named attempt, the felt fever, the earned pace, the housing")) {
+
+    // ---- P0-C: STAGED MATERIALS ARE NAMED, NEVER COMMITTED SILENTLY -----------
+    //
+    //  Director's ruling: even when only ONE match exists, name the attempt and WAIT.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.inventory = { ...state.inventory, wood: 20, fiber: 20, stone: 20, sharpblade: 20 };
+        state.blueprints = [{ recipeId: 'spear', name: 'Fire-hardened spear', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+    `);
+    await sleep(900);
+    const beforeCraft = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { wood: s.inventory.wood, blade: s.inventory.sharpblade, energy: s.energy,
+                 hours: s.gameHoursElapsed, attempts: s.experimentCount };
+    });
+    //  The REAL verb, through the brain's own front door — the same call the panel makes.
+    const asked = await page.evaluate(() => window.__drift.tryCombine('wood', 'sharpblade'));
+    await sleep(500);
+    const afterAsk = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { wood: s.inventory.wood, blade: s.inventory.sharpblade, energy: s.energy,
+                 hours: s.gameHoursElapsed, attempts: s.experimentCount };
+    });
+    await shot('p0c-01-named');
+    check('P0-C — REACHABILITY: a pile matching ONE held plan is NAMED, not silently made',
+        asked?.outcome === 'choose' && /trying to make/i.test(asked?.reason ?? '') && /spear/i.test(asked?.reason ?? ''),
+        `outcome ${asked?.outcome}, and it said: "${asked?.reason ?? '(nothing)'}"`);
+
+    //  ENERGY IS COMPARED AGAINST THE ATTEMPT'S OWN PRICE, not against zero. The first cut
+    //  demanded byte-equal energy and went red on a drop of 0.014 — which is the ambient cost
+    //  of being alive across the sleep, not the combine. A check that cannot tell living from
+    //  spending would fail forever and teach nobody anything. The claim being made is precise:
+    //  the ATTEMPT was not charged, so energy must not have moved by anything approaching
+    //  `experimentEnergyCost`. Materials, the clock and the attempt counter cannot drift on
+    //  their own, so those stay exact — the CLOCK does drift, at 1 game hour per 150 real
+    //  seconds, so it is held to the same standard as energy: nowhere near an attempt's price.
+    const energySpent = beforeCraft.energy - afterAsk.energy;
+    const hoursSpent = afterAsk.hours - beforeCraft.hours;
+    check('P0-C — ...and being asked spends NOTHING: the pile is exactly as it was',
+        afterAsk.wood === beforeCraft.wood && afterAsk.blade === beforeCraft.blade
+        && afterAsk.attempts === beforeCraft.attempts
+        && energySpent < TUNE.experimentEnergyCost * 0.5
+        && hoursSpent < TUNE.experimentGameHours * 0.5,
+        `wood ${beforeCraft.wood}->${afterAsk.wood}, blade ${beforeCraft.blade}->${afterAsk.blade},`
+        + ` attempts ${beforeCraft.attempts}->${afterAsk.attempts};`
+        + ` energy fell ${energySpent.toFixed(4)} of an attempt's ${TUNE.experimentEnergyCost},`
+        + ` clock moved ${hoursSpent.toFixed(4)} h of an attempt's ${TUNE.experimentGameHours} h`);
+
+    // ---- P0-D: A FEVER IS FELT IN THE FEET ------------------------------------
+    //
+    //  THE REAL STICK, held for a fixed time, and the ground ACTUALLY covered.
+    //
+    //  `walkToward` is the harness's own left-thumb driver — a real touchStart/touchMove on the
+    //  canvas — so this measures the shipped input path end to end rather than a debug hook that
+    //  sets a velocity. And the quantity compared is DISTANCE TRAVELLED, never the multiplier
+    //  that produces it: reading `illnessSpeedMultiplierOf` back would repeat last session's
+    //  fire-falloff mistake exactly, where the arithmetic was right the whole time and nothing
+    //  applied it. If the term is ever unwired again, these numbers converge and this goes red.
+    const walkedIn = async (tx, tz, seconds) => {
+        const from = await live();
+        await walkToward(tx, tz, seconds);
+        const to = await live();
+        return Math.hypot(to.player.x - from.player.x, to.player.y - from.player.y);
+    };
+
+    const wellFixture = `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0 };
+        state.injuries = { ...state.injuries, pain: 0, bleeding: 0 };
+    `;
+    await editSave(`${wellFixture} state.illness = { severity: 0, cause: null, gameHoursSick: 0 };`);
+    await sleep(900);
+    const wellDistance = await walkedIn(0, 60, 1.5);
+
+    //  Both FREE rungs, which is the half the fair-challenge grammar protects.
+    await editSave(`${wellFixture} state.illness = { severity: 0.3, cause: 'bad-water', gameHoursSick: 5 };`);
+    await sleep(900);
+    const ailingDistance = await walkedIn(0, 60, 1.5);
+
+    await editSave(`${wellFixture} state.illness = { severity: 0.95, cause: 'bad-water', gameHoursSick: 20 };`);
+    await sleep(900);
+    const feverDistance = await walkedIn(0, 60, 1.5);
+    await shot('p0d-01-fevered');
+
+    check('P0-D — REACHABILITY: a gravely ill survivor COVERS LESS GROUND in the same time',
+        wellDistance > 1 && feverDistance > 0 && feverDistance < wellDistance * 0.92,
+        `well walked ${wellDistance.toFixed(2)} m, gravely ill walked ${feverDistance.toFixed(2)} m`
+        + ` in the same 1.5 s (equal distance means the body is still ignoring the line)`);
+
+    check('P0-D — ...and BOTH warning rungs are still free: being "ailing" costs no pace at all',
+        ailingDistance > wellDistance * 0.97,
+        `well ${wellDistance.toFixed(2)} m vs ailing ${ailingDistance.toFixed(2)} m`
+        + ` — the two free warnings must cost nothing`);
+
+    check('P0-D — ...and a fever never strands a run: the survivor can still reach help',
+        feverDistance > wellDistance * 0.4,
+        `gravely ill still covered ${feverDistance.toFixed(2)} m of the well ${wellDistance.toFixed(2)} m`);
+
+    // ---- P0-E: GROWTH IS FELT IN THE ACT (Law 234) ----------------------------
+    //
+    //  Same method, same reason: ground covered, never a multiplier read back.
+    const loadFixture = (tolerance) => `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.illness = { severity: 0, cause: null, gameHoursSick: 0 };
+        state.inventory = { ...state.inventory, stone: 20 };
+        state.capacities = { ...state.capacities, loadTolerance: ${tolerance}, endurance: 0 };
+    `;
+    await editSave(loadFixture(0));
+    await sleep(900);
+    const greenCarry = await walkedIn(0, 60, 1.5);
+    await editSave(loadFixture(100));
+    await sleep(900);
+    const practisedCarry = await walkedIn(0, 60, 1.5);
+    await shot('p0e-01-carry');
+
+    check('P0-E — REACHABILITY: a practised carrier moves the SAME load further (carry)',
+        practisedCarry > greenCarry * 1.01,
+        `fresh off the beach ${greenCarry.toFixed(2)} m, practised ${practisedCarry.toFixed(2)} m,`
+        + ` carrying an identical 20 stone`);
+
+    const walkFixture = (endurance) => `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.illness = { severity: 0, cause: null, gameHoursSick: 0 };
+        state.inventory = { ...state.inventory, stone: 0, wood: 0, fiber: 0 };
+        state.capacities = { ...state.capacities, endurance: ${endurance}, loadTolerance: 0 };
+    `;
+    await editSave(walkFixture(0));
+    await sleep(900);
+    const greenWalk = await walkedIn(0, 60, 1.5);
+    await editSave(walkFixture(100));
+    await sleep(900);
+    const practisedWalk = await walkedIn(0, 60, 1.5);
+
+    check('P0-E — REACHABILITY: practice at going far makes going far faster (walk)',
+        practisedWalk > greenWalk * 1.01,
+        `fresh ${greenWalk.toFixed(2)} m, practised ${practisedWalk.toFixed(2)} m`);
+
+    //  SWIMMING — in real water, off the beach, where `waterSpeedMultiplierOf` actually applies.
+    //  (0,150) IS SEVEN METRES DEEP; (0,128) was dry sand, and the guard below caught exactly
+    //  that on the first run — "depth 0, beginner covered 2.57 m" — a swim comparison run
+    //  entirely on the beach, which would have reported a real-looking pass about nothing.
+    const swimFixture = (confidence) => `
+        state.player = { x: 0, y: 150 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.illness = { severity: 0, cause: null, gameHoursSick: 0 };
+        state.raft = { ...state.raft, aboard: false };
+        state.inventory = { ...state.inventory, stone: 0, wood: 0, fiber: 0 };
+        state.capacities = { ...state.capacities, breathWaterConfidence: ${confidence} };
+    `;
+    await editSave(swimFixture(0));
+    await sleep(900);
+    const swimZone = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { depth: window.__drift.depthAtPoint(s.player.x, s.player.y),
+                 x: s.player.x, y: s.player.y };
+    });
+    const greenSwim = await walkedIn(0, 205, 1.5);
+    await editSave(swimFixture(100));
+    await sleep(900);
+    const practisedSwim = await walkedIn(0, 205, 1.5);
+    await shot('p0e-02-swim');
+
+    //  A REAL GATE. The first cut wrote this as `a && b ? c : d`, which evaluates to `d`
+    //  whenever the fixture is on land — so the guard against a vacuous swim test was itself
+    //  vacuous. It now demands actual swimming depth, full stop.
+    check('P0-E — the swim fixture is genuinely IN DEEP WATER, not standing on the sand',
+        swimZone.depth !== null && swimZone.depth >= TUNE.swimDepthM,
+        `at ${swimZone.x.toFixed(0)},${swimZone.y.toFixed(0)} depth ${swimZone.depth ?? 'unknown'} m`
+        + ` (swimming starts at ${TUNE.swimDepthM} m), beginner covered ${greenSwim.toFixed(2)} m`);
+
+    check('P0-E — REACHABILITY: a confident swimmer crosses water faster (swim)',
+        practisedSwim > greenSwim * 1.05,
+        `beginner ${greenSwim.toFixed(2)} m, practised ${practisedSwim.toFixed(2)} m in the same time`);
+
+    // ---- P0-H: THE INSTRUMENT HOUSING CAN BE SEEN --------------------------
+    //
+    //  The receiver was never gated wrong — it was UNFINDABLE, behind one of six identical
+    //  plates. So this witnesses the MESH, and bound-checks its position against the viewport,
+    //  because "it projects to a finite point" is the exact vacuous shape that shipped last
+    //  session at thirty-five pixels above the top of the screen.
+    const wreckAt = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const n = s.nodes.find((x) => x.id === 'wr3');
+        return n ? { x: n.x, y: n.y } : null;
+    });
+    await editSave(`
+        state.player = { x: ${wreckAt ? wreckAt.x + 6 : 0}, y: ${wreckAt ? wreckAt.y + 6 : 60} };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.raft = { ...state.raft, aboard: true };
+    `);
+    await sleep(1100);
+    const housing = await page.evaluate(() => ({
+        housing: window.__drift.meshInfo('n_wr3_housing'),
+        glass: window.__drift.meshInfo('n_wr3_glass'),
+        //  A sibling, for contrast: if these ever match, the housing is not distinguishable.
+        sibling: window.__drift.meshInfo('n_wr4_housing'),
+        onScreen: window.__drift.screenOfMesh('n_wr3_housing'),
+        vp: { w: window.innerWidth, h: window.innerHeight },
+    }));
+    await shot('p0h-01-housing');
+
+    check('P0-H — REACHABILITY: the instrument housing is a REAL, DRAWN object in the water',
+        housing.housing !== null && housing.housing.enabled === true,
+        `n_wr3_housing ${housing.housing === null ? 'NO SUCH MESH — still six identical plates' : 'enabled ' + housing.housing.enabled}`);
+
+    check('P0-H — ...and it has the glass face that makes it catch the eye at distance',
+        housing.glass !== null && housing.glass.enabled === true,
+        `n_wr3_glass ${housing.glass === null ? 'missing' : 'enabled ' + housing.glass.enabled}`);
+
+    check('P0-H — ...and it is genuinely DISTINCT: no other wreck part has one',
+        housing.sibling === null,
+        `n_wr4_housing ${housing.sibling === null ? 'absent, as it must be' : 'EXISTS — every part is a housing, so none is'}`);
+
+    check('P0-H — ...and it projects INSIDE the viewport, so it can actually be seen',
+        housing.onScreen !== null
+        && housing.onScreen.x > 0 && housing.onScreen.x < housing.vp.w
+        && housing.onScreen.y > 0 && housing.onScreen.y < housing.vp.h,
+        `screenOfMesh(n_wr3_housing) = ${JSON.stringify(housing.onScreen)} in ${housing.vp.w}x${housing.vp.h}`);
     }
 
     // ---- Hygiene ----

@@ -571,6 +571,15 @@ export const TUNE = {
      *  A bleed outruns a resting body; a fever does not. Illness is the slow one: it wears
      *  you down over a night, and a survivor who stops and rests is genuinely winning. */
     illnessHealthPerGameHour: 3.5,
+    /** [TUNE] P0-D — the slowest a fever ever makes a body walk, as a fraction of normal pace,
+     *  reached only at full severity. Basis: `swimSpentSpeedMultiplier` and
+     *  `diveFumblingSpeedMultiplier`, which are BOTH 0.55 — the two constants this game already
+     *  uses for "a body still working, at its limit". A fever belongs in that company rather
+     *  than with `loadOverloadSpeedFloor` (0.35), which is a crushing 200 kg and a harsher
+     *  sentence than being ill should pass. Well above zero on purpose: a survivor must always
+     *  be able to reach the fire, the shelter and the remedy that fix them, so this slows a run
+     *  down and never quietly ends one. */
+    illnessSlowestMultiplier: 0.55,
     /** [TUNE] Severity shed per game hour awake. Basis: an untreated illness runs its course
      *  in ~14 game hours, a little over one night — long enough to reshape a day's plans,
      *  short enough that it is an event and not a condition you live with. */
@@ -1007,6 +1016,13 @@ export const TUNE = {
      *  breath/water confidence removes. Capped well short of free: §12's own boundary for
      *  this capacity is "does not extend human physiology without limit". */
     swimConfidenceEnergyRelief: 0.35,
+    /** [TUNE] P0-E — the most that confidence adds to SWIM PACE, as a fraction, reached only at
+     *  capacity 100. The largest of the three felt gains, deliberately: a beginner swims at
+     *  `swimSpeedMultiplier` (0.29) — frighteningly slow, and correctly so — and the water is
+     *  the one act in this game whose entire character is confidence. At 0.3 a practised
+     *  swimmer crosses at ~0.38 of walking pace instead of 0.29, which is the difference
+     *  between the sea winning and the survivor winning, and is still far slower than land. */
+    swimConfidenceSpeedGainMax: 0.3,
     /** [TUNE] Maritime — game hours of swimming that count as one training bout, feeding
      *  `capacityGainPerBout`. Basis: 0.15 gh = ~22 real seconds of continuous swimming, so a
      *  capacity worth ~30 points of development is ~11 game hours in the water spread over a
@@ -2004,6 +2020,21 @@ export const TUNE = {
      *  reported case now moves at roughly half the Heavy-band speed. */
     loadOverloadSpeedPenaltyPerStep: 0.06,
     loadOverloadSpeedFloor: 0.35,
+    /** [TUNE] P0-E — the most of a load's weight that practice ever buys off, as a fraction,
+     *  reached only at capacity 100. Basis: `swimConfidenceEnergyRelief`'s own shape — the
+     *  shipped precedent for "a capacity buys off a bounded fraction of a cost" — kept modest
+     *  because this one reaches BOTH speed and energy through the load curves, so it is felt
+     *  twice where the swim relief is felt once. At 0.2 a fully practised carrier moves 20 kg
+     *  as if it were 16: enough to drop a band and be noticed in the act, never enough to make
+     *  weight stop mattering, which is §12's boundary for every capacity. */
+    loadToleranceReliefMax: 0.2,
+    /** [TUNE] P0-E — the most that practice at going far adds to walking pace, as a fraction,
+     *  reached only at capacity 100. Deliberately the SMALLEST of the three felt gains:
+     *  walking is continuous, so this multiplies more of the game's minutes than anything else
+     *  here, and a large number would rescale the island's distances rather than reward the
+     *  survivor. At 0.08 a practised walker crosses the island noticeably but not alarmingly
+     *  faster, and a fresh castaway's pace is bit-for-bit unchanged. */
+    enduranceWalkSpeedGainMax: 0.08,
     /** [TUNE] D-059 — energy multiplier added per overload step, and its ceiling. Capped so
      *  a huge haul is punishing but never instantly drains a full bar. */
     loadOverloadEnergyPerStep: 0.15,

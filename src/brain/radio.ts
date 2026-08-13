@@ -86,6 +86,25 @@ export function salvageReceiver(state: GameState, nodeId: string): boolean {
     return true;
 }
 
+/**
+ * P0-H — WHAT THIS PART OF THE WRECK IS, BEFORE IT IS WORKED. Null for the five ordinary ones.
+ *
+ * THE DEFECT, director-confirmed: the radio was never found. Not gated wrong, not broken — the
+ * receiver has come out of `wr3` since [[D-124]] and still does. It was UNFINDABLE. `wr3` is
+ * "the instrument housing, off the bow" in this file's header and in the TUNE comment, and it
+ * drew as the same plate and rib as its five siblings, so the one rung of ENDING E03 standing
+ * in the world was a one-in-six blind guess behind a 296 m crossing and a hull that wounds you.
+ *
+ * The housing is a shape in the water now (see `entities.ts`), which is the half a survivor
+ * finds by looking. This is the half that says it out loud when they get close enough to work
+ * it — the same evidence grammar the journal and the boat already use: observable properties,
+ * no promise of what it will do, and nothing about what it might be made to become.
+ */
+export function wreckPartSight(nodeId: string): string | null {
+    if (nodeId !== TUNE.radioSalvageNodeId) return null;
+    return 'Not plating — a housing, with a glass face and a dial behind it. Whatever this was, it was made to be read.';
+}
+
 /** What the set is, before anything is switched on. */
 export function radioSight(): string {
     return 'A receiver, out of the instrument housing. Heavier than it looks, and the case is intact.';

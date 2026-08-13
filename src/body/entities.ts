@@ -583,6 +583,42 @@ function buildNodeMesh(scene: Scene, node: WoodNode, groundY: number, index: num
             rib.position.set(0, 0.18, 0.1);
             rib.isPickable = true;
             rib.metadata = { nodeId: node.id };
+
+            //  P0-H — THE INSTRUMENT HOUSING, AND THE REASON THE DIRECTOR NEVER FOUND THE RADIO.
+            //
+            //  The receiver comes out of `wr3` and has since [[D-124]]. `wr3` is "the instrument
+            //  housing, off the bow" in the TUNE comment, in `radio.ts`'s header, and NOWHERE A
+            //  PLAYER CAN SEE — all six parts drew as the same plate and rib, differing only by
+            //  a rotation angle. So the one rung of ENDING E03 that exists in the world was
+            //  behind a one-in-six blind guess, 296 m offshore, past a hull that hurts you.
+            //  Nobody found it because there was nothing to find it BY.
+            //
+            //  Law 26's standard is that the world tells you, and this is the world telling you:
+            //  a housing with a glass face and a dial, unmistakable among torn plating, visible
+            //  from the moment the wreck is in sight. No new verb, no marker, no menu entry —
+            //  the survivor works this part because they SAW it, which is what evidence-led
+            //  first contact means and what the journal already does.
+            if (node.id === TUNE.radioSalvageNodeId) {
+                const housing = CreateBox(`n_${node.id}_housing`, { width: 0.86, height: 0.62, depth: 0.5 }, scene);
+                housing.material = materials.wreckHousing;
+                housing.parent = plate;
+                //  Counter-rotated out of the plate's own tilt so the face stays UP and readable
+                //  from a swimmer's eye line — the whole point is that it is spotted.
+                housing.rotation.z = -plate.rotation.z;
+                housing.position.set(0, 0.5, 0);
+                housing.isPickable = true;
+                housing.metadata = { nodeId: node.id };
+
+                //  The glass. Its own material so it catches light differently from painted
+                //  steel: at distance this is the only part of the wreck that glints.
+                const face = CreateBox(`n_${node.id}_glass`, { width: 0.5, height: 0.34, depth: 0.06 }, scene);
+                face.material = materials.wreckGlass;
+                face.parent = housing;
+                face.position.set(0, 0.05, 0.27);
+                face.isPickable = true;
+                face.metadata = { nodeId: node.id };
+            }
+
             //  Placed against the SEA SURFACE, not the ground under it.
             const floated = at(plate, 0.2, 0.9, 0);
             plate.position.y = WORLD.seaLevel + 0.2;
@@ -607,6 +643,8 @@ interface NodeMaterials {
     quarry: StandardMaterial;
     salvage: StandardMaterial;
     wreckpart: StandardMaterial;
+    wreckHousing: StandardMaterial;
+    wreckGlass: StandardMaterial;
     divepart: StandardMaterial;
     fishRing: StandardMaterial;
     fishRingSpent: StandardMaterial;
@@ -643,6 +681,12 @@ export class NodeViews {
             //  Dark, corroded steel — nothing else on this island is this colour, which is
             //  the point: a wreck part must never read as driftwood.
             wreckpart: flat(scene, 'm_wreckpart', PALETTE.wreckHull),
+            //  P0-H — the instrument housing and its glass face. Their own materials because
+            //  the housing has to be findable BY LOOKING from a swimmer's eye line, and a
+            //  rotation angle (which is all that distinguished the six parts before) is not
+            //  something anyone can see at 296 m.
+            wreckHousing: flat(scene, 'm_wreckHousing', PALETTE.wreckHousing),
+            wreckGlass: flat(scene, 'm_wreckGlass', PALETTE.wreckGlass),
             //  Darker still than the surface hull: less light gets down there, and nothing
             //  else in the game is this colour.
             divepart: flat(scene, 'm_divepart', PALETTE.diveHull),

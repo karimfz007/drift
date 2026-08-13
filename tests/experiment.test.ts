@@ -7,7 +7,7 @@ import {
     relationshipFor,
     successChanceFor,
     tryCombine,
-    isAmbiguousToPlayer,
+    needsNaming,
     makeChosen,
     announcementFor,
     type ExperimentResult
@@ -273,7 +273,12 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
             //  is not an attempt. Either way this stays a real attempt on a real relationship,
             //  which is the claim. Rewritten to the new law rather than deleted, so a silent
             //  revert of P0-1 still fails here.
-            const attempt = isAmbiguousToPlayer(novice, ['wood', 'fiber'])
+            //  P0-C widens P0-1: naming is required at ONE held plan, not only at two, so the
+            //  predicate that decides whether this pile must be named is `needsNaming`.
+            //  `isAmbiguousToPlayer` still answers its own narrower question (which of two?) and
+            //  is deliberately not reused here — reading it would fall through to a bare
+            //  `tryCombine` that now returns `choose`, and the attempt would never happen.
+            const attempt = needsNaming(novice, ['wood', 'fiber'])
                 ? makeChosen(novice, ['wood', 'fiber'], 'torch')
                 : tryCombine(novice, 'wood', 'fiber');
             if (attempt.outcome === 'failed-attempt') failures += 1;

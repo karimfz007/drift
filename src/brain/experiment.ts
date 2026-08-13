@@ -175,9 +175,107 @@ export function knownMatches(state: GameState, materials: MaterialKind[]): Recip
     return known.length >= 2 ? known : [];
 }
 
+/**
+ * P0-C — EVERY PLAN THE SURVIVOR HOLDS THAT THIS PILE WOULD MAKE. One is enough.
+ *
+ * THE RULING THIS IMPLEMENTS, and it is wider than P0-1's. P0-1 fixed the case where TWO known
+ * answers were silently arbitrated, and drew the line at two because one match was "nothing to
+ * ask about". The director's ruling is that there is still something to SAY: staged materials
+ * that match a plan you hold must NAME THE ATTEMPT and wait, even when the match is unique.
+ * Committing silently is the same defect at arity one — the survivor's hands move before they
+ * have agreed to anything, and the first they know of it is the outcome.
+ *
+ * SO THE THRESHOLD DROPS FROM TWO TO ONE, and nothing else about the shape changes: same
+ * exact-arity narrowing, same blueprint gate, same list. `knownMatches` stays exactly as it was
+ * and stays the ambiguity question specifically — two callers, two questions, neither guessing
+ * at the other's meaning.
+ *
+ * UNKNOWN PATTERNS ARE UNTOUCHED, and that boundary is the whole safety of this. A recipe the
+ * survivor has never made is not named and not offered: naming it would hand over the catalogue,
+ * which is exactly what Law 95 and the invention pivot forbid. So a pile that matches nothing
+ * held still resolves and commits as it always did — discovery stays a thing you walk into,
+ * and confirmation is only ever asked about knowledge you already own.
+ */
+export function heldMatches(state: GameState, materials: MaterialKind[]): Recipe[] {
+    const candidates = recipesMatching(materials);
+    if (candidates.length === 0) return [];
+    const exact = candidates.filter((r) => r.slots.length === materials.length);
+    const pool = exact.length > 0 ? exact : candidates;
+    return pool.filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
+}
+
 /** Is this pile a question rather than an attempt? */
 export function isAmbiguousToPlayer(state: GameState, materials: MaterialKind[]): boolean {
     return knownMatches(state, materials).length >= 2;
+}
+
+/**
+ * P0-C — must this pile be NAMED and agreed to before anything is spent?
+ *
+ * True whenever the survivor holds at least one plan this pile would make. Deliberately a
+ * separate predicate from `isAmbiguousToPlayer` rather than a widened one: "which of these two?"
+ * and "are you making this?" are different questions asked in different words, and collapsing
+ * them would make the single-match case inherit the plural phrasing.
+ */
+export function needsNaming(state: GameState, materials: MaterialKind[]): boolean {
+    return heldMatches(state, materials).length >= 1;
+}
+
+/**
+ * THE QUESTION, IN THE RIGHT WORDS FOR HOW MANY ANSWERS THERE ARE.
+ *
+ * Named here rather than in the body because it is a claim about content — the director's
+ * ruling is specifically that the attempt is NAMED ("you are trying to make an axe"), and a
+ * sentence that must contain a particular thing is a sentence a test can hold to account.
+ */
+export function namingQuestionFor(offered: Recipe[]): string {
+    if (offered.length >= 2) return 'You know two ways to use these. Which are you making?';
+    const only = offered[0];
+    return only
+        ? `You are trying to make ${indefinite(recipeDisplayName(only.id))}. Go ahead?`
+        : 'Which are you making?';
+}
+
+/**
+ * P0-C — THE OPTION THAT KEEPS INVENTION ALIVE, and the reason this batch has one more moving
+ * part than the ruling literally asked for.
+ *
+ * THE RULING TAKEN LITERALLY SOFT-LOCKS THE TREE, and the shipped reachability test is what
+ * proved it rather than an argument. "Name the held plan and wait, even when other outcomes are
+ * still unknown" means a pile you know ONE answer for always resolves to that answer — so the
+ * moment a survivor holds the storage plan, wood+stone can only ever be storage, and the stone
+ * hammer standing behind it becomes permanently unreachable. `tests/combine-reach.test.ts` went
+ * red on `fishingline` the first time this ran, which is exactly that: a recipe walled off
+ * behind a plan the survivor already had.
+ *
+ * P0-1 never hit this because its threshold was TWO known matches; with one known and one
+ * unknown it fell through to `resolveRecipe`, whose second tie-break deliberately prefers the
+ * thing you have NOT made yet. Dropping the threshold to one removed the only door invention
+ * had.
+ *
+ * SO THE QUESTION GETS A SECOND ANSWER: the held plan, named — and "try something else", which
+ * runs the discovery path exactly as it ran before. This does not leak the catalogue and cannot:
+ * the option is a REFUSAL, not a product. It says nothing about what else these make, or
+ * whether anything else does; the survivor is declining the known thing, not selecting an
+ * unknown one, and what they get is whatever experimenting would have got them anyway.
+ *
+ * Offered ONLY when a rival actually exists, so a pile with exactly one possible outcome asks a
+ * plain yes-or-no and never dangles a door with nothing behind it.
+ */
+export const EXPERIMENT_CHOICE = 'try-something-else';
+
+/** Does this pile have an outcome the survivor has NOT yet worked out? */
+export function hasUnknownRival(state: GameState, materials: MaterialKind[]): boolean {
+    const candidates = recipesMatching(materials);
+    const exact = candidates.filter((r) => r.slots.length === materials.length);
+    const pool = exact.length > 0 ? exact : candidates;
+    return pool.some((r) => !state.blueprints.some((bp) => bp.recipeId === r.id));
+}
+
+/** "a hafted axe" / "an iron nail" — the article the name actually wants. */
+function indefinite(name: string): string {
+    const lower = name.charAt(0).toLowerCase() + name.slice(1);
+    return `${'aeiou'.includes(lower.charAt(0)) ? 'an' : 'a'} ${lower}`;
 }
 
 export function resolveRecipe(state: GameState, materials: MaterialKind[]): Recipe | null {
@@ -306,6 +404,17 @@ export function makeChosen(state: GameState, materials: MaterialKind[], recipeId
     //  Naming what you are making is a legal act whenever the recipe genuinely matches the
     //  pile and the survivor genuinely knows it; ambiguity is what makes the game ASK, not
     //  what makes an answer valid.
+    //  P0-C — "TRY SOMETHING ELSE" IS A LEGAL ANSWER, and it is the door invention comes
+    //  through once a survivor holds a plan for this pile. It resolves through the ORDINARY
+    //  discovery path — `tryCombineWith` with no recipe supplied — whose own second tie-break
+    //  already prefers what has not been made yet. Nothing is named and nothing is promised: it
+    //  is the survivor declining the known thing, and the world answering as it always did.
+    if (recipeId === EXPERIMENT_CHOICE) {
+        if (!hasUnknownRival(state, materials)) {
+            return refuse('You already know everything these make.');
+        }
+        return tryCombineWith(state, materials, EXPERIMENT_CHOICE);
+    }
     const chosen = recipesMatching(materials).find((r) => r.id === recipeId);
     if (!chosen) return refuse('That is not one of the things these make.');
     //  ...and still nothing can be minted out of nothing: an unknown recipe is not choosable,
@@ -320,15 +429,27 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[], chos
     const blocked = canExperimentWith(state, materials);
     if (blocked) return refuse(blocked);
 
-    //  P0-1 — NEVER AUTO-RESOLVE A CHOICE THE SURVIVOR CAN MAKE. Two things they already know
-    //  how to make, from one pile, is a question; answering it for them is what silently built
-    //  storage when the director wanted a hammer. The body offers the two and calls
-    //  `makeChosen` below. Costs NOTHING here: being asked is not an attempt.
-    if (chosenRecipeId === undefined && isAmbiguousToPlayer(state, materials)) {
+    //  P0-1, WIDENED TO P0-C — NEVER COMMIT A PLAN THE SURVIVOR HOLDS WITHOUT NAMING IT FIRST.
+    //
+    //  P0-1 stopped the game arbitrating between TWO known answers (it silently built storage
+    //  when the director wanted a hammer). The director's ruling here is that one known answer
+    //  is not silence's excuse either: staged materials matching a plan they hold must name the
+    //  attempt and WAIT. So the threshold is `needsNaming` — at least one held plan — and the
+    //  single-match case gets its own words rather than the plural ones.
+    //
+    //  "MATCHES A HELD PLAN WHILE OTHER OUTCOMES ARE STILL UNKNOWN" IS THE SAME BRANCH, not a
+    //  third case. `heldMatches` filters to blueprints the survivor owns, so an unknown rival
+    //  simply is not in the list: the held one is named, the unknown one is never mentioned,
+    //  and agreeing to the named attempt is what the survivor is actually asked. That satisfies
+    //  the ruling and Law 95 at once, without the two pulling against each other.
+    //
+    //  Costs NOTHING here: being asked is not an attempt, and cancelling leaves the pile exactly
+    //  as it was.
+    if (chosenRecipeId === undefined && needsNaming(state, materials)) {
         return {
             ok: false,
             outcome: 'choose',
-            reason: 'You know two ways to use these. Which are you making?',
+            reason: namingQuestionFor(heldMatches(state, materials)),
             blueprint: null,
             recipeId: null,
             spent: null,
@@ -337,7 +458,11 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[], chos
 
     const [a, b] = materials;
     const key = experimentKeyFor(materials);
-    const recipe = chosenRecipeId !== undefined
+    //  P0-C — the experiment sentinel is NOT a recipe id and must never be looked up as one:
+    //  it means "resolve this the way you always did", so it falls through to `resolveRecipe`
+    //  with its undiscovered-first tie-break intact. Looking it up would find nothing and
+    //  silently turn a deliberate experiment into a null outcome.
+    const recipe = chosenRecipeId !== undefined && chosenRecipeId !== EXPERIMENT_CHOICE
         ? (recipesMatching(materials).find((r) => r.id === chosenRecipeId) ?? null)
         : resolveRecipe(state, materials);
 
