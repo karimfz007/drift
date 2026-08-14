@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
     buildFire, canBuildFire, createInitialState, fireIsKnown, fireMatterSuffices,
 } from '../src/brain/state';
+import { panelHints } from '../src/brain/reveal';
 import { ALL_MATERIAL_KINDS } from '../src/brain/materials';
 import { allRecipes } from '../src/brain/recipes';
 import { TUNE } from '../src/data/tune';
@@ -35,11 +36,25 @@ describe('LAW 130: fire is not pre-known', () => {
     });
 
     it('the scaffold opens it when the need is real and the makings are in hand (Law 113)', () => {
+        //  LAW 216 SUPERSEDES THIS. It asserted that need + makings alone makes fire KNOWN,
+        //  and that is the director's reported defect: nine wood and two fibre, `blueprints:
+        //  []`, nothing ever made, and the HUD read "Build fire". The scaffold survives as a
+        //  HINT — the survivor is told they are holding something that burns — and knowing is
+        //  earned by working the torch out, carrying one, or having built a fire before.
         const s = landed();
         s.inventory.fiber = 3;
         s.warmth = TUNE.warmthLowThreshold - 5;   // the dark closing in, or the cold
-        expect(fireIsKnown(s)).toBe(true);
-        expect(canBuildFire(s)).toBe(true);
+        expect(fireIsKnown(s), 'fire known on possession alone').toBe(false);
+        expect(canBuildFire(s), 'fire offered on possession alone').toBe(false);
+        expect(panelHints(s).some((h) => h.recipeId === 'torch'), 'and the scaffold said nothing').toBe(true);
+
+        //  ...and it opens the moment the pattern is genuinely worked out.
+        s.blueprints.push({
+            recipeId: 'torch', name: 'Bound torch', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable',
+        } as GameState['blueprints'][number]);
+        expect(fireIsKnown(s), 'a demonstrated torch does not teach fire').toBe(true);
+        expect(canBuildFire(s), 'and the fire is still not offered').toBe(true);
     });
 
     it('and having MADE fire is knowing how — that half is monotonic', () => {

@@ -86,10 +86,21 @@ describe('P0-A — the fire button is offered when fire can be BUILT, not when i
     });
 
     it('...and IS offered one the moment both halves are true', () => {
+        //  LAW 216 MOVED WHAT "THE KNOWLEDGE HALF" MEANS, AND THIS TEST WAS MINE. I wrote it in
+        //  [[D-150]] against a `fireIsKnown` whose last line was the torch's possession-based
+        //  suspicion, so "both halves" here really meant "enough wood, plus one fibre" — the
+        //  very thing the director then reported as a defect. The fix went one layer down and
+        //  this test came with it: the knowledge half is now something DONE, not something held.
         const s = fresh();
         s.inventory.wood = TUNE.woodPerFire;
         s.inventory.fiber = 1;
-        expect(canBuildFire(s)).toBe(true);
+        expect(canBuildFire(s), 'offered on materials alone').toBe(false);
+
+        s.blueprints.push({
+            recipeId: 'torch', name: 'Bound torch', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable',
+        } as GameState['blueprints'][number]);
+        expect(canBuildFire(s), 'not offered to someone who has worked out fire and holds the wood').toBe(true);
     });
 
     it('knowledge alone is never enough, and matter alone is never enough', () => {

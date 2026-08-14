@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>drift — bench blank page</title>
+<!--
+  A GENUINELY BLANK PAGE, ON THE GAME'S OWN ORIGIN.
+
+  The device harness parks here whenever it edits the save, because localStorage is
+  origin-scoped and the edit has to happen with the game NOT running. It used to navigate to
+  an extensionless path that did not exist, and the dev server answered SPA-style with the
+  full index.html — so the "blank" page booted a SECOND copy of the game, which loaded the
+  pre-edit save and could write it straight back over the mutation on the way out. A
+  standalone reproduction of that exact sequence destroyed the edit ten times out of ten.
+
+  A real file with a real extension is served as itself, so nothing boots and there is
+  nothing to race. No test-awareness in the game's own code, which is the point: production
+  code should not know this file exists.
+-->
+<body style="background:#000"></body>

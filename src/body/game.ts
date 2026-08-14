@@ -3585,7 +3585,7 @@ export class Game {
             carry: { kg: carriedWeightKg(state), overloaded: isOverloaded(state) },
             gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, secondary, skills: state.skills
         });
-        paintBackpackLoad(this.overlay, carriedWeightKg(state), isOverloaded(state));
+        paintBackpackLoad(this.overlay, carriedWeightKg(state), isOverloaded(state), state.tools.backpack);
     }
 
     private goalLine(state: ReturnType<typeof session>['state']): string {

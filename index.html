@@ -211,6 +211,17 @@
         .carried-button .pack-body { fill: rgba(150, 116, 74, 0.85); stroke: var(--edge); stroke-width: 1; }
         .carried-button .pack-flap { fill: rgba(94, 71, 44, 0.95); }
         .carried-button .pack-strap { stroke: rgba(150, 116, 74, 0.95); }
+        /*  ITEM 1 — the carry affordance draws WHAT THE SURVIVOR ACTUALLY HAS. A backpack icon
+            shown while `tools.backpack` is false is the game lying in a picture, which is the
+            fourth report on one word. Without a pack the survivor carries things the way the
+            recipe itself describes — "in your arms" — and the pack appears when one is made.
+            Default state is the armful, so a fresh life cannot show a bag it does not own.  */
+        .carried-button .arms-icon { width: 28px; height: 28px; display: block; }
+        .carried-button .arms-bundle { fill: rgba(150, 116, 74, 0.85); stroke: var(--edge); stroke-width: 1; }
+        .carried-button .arms-cradle, .carried-button .arms-limb { stroke: rgba(214, 198, 174, 0.9); }
+        .carried-button .pack-icon { display: none; }
+        .carried-button.has-pack .pack-icon { display: block; }
+        .carried-button.has-pack .arms-icon { display: none; }
         .carried-button .pack-load { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
         /*  Overloaded is the one state the pack must not report quietly (D-059). */
         .carried-button .pack-load.heavy { color: var(--danger); }

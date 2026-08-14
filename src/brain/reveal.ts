@@ -52,9 +52,29 @@ export const SURVIVAL_BASIC: ReadonlySet<string> = new Set(['torch']);
  * comes up. The scaffold is a floor for the inexperienced, never a ceiling on the experienced.
  */
 export function revealedInPanel(state: GameState, recipeId: string): boolean {
-    if (atLeast(ladderFor(state, recipeId), 'demonstrated')) return true;
-    if (!SURVIVAL_BASIC.has(recipeId)) return false;
-    return suspicionFor(state, recipeId)?.suspected === true;
+    //  ITEM 1 — LAW 216: NO RESOURCE PICKUP MAY INSERT A MANUFACTURE-READY OBJECT INTO THE BOOK.
+    //
+    //  THE DEFECT, director-confirmed on a fresh incognito life and then measured here. This
+    //  read `SURVIVAL_BASIC.has(id) && suspicionFor(id).suspected`, and `suspected` is
+    //  `needFelt && every making in the inventory` — where `hasHandled` is literally
+    //  `inventory[m] > 0`. The torch's need is `isNight || cold`, and the game opens at hour 18.
+    //  So a survivor who picked up ONE stick and ONE strand, four seconds off the beach, with
+    //  `blueprints: []` and `torch.owned: false`, was handed a manufacture-ready Torch row.
+    //  The gate was never knowledge. It was possession wearing knowledge's name.
+    //
+    //  ONE PREDICATE, THREE SYMPTOMS. The same boolean is the last line of `fireIsKnown`, so it
+    //  also produced the "Build fire" button on nine wood with nothing ever invented — which is
+    //  why [[D-150]]'s fix, routing the HUD through `canBuildFire`, changed nothing the director
+    //  could feel: I moved the question one layer down to a function that asked the same thing.
+    //
+    //  THE SCAFFOLD IS NOT LOST, IT MOVES TO WHERE IT BELONGS. Law 113 says the survival basics
+    //  are scaffolded rather than gated behind blind experiment — and a scaffold is a PROMPT,
+    //  not a product. `panelHints` below skips anything already revealed and surfaces the route's
+    //  own words for anything merely suspected, so the survivor holding wood and fibre is still
+    //  told "The dark is closing in, and you are holding something that burns." They are pointed
+    //  at the experiment; they are not handed the answer. Law 113 and Law 216 both hold, and the
+    //  only thing that changes is that the ROW must now be earned.
+    return atLeast(ladderFor(state, recipeId), 'demonstrated');
 }
 
 /**

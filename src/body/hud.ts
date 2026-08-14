@@ -790,11 +790,29 @@ export function addCarriedButton(overlay: HTMLElement, onOpen: () => void): void
     //  label reading "Carried" — the object it stands for was nowhere on screen. The strap
     //  and body are drawn rather than lettered so it reads as a thing, and the load line
     //  underneath is filled in by `paintBackpackLoad` as the pack fills.
+    //  ITEM 1, THIRD SYMPTOM — AND IT IS A LABEL DEFECT, NOT THE PREDICATE ONE.
+    //
+    //  The director reported "a backpack present on a fresh life despite `backpack: false`,
+    //  with no code path to true", and measuring it showed exactly that: `tools.backpack` is
+    //  false from arrival to fire-lighting, no Backpack row is ever revealed — and a BACKPACK
+    //  IS DRAWN IN THE CORNER OF THE SCREEN the whole time. Nothing was wrong with the state.
+    //  The picture was lying about it, which is the fourth report on one word.
+    //
+    //  Both icons ship and the class chooses. Without a pack the survivor is carrying things
+    //  the way the backpack recipe itself describes — "Carry properly instead of in your arms"
+    //  — so the empty-handed affordance is an ARMFUL, and the pack appears when one is made.
+    //  The affordance stays a drawn object rather than a word, which is what the 2026-07-27
+    //  fix above was for: that reasoning holds, it was simply drawing the wrong object.
     button.innerHTML = `
         <svg class="pack-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path class="pack-strap" d="M8.5 7.5V6a3.5 3.5 0 0 1 7 0v1.5" fill="none" stroke-width="1.8" stroke-linecap="round"/>
             <rect class="pack-body" x="4.5" y="7.5" width="15" height="13" rx="3.2"/>
             <rect class="pack-flap" x="9.5" y="12" width="5" height="4.2" rx="1.1"/>
+        </svg>
+        <svg class="arms-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path class="arms-cradle" d="M4 12.5c0 4 3.6 6.5 8 6.5s8-2.5 8-6.5" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+            <path class="arms-limb" d="M4 12.5V9M20 12.5V9" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+            <rect class="arms-bundle" x="7.5" y="7" width="9" height="6.4" rx="1.6"/>
         </svg>
         <span class="pack-load"></span>`;
     button.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -809,8 +827,9 @@ export function addCarriedButton(overlay: HTMLElement, onOpen: () => void): void
 let packLoadLabel: HTMLElement | null = null;
 let packLoadShown = '';
 let packLoadHeavy: boolean | null = null;
+let packHasPackShown: boolean | null = null;
 
-export function paintBackpackLoad(overlay: HTMLElement, kg: number, overloaded: boolean): void {
+export function paintBackpackLoad(overlay: HTMLElement, kg: number, overloaded: boolean, hasPack: boolean): void {
     //  C3 finding D6 on D-065: this runs every frame, so it caches like the rest of the HUD
     //  rather than querying the DOM and writing unconditionally 60 times a second. The p95
     //  frame-time budget is law, and "it is only a querySelector" is how that gets spent.
@@ -823,6 +842,12 @@ export function paintBackpackLoad(overlay: HTMLElement, kg: number, overloaded: 
     const text = `${kg.toFixed(1)} kg`;
     if (text !== packLoadShown) { packLoadLabel.textContent = text; packLoadShown = text; }
     if (overloaded !== packLoadHeavy) { packLoadLabel.classList.toggle('heavy', overloaded); packLoadHeavy = overloaded; }
+    //  Which object is drawn. Cached like everything else here: this runs every frame, the p95
+    //  frame budget is law, and toggling only on change costs nothing.
+    if (hasPack !== packHasPackShown) {
+        packLoadLabel.closest('.carried-button')?.classList.toggle('has-pack', hasPack);
+        packHasPackShown = hasPack;
+    }
 }
 
 export function addSettingsButton(overlay: HTMLElement, onOpen: () => void): void {

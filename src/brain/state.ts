@@ -20,7 +20,6 @@ import { freshTraces } from './traces';
 import { freshInjuries } from './injury';
 import { freshIllness, onsetFrom } from './illness';
 import { TUNE } from '../data/tune';
-import { suspicionFor } from './discovery';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshMatterWear, isSpoiled, transformationFor } from './matter';
@@ -997,8 +996,16 @@ export function fireIsKnown(state: GameState): boolean {
     if (state.blueprints?.some((bp) => bp.recipeId === 'torch')) return true;
     if (state.torch?.owned) return true;
     if (state.fire.built) return true;
-    //  Law 113's scaffold: need plus makings, from the shipped discovery route.
-    return suspicionFor(state, 'torch')?.suspected === true;
+    //  ITEM 1 — AND THE SAME POSSESSION TEST LIVED HERE, which is why the fire button survived
+    //  [[D-150]]. That fix pointed the HUD at `canBuildFire` instead of `wood > 0`; this line
+    //  meant `canBuildFire` asked the identical question one layer down. Nine wood and two
+    //  fibre, `blueprints: []`, nothing ever made — and the button read "Build fire".
+    //
+    //  Knowing fire is now exactly the three DEMONSTRATED routes above: you have worked out a
+    //  torch, you carry one, or you have built a fire before. The survivor who has done none of
+    //  those is still TOLD — `panelHints` carries the torch route's own prompt the moment wood
+    //  and fibre are both in hand — and what they do with that is theirs. See `revealedInPanel`.
+    return false;
 }
 
 /** Does the MATTER allow it — wood in hand, no fire already standing? Physical only. */

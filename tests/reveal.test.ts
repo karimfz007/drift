@@ -106,9 +106,16 @@ describe('Law 113 — fire is scaffolded, and the scaffold is a floor not a cata
     });
 
     it('SHOWN when both are real — cold, and holding something that burns', () => {
+        //  LAW 216 SUPERSEDES WHAT THIS LOCKED. It asserted that need + makings REVEALS the
+        //  torch, which is the defect the director reported three ways on a fresh incognito
+        //  life: one stick and one strand put a manufacture-ready Torch row in the book, with
+        //  `blueprints: []` and nothing ever made. The scaffold is not gone and Law 113 still
+        //  holds — it MOVED to the hint layer, which is what a scaffold actually is. So the
+        //  claim becomes: suspected, HINTED, and never revealed on possession alone.
         const s = calm(give(createInitialState(0), 'wood', 'fiber'));
         s.warmth = TUNE.warmthLowThreshold - 1;
-        expect(revealedInPanel(s, 'torch')).toBe(true);
+        expect(revealedInPanel(s, 'torch'), 'revealed on possession alone').toBe(false);
+        expect(panelHints(s).some((h) => h.recipeId === 'torch'), 'and not even hinted').toBe(true);
     });
 
     it('once EARNED it stops depending on the need — knowledge does not switch off at dawn', () => {
@@ -120,7 +127,11 @@ describe('Law 113 — fire is scaffolded, and the scaffold is a floor not a cata
     it('the scaffold does not leak to the other four', () => {
         const s = give(createInitialState(0), 'wood', 'stone', 'fiber', 'sharpblade');
         s.warmth = 0;
-        expect(revealedInPanel(s, 'torch'), 'survival-basic').toBe(true);
+        //  Post-216 the torch joins the other four rather than standing apart: NOTHING is
+        //  revealed by holding materials. The scaffold that used to single it out is now the
+        //  hint below, which the other four correctly do not get from these makings alone.
+        expect(revealedInPanel(s, 'torch'), 'survival-basic, revealed on possession').toBe(false);
+        expect(panelHints(s).some((h) => h.recipeId === 'torch'), 'torch is not hinted either').toBe(true);
         for (const id of ['axe', 'shelter', 'storage', 'stonehammer']) {
             expect(revealedInPanel(s, id), id).toBe(false);
         }
@@ -137,9 +148,18 @@ describe('the hints are the teaching half — never ship subtraction alone', () 
     });
 
     it('a REVEALED item stops hinting — the hint has done its work', () => {
+        //  THE CLAIM IS STILL EXACTLY RIGHT — teach once, then stop — and only the FIXTURE
+        //  changes. It used to reach "revealed" by holding wood and fibre, which post-216 is
+        //  no longer a reveal at all, so the test was asserting hint-suppression on an item
+        //  that is now correctly still being hinted. Reaching "revealed" the way a survivor
+        //  actually does — having WORKED THE TORCH OUT — tests the same rule honestly.
         const s = calm(give(createInitialState(0), 'wood', 'fiber'));
         s.warmth = TUNE.warmthLowThreshold - 1;
-        expect(revealedInPanel(s, 'torch')).toBe(true);
+        s.blueprints.push({
+            recipeId: 'torch', name: 'Bound torch', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable',
+        } as GameState['blueprints'][number]);
+        expect(revealedInPanel(s, 'torch'), 'a demonstrated torch is not revealed').toBe(true);
         expect(panelHints(s).map((h) => h.recipeId)).not.toContain('torch');
     });
 

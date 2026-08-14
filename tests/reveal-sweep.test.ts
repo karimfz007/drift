@@ -95,9 +95,19 @@ describe('reveal.ts sweep — enumeration 1: SURVIVAL_BASIC', () => {
         s.inventory.wood = 3;
         s.inventory.fiber = 3;
         s.warmth = TUNE.warmthLowThreshold - 5;
+        //  LAW 216 SUPERSEDES THE BEHAVIOUR THIS USED TO LOCK. It asserted that a suspected survival basic IS revealed with no blueprint,
+        //  which is exactly the defect the director reported three ways on a fresh incognito
+        //  life: possession alone put a manufacture-ready Torch row in the book and a "Build
+        //  fire" button on the HUD, with `blueprints: []` and nothing ever made. Six tests in
+        //  this suite encoded that as correct, which is why the bench never caught it.
+        //
+        //  The scaffold is not gone — Law 113 still holds — it MOVED: suspicion now produces
+        //  the route's own prompt through `panelHints`, never a buildable row. So the claim
+        //  under test becomes "suspected, hinted, and NOT revealed".
         for (const id of SURVIVAL_BASIC) {
             expect(suspicionFor(s, id)?.suspected, `${id} has no live suspicion in its own need`).toBe(true);
-            expect(revealedInPanel(s, id), `${id} is survival-basic and suspected, and is not revealed`).toBe(true);
+            expect(revealedInPanel(s, id), `${id} is revealed on possession alone — Law 216`).toBe(false);
+            expect(panelHints(s).some((h) => h.recipeId === id), `${id} is suspected and not even hinted`).toBe(true);
         }
     });
 

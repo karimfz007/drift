@@ -36,7 +36,11 @@ const URL_UNDER_TEST = process.argv[2]?.startsWith('http') ? process.argv[2] : '
 const HEADFUL = process.argv.includes('--headful');
 const SOFTWARE = process.argv.includes('--software');
 const SHOT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
-const BLANK_PATH = '__smoke_blank';
+//  A REAL FILE, with a REAL extension. See public/__smoke_blank.html: the extensionless path
+//  this used to use does not exist, so the server answered it with the whole game via SPA
+//  fallback, and "park somewhere harmless while editing the save" quietly meant "boot a second
+//  copy of the game that can overwrite the edit".
+const BLANK_PATH = '__smoke_blank.html';
 
 const CHROME_CANDIDATES = [
     process.env.CHROME_PATH,
@@ -509,6 +513,7 @@ function section(name) {
  *  slowest deliberate wait in this file is a 30 s `approach` budget) and well short of the
  *  multi-minute stalls that actually occur, so it catches the real thing without crying wolf. */
 const STALL_MS = 90_000;
+const fixtureFailures = [];
 const sectionTimings = [];
 const benchSamples = [];
 let currentSection = null;
@@ -983,6 +988,45 @@ async function main() {
         await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
         await waitForScene();
         await sleep(1000);
+
+        //  ---- DID THE FIXTURE ACTUALLY APPLY? -------------------------------------------
+        //
+        //  THE BENCH AUDIT FOUND THAT THE "BLANK" PAGE WAS NOT BLANK. The dev server answered
+        //  the old extensionless path with a 200 and the whole index.html — SPA fallback — so
+        //  parking there booted a SECOND copy of the game, which loaded the pre-edit save and
+        //  wrote it back over the mutation on the way out. A standalone reproduction of this
+        //  exact sequence destroyed the edit 10 times out of 10; with a real blank file it
+        //  survives 10 out of 10. That is fixed at the source (public/__smoke_blank.html).
+        //
+        //  This stays as the regression guard, because a fixture that silently fails to apply
+        //  is the worst failure a device suite can have: every check downstream then tests the
+        //  wrong state and can pass vacuously, which is exactly how "device-proven" claims end
+        //  up failing in real hands.
+        //
+        //  WHAT IT COMPARES, AND WHY NOT EVERYTHING. My first cut re-applied the mutation to a
+        //  copy of the LIVE state and demanded no change — which flagged three fixtures that
+        //  had applied perfectly well, because the game keeps running: energy drains, the clock
+        //  advances, warmth moves. Those are supposed to drift. So the comparison is limited to
+        //  the SCENARIO fields a fixture exists to establish, none of which change on their own
+        //  inside a second.
+        const applied = await page.evaluate((src) => {
+            const SCENARIO = ['inventory', 'tools', 'blueprints', 'torch', 'fire', 'shelter',
+                'storage', 'radio', 'raft', 'capacities', 'illness', 'injuries', 'nodes'];
+            const pick = (st) => JSON.stringify(SCENARIO.map((k) => st[k]));
+            try {
+                const live = window.__drift.state();
+                const before = pick(live);
+                const copy = JSON.parse(JSON.stringify(live));
+                // eslint-disable-next-line no-new-func
+                new Function('state', src)(copy);
+                //  If the edit took, re-applying it to what the game actually loaded is a no-op
+                //  across every field the fixture was setting.
+                return pick(copy) === before;
+            } catch { return null; }
+        }, mutateSrc);
+        if (applied === false) {
+            fixtureFailures.push(mutateSrc.replace(/\s+/g, ' ').trim().slice(0, 90));
+        }
     };
     //  HOW LONG THE LAST `goAway` WAS ACTUALLY AWAY, in real ms — the rewind PLUS the boot.
     //
@@ -1440,17 +1484,57 @@ async function main() {
         hasTorchBtn: Boolean(document.querySelector('.torch-btn')),
         hasShelterBtn: Boolean(document.querySelector('.shelter-btn')),
     }));
-    check('SLICE 2B — LAW 113: cold, holding wood and fibre, the fire route reveals itself',
-        scaffold.hasTorchBtn, `rows: ${scaffold.craftables.join(', ') || '(none)'}`);
+    //  ---- LAW 216 SUPERSEDES WHAT THESE THREE LOCKED --------------------------------
+    //
+    //  They asserted that being cold while holding wood and fibre REVEALS the fire route as a
+    //  craftable row. That is precisely the defect the director reported on a fresh incognito
+    //  life: possession alone put a manufacture-ready Torch in the book with `blueprints: []`
+    //  and nothing ever made. These are the DEVICE twins of six unit tests that encoded the
+    //  same thing, and between them they are why the bench never caught it.
+    //
+    //  Law 113 is not repealed and the scaffold is not gone — it MOVED to the hint layer, which
+    //  is what a scaffold actually is: the survivor is still told, in the route's own words,
+    //  that they are holding something that burns. So the claim becomes hinted-not-offered, and
+    //  the craft-it-end-to-end claim keeps its exact intent while reaching the row the way a
+    //  survivor really does — by having worked the pattern out.
+    const scaffoldHints = await page.evaluate(() => Array.from(document.querySelectorAll('.hint-line'))
+        .map((n) => n.getAttribute('data-hint')));
+    check('SLICE 2B — LAW 216: cold and holding the makings does NOT hand over the fire route',
+        !scaffold.hasTorchBtn, `rows: ${scaffold.craftables.join(', ') || '(none)'}`);
+    check('SLICE 2B — ...and LAW 113 still speaks: the route is HINTED rather than offered',
+        scaffoldHints.includes('torch'), `hinted: [${scaffoldHints.join(', ') || 'none'}]`);
     check('SLICE 2B — and the scaffold does NOT leak: nothing else is handed over with it',
-        !scaffold.hasShelterBtn && scaffold.craftables.length === 1,
+        !scaffold.hasShelterBtn && scaffold.craftables.length === 0,
         `${scaffold.craftables.length} row(s): ${scaffold.craftables.join(', ')}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(400);
+
+    //  ...and once it IS worked out, the row is real and really makes the thing.
+    await editSave(`
+        state.blueprints = [{ recipeId: 'torch', name: 'Bound torch', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+        state.inventory = { wood: ${TUNE.torchWoodCost + 5}, stone: 0, fiber: ${TUNE.torchFiberCost + 5}, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0 };
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
+        state.warmth = ${Math.max(0, TUNE.warmthLowThreshold - 5)};
+        state.energy = 100;
+    `);
+    await openBuild();
+    await sleep(400);
     const scaffoldCraft = await realTapDom('.torch-btn');
     await sleep(500);
     const afterScaffold = await live();
     check('SLICE 2B — and it is really craftable, not just visible (end-to-end on device)',
         scaffoldCraft.ok && afterScaffold.torch.owned === true,
         `tap ${scaffoldCraft.ok}, owned ${afterScaffold.torch.owned}`);
+    //  CLOSE WHAT THIS OPENED. Leaving the Build panel up is exactly the defect [[D-152]]
+    //  root-caused for the settings cluster — a section handing the next one a modal it never
+    //  asked for — and the very next section caught it inside one run: `openLoadout` refuses
+    //  OUT LOUD when a panel is already open, and a spoken refusal is a counted failed tap, so
+    //  SLICE 2C's no-leak check went 9 -> 10. The check was right; this block was not tidying
+    //  up after itself. Diagnosing that class and then committing it two sessions later is its
+    //  own small lesson about who these rules are for.
+    await realTapDom('.panel.build .close-btn');
+    await sleep(400);
 
     //  THE TEACHING HALF. Never ship subtraction alone: a suspected-but-unearned thing must
     //  say something, or an empty panel is a dead end and a bug report. What it says names a
@@ -2588,6 +2672,20 @@ async function main() {
     await editSave(`state.tools.axe = false; for (const n of state.nodes) if (n.id === '${failLoudTree ? failLoudTree.id : ''}') { n.available = true; }`);
     await approach(failLoudTree.x, failLoudTree.y, 30);
     await faceNode(failLoudTree.x, failLoudTree.y);
+    //  DID THE SURVIVOR ACTUALLY GET THERE? The quarry and storage blocks both assert this and
+    //  this one never did, so when it went "0 -> 0" there was no way to tell a tap that landed
+    //  and said nothing — a real defect — from a tap that never reached the tree at all, which
+    //  is only a slow bench. Out of reach, the tap resolves to EMPTY GROUND, and since [[D-150]]
+    //  that branch deliberately does not count a failed interaction; the check would then be
+    //  red for a reason it does not name. Same lesson as the settings precondition in [[D-152]]:
+    //  establish the state, then assert the claim.
+    const failLoudDist = await (async () => {
+        const st = await live();
+        return Math.hypot(st.player.x - failLoudTree.x, st.player.y - failLoudTree.y);
+    })();
+    check('setup — the player actually REACHED the tree before the fail-loud tap',
+        failLoudDist <= TUNE.interactRadiusM,
+        `${failLoudDist.toFixed(2)} m from the tree (reach ${TUNE.interactRadiusM})`);
     const failedTapsBefore = (await live()).trace.failedInteractionTaps;
     await tapWorld(failLoudTree.x, failLoudTree.y, 55);
     await sleep(600);
@@ -8712,7 +8810,11 @@ async function main() {
         state.hunger = 70; state.thirst = 70;
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
         state.torch = { ...state.torch, owned: false, lit: false };
-        state.blueprints = [];
+        //  LAW 216 (item 1): materials alone no longer make fire KNOWN, so "a survivor who CAN
+        //  build one" now means one who has actually worked the pattern out. Written in D-150
+        //  against the old law, where this fixture's empty blueprint list was enough.
+        state.blueprints = [{ recipeId: 'torch', name: 'Bound torch', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
         state.inventory = { ...state.inventory, wood: 9, fiber: 2 };
     `);
     await sleep(900);
@@ -9005,6 +9107,148 @@ async function main() {
         `screenOfMesh(n_wr3_housing) = ${JSON.stringify(housing.onScreen)} in ${housing.vp.w}x${housing.vp.h}`);
     }
 
+
+    // ======== ITEM 1 — THE PANEL GATES ON KNOWLEDGE, NOT MATERIALS (Law 216) ========
+    //
+    //  ONE PREDICATE, THREE SYMPTOMS, all reported on a fresh incognito life: a Torch row
+    //  appearing on possession, a "Build fire" button on nine wood with nothing ever invented,
+    //  and a backpack drawn in the corner while `tools.backpack` is false. `revealedInPanel`
+    //  read `SURVIVAL_BASIC.has(id) && suspicionFor(id).suspected`, and `suspected` is need
+    //  plus `inventory[m] > 0` — possession wearing knowledge's name. The same boolean was the
+    //  last line of `fireIsKnown`, which is why [[D-150]]'s fix changed nothing the director
+    //  could feel: it moved the question one layer down, to a function asking the same thing.
+    //
+    //  Every assertion here reads a VISIBLE surface — a row actually on screen, a button whose
+    //  computed style shows it, an icon that is really displayed — per this session's bench
+    //  audit. Presence is not visibility, and `enabled` proves nothing.
+    if (section("ITEM 1 — Law 216: no pickup inserts a manufacture-ready object into the book")) {
+
+    const buildSurface = async () => {
+        const opened = await openBuild();
+        const seen = await page.evaluate(() => {
+            const el = document.querySelector('.panel.build');
+            if (!el) return { open: false, rows: [], hints: [], hintText: '' };
+            const vis = (e) => {
+                const st = getComputedStyle(e);
+                const r = e.getBoundingClientRect();
+                return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0.05
+                    && r.width > 0 && r.height > 0 && r.top < innerHeight && r.bottom > 0;
+            };
+            const rows = Array.from(el.querySelectorAll('.build-item')).filter(vis)
+                .map((r) => (r.querySelector('h2, h3')?.textContent ?? '').trim());
+            const hints = Array.from(el.querySelectorAll('.hint-line')).filter(vis)
+                .map((h) => h.getAttribute('data-hint') ?? '');
+            const hintText = Array.from(el.querySelectorAll('.hint-line')).map((h) => h.textContent ?? '').join(' ');
+            return { open: true, rows, hints, hintText };
+        });
+        return { opened, ...seen };
+    };
+    const actionButton = () => page.evaluate(() => {
+        const b = document.querySelector('.action');
+        if (!b) return { label: '', shown: false };
+        const st = getComputedStyle(b);
+        return {
+            label: (b.textContent || '').trim(),
+            shown: st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0.05,
+        };
+    });
+    const carryIcons = () => page.evaluate(() => {
+        const shown = (sel) => {
+            const e = document.querySelector(sel);
+            return Boolean(e && getComputedStyle(e).display !== 'none');
+        };
+        return { pack: shown('.carried-button .pack-icon'), arms: shown('.carried-button .arms-icon') };
+    });
+
+    //  ---- The exact state the director was in: one stick, one strand, nothing learned ----
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 20;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [];
+        state.torch = { ...state.torch, owned: false, lit: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.tools = { ...state.tools, backpack: false };
+        state.inventory = { ...state.inventory, wood: 1, fiber: 1, stone: 0, sharpblade: 0 };
+    `);
+    await sleep(700);
+    const oneOfEach = await buildSurface();
+    await shot('item1-01-one-stick');
+    check('ITEM 1 — REACHABILITY: one stick and one strand puts NO Torch row in the book',
+        oneOfEach.open && !oneOfEach.rows.some((r) => /torch/i.test(r)),
+        `visible rows: [${oneOfEach.rows.join(' | ') || 'none'}]`);
+
+    check('ITEM 1 — ...and the scaffold still SPEAKS: the torch is hinted, not offered (Law 113)',
+        oneOfEach.hints.includes('torch') && /burn/i.test(oneOfEach.hintText),
+        `hinted [${oneOfEach.hints.join(', ') || 'none'}] — "${oneOfEach.hintText.trim().slice(0, 70)}"`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(400);
+
+    //  ---- A fire's worth of wood, still nothing learned ----
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 20;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [];
+        state.torch = { ...state.torch, owned: false, lit: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.inventory = { ...state.inventory, wood: 9, fiber: 2 };
+    `);
+    await sleep(700);
+    const unlearnedFire = await actionButton();
+    await shot('item1-02-nine-wood');
+    check('ITEM 1 — REACHABILITY: nine wood and no knowledge is NOT offered a fire',
+        !(unlearnedFire.shown && /build fire/i.test(unlearnedFire.label)),
+        `primary action reads "${unlearnedFire.label}" shown=${unlearnedFire.shown}`);
+
+    //  ---- ...and the moment the pattern is genuinely worked out, both open ----
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 20;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [{ recipeId: 'torch', name: 'Bound torch', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+        state.torch = { ...state.torch, owned: false, lit: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.inventory = { ...state.inventory, wood: 9, fiber: 2 };
+    `);
+    await sleep(700);
+    const learnedFire = await actionButton();
+    const learnedRows = await buildSurface();
+    await shot('item1-03-learned');
+    //  THE BUTTON, NOT THE HEADING TEXT. Scraping row titles passed in isolation and went red
+    //  in the full sweep reading `rows [ | | ]` — the rows were there, their headings were not
+    //  where the scraper looked. A row is "offered" when it has a control the player can press,
+    //  which is what SLICE 2B asserts and what actually matters.
+    const torchRowLive = await page.evaluate(() => {
+        const b = document.querySelector('.panel.build .torch-btn');
+        if (!b) return { present: false, visible: false };
+        const st = getComputedStyle(b);
+        const r = b.getBoundingClientRect();
+        return { present: true, visible: st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0 };
+    });
+    check('ITEM 1 — ...and a survivor who WORKED IT OUT is offered both the row and the fire',
+        learnedFire.shown && /build fire/i.test(learnedFire.label) && torchRowLive.visible,
+        `action "${learnedFire.label}" shown=${learnedFire.shown}; torch button present=${torchRowLive.present} visible=${torchRowLive.visible}`);
+    await realTapDom('.panel.build .close-btn');
+    await sleep(400);
+
+    //  ---- The third symptom: the picture must not claim a pack that is not owned ----
+    await editSave(`state.tools = { ...state.tools, backpack: false };`);
+    await sleep(700);
+    const noPack = await carryIcons();
+    await editSave(`state.tools = { ...state.tools, backpack: true };`);
+    await sleep(700);
+    const withPack = await carryIcons();
+    await shot('item1-04-carry-icon');
+    check('ITEM 1 — REACHABILITY: with no backpack the carry affordance draws ARMS, not a pack',
+        noPack.arms === true && noPack.pack === false,
+        `backpack:false -> pack drawn ${noPack.pack}, arms drawn ${noPack.arms}`);
+    check('ITEM 1 — ...and the pack appears exactly when one is actually owned',
+        withPack.pack === true && withPack.arms === false,
+        `backpack:true -> pack drawn ${withPack.pack}, arms drawn ${withPack.arms}`);
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
@@ -9054,6 +9298,13 @@ async function main() {
             console.log(`  ${stalls.length} stall(s) over ${(STALL_MS / 1000).toFixed(0)}s. Worst: ${stalls.slice(0, 3).map((g) => `${(g.ms / 1000).toFixed(0)}s before ${g.at}`).join(' | ')}`);
             console.log('  A stall this long is the machine paging, not the game. Any red that depends on a');
             console.log('  budget, a deadline or a scheduled hour should be re-run alone before it is believed.');
+        }
+
+        if (fixtureFailures.length > 0) {
+            console.log('');
+            console.log('=== FIXTURES THAT DID NOT APPLY — CHECKS DOWNSTREAM OF THESE TESTED THE WRONG STATE ===');
+            console.log(`  ${fixtureFailures.length} editSave call(s) did not take. First few:`);
+            for (const f of fixtureFailures.slice(0, 5)) console.log(`    ${f}`);
         }
 
         const slowest = [...sectionTimings].sort((a, b) => b.ms - a.ms).slice(0, 5);
