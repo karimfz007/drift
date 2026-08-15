@@ -7,7 +7,6 @@ import {
     relationshipFor,
     successChanceFor,
     tryCombine,
-    needsNaming,
     makeChosen,
     announcementFor,
     type ExperimentResult
@@ -16,6 +15,10 @@ import { allRecipes } from '../src/brain/recipes';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 import type { Blueprint, GameState } from '../src/brain/types';
+//  STAGE-THEN-CONFIRM. Since the never-auto-commit ruling, `tryCombineWith` returns a
+//  QUESTION and spends nothing; the attempt happens when the survivor answers it. These tests
+//  exercise attempts, so they answer it — see tests/helpers/confirmed.ts.
+import { attemptConfirmed } from './helpers/confirmed';
 
 function run(): GameState {
     return createInitialState(0);
@@ -81,7 +84,7 @@ describe('experiment — an attempt costs the body, win or lose (§10.6)', () =>
     it('charges energy, hunger, thirst and time on a FAILED attempt too', () => {
         const s = withTechnique(ready(), 0);
         const before = { energy: s.energy, hunger: s.hunger, thirst: s.thirst, clock: s.gameHoursElapsed };
-        const result = tryCombine(s, 'berries', 'wood'); // no relationship — a real attempt
+        const result = attemptConfirmed(s, ['berries', 'wood']); // no relationship — a real attempt
         expect(result.ok).toBe(true);
         expect(s.energy).toBeCloseTo(before.energy - TUNE.experimentEnergyCost, 9);
         expect(s.hunger).toBeCloseTo(before.hunger - TUNE.experimentHungerCost, 9);
@@ -94,7 +97,7 @@ describe('experiment — an attempt costs the body, win or lose (§10.6)', () =>
         const s = ready();
         s.energy = 0;
         expect(canExperiment(s, 'wood', 'fiber')).toBeTruthy();
-        const result = tryCombine(s, 'wood', 'fiber');
+        const result = attemptConfirmed(s, ['wood', 'fiber']);
         expect(result.ok).toBe(false);
         expect(result.outcome).toBe('refused');
         expect(result.reason).toMatch(/spent|concentrat/i);
@@ -103,22 +106,22 @@ describe('experiment — an attempt costs the body, win or lose (§10.6)', () =>
     it('refuses when you do not actually hold both things', () => {
         const s = ready();
         s.inventory.fiber = 0;
-        const result = tryCombine(s, 'wood', 'fiber');
+        const result = attemptConfirmed(s, ['wood', 'fiber']);
         expect(result.ok).toBe(false);
         expect(result.reason).toMatch(/in hand/i);
     });
 
     it('refuses two of the same thing, plainly', () => {
         const s = ready();
-        expect(tryCombine(s, 'wood', 'wood').reason).toMatch(/two different/i);
+        expect(attemptConfirmed(s, ['wood', 'wood']).reason).toMatch(/two different/i);
     });
 
     it('costs NOTHING to re-try a pair already known to be a dead end — the answer is known', () => {
         const s = withTechnique(ready(), 0);
-        tryCombine(s, 'berries', 'wood');
+        attemptConfirmed(s, ['berries', 'wood']);
         const before = { energy: s.energy, clock: s.gameHoursElapsed, count: s.experimentCount };
 
-        const again = tryCombine(s, 'berries', 'wood');
+        const again = attemptConfirmed(s, ['berries', 'wood']);
         expect(again.outcome).toBe('already-known');
         expect(s.energy).toBe(before.energy);
         expect(s.gameHoursElapsed).toBe(before.clock);
@@ -131,7 +134,7 @@ describe('experiment — failures teach through D-055\'s journal, and nothing el
     it('a no-relationship attempt journals the pair and fires a knowledge event', () => {
         const s = ready();
         expect(hasTried(s, 'berries', 'wood')).toBe(false);
-        tryCombine(s, 'berries', 'wood');
+        attemptConfirmed(s, ['berries', 'wood']);
         expect(hasTried(s, 'berries', 'wood')).toBe(true);
         expect(s.knowledge.events.some((e) => e.kind === 'combination-tried')).toBe(true);
     });
@@ -139,7 +142,7 @@ describe('experiment — failures teach through D-055\'s journal, and nothing el
     it('it grants Understanding but NOT Technique — nothing was actually made', () => {
         const s = ready();
         const before = { ...s.knowledge.domains.harvestingFabrication };
-        tryCombine(s, 'berries', 'wood');
+        attemptConfirmed(s, ['berries', 'wood']);
         const after = s.knowledge.domains.harvestingFabrication;
         expect(after.understanding).toBeGreaterThan(before.understanding);
         expect(after.technique).toBe(before.technique);
@@ -148,7 +151,7 @@ describe('experiment — failures teach through D-055\'s journal, and nothing el
     it('a failed attempt mints NO blueprint and consumes no materials', () => {
         const s = ready();
         const wood = s.inventory.wood;
-        tryCombine(s, 'berries', 'wood');
+        attemptConfirmed(s, ['berries', 'wood']);
         expect(s.blueprints).toHaveLength(0);
         expect(s.inventory.wood).toBe(wood); // nothing was made, nothing was spent
     });
@@ -169,7 +172,7 @@ describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () 
             s.energy = TUNE.energyMax;
             s.inventory.wood = 20;
             s.inventory.fiber = 20;
-            const r = tryCombine(s, 'wood', 'fiber');
+            const r = attemptConfirmed(s, ['wood', 'fiber']);
             if (r.outcome === 'invented' && r.recipeId === 'torch') return r;
         }
         return null;
@@ -200,7 +203,7 @@ describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () 
         s.inventory.wood = 20;
         s.inventory.fiber = 20;
         const before = { wood: s.inventory.wood, fiber: s.inventory.fiber };
-        const r = tryCombine(s, 'wood', 'fiber');
+        const r = attemptConfirmed(s, ['wood', 'fiber']);
         if (r.outcome === 'invented') {
             expect(s.inventory.wood).toBe(before.wood - 1);
             expect(s.inventory.fiber).toBe(before.fiber - 1);
@@ -278,9 +281,12 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
             //  `isAmbiguousToPlayer` still answers its own narrower question (which of two?) and
             //  is deliberately not reused here — reading it would fall through to a bare
             //  `tryCombine` that now returns `choose`, and the attempt would never happen.
-            const attempt = needsNaming(novice, ['wood', 'fiber'])
-                ? makeChosen(novice, ['wood', 'fiber'], 'torch')
-                : tryCombine(novice, 'wood', 'fiber');
+            //  ONE CALL, NOT A BRANCH. `needsNaming` is now true for any pile that MAKES
+            //  something, so branching on it routed an unknown pattern into
+            //  `makeChosen('torch')` — correctly refused, so the attempt never happened
+            //  and this loop counted zero failures. The helper answers the question the way
+            //  the survivor actually would, held or not.
+            const attempt = attemptConfirmed(novice, ['wood', 'fiber']);
             if (attempt.outcome === 'failed-attempt') failures += 1;
         }
         expect(failures).toBeGreaterThan(0);
@@ -293,7 +299,7 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
             s.energy = TUNE.energyMax;
             s.inventory.wood = 20;
             s.inventory.fiber = 20;
-            tryCombine(s, 'wood', 'fiber');
+            attemptConfirmed(s, ['wood', 'fiber']);
         }
         expect(s.knowledge.domains.survivalcraft.technique).toBeGreaterThan(before);
     });
@@ -304,7 +310,7 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
             s.energy = TUNE.energyMax;
             s.inventory.wood = 20;
             s.inventory.fiber = 20;
-            tryCombine(s, 'wood', 'fiber');
+            attemptConfirmed(s, ['wood', 'fiber']);
         }
         expect(hasTried(s, 'wood', 'fiber')).toBe(false);
     });
@@ -318,7 +324,9 @@ describe('experimentation outcomes are a closed contract (C3 finding F3/F2 on D-
     //  `failed-attempt`, `already-known` AND `refused` were every one of them announced to
     //  the player as a SUCCESS, with the unlock cue. An `as { outcome: string }` cast is
     //  what let it compile. This locks the contract the body switches on.
-    const OUTCOMES = ['invented', 'failed-attempt', 'no-relationship', 'already-known', 'refused'];
+    //  SIX, NOT FIVE. `choose` has been a real outcome since P0-1 and is now the COMMON one:
+//  staging anything that makes something returns the question first.
+const OUTCOMES = ['invented', 'failed-attempt', 'no-relationship', 'already-known', 'refused', 'choose'];
 
     it('every outcome tryCombine can return is one of the five named ones', () => {
         const seen = new Set<string>();
@@ -351,7 +359,7 @@ describe('experimentation outcomes are a closed contract (C3 finding F3/F2 on D-
             for (const d of Object.keys(s.knowledge.domains) as Array<keyof typeof s.knowledge.domains>) {
                 s.knowledge.domains[d].technique = 100;
             }
-            const r = tryCombine(s, 'wood', 'fiber');
+            const r = attemptConfirmed(s, ['wood', 'fiber']);
             if (r.outcome === 'invented') expect(r.blueprint?.name).toBeTruthy();
             else expect(r.blueprint).toBeNull();
         }
@@ -368,7 +376,7 @@ describe('what the player is TOLD is only ever triumphant for a real invention (
     //  with the unlock cue. The body cannot be tested here (Babylon; the purity law), so
     //  the decision moved into `announcementFor` and these are the assertions that would
     //  have caught the real bug.
-    const OUTCOMES = ['invented', 'failed-attempt', 'no-relationship', 'already-known', 'refused'] as const;
+    const OUTCOMES = ['invented', 'failed-attempt', 'no-relationship', 'already-known', 'refused', 'choose'] as const;
     const resultWith = (outcome: (typeof OUTCOMES)[number], over: Partial<ExperimentResult> = {}): ExperimentResult => ({
         ok: outcome !== 'refused',
         outcome,

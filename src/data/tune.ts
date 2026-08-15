@@ -1948,6 +1948,8 @@ export const TUNE = {
         fiber: 0.15,
         berries: 0.1,
         coconut: 1.4,
+        //  The husk once the water and flesh are gone — light, and mostly air.
+        shell: 0.25,
         shellfish: 0.3,
         //  FISHING — heavier than a shellfish, lighter than a coconut. A full net is 7 of
         //  these, which is a real carry decision and is meant to be.
@@ -2056,6 +2058,8 @@ export const TUNE = {
         fiber: 2.5,
         berries: 0.4,
         coconut: 2,
+        //  Bulky for its weight: a rigid open bowl does not pack down.
+        shell: 1.6,
         shellfish: 0.5,
         //  FISHING — awkward for its weight, the way meat is.
         fish: 0.8,

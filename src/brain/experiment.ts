@@ -217,8 +217,17 @@ export function isAmbiguousToPlayer(state: GameState, materials: MaterialKind[])
  * and "are you making this?" are different questions asked in different words, and collapsing
  * them would make the single-match case inherit the plural phrasing.
  */
-export function needsNaming(state: GameState, materials: MaterialKind[]): boolean {
-    return heldMatches(state, materials).length >= 1;
+export function needsNaming(_state: GameState, materials: MaterialKind[]): boolean {
+    //  THE DIRECTOR'S CASE, MEASURED: stone + wood on a fresh life returned
+    //  `invented — "You work out how it fits: Stone hammer."` with no ask at all. This read
+    //  `heldMatches(...).length >= 1`, so the never-auto-commit rule only ever fired for a plan
+    //  the survivor ALREADY HELD — and a first-time pattern, which is most of the game, went
+    //  straight to a committed product. "Never build silently" has to mean never.
+    //
+    //  So the question is asked whenever the pile MAKES anything. What the question can SAY
+    //  still depends on what is known — see `namingQuestionFor` — because Law 95 forbids naming
+    //  a product nobody has worked out. Naming the ATTEMPT is not naming the outcome.
+    return recipesMatching(materials).length >= 1;
 }
 
 /**
@@ -229,11 +238,20 @@ export function needsNaming(state: GameState, materials: MaterialKind[]): boolea
  * sentence that must contain a particular thing is a sentence a test can hold to account.
  */
 export function namingQuestionFor(offered: Recipe[]): string {
-    if (offered.length >= 2) return 'You know two ways to use these. Which are you making?';
+    //  THREE CASES, ONE SURFACE. What changes between them is only how much can honestly be
+    //  said, which is the whole of Law 95's boundary:
+    //
+    //    2+ HELD PLANS — every one of them is named in the list beside this question, so the
+    //      wording points at that list rather than describing it.
+    //    1 HELD PLAN — the attempt is named outright, which is the director's own sentence.
+    //    0 HELD PLANS — the ATTEMPT is named, the OUTCOME is not, because nobody has worked it
+    //      out yet. "Put these together and see" promises nothing and hides nothing; it is the
+    //      same act the survivor was about to perform, with a hand on the door first.
+    if (offered.length >= 2) return 'You know more than one way to use these. Which are you making?';
     const only = offered[0];
     return only
         ? `You are trying to make ${indefinite(recipeDisplayName(only.id))}. Go ahead?`
-        : 'Which are you making?';
+        : 'You have not worked these out yet. Put them together and see?';
 }
 
 /**

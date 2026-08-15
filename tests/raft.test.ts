@@ -19,7 +19,7 @@ import {
 import { allRecipes } from '../src/brain/recipes';
 import { DISCOVERY_ROUTES, suspicionFor } from '../src/brain/discovery';
 import { ladderFor } from '../src/brain/ladder';
-import { resolveRecipe, tryCombineWith } from '../src/brain/experiment';
+import { resolveRecipe } from '../src/brain/experiment';
 import { materialSatisfies } from '../src/brain/materials';
 import { closeSurvivor } from '../src/brain/succession';
 import { verbsFor, availableVerbs, defaultVerb, holdOpensCircle } from '../src/brain/verbs';
@@ -33,6 +33,10 @@ import { SURF_LINE_RADIUS, WRECK, isDryLand } from '../src/data/world';
 import { TUNE } from '../src/data/tune';
 import { fullBody } from './_baseline';
 import type { GameState } from '../src/brain/types';
+//  STAGE-THEN-CONFIRM. Since the never-auto-commit ruling, `tryCombineWith` returns a
+//  QUESTION and spends nothing; the attempt happens when the survivor answers it. These tests
+//  exercise attempts, so they answer it — see tests/helpers/confirmed.ts.
+import { attemptConfirmed } from './helpers/confirmed';
 
 function fresh(): GameState {
     return fullBody(createInitialState(1_700_000_000_000));
@@ -137,7 +141,7 @@ describe('the raft is discovered by its OWN gesture, not by a third go at wood +
         let reached = false;
         for (let i = 0; i < 200 && !reached; i++) {
             s.energy = 100; s.hunger = 100; s.thirst = 100;
-            tryCombineWith(s, ['wood', 'fiber', 'coconut']);
+            attemptConfirmed(s, ['wood', 'fiber', 'coconut']);
             reached = s.blueprints.some((b) => b.recipeId === 'raft');
         }
         expect(reached).toBe(true);

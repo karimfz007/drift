@@ -26,13 +26,16 @@ import {
     knownMatches,
     makeChosen,
     ownedTools,
-    tryCombineWith,
     type GameState,
     type ToolId,
 } from '../src/brain';
 import { allRecipes } from '../src/brain/recipes';
 import { TUNE } from '../src/data/tune';
 import { fullBody } from './_baseline';
+//  STAGE-THEN-CONFIRM. Since the never-auto-commit ruling, `tryCombineWith` returns a
+//  QUESTION and spends nothing; the attempt happens when the survivor answers it. These tests
+//  exercise attempts, so they answer it — see tests/helpers/confirmed.ts.
+import { tryCombineWith } from '../src/brain/experiment';
 
 const NOW = 1_770_000_000_000;
 const fresh = (): GameState => fullBody(createInitialState(NOW));
@@ -135,10 +138,14 @@ describe('P0-1 — when both are known, the player chooses', () => {
         s.blueprints = [];
         s.inventory.wood = 9;
         s.inventory.stone = 9;
+        //  LAW 95 IS UNTOUCHED — the CATALOGUE is still not handed over. What changed is that
+        //  the survivor is asked before anything is spent, in words that name no product.
         expect(isAmbiguousToPlayer(s, ['wood', 'stone']),
             'a survivor who knows nothing was offered a choice of named things').toBe(false);
         expect(knownMatches(s, ['wood', 'stone'])).toEqual([]);
-        expect(tryCombineWith(s, ['wood', 'stone']).outcome).not.toBe('choose');
+        const asked = tryCombineWith(s, ['wood', 'stone']);
+        expect(asked.outcome, 'an unknown pile committed with no ask').toBe('choose');
+        expect(asked.reason ?? '', 'the question named a product').not.toMatch(/hammer|crate|storage|shelter/i);
     });
 
     it('one known pattern is not a question either', () => {

@@ -502,6 +502,16 @@ export class Game {
             session().persist(now());
             return result;
         };
+        runtime.gather = (nodeId) => {
+            const result = gatherNode(session().state, nodeId);
+            session().persist(now());
+            return result;
+        };
+        runtime.eat = (food) => {
+            const result = eat(session().state, food as 'coconut');
+            session().persist(now());
+            return result;
+        };
         runtime.renderCost = () => {
             const meshes = this.scene.meshes ?? [];
             let pickable = 0;
@@ -1019,13 +1029,22 @@ export class Game {
             const offered = heldMatches(session().state, materials as 'wood'[]);
             const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
             this.showHint(result.reason ?? 'Which are you making?');
-            //  P0-C — ...and the door invention comes through. Offered only when this pile
-            //  genuinely still has an outcome the survivor has not worked out, so a fully known
-            //  pile asks a plain yes-or-no. It names nothing: "try something else" is a refusal
-            //  of the known thing, never a hint that a particular other thing exists.
+            //  EVERY HELD PLAN IS NAMED IN THE LIST — that is the director's "named list of
+            //  every attemptable outcome, each clearly labelled", and it is the same list the
+            //  brain asked about, at one match or at three.
             const positions = offered.map((r) => ({ id: r.id, label: recipeDisplayName(r.id), available: true, reason: null }));
+            //  ...and the door invention comes through, LABELLED FOR WHAT IT IS. It is offered
+            //  only when this pile genuinely still has an outcome nobody has worked out, and it
+            //  names no product — Law 95 — so the wording says what the survivor is choosing to
+            //  DO rather than dressing an unknown up as a menu entry. On a pile with nothing
+            //  held it is the only position, and it is the whole of the question: the survivor
+            //  is agreeing to experiment, which is exactly what they were about to do anyway.
             if (hasUnknownRival(session().state, materials as 'wood'[])) {
-                positions.push({ id: EXPERIMENT_CHOICE, label: 'Try something else', available: true, reason: null });
+                positions.push({
+                    id: EXPERIMENT_CHOICE,
+                    label: offered.length > 0 ? 'Try something new' : 'Put them together',
+                    available: true, reason: null,
+                });
             }
             showVerbCircle(this.overlay, positions,
                 at.x, at.y,
@@ -2052,6 +2071,10 @@ export class Game {
 
         if (result.gained.wood) session().markFirstWood(msSinceControl());
         if (result.foundFlask) this.showHint('A water flask — fill it at the pond, carry a drink inland.');
+        //  THE FIRST CRATE'S PACK. Said the moment it is found, for the same reason the flask
+        //  and the receiver are: a thing that appears in a panel with no announcement is a thing
+        //  the player never learns they have.
+        if (result.foundBackpack) this.showHint('A canvas pack, folded at the bottom. Now you can carry properly.');
         //  DROP 5 — the set, out of the instrument housing. Said the moment it is found,
         //  because a thing that appears in a panel with no announcement is a thing the
         //  player never learns they have.
@@ -2098,7 +2121,9 @@ export class Game {
         if (g.berries) parts.push(`+${g.berries} berries`);
         if (g.coconut) parts.push(`+${g.coconut} coconut`);
         if (g.shellfish) parts.push(`+${g.shellfish} shellfish`);
+        if (g.shell) parts.push(`+${g.shell} shell`);
         if (result.foundFlask) parts.push('+ flask');
+        if (result.foundBackpack) parts.push('+ pack');
         if (result.foundReceiver) parts.push('+ receiver');
         return parts.join('  ');
     }

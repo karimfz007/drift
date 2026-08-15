@@ -4731,7 +4731,23 @@ async function main() {
         if (!armed.present || armed.disabled) return { ok: false, reason: `button ${JSON.stringify(armed)}` };
         const pressed = await realTapDom('.panel.loadout .try-combine-btn');
         await sleep(900);
-        return { ok: pressed.ok, reason: pressed.reason ?? null };
+        if (!pressed.ok) return { ok: false, reason: pressed.reason ?? null };
+
+        //  ...AND ANSWER THE QUESTION, because the player path now has one more step in it.
+        //  Since the never-auto-commit ruling, pressing the button STAGES: it opens the circle
+        //  and spends nothing. A helper that stopped at the press was modelling the old game,
+        //  and the checks downstream of it looped twelve times waiting for a success that could
+        //  not happen. The survivor picks a position; so does this.
+        const circleUp = await page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            return segs.map((b) => b.dataset.verb ?? '');
+        });
+        if (circleUp.length === 0) return { ok: true, reason: null, staged: false };
+        //  Whatever it offers, take the first — the checks that care WHICH outcome was picked
+        //  name it themselves.
+        const picked = await realTapDom('.panel.verb-circle .verb-seg');
+        await sleep(900);
+        return { ok: picked.ok, reason: picked.reason ?? null, staged: true, offered: circleUp };
     };
 
     const beforeExp = await live();
@@ -9349,6 +9365,186 @@ async function main() {
         wearRun.said === null
             ? 'no failed attempt in 40 tries — the claim is untested'
             : `it said "${(wearRun.said ?? '').slice(-40)}" and wear went ${wearRun.before} -> ${wearRun.after}`);
+    }
+
+
+    // ======== THIS SESSION'S LIST — three items, three verdicts ========
+    //
+    //  Witnessed on what a player would actually see or hold: the staging question as returned
+    //  by the real verb, the pack in the survivor's own tools after a real crate, and the shell
+    //  in the real inventory after a real drink.
+    if (section("SESSION LIST — staging asks, the first crate pays, the shell stays")) {
+
+    // ---- 1 · NEVER AUTO-COMMIT -------------------------------------------------------
+    //
+    //  THE DIRECTOR'S OWN CASE: stone + wood, fresh life, no ask. Measured before the fix as
+    //  `invented — "You work out how it fits: Stone hammer."`
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 10, stone: 10, fiber: 0, sharpblade: 0 };
+    `);
+    await sleep(800);
+    const stoneWood = await page.evaluate(() => {
+        const before = JSON.parse(JSON.stringify({
+            inv: window.__drift.state().inventory,
+            bp: window.__drift.state().blueprints.map((b) => b.recipeId),
+        }));
+        const r = window.__drift.tryCombine('wood', 'stone');
+        const s = window.__drift.state();
+        return {
+            outcome: r ? r.outcome : null,
+            reason: r ? r.reason : null,
+            spentNothing: JSON.stringify({ inv: s.inventory, bp: s.blueprints.map((b) => b.recipeId) }) === JSON.stringify(before),
+        };
+    });
+    await shot('list-01-stone-wood');
+    check('1 — REACHABILITY: stone + wood on a fresh life ASKS, it does not just make something',
+        stoneWood.outcome === 'choose',
+        `outcome ${stoneWood.outcome}, and it said: "${stoneWood.reason ?? '(nothing)'}"`);
+
+    check('1 — ...and being asked spends nothing at all',
+        stoneWood.spentNothing === true,
+        `inventory and plans unchanged: ${stoneWood.spentNothing}`);
+
+    check('1 — ...and LAW 95 holds: the question names no product nobody has worked out',
+        !/hammer|crate|storage|shelter/i.test(stoneWood.reason ?? ''),
+        `"${stoneWood.reason ?? ''}"`);
+
+    //  ONE held plan — the attempt is named.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.inventory = { ...state.inventory, wood: 10, sharpblade: 10, stone: 0 };
+        state.blueprints = [{ recipeId: 'spear', name: 'Fire-hardened spear', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+    `);
+    await sleep(800);
+    const named = await page.evaluate(() => {
+        const r = window.__drift.tryCombine('wood', 'sharpblade');
+        return { outcome: r ? r.outcome : null, reason: r ? r.reason : null };
+    });
+    check('1 — ONE known plan: the attempt is NAMED and waits',
+        named.outcome === 'choose' && /trying to make/i.test(named.reason ?? '') && /spear/i.test(named.reason ?? ''),
+        `outcome ${named.outcome}: "${named.reason ?? ''}"`);
+
+    //  TWO held plans — every outcome named in the list the body offers.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.inventory = { ...state.inventory, wood: 10, stone: 10 };
+        state.blueprints = [
+            { recipeId: 'storage', name: 'Storage crate', version: 1, discoveredAtGameHours: 0, workmanship: 'serviceable' },
+            { recipeId: 'stonehammer', name: 'Stone hammer', version: 1, discoveredAtGameHours: 0, workmanship: 'serviceable' }
+        ];
+    `);
+    await sleep(800);
+    const listed = await page.evaluate(() => {
+        const r = window.__drift.tryCombine('wood', 'stone');
+        return { outcome: r ? r.outcome : null, reason: r ? r.reason : null };
+    });
+    check('1 — MORE THAN ONE known plan: the question points at a named list, not a guess',
+        listed.outcome === 'choose' && /which are you making/i.test(listed.reason ?? ''),
+        `outcome ${listed.outcome}: "${listed.reason ?? ''}"`);
+
+    // ---- 2 · THE BACKPACK ------------------------------------------------------------
+    //
+    //  (a) on a GENUINELY fresh save — cleared, not fixtured — and read off the drawn icon as
+    //  well as the state, per this project's own standard that presence is not visibility.
+    await startFresh();
+    const freshPack = await page.evaluate(() => {
+        const shown = (sel) => {
+            const e = document.querySelector(sel);
+            return Boolean(e && getComputedStyle(e).display !== 'none');
+        };
+        return {
+            owned: window.__drift.state().tools.backpack,
+            crates: window.__drift.state().trace.cratesOpened,
+            packDrawn: shown('.carried-button .pack-icon'),
+            armsDrawn: shown('.carried-button .arms-icon'),
+        };
+    });
+    await shot('list-02-fresh-nopack');
+    check('2a — REACHABILITY: a genuinely fresh survivor has NO backpack, in state and on screen',
+        freshPack.owned === false && freshPack.packDrawn === false && freshPack.armsDrawn === true,
+        `tools.backpack ${freshPack.owned}, pack drawn ${freshPack.packDrawn}, arms drawn ${freshPack.armsDrawn},`
+        + ` crates opened ${freshPack.crates}`);
+
+    //  (c) the FIRST crate holds one. Driven through the real gather verb at the real node.
+    await editSave(`
+        state.tools = { ...state.tools, axe: true, backpack: false };
+        state.trace = { ...state.trace, cratesOpened: 0 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+    `);
+    await sleep(800);
+    const crateRun = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const crate = s.nodes.find((n) => n.kind === 'crashbox' && n.available);
+        if (!crate) return { found: false };
+        s.player = { x: crate.x, y: crate.y };
+        const before = { pack: s.tools.backpack, crates: s.trace.cratesOpened };
+        const out = window.__drift.gather ? window.__drift.gather(crate.id) : null;
+        const after = window.__drift.state();
+        return {
+            found: true, supported: out !== null,
+            ok: out ? out.ok : null, reason: out ? out.reason : null,
+            foundBackpack: out ? out.foundBackpack : null,
+            before, afterPack: after.tools.backpack, afterCrates: after.trace.cratesOpened,
+        };
+    });
+    await shot('list-03-first-crate');
+    check('2c — REACHABILITY: the FIRST crate a survivor opens hands over a backpack',
+        crateRun.found && crateRun.supported && crateRun.ok === true
+        && crateRun.foundBackpack === true && crateRun.afterPack === true,
+        crateRun.found
+            ? (crateRun.supported
+                ? `ok ${crateRun.ok} ${crateRun.reason ?? ''}, foundBackpack ${crateRun.foundBackpack},`
+                  + ` tools.backpack ${crateRun.before.pack} -> ${crateRun.afterPack},`
+                  + ` cratesOpened ${crateRun.before.crates} -> ${crateRun.afterCrates}`
+                : 'no gather hook')
+            : 'no available crate on the island');
+
+    //  ...and the pack the survivor now owns is DRAWN as one.
+    const packAfter = await page.evaluate(() => {
+        const shown = (sel) => {
+            const e = document.querySelector(sel);
+            return Boolean(e && getComputedStyle(e).display !== 'none');
+        };
+        return { pack: shown('.carried-button .pack-icon'), arms: shown('.carried-button .arms-icon') };
+    });
+    check('2c — ...and the carry affordance becomes a PACK on screen, not an armful',
+        packAfter.pack === true && packAfter.arms === false,
+        `pack drawn ${packAfter.pack}, arms drawn ${packAfter.arms}`);
+
+    // ---- 3 · THE COCONUT SHELL -------------------------------------------------------
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 40; state.thirst = 40;
+        state.inventory = { ...state.inventory, coconut: 2, shell: 0 };
+    `);
+    await sleep(800);
+    const shellRun = await page.evaluate(() => {
+        const before = { ...window.__drift.state().inventory };
+        const ate = window.__drift.eat ? window.__drift.eat('coconut') : null;
+        const after = { ...window.__drift.state().inventory };
+        return { supported: ate !== null, ate, before, after };
+    });
+    await shot('list-04-shell');
+    check('3 — REACHABILITY: drinking a coconut leaves the SHELL in the survivor\'s hands',
+        shellRun.supported && shellRun.ate === true
+        && shellRun.after.coconut === shellRun.before.coconut - 1
+        && shellRun.after.shell === shellRun.before.shell + 1,
+        shellRun.supported
+            ? `coconut ${shellRun.before.coconut}->${shellRun.after.coconut},`
+              + ` shell ${shellRun.before.shell}->${shellRun.after.shell}`
+              + ` — an unchanged shell is the defect`
+            : 'no eat hook');
     }
 
     // ---- Hygiene ----

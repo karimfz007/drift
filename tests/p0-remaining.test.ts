@@ -116,15 +116,22 @@ describe('P0-C — a plan you HOLD is never committed without being named first'
     });
 
     it('an UNKNOWN pattern is never named and still resolves — Law 95 holds', () => {
-        //  The boundary that makes the whole ruling safe. A survivor holding no plan for this
-        //  pile is not asked about it, because asking would name a product they have never
-        //  worked out and hand over the catalogue.
+        //  THE DIRECTOR'S RULING MOVED THIS LINE, AND LAW 95 STILL HOLDS EITHER SIDE OF IT.
+        //  This asserted that an unknown pattern commits WITHOUT being asked about, because
+        //  asking was assumed to require naming the product. It does not: the question for an
+        //  unknown pile names the ATTEMPT and never the outcome — "you have not worked these
+        //  out yet, put them together and see" — so nothing is handed over, and the survivor
+        //  still agrees before anything is spent. "Never build silently" means never.
         const s = fresh();
         s.energy = 100; s.hunger = 100; s.thirst = 100;
         s.inventory.wood = 20; s.inventory.sharpblade = 20;
         expect(s.blueprints, 'the fixture starts with plans').toHaveLength(0);
-        expect(needsNaming(s, ['wood', 'sharpblade'])).toBe(false);
-        expect(tryCombineWith(s, ['wood', 'sharpblade']).outcome).not.toBe('choose');
+        expect(needsNaming(s, ['wood', 'sharpblade']), 'an unknown pile commits unasked').toBe(true);
+        const asked = tryCombineWith(s, ['wood', 'sharpblade']);
+        expect(asked.outcome).toBe('choose');
+        //  LAW 95: the question may not name what they have not worked out.
+        expect(heldMatches(s, ['wood', 'sharpblade']), 'a product was offered by name').toEqual([]);
+        expect(asked.reason ?? '', 'the question named a product').not.toMatch(/spear|axe|hammer|crate|shelter/i);
     });
 
     it('THE SOFT-LOCK THE RULING WOULD HAVE SHIPPED: a held plan must not wall off its rivals', () => {

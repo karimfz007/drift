@@ -169,6 +169,19 @@ export interface Inventory {
     /** DROP 1 — raw meat from a killed boar. Spoils fast; cooking is the NEXT discovery. */
     meat: number;
 
+    /**
+     * THE COCONUT SHELL — what is LEFT when a coconut is drunk.
+     *
+     * A coconut was consumed whole: `eat` decremented the stack and nothing came back, so the
+     * husk a survivor is plainly holding simply stopped existing. `vessel.ts` has described a
+     * "coconut-shell cup" since the water slice, which is the game already saying out loud
+     * that the shell is a thing; this is the thing.
+     *
+     * Structurally inert on purpose — it is a by-product, not a new economy. It weighs almost
+     * nothing, it perishes never, and what it is FOR is left to whoever wants it next.
+     */
+    shell: number;
+
     //  ---- THE WRECK-ERA FAMILY (the Wreck Slice) --------------------------------------
     //
     //  The codex has named these since Cycle 01 — *"Metal parts (plane / ship salvage) ...
@@ -359,6 +372,11 @@ export interface TraceState {
      * never-mind gesture is legal, and eight in a row before anything lands is not.
      */
     groundTaps: number;
+    /**
+     * How many crates the survivor has broken open. Exists for one reason: the FIRST one always
+     * holds a backpack, and "first" is a fact about a life, not about a crate.
+     */
+    cratesOpened: number;
     /**
      * Did the survivor ever USE the last two drops? C1 asked whether the Director found D-148's
      * bandage verb and drank boiled water, and the answer was unknowable: nothing in `vessel.ts`

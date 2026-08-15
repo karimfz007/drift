@@ -123,6 +123,10 @@ export const runtime = {
     //  the defect it could not reach lived past arity two — a success charged the first two
     //  staged materials and left the rest free.
     makeChosen: (() => null) as (materials: string[], recipeId: string) => unknown,
+    //  THIS SESSION'S LIST: the two verbs its checks have to drive for real. Same shape and
+    //  same reason as `tryCombine` above — exercise the shipped path, never a re-implementation.
+    gather: (() => null) as (nodeId: string) => unknown,
+    eat: (() => null) as (food: string) => unknown,
     //  D-065: what a tap at this screen point WOULD target, with no side effect. The
     //  shelter's tappable band cannot be measured any other way — see `tapTargetAt`.
     tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null,
@@ -308,6 +312,8 @@ function installDebugHook(): void {
         //  harness exercises the shipped verb rather than a re-implementation of it.
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
         makeChosen: (materials: string[], recipeId: string) => runtime.makeChosen(materials, recipeId),
+        gather: (nodeId: string) => runtime.gather(nodeId),
+        eat: (food: string) => runtime.eat(food),
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
         lastCue: () => runtime.lastCue(),

@@ -68,6 +68,7 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     fiber: 'loosened',
     sharpblade: 'blunted',
     coconut: 'cracked',
+    shell: 'cracked',
     shellfish: 'spilled',
     berries: 'contaminated',
     //  THE WRECK SLICE. Each fails the way that material actually fails: plate BENDS before
@@ -191,7 +192,7 @@ export function isNearlySpent(state: GameState, material: MaterialKind): boolean
 
 const LABEL: Record<MaterialKind, string> = {
     wood: 'The wood', stone: 'The stone', fiber: 'The fibre', sharpblade: 'The blade',
-    coconut: 'The coconut', shellfish: 'The shell', berries: 'The berries',
+    coconut: 'The coconut', shell: 'The shell', shellfish: 'The shell', berries: 'The berries',
     meat: 'The meat', fish: 'The fish',
     metal: 'The plate', wiring: 'The cable', glass: 'The glass', medicine: 'The medicine',
 };

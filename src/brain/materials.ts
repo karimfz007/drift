@@ -45,6 +45,10 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     //  So the property gets named. `food` stays structurally inert exactly as it was, and the
     //  raft's signature ({woodwork, textile, buoyant}) is unique because the tag is.
     coconut: { primary: 'organic', tags: ['food', 'buoyant'] },
+    //  THE EMPTIED HUSK. Organic and buoyant like the whole nut, and NOT food — the food was
+    //  the part that got drunk. No craft tag yet: it is a by-product, and what it becomes is a
+    //  later question than this one.
+    shell: { primary: 'organic', tags: ['buoyant'] },
     shellfish: { primary: 'organic', tags: ['food'] },
     /** Knapped from raw stone (Ch.1 v3) — a refined material, not gathered directly. */
     sharpblade: { primary: 'mineral', tags: ['blade'] },

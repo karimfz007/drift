@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState } from '../src/brain/state';
-import { tryCombineWith } from '../src/brain/experiment';
+import {} from '../src/brain/experiment';
 import { ladderFor } from '../src/brain/ladder';
 import { makerOffers, revealedInPanel } from '../src/brain/reveal';
 import type { GameState } from '../src/brain/types';
+//  STAGE-THEN-CONFIRM. Since the never-auto-commit ruling, `tryCombineWith` returns a
+//  QUESTION and spends nothing; the attempt happens when the survivor answers it. These tests
+//  exercise attempts, so they answer it — see tests/helpers/confirmed.ts.
+import { attemptConfirmed } from './helpers/confirmed';
 
 /** The save a real player actually has: everything the old gate enumerated, already done. */
 function fullyEquipped(): GameState {
@@ -62,7 +66,7 @@ describe('THE MAKER DOOR — D-053 for the third time, and the last', () => {
         expect(ladderFor(s, 'spear')).toBe('physically-possible');
         expect(makerOffers(s)).not.toContain('spear');
 
-        const res = tryCombineWith(s, ['wood', 'sharpblade']);
+        const res = attemptConfirmed(s, ['wood', 'sharpblade']);
 
         expect(res.recipeId, 'the combine did not resolve to the spear').toBe('spear');
         expect(s.blueprints.map((b) => b.recipeId), 'no blueprint minted').toContain('spear');
@@ -75,7 +79,7 @@ describe('THE MAKER DOOR — D-053 for the third time, and the last', () => {
     it('the spear stops being an offer once it is owned', () => {
         const s = fullyEquipped();
         s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
-        tryCombineWith(s, ['wood', 'sharpblade']);
+        attemptConfirmed(s, ['wood', 'sharpblade']);
         expect(makerOffers(s)).toContain('spear');
         s.tools.spear = true;
         expect(makerOffers(s)).not.toContain('spear');

@@ -17,6 +17,7 @@
  * the pre-fix tree.
  */
 import { describe, expect, it } from 'vitest';
+import { attemptConfirmed } from './helpers/confirmed';
 import { EXPERIMENT_CHOICE, canExperimentWith, hasUnknownRival, makeChosen, recipesMatching, resolveRecipe, tryCombineWith } from '../src/brain/experiment';
 import { DISCOVERY_ROUTES } from '../src/brain/discovery';
 import { ALL_MATERIAL_KINDS } from '../src/brain/materials';
@@ -202,8 +203,13 @@ describe('the gate, at two to four', () => {
     });
 
     it('the two-argument form still works — one execution path, no second behaviour', () => {
+        //  ONE EXECUTION PATH still, and that path now ASKS first. `ok` is false on a
+        //  question by design — nothing has happened yet — so the claim is checked where it
+        //  actually lives: the pair form reaches the same staging surface the wider arities do.
         const s = stocked();
-        const r = tryCombineWith(s, ['wood', 'fiber']);
+        const asked = tryCombineWith(s, ['wood', 'fiber']);
+        expect(asked.outcome).toBe('choose');
+        const r = attemptConfirmed(s, ['wood', 'fiber']);
         expect(r.ok).toBe(true);
     });
 });

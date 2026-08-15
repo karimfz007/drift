@@ -54,6 +54,8 @@ const PROPERTIES: Record<MaterialKind, PropertyTerm[]> = {
     fiber: ['springy', 'absorbent'],
     sharpblade: ['sharp', 'rigid'],
     coconut: ['rigid', 'buoyant'],
+    //  Empty, it floats better than it did full, and it still holds its shape.
+    shell: ['rigid', 'buoyant'],
     //  THE WRECK SLICE — and `conductive` finally has a material that IS one. The term has
     //  been in `PROPERTY_TERMS` since Ch.1 describing nothing on this island, because nothing
     //  on this island conducts. Cable does.

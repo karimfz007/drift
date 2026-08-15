@@ -19,10 +19,13 @@ import { describe, expect, it } from 'vitest';
 import {
     freshMatterWear, isNearlySpent, stressedMaterial, transformOnFailure, transformationFor,
 } from '../src/brain/matter';
-import { needsNaming, makeChosen, tryCombineWith } from '../src/brain/experiment';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
 import type { GameState, MaterialKind } from '../src/brain/types';
+//  STAGE-THEN-CONFIRM. Since the never-auto-commit ruling, `tryCombineWith` returns a
+//  QUESTION and spends nothing; the attempt happens when the survivor answers it. These tests
+//  exercise attempts, so they answer it — see tests/helpers/confirmed.ts.
+import { attemptConfirmed } from './helpers/confirmed';
 
 function stocked(): GameState {
     const s = createInitialState(0);
@@ -149,9 +152,12 @@ describe('through the real verb, not just the helper', () => {
             //  `isAmbiguousToPlayer` still answers its own narrower question (which of two?) and
             //  is deliberately not reused here — reading it would fall through to a bare
             //  `tryCombine` that now returns `choose`, and the attempt would never happen.
-            const r = needsNaming(s, ['wood', 'fiber'])
-                ? makeChosen(s, ['wood', 'fiber'], 'torch')
-                : tryCombineWith(s, ['wood', 'fiber']);
+            //  ONE CALL, NOT A BRANCH. `needsNaming` is now true for any pile that MAKES
+            //  something, so branching on it routed an unknown pattern into
+            //  `makeChosen('torch')` — correctly refused, so the attempt never happened
+            //  and this loop counted zero failures. The helper answers the question the way
+            //  the survivor actually would, held or not.
+            const r = attemptConfirmed(s, ['wood', 'fiber']);
             if (r.outcome === 'failed-attempt') {
                 sawFailure = true;
                 expect(r.matter, 'the failure carries a matter outcome').toBeTruthy();
@@ -172,7 +178,7 @@ describe('through the real verb, not just the helper', () => {
         for (let i = 0; i < 40 && !sawSuccess; i++) {
             s.inventory.wood = 10; s.inventory.fiber = 10; s.energy = 100;
             s.matterWear = freshMatterWear();
-            const r = tryCombineWith(s, ['wood', 'fiber']);
+            const r = attemptConfirmed(s, ['wood', 'fiber']);
             if (r.outcome === 'invented') {
                 sawSuccess = true;
                 expect(r.matter ?? null, 'success carries no matter outcome').toBeFalsy();

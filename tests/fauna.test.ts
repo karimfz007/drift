@@ -24,6 +24,10 @@ import { createInitialState } from '../src/brain/state';
 import { reconcile } from '../src/brain/reconcile';
 import { TUNE } from '../src/data/tune';
 import type { Boar, BoarStage, GameState } from '../src/brain/types';
+//  STAGE-THEN-CONFIRM. Since the never-auto-commit ruling, `tryCombineWith` returns a
+//  QUESTION and spends nothing; the attempt happens when the survivor answers it. These tests
+//  exercise attempts, so they answer it — see tests/helpers/confirmed.ts.
+import { attemptConfirmed } from './helpers/confirmed';
 
 const REAL_DAY = 24 * 3600;
 
@@ -416,17 +420,17 @@ describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 c
     });
 
     it('staging shaft + blade discovers the SPEAR, not the axe', async () => {
-        const { tryCombineWith } = await import('../src/brain/experiment');
+        const {} = await import('../src/brain/experiment');
         const s = createInitialState(0);
         s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
-        expect(tryCombineWith(s, ['wood', 'sharpblade'] as never).recipeId).toBe('spear');
+        expect(attemptConfirmed(s, ['wood', 'sharpblade'] as never).recipeId).toBe('spear');
     });
 
     it('...and shaft + blade + binding still discovers the AXE', async () => {
-        const { tryCombineWith } = await import('../src/brain/experiment');
+        const {} = await import('../src/brain/experiment');
         const s = createInitialState(0);
         s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
-        expect(tryCombineWith(s, ['wood', 'sharpblade', 'fiber'] as never).recipeId).toBe('axe');
+        expect(attemptConfirmed(s, ['wood', 'sharpblade', 'fiber'] as never).recipeId).toBe('axe');
     });
 
     it('the binding is still SPENT — folded into the operation, not staged', async () => {

@@ -86,6 +86,7 @@ export function createInitialState(nowMs: number): GameState {
             msToFirstCraft: null,
             failedInteractionTaps: 0,
             groundTaps: 0,
+            cratesOpened: 0,
             woundsBound: 0,
             sipsBoiled: 0,
             controlModeSwitches: 0,
@@ -159,6 +160,7 @@ export function freshJournal(): JournalState {
 export function emptyInventory(): Inventory {
     return {
         wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, fish: 0,
+        shell: 0,
         //  THE WRECK SLICE. Zero, and a fresh castaway can never gain one on the island —
         //  every gram of these exists 115 m offshore.
         metal: 0, wiring: 0, glass: 0, medicine: 0
@@ -398,6 +400,8 @@ export interface GatherResult {
     gained: Partial<Inventory>;
     /** True if this gather opened the crash box (found the flask). */
     foundFlask: boolean;
+    /** The pack out of the first crate — see the `crashbox` branch. */
+    foundBackpack: boolean;
     /** DROP 5 — this hold was the one that found the receiver in the instrument housing. */
     foundReceiver: boolean;
     /** The skill trained, the XP granted, and the levels it earned. */
@@ -432,13 +436,14 @@ export function submergeForNode(state: GameState, nodeId: string): boolean {
 export function gatherNode(state: GameState, nodeId: string): GatherResult {
     const blocked = gatherBlockedReason(state, nodeId);
     if (blocked) {
-        return { ok: false, reason: blocked, kind: null, gained: {}, foundFlask: false, foundReceiver: false, skill: null, xpGained: 0, levelsGained: 0, learned: null };
+        return { ok: false, reason: blocked, kind: null, gained: {}, foundFlask: false, foundBackpack: false, foundReceiver: false, skill: null, xpGained: 0, levelsGained: 0, learned: null };
     }
 
     const node = findNode(state, nodeId)!;
     const spec = NODE_SPECS[node.kind];
     const gained: Partial<Inventory> = {};
     let foundFlask = false;
+    let foundBackpack = false;
     let foundReceiver = false;
 
     //  FIX-1 (Living Island Track A): charge the per-action energy cost up front, before
@@ -509,6 +514,20 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
             state.tools.flaskSips = 0;
             gained.fiber = TUNE.crashBoxFiber;
             foundFlask = TUNE.crashBoxFlask > 0;
+            //  THE FIRST CRATE ALWAYS HOLDS A PACK — a reliable early second path to carrying
+            //  properly, independent of ever working the pattern out. A survivor who never
+            //  invents the backpack is otherwise carrying things in their arms forever, and
+            //  that is a dead end they cannot see the edge of.
+            //
+            //  FIRST, and counted rather than guessed: `cratesOpened` is the whole reason that
+            //  field exists. Every later crate is an ordinary crate, which is what keeps this a
+            //  leg-up rather than a supply line. Guarded on not already having one, because
+            //  `tools.backpack` is a boolean and a second pack is not a thing.
+            if (state.trace.cratesOpened === 0 && !state.tools.backpack) {
+                state.tools.backpack = true;
+                foundBackpack = true;
+            }
+            state.trace.cratesOpened += 1;
             break;
         case 'quarry': {
             //  Repeat-minable (D-051): one tap spends from the pool, not the node itself —
@@ -694,7 +713,7 @@ export function gatherNode(state: GameState, nodeId: string): GatherResult {
         levelsGained = grantXp(state.skills[spec.skill], xpGained);
     }
 
-    return { ok: true, reason: null, kind: node.kind, gained, foundFlask, foundReceiver, skill: spec.skill, xpGained, levelsGained, learned };
+    return { ok: true, reason: null, kind: node.kind, gained, foundFlask, foundBackpack, foundReceiver, skill: spec.skill, xpGained, levelsGained, learned };
 }
 
 // ---- Renewability law (D-051) -------------------------------------------
@@ -1133,6 +1152,15 @@ export function eat(state: GameState, food: Food): boolean {
     state.inventory[food] -= 1;
     state.hunger = applied.hunger;
     state.thirst = applied.thirst;
+    //  WHAT IS LEFT IN THE HAND. A coconut was consumed WHOLE — the stack went down by one and
+    //  nothing came back — so the husk a survivor is plainly still holding stopped existing at
+    //  the moment they drank from it. `vessel.ts` has described a "coconut-shell cup" since the
+    //  water slice, which is the game already saying the shell is a thing; now it is one.
+    //
+    //  Deliberately here and not in a general by-product table: the coconut is the only food in
+    //  the game that leaves anything behind, and a table with one row is a system pretending to
+    //  be general. When a second one earns it, this becomes that table.
+    if (food === 'coconut') state.inventory.shell += 1;
     //  DROP 3 — SPOILED FOOD. Reuses Law 128's matter model rather than inventing a second
     //  spoilage clock. Berries and meat both transform to `contaminated` when an attempt on
     //  them fails, and `matterWear` already counts how far gone a kind is — so the food that

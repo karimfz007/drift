@@ -885,7 +885,9 @@ const MATERIAL_LABEL: Record<string, string> = {
     wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
     coconut: 'Coconut', shellfish: 'Shellfish', sharpblade: 'Sharp blade',
     //  THE WRECK SLICE. Named as a survivor would name them, not as cargo manifest entries.
-    metal: 'Hull plate', wiring: 'Cable', glass: 'Glass', medicine: 'Medical store', meat: 'Meat'
+    metal: 'Hull plate', wiring: 'Cable', glass: 'Glass', medicine: 'Medical store', meat: 'Meat',
+    //  What a drunk coconut leaves behind. Named for the object, not the recipe it might feed.
+    shell: 'Coconut shell', fish: 'Fish'
 };
 
 export interface LoadoutPanelView {
