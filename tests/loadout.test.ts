@@ -40,6 +40,12 @@ function fullyEquipped(): GameState {
     s.tools.stoneHammer = true;
     s.tools.flask = true;
     s.torch = { owned: true, lit: false, fuelGameHoursRemaining: 3, grade: 'serviceable' };
+    //  ...and the two zones that are POSSESSIONS rather than body positions. The hub no longer
+    //  renders a row for a pack nobody owns or a crate nobody built, so a fixture called
+    //  "fully equipped" that had neither was quietly describing a survivor with their arms
+    //  full and no crate — and every zone assertion built on it inherited that.
+    s.tools.backpack = true;
+    s.storage = { ...s.storage, built: true };
     return s;
 }
 
@@ -251,9 +257,28 @@ describe('loadout — mass and bulk are both visible; bands stay Ch.6\'s (§9)',
 });
 
 describe('loadout — the panel view, and storage inspectable in place (unparks the C05 note)', () => {
-    it('reports all six zones', () => {
+    it('reports every zone that EXISTS — and no row for a thing nobody owns', () => {
+        //  This asserted all six unconditionally, which is what let the hub show a "Backpack"
+        //  row to a survivor with no pack and a "Storage" row with no crate built. The
+        //  director read the empty Backpack row as the game telling him he had one.
+        //
+        //  Fully equipped, all six are real and all six appear — and 'arms' does NOT, because
+        //  this survivor has a pack to carry things in.
         const view = loadoutView(fullyEquipped());
         expect(view.zones.map((z) => z.zone)).toEqual(ACCESS_ZONES);
+        expect(view.zones.map((z) => z.zone)).not.toContain('arms');
+    });
+
+    it('...and a survivor with no pack and no crate is shown neither', () => {
+        const bare = run();
+        bare.tools.backpack = false;
+        bare.storage = { ...bare.storage, built: false };
+        const zones = loadoutView(bare).zones.map((z) => z.zone);
+        expect(zones, 'a backpack row for a survivor with no backpack').not.toContain('backpack');
+        expect(zones, 'a storage row for a crate that was never built').not.toContain('storage');
+        //  The carrying row still exists — the materials have to be somewhere visible — and it
+        //  is named for what is actually true.
+        expect(zones, 'the survivor cannot see what they are carrying at all').toContain('arms');
     });
 
     it('a positioned tool appears in its own zone and NOT in the backpack', () => {
@@ -286,10 +311,12 @@ describe('loadout — the panel view, and storage inspectable in place (unparks 
         expect(s.inventory.wood).toBe(0);
     });
 
-    it('storage reads empty before a crate is built, never as a phantom container', () => {
+    it('storage is ABSENT before a crate is built, never a phantom container', () => {
+        //  The name was right and the assertion was the opposite of it: an empty row IS the
+        //  phantom. A crate that was never built has no row at all now.
         const view = loadoutView(run());
         expect(view.storageOpen).toBe(false);
-        expect(view.zones.find((z) => z.zone === 'storage')!.materials).toEqual([]);
+        expect(view.zones.find((z) => z.zone === 'storage'), 'a phantom container').toBeUndefined();
     });
 
     it('carried and stored contents are never merged — you can always tell them apart', () => {
@@ -301,9 +328,11 @@ describe('loadout — the panel view, and storage inspectable in place (unparks 
         s.inventory.wood = 3; // now carrying some again
 
         const view = loadoutView(s);
-        const backpack = view.zones.find((z) => z.zone === 'backpack')!;
+        //  The CARRY row, by whichever name is true — this survivor has no pack, so it is
+        //  'arms'. The claim under test is carried-vs-stored, which holds either way.
+        const carried = view.zones.find((z) => z.zone === 'backpack' || z.zone === 'arms')!;
         const storage = view.zones.find((z) => z.zone === 'storage')!;
-        expect(backpack.materials.find((m) => m.kind === 'wood')!.count).toBe(3);
+        expect(carried.materials.find((m) => m.kind === 'wood')!.count).toBe(3);
         expect(storage.materials.find((m) => m.kind === 'wood')!.count).toBeGreaterThan(0);
     });
 });

@@ -9547,6 +9547,142 @@ async function main() {
             : 'no eat hook');
     }
 
+
+    // ======== THIS ROUND — the staging circle's OWN labels, and a hub that tells the truth ========
+    //
+    //  DRIVEN THROUGH THE REAL DOM, not `__drift.tryCombine`. Every previous check on this
+    //  feature called the brain through a debug hook, so anything wrong between the button and
+    //  the brain was invisible to all of them — which is exactly how this feature has now been
+    //  reported broken three times while the bench was green.
+    if (section("ROUND — the circle's labels, and a hub that names only what exists")) {
+
+    /** Open the pack, pick two chips, press the button, and read what the circle offers. */
+    const stageInUI = async (a, b) => {
+        await realTapDom('.carried-button');
+        await sleep(600);
+        await realTapDom(`.combine-chip[data-mat="${a}"]`);
+        await realTapDom(`.combine-chip[data-mat="${b}"]`);
+        await sleep(400);
+        const before = await live();
+        await realTapDom('.panel.loadout .try-combine-btn');
+        await sleep(1100);
+        const seen = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (!el) return { up: false, labels: [], ids: [] };
+            const segs = Array.from(el.querySelectorAll('.verb-seg'));
+            return {
+                up: true,
+                labels: segs.map((s) => (s.querySelector('.verb-label')?.textContent ?? '').trim()),
+                ids: segs.map((s) => s.dataset.verb ?? ''),
+            };
+        });
+        const after = await live();
+        return { before, after, ...seen };
+    };
+
+    // ---- 1 · THE CIRCLE NEVER SHOWS A RAW RECIPE ID -----------------------------------
+    //
+    //  The director saw a position labelled "spear" — lowercase, an internal id showing
+    //  through as a product name. `blueprintNameFor` covered six of eleven recipes and every
+    //  one added since fell through to `default: return recipeId`.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [{ recipeId: 'spear', name: 'Fire-hardened spear', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+        state.tools = { ...state.tools, spear: false };
+        state.inventory = { ...state.inventory, wood: 14, sharpblade: 6, stone: 0, fiber: 0 };
+    `);
+    await sleep(800);
+    const spearStage = await stageInUI('wood', 'sharpblade');
+    await shot('round-01-spear-label');
+
+    check('1 — the staging circle appeared rather than committing (through the REAL UI)',
+        spearStage.up === true
+        && JSON.stringify(spearStage.before.blueprints) === JSON.stringify(spearStage.after.blueprints),
+        `circle up ${spearStage.up}, plans ${spearStage.before.blueprints.length} -> ${spearStage.after.blueprints.length}`);
+
+    check('1 — REACHABILITY: no position is labelled with a raw recipe id',
+        spearStage.up && spearStage.labels.length > 0
+        && spearStage.labels.every((l) => l.length > 0 && !spearStage.ids.includes(l)),
+        `labels [${spearStage.labels.join(' | ')}] against ids [${spearStage.ids.join(' | ')}]`);
+
+    check('1 — ...and the spear is named as a made thing, not as "spear"',
+        spearStage.labels.some((l) => /fire-hardened spear/i.test(l)),
+        `labels [${spearStage.labels.join(' | ')}]`);
+    await page.evaluate(() => {
+        const el = document.querySelector('.panel.verb-circle');
+        if (el) el.remove();
+    });
+    await sleep(400);
+
+    // ---- 2 · THE HUB NAMES ONLY WHAT EXISTS -------------------------------------------
+    const hubRows = async () => {
+        await realTapDom('.carried-button');
+        await sleep(700);
+        const rows = await page.evaluate(() => {
+            const el = document.querySelector('.panel.loadout');
+            if (!el) return { open: false, names: [] };
+            const vis = (e) => {
+                const st = getComputedStyle(e);
+                const r = e.getBoundingClientRect();
+                return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+            };
+            return {
+                open: true,
+                names: Array.from(el.querySelectorAll('.zone-row')).filter(vis)
+                    .map((z) => (z.querySelector('.zone-name')?.textContent ?? '').trim()),
+            };
+        });
+        await realTapDom('.panel.backpack .close-btn');
+        await sleep(400);
+        return rows;
+    };
+
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.tools = { ...state.tools, backpack: false };
+        state.storage = { ...state.storage, built: false };
+        state.inventory = { ...state.inventory, wood: 4, stone: 2 };
+    `);
+    await sleep(800);
+    const bare = await hubRows();
+    await shot('round-02-hub-bare');
+
+    check('2 — REACHABILITY: with no pack, the hub shows NO "Backpack" row',
+        bare.open && !bare.names.some((n) => /^backpack$/i.test(n)),
+        `visible rows: [${bare.names.join(' | ')}]`);
+
+    check('2 — ...and with no crate built, NO "Storage" row either',
+        bare.open && !bare.names.some((n) => /^storage$/i.test(n)),
+        `visible rows: [${bare.names.join(' | ')}]`);
+
+    check('2 — ...and what they ARE carrying is still shown, named honestly',
+        bare.open && bare.names.some((n) => /in your arms/i.test(n)),
+        `visible rows: [${bare.names.join(' | ')}]`);
+
+    //  ...and both rows appear the moment each thing genuinely exists.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.tools = { ...state.tools, backpack: true };
+        state.storage = { ...state.storage, built: true };
+    `);
+    await sleep(800);
+    const owned = await hubRows();
+    await shot('round-03-hub-owned');
+
+    check('2 — ...and once a pack IS owned and a crate IS built, both rows appear',
+        owned.open && owned.names.some((n) => /^backpack$/i.test(n))
+        && owned.names.some((n) => /^storage$/i.test(n))
+        && !owned.names.some((n) => /in your arms/i.test(n)),
+        `visible rows: [${owned.names.join(' | ')}]`);
+    }
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));

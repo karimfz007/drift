@@ -32,7 +32,7 @@ import { carriedWeightKg } from './body';
 import type { GameState, LoadoutState, MaterialKind, ToolId } from './types';
 
 /** The six zones, in the order §9 lists them (hand outwards to the world). */
-export type AccessZone = 'activeHand' | 'supportHand' | 'belt' | 'pocket' | 'backpack' | 'storage';
+export type AccessZone = 'activeHand' | 'supportHand' | 'belt' | 'pocket' | 'arms' | 'backpack' | 'storage';
 
 export const ACCESS_ZONES: AccessZone[] = ['activeHand', 'supportHand', 'belt', 'pocket', 'backpack', 'storage'];
 
@@ -296,8 +296,29 @@ export function loadoutView(state: GameState): LoadoutView {
             { zone: 'supportHand', tools: l.supportHand ? [l.supportHand] : [], materials: [] },
             { zone: 'belt', tools: beltTools, materials: [] },
             { zone: 'pocket', tools: pocketTools, materials: [] },
-            { zone: 'backpack', tools: backpackTools, materials: materialsOf(state.inventory) },
-            { zone: 'storage', tools: [], materials: state.storage.built ? materialsOf(state.storage.stored) : [] }
+            //  THE HUB MUST NOT NAME A THING THAT DOES NOT EXIST. Both of these rows used to
+            //  render unconditionally, so a fresh survivor — owning no pack and having built no
+            //  crate — was shown a "Backpack" row and a "Storage" row anyway. The director read
+            //  the empty Backpack row as the game telling him he had one.
+            //
+            //  The two are fixed differently ON PURPOSE, because they are different claims:
+            //
+            //    THE CARRY ROW ALWAYS EXISTS, because the materials have to be somewhere a
+            //    player can see them — hiding it would hide the whole inventory. What changes
+            //    is what it is CALLED: without a pack the survivor is carrying things in their
+            //    arms, which is the same correction [[D-154]] made to the carry icon and the
+            //    same words the backpack recipe itself uses.
+            //
+            //    THE STORAGE ROW SIMPLY GOES. There is no box, it holds nothing, and an empty
+            //    row for a crate that was never built is a claim with nothing behind it.
+            {
+                zone: state.tools.backpack ? 'backpack' : 'arms',
+                tools: backpackTools,
+                materials: materialsOf(state.inventory),
+            },
+            ...(state.storage.built
+                ? [{ zone: 'storage' as const, tools: [], materials: materialsOf(state.storage.stored) }]
+                : []),
         ],
         massKg: carriedWeightKg(state),
         bulk: carriedBulk(state),

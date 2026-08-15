@@ -3,6 +3,29 @@
 
 ---
 
+**D-157 · 2026-08-15 — THE AUTO-COMMIT WAS ALREADY FIXED; WHAT HE SAW WAS AN OLDER BUILD, A RAW ID, AND A HUB NAMING THINGS HE DID NOT OWN.**
+
+**THE THIRD REPORT OF "CRAFTING STILL AUTO-COMMITS" DOES NOT REPRODUCE ON THE SHIPPED BUILD, AND THIS IS THE EVIDENCE.** The brief required ruling out deployment before touching code, and then required not trusting this round's own verification either. So the crafting path was driven **through the real DOM** — open the pack, pick two chips, press the button — on a **genuinely clean browser context**, against **the live site the director actually loads**, which reports its own stamp as `06990bf`:
+
+- **14 wood + 13 stone**: circle appears, plans `[]` before and after, storage not built. `COMMITTED WITHOUT ASKING: false`.
+- **wood + sharp stone**: identical. Nothing minted, nothing built, nothing spent.
+
+**THE REPORT MATCHES THE PREVIOUS BUILD EXACTLY, INCLUDING ITS SECOND HALF.** Under `efa6512` (D-155), `needsNaming` was `heldMatches(...) >= 1` — so a pile with nothing held committed silently, and a pile with ONE held plan asked with exactly one option. That is both of his observations, in order, from one build: the first trial builds without asking, the second offers a single named outcome. On `06990bf` neither happens. **The most likely explanation is that he tested between the push and the deploy completing** — the served page did not become `06990bf` until 18:21 — and incognito does not help with that, because the gap is on the server, not in his cache.
+
+**WHY EVERY PREVIOUS CHECK MISSED THE REAL DEFECT.** Every check ever written for this feature called `__drift.tryCombine` — the BRAIN, through a debug hook. Not one of them opened the pack, picked chips and pressed the button, so anything between the button and the brain was invisible to all of them. That gap is now closed: `tools/craft-ui-probe.mjs` drives the DOM on a clean context and can be pointed at the live URL, and the new device section does the same.
+
+**AND DRIVING IT THAT WAY FOUND WHAT HE ACTUALLY SAW.** `blueprintNameFor` covered **six of eleven** recipes; every recipe added after it was written fell through to `default: return recipeId`. So the staging circle offered a position labelled **"spear"** — lowercase, an internal id showing through as a product name — and the same for `backpack`, `raft`, `fishingline` and `net`. His words were *"offered spear as the ONLY option"*, and the option really was labelled `spear`. Five names added; a test now walks `allRecipes()` so a switch nobody is obliged to extend cannot go stale again.
+
+**THE HUB NAMED THINGS THAT DID NOT EXIST, AND IT WAS THE WHOLE CLASS.** `loadoutView` built its `zones` array unconditionally, so a fresh survivor was shown a **Backpack** row and a **Storage** row alongside Belt and Pockets. Audited per the brief: of the six, only two are POSSESSIONS — the others are body positions a survivor always has, which is why belt and pockets are correct to show. The two are fixed differently on purpose. **The carry row always exists**, because the materials have to be somewhere visible — hiding it would hide the whole inventory — so what changes is its NAME: without a pack it reads *"In your arms"*, the backpack recipe's own words and the same correction [[D-154]] made to the carry icon. **The storage row simply goes**, because there is no box and an empty row for a crate nobody built is a claim with nothing behind it.
+
+**A TEST HAD LOCKED THE PHANTOM IN.** `loadout.test.ts` carried one named *"storage reads empty before a crate is built, never as a phantom container"* whose assertion was the opposite of its name — it required the empty row to be present. An empty row IS the phantom. Rewritten, along with a fixture called `fullyEquipped` that owned neither a pack nor a crate.
+
+**Class: OPERATIVE** (mechanism: five names in `blueprintNameFor`; the `arms` zone and the conditional storage row in `src/brain/loadout.ts` with its label in `src/body/hud.ts`; `tools/craft-ui-probe.mjs`; shipped in this batch).
+
+**WHAT RULES OUT THIS BEING ANOTHER FALSE PROOF.** Three things, and they are different in kind from what was done before. The crafting claim is measured **against the live production URL**, not a local build — so a stale `dist` cannot flatter it, and indeed the local preview was stamped `efa6512` while the live site was `06990bf`. It is driven **through the real DOM** rather than a debug hook, which is the specific gap that hid this for three rounds. And both fixes **fail against their own plants with the director's exact strings** — `labels [spear]`, and `rows [… Backpack | Storage]` for a survivor owning neither. What this does NOT rule out is a defect on a path nobody has thought to drive; the honest limit of the claim is that the two piles he named, on the build he is served, do not commit without asking.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity (56 brain files), tune-mirror, docs-integrity. **UNIT: 1394/1394 across 74 files.** **DEVICE: targeted verification only, per the active-hours schedule rule** — the new section 34/34, fail-then-pass both legs, plus the standalone UI probe against production. No full sweep. **LIVE: see the push SHA and the served-SHA gate in this batch's report.***
+
 **D-156 · 2026-08-15 — THREE ITEMS, THREE VERDICTS: STAGING ALWAYS ASKS, THE FIRST CRATE PAYS, THE SHELL STAYS.**
 
 **THE PROCESS CHANGED, AND THIS ENTRY IS THE FIRST UNDER IT.** The director now approves a list of two to four items before a session starts, tests each personally in minutes afterwards, and gives verdict before the next list is made. Anything else noticed along the way is NAMED, not fixed. What is recorded here is exactly the three items and nothing beside them.

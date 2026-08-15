@@ -868,6 +868,10 @@ const ZONE_LABEL: Record<string, string> = {
     supportHand: 'Support hand',
     belt: 'Belt',
     pocket: 'Pockets',
+    //  What carrying looks like before there is a pack to carry in — the backpack recipe's
+    //  own words for it ("Carry properly instead of in your arms"), and the same correction
+    //  [[D-154]] made to the carry ICON. The hub must not name a thing nobody owns.
+    arms: 'In your arms',
     backpack: 'Backpack',
     storage: 'Storage'
 };

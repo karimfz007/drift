@@ -670,6 +670,17 @@ function blueprintNameFor(recipeId: string): string {
         case 'storage': return 'Storage crate';
         case 'stonehammer': return 'Stone hammer';
         case 'knap': return 'Knapped blade';
+        //  THE FIVE THAT FELL THROUGH TO THE RAW ID. Every recipe added after this table was
+        //  written kept its `default` — so the staging circle offered a survivor a position
+        //  labelled "spear", lowercase, an internal id showing through as a product name. The
+        //  director saw exactly that. A test now walks `allRecipes()` and fails if any id
+        //  reaches the default, because a switch nobody is obliged to extend is a switch that
+        //  goes stale the next time anything ships.
+        case 'spear': return 'Fire-hardened spear';
+        case 'backpack': return 'Canvas pack';
+        case 'raft': return 'Lashed raft';
+        case 'fishingline': return 'Baited line';
+        case 'net': return 'Woven net';
         default: return recipeId;
     }
 }
