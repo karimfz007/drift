@@ -3,6 +3,28 @@
 
 ---
 
+**D-158 · 2026-08-15 — THE BRANCH WAS RIGHT; WHAT IT LEFT OUT WAS THAT IT WAS CHOOSING FOR HIM.**
+
+**MEASURED FIRST, ONE CASE AT A TIME, ON THE DEPLOYED BUILD — and the branch does not collapse.** Driven through the real DOM on a clean context against production (`5af3f26`), each case takes its own branch and says its own sentence:
+
+| pile | plans held | message | branch |
+|---|---|---|---|
+| 14 wood + 6 sharp stone | `[spear]` | *"You are trying to make a fire-hardened spear. Go ahead?"* | **NAMED** ✓ |
+| 14 wood + 13 stone | `[storage, stonehammer]` | *"You know more than one way to use these. Which are you making?"* — options `Storage crate` \| `Stone hammer` | **LIST** ✓ |
+| 14 wood + 6 sharp stone | `[]` | *"You have not worked these out yet. Put them together and see?"* | **GENERIC** ✓ |
+
+**SO THE REPORTED SYMPTOM IS NOT A COLLAPSED BRANCH — IT IS THE GENERIC BRANCH BEING RIGHT AND INCOMPLETE.** The director staged 14 wood + 13 stone with neither plan known, which is genuinely case 3, and the generic line is the correct branch for it. What he actually caught is the half that line never said: **that pile makes TWO things.** `matchPool(['wood','stone'])` is `[storage, stonehammer]`, and `resolveRecipe` then picked one of them on his behalf with no sign the other had ever been possible. His words — *"options are multiple not one in sequence"* — describe a real choice being made behind a generic prompt, and he was right to distrust it.
+
+**THE FIX IS A FACT ABOUT THE PILE, NOT A CATALOGUE OF PRODUCTS.** A pile with more than one possible outcome now says so: *"You have not worked these out yet, and there is more than one thing here. Put them together and see?"* Law 95 is untouched — neither product is named, and a test asserts the message never contains "storage", "crate" or "hammer". What changes is that the survivor knows a choice exists and that trying again may find something else, which is exactly what `resolveRecipe`'s undiscovered-first tie-break will actually give them. A pile with only one possible outcome does not claim otherwise.
+
+**AND FOUR COPIES OF THE SAME NARROWING BECAME ONE.** The exact-arity pool — the three lines deciding which recipes a pile is *about* — had drifted into four places in this file. `matchPool` is now the single answer, and both `heldMatches` and `hasUnknownRival` read it. The staging surface has to ask that question twice for different reasons (which are HELD, and how many there are ALTOGETHER); the second is the one the generic branch was missing.
+
+**Class: OPERATIVE** (mechanism: `matchPool` and the `validCount` arm of `namingQuestionFor` in `src/brain/experiment.ts`; `tools/branch-probe.mjs`; shipped in this batch).
+
+**WHAT THIS DOES AND DOES NOT PROVE.** Every message above is quoted from the DOM of the deployed build, not from a brain hook and not from a local preview — the gap that hid three earlier rounds. The new unit case fails against its own plant with the exact prior sentence. What it does not prove is that no OTHER pile takes a wrong branch: the claim is bounded to the piles named here, plus a mutual-exclusion test asserting no message can ever satisfy two branches at once.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity (56 brain files), tune-mirror, docs-integrity. **UNIT: 1400/1400 across 75 files**, +6 asserting the MESSAGE per case rather than that a question happened. **DEVICE: targeted, per the active-hours rule** — `branch-probe` against production, quoted above; no full sweep. **LIVE: see the push SHA and the served-SHA gate in this batch's report.***
+
 **D-157 · 2026-08-15 — THE AUTO-COMMIT WAS ALREADY FIXED; WHAT HE SAW WAS AN OLDER BUILD, A RAW ID, AND A HUB NAMING THINGS HE DID NOT OWN.**
 
 **THE THIRD REPORT OF "CRAFTING STILL AUTO-COMMITS" DOES NOT REPRODUCE ON THE SHIPPED BUILD, AND THIS IS THE EVIDENCE.** The brief required ruling out deployment before touching code, and then required not trusting this round's own verification either. So the crafting path was driven **through the real DOM** — open the pack, pick two chips, press the button — on a **genuinely clean browser context**, against **the live site the director actually loads**, which reports its own stamp as `06990bf`:

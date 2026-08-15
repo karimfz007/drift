@@ -196,12 +196,22 @@ export function knownMatches(state: GameState, materials: MaterialKind[]): Recip
  * held still resolves and commits as it always did — discovery stays a thing you walk into,
  * and confirmation is only ever asked about knowledge you already own.
  */
-export function heldMatches(state: GameState, materials: MaterialKind[]): Recipe[] {
+/**
+ * EVERY RECIPE THIS PILE IS ACTUALLY ABOUT — the exact-arity narrowing, in one place.
+ *
+ * Four copies of these three lines had drifted across this file, and the staging surface needs
+ * to ask this question twice for different reasons: which of them the survivor HOLDS, and how
+ * many there are ALTOGETHER. The second is what the generic branch was missing.
+ */
+export function matchPool(materials: MaterialKind[]): Recipe[] {
     const candidates = recipesMatching(materials);
     if (candidates.length === 0) return [];
     const exact = candidates.filter((r) => r.slots.length === materials.length);
-    const pool = exact.length > 0 ? exact : candidates;
-    return pool.filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
+    return exact.length > 0 ? exact : candidates;
+}
+
+export function heldMatches(state: GameState, materials: MaterialKind[]): Recipe[] {
+    return matchPool(materials).filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
 }
 
 /** Is this pile a question rather than an attempt? */
@@ -237,7 +247,7 @@ export function needsNaming(_state: GameState, materials: MaterialKind[]): boole
  * ruling is specifically that the attempt is NAMED ("you are trying to make an axe"), and a
  * sentence that must contain a particular thing is a sentence a test can hold to account.
  */
-export function namingQuestionFor(offered: Recipe[]): string {
+export function namingQuestionFor(offered: Recipe[], validCount = 0): string {
     //  THREE CASES, ONE SURFACE. What changes between them is only how much can honestly be
     //  said, which is the whole of Law 95's boundary:
     //
@@ -249,8 +259,21 @@ export function namingQuestionFor(offered: Recipe[]): string {
     //      same act the survivor was about to perform, with a hand on the door first.
     if (offered.length >= 2) return 'You know more than one way to use these. Which are you making?';
     const only = offered[0];
-    return only
-        ? `You are trying to make ${indefinite(recipeDisplayName(only.id))}. Go ahead?`
+    if (only) return `You are trying to make ${indefinite(recipeDisplayName(only.id))}. Go ahead?`;
+
+    //  0 HELD, AND THE HALF THIS BRANCH USED TO LEAVE OUT. The director staged 14 wood and 13
+    //  stone — which genuinely makes TWO things, a storage crate and a stone hammer — and was
+    //  told only "put them together and see", then handed one of the two with no sign the other
+    //  had ever been possible. The branch was right; it was simply silent about the choice it
+    //  was making on his behalf.
+    //
+    //  Law 95 forbids NAMING what nobody has worked out, and this does not name them. Saying
+    //  there is more than one thing here is a fact about the PILE, not a catalogue of products,
+    //  and it is the difference between an honest experiment and a coin flipped behind a
+    //  curtain: the survivor now knows that trying again may find something else, which is
+    //  exactly what `resolveRecipe`'s undiscovered-first tie-break will actually give them.
+    return validCount >= 2
+        ? 'You have not worked these out yet, and there is more than one thing here. Put them together and see?'
         : 'You have not worked these out yet. Put them together and see?';
 }
 
@@ -284,10 +307,7 @@ export const EXPERIMENT_CHOICE = 'try-something-else';
 
 /** Does this pile have an outcome the survivor has NOT yet worked out? */
 export function hasUnknownRival(state: GameState, materials: MaterialKind[]): boolean {
-    const candidates = recipesMatching(materials);
-    const exact = candidates.filter((r) => r.slots.length === materials.length);
-    const pool = exact.length > 0 ? exact : candidates;
-    return pool.some((r) => !state.blueprints.some((bp) => bp.recipeId === r.id));
+    return matchPool(materials).some((r) => !state.blueprints.some((bp) => bp.recipeId === r.id));
 }
 
 /** "a hafted axe" / "an iron nail" — the article the name actually wants. */
@@ -467,7 +487,7 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[], chos
         return {
             ok: false,
             outcome: 'choose',
-            reason: namingQuestionFor(heldMatches(state, materials)),
+            reason: namingQuestionFor(heldMatches(state, materials), matchPool(materials).length),
             blueprint: null,
             recipeId: null,
             spent: null,

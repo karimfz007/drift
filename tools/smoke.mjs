@@ -9683,6 +9683,116 @@ async function main() {
         `visible rows: [${owned.names.join(' | ')}]`);
     }
 
+    // ======== BRANCH — one outcome names it, several list it, none says how many ========
+    //
+    //  Reported as "the three-way branch collapses to one generic message". Measured case by
+    //  case on the real DOM it does NOT collapse — but the generic branch was silent about the
+    //  half that matters: a pile with TWO possible outcomes was handed one of them with no sign
+    //  the other had ever been possible. These checks assert the MESSAGE per pile, not that a
+    //  question happened, which is the distinction three green rounds kept missing.
+    if (section('BRANCH — the staging question the pile deserves')) {
+
+    /** Stage two chips through the real UI; read the message and every option verbatim. */
+    const askedFor = async (a, b) => {
+        await realTapDom('.carried-button');
+        await sleep(600);
+        await realTapDom(`.combine-chip[data-mat="${a}"]`);
+        await realTapDom(`.combine-chip[data-mat="${b}"]`);
+        await sleep(400);
+        await realTapDom('.panel.loadout .try-combine-btn');
+        await sleep(1100);
+        const seen = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            return {
+                message: window.__drift.hints().last ?? '',
+                labels: el ? Array.from(el.querySelectorAll('.verb-seg'))
+                    .map((s) => (s.querySelector('.verb-label')?.textContent ?? '').trim()) : [],
+            };
+        });
+        await page.evaluate(() => document.querySelector('.panel.verb-circle')?.remove());
+        await sleep(300);
+        return seen;
+    };
+
+    const plan = (id, name) => `{ recipeId: '${id}', name: '${name}', version: 1,`
+        + " discoveredAtGameHours: 0, workmanship: 'serviceable' }";
+    const WELL = 'state.player = { x: 0, y: 96 }; state.energy = 100; state.health = 100;'
+        + ' state.warmth = 60; state.hunger = 90; state.thirst = 90;'
+        + ' state.tools = { ...state.tools, spear: false };'
+        + ' state.storage = { ...state.storage, built: false };';
+
+    // ---- 1 · EXACTLY ONE KNOWN OUTCOME — it is NAMED --------------------------------
+    await editSave(`${WELL}
+        state.blueprints = [${plan('spear', 'Fire-hardened spear')}];
+        state.inventory = { ...state.inventory, wood: 14, sharpblade: 6, stone: 0, fiber: 0 };`);
+    await sleep(800);
+    const one = await askedFor('wood', 'sharpblade');
+    await shot('branch-01-one-known');
+
+    check('BRANCH 1 — a pile with ONE known outcome names that outcome',
+        /trying to make/i.test(one.message) && /fire-hardened spear/i.test(one.message),
+        `"${one.message}"`);
+
+    check('BRANCH 1 — ...and does NOT fall back to the generic line',
+        !/put them together|worked these out/i.test(one.message), `"${one.message}"`);
+
+    // ---- 2 · MORE THAN ONE KNOWN OUTCOME — a real NAMED LIST ------------------------
+    await editSave(`${WELL}
+        state.blueprints = [${plan('storage', 'Storage crate')}, ${plan('stonehammer', 'Stone hammer')}];
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, sharpblade: 0, fiber: 0 };`);
+    await sleep(800);
+    const many = await askedFor('wood', 'stone');
+    await shot('branch-02-two-known');
+
+    check('BRANCH 2 — a pile with TWO known outcomes asks WHICH',
+        /which are you making/i.test(many.message), `"${many.message}"`);
+
+    check('BRANCH 2 — ...and the circle offers BOTH by name, not one in sequence',
+        many.labels.some((l) => /crate/i.test(l)) && many.labels.some((l) => /hammer/i.test(l)),
+        `offered [${many.labels.join(' | ')}]`);
+
+    // ---- 3 · ZERO KNOWN — generic, and honest about how many are in there -----------
+    //
+    //  THE DIRECTOR'S ACTUAL PILE. 14 wood + 13 stone with neither plan known is genuinely
+    //  case 3, and the generic line is the right branch — but the pile makes TWO things, and
+    //  saying so is a fact about the PILE, not a name for either product (Law 95 intact).
+    await editSave(`${WELL}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, sharpblade: 0, fiber: 0 };`);
+    await sleep(800);
+    const blind = await askedFor('wood', 'stone');
+    await shot('branch-03-none-known-two-valid');
+
+    check('BRANCH 3 — a pile with NOTHING known gets the generic invitation',
+        /put them together and see/i.test(blind.message), `"${blind.message}"`);
+
+    check('BRANCH 3 — ...and when TWO outcomes are genuinely possible, it says so',
+        /more than one thing here/i.test(blind.message), `"${blind.message}"`);
+
+    check('BRANCH 3 — ...without naming either product (Law 95)',
+        !/crate|hammer|storage/i.test(blind.message), `"${blind.message}"`);
+
+    //  ...and a pile with only ONE possible outcome does not claim a choice it does not have.
+    await editSave(`${WELL}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 14, sharpblade: 6, stone: 0, fiber: 0 };`);
+    await sleep(800);
+    const lone = await askedFor('wood', 'sharpblade');
+    await shot('branch-04-none-known-one-valid');
+
+    check('BRANCH 3 — ...and a single-outcome pile is NOT told there is a choice',
+        /put them together and see/i.test(lone.message) && !/more than one thing here/i.test(lone.message),
+        `"${lone.message}"`);
+
+    //  MUTUAL EXCLUSION — the whole reported symptom was two branches wearing one sentence.
+    const shape = (m) => [/trying to make/i, /which are you making/i, /worked these out/i]
+        .filter((re) => re.test(m)).length;
+    check('BRANCH — every case landed on exactly ONE branch, never two at once',
+        [one, many, blind, lone].every((r) => shape(r.message) === 1),
+        [one, many, blind, lone].map((r) => shape(r.message)).join(','));
+    }
+
+
     // ---- Hygiene ----
     console.log('\nHygiene');
     check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
