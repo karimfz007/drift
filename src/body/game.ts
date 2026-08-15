@@ -497,6 +497,11 @@ export class Game {
             session().persist(now());
             return result;
         };
+        runtime.makeChosen = (materials, recipeId) => {
+            const result = makeChosen(session().state, materials as 'wood'[], recipeId);
+            session().persist(now());
+            return result;
+        };
         runtime.renderCost = () => {
             const meshes = this.scene.meshes ?? [];
             let pickable = 0;

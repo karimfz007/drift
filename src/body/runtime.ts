@@ -119,6 +119,10 @@ export const runtime = {
     renderCost: (() => null) as () => { totalMeshes: number; pickableMeshes: number; activeMeshes: number } | null,
     //  D-063: installed by the game; runs the real `tryCombine` and persists the result.
     tryCombine: (() => null) as (a: string, b: string) => unknown,
+    //  ITEM 4: the same door for a NAMED attempt at any arity. `tryCombine` is pair-only, and
+    //  the defect it could not reach lived past arity two — a success charged the first two
+    //  staged materials and left the rest free.
+    makeChosen: (() => null) as (materials: string[], recipeId: string) => unknown,
     //  D-065: what a tap at this screen point WOULD target, with no side effect. The
     //  shelter's tappable band cannot be measured any other way — see `tapTargetAt`.
     tapTargetAt: (() => null) as (screenX: number, screenY: number) => string | null,
@@ -303,6 +307,7 @@ function installDebugHook(): void {
         //  D-063: drive a real Try-Combining attempt through the actual brain path, so the
         //  harness exercises the shipped verb rather than a re-implementation of it.
         tryCombine: (a: string, b: string) => runtime.tryCombine(a, b),
+        makeChosen: (materials: string[], recipeId: string) => runtime.makeChosen(materials, recipeId),
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
         lastCue: () => runtime.lastCue(),

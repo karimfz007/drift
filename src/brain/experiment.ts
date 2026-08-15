@@ -553,9 +553,28 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[], chos
         };
     }
 
-    //  Consume the materials only on a success — the prototype is what they became.
-    state.inventory[a] -= 1;
-    state.inventory[b] -= 1;
+    //  ITEM 4 — THE GAME WAS LYING ABOUT WHAT A SUCCESS COST, AND THIS IS THE LINE.
+    //
+    //  It read `state.inventory[a] -= 1; state.inventory[b] -= 1;` — the FIRST TWO staged
+    //  materials — while the comment above it said "the materials", plural, meaning all of
+    //  them. `canExperimentWith` accepts two to FOUR (`combineMaxInputs`), and every recipe
+    //  past arity two has been silently under-charging ever since three- and four-material
+    //  piles became legal. The axe is wood + blade + BINDING: measured across six successful
+    //  inventions, wood fell 40 -> 34 and the blade 40 -> 34 while the fibre sat at 40 the
+    //  entire time. The survivor stages three things, is told they made something, and one of
+    //  the three is quietly still in the bag.
+    //
+    //  THIS IS THE ACTUAL "THE GAME LIED" DEFECT, and it is not the one that was reported. The
+    //  reported line — "the blade lost its edge" on a failed attempt — turns out to be honest:
+    //  `transformOnFailure` really does move `matterWear`, it really does persist, and the
+    //  blade really does break on the third failure. What is wrong THERE is legibility, not
+    //  truth (see the note in `matter.ts`). What is wrong HERE is truth.
+    //
+    //  The same shape this project keeps paying for: the pair-only assumption from [[D-063]]
+    //  survived the widening to four inputs because the widening happened in the GATE and
+    //  nowhere else. A loop is safe at any arity — the gate above rejects duplicates and
+    //  requires every material to be in hand, so no stack can be driven negative.
+    for (const staged of materials) state.inventory[staged] -= 1;
 
     //  §10.5's versioning: re-deriving a plan you already hold bumps its version rather than
     //  minting a duplicate. A plan is one object with a history, not a pile of copies.

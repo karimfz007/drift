@@ -1845,13 +1845,25 @@ async function main() {
     //  compared two zeros forever and passed on nothing: hazard #2 in a check written to
     //  guard a NEW seam, which is exactly where a vacuous pass does the most damage.
     const leakedDuringTabs = (await live()).trace.failedInteractionTaps;
-    await realTapDom('.backpack-tab[data-tab="vitals"]');
+    const hintBeforeTabs = await page.evaluate(() => window.__drift.hints().last);
+    //  WHICH TAP, AND WHAT SPOKE. This check counts `failedInteractionTaps`, and the only way
+    //  that number moves is `explain()` — so when it goes up, something REFUSED OUT LOUD and
+    //  the sentence it said is the whole diagnosis. It has now failed twice for two different
+    //  reasons (a Build panel left open upstream, then once more with that fixed) and both
+    //  times the detail line carried a bare count and no cause. A tab switch passes
+    //  `reopening: true` and cannot itself trigger the refusal, so a miss that lands on the
+    //  carry button underneath is the shape to look for — and the hint will say so.
+    const tabTaps = [];
+    tabTaps.push(`vitals:${JSON.stringify(await realTapDom('.backpack-tab[data-tab="vitals"]'))}`);
     await sleep(300);
-    await realTapDom('.backpack-tab[data-tab="inventory"]');
+    tabTaps.push(`inventory:${JSON.stringify(await realTapDom('.backpack-tab[data-tab="inventory"]'))}`);
     await sleep(300);
     const leakedAfter = (await live()).trace.failedInteractionTaps;
+    const hintAfterTabs = await page.evaluate(() => window.__drift.hints().last);
     check('SLICE 2C — switching tabs never leaks a world tap (the lock is held throughout)',
-        leakedAfter === leakedDuringTabs, `failedTaps ${leakedDuringTabs} -> ${leakedAfter}`);
+        leakedAfter === leakedDuringTabs,
+        `failedTaps ${leakedDuringTabs} -> ${leakedAfter}; taps [${tabTaps.join(' | ')}];`
+        + ` hint "${(hintBeforeTabs ?? '').slice(0, 30)}" -> "${(hintAfterTabs ?? '').slice(0, 46)}"`);
 
     //  AND HAND CONTROL BACK, VERIFIED. This section holds the panel lock across every tab
     //  switch by design, so if its final close silently misses, the lock stays held and every
@@ -9247,6 +9259,96 @@ async function main() {
     check('ITEM 1 — ...and the pack appears exactly when one is actually owned',
         withPack.pack === true && withPack.arms === false,
         `backpack:true -> pack drawn ${withPack.pack}, arms drawn ${withPack.arms}`);
+    }
+
+
+    // ======== ITEM 4 — THE GAME MUST NOT LIE ABOUT WHAT IT JUST DID ========
+    //
+    //  The report was that a failed axe attempt prints "the blade lost its edge" while no
+    //  material actually changed. Measuring it settled that line — `transformOnFailure` really
+    //  does move `matterWear`, it persists, and the blade really breaks on the third failure —
+    //  and turned up a bigger one beside it: a SUCCESS consumed only `materials[0]` and
+    //  `materials[1]` while the gate accepts up to four, so the axe's binding was free.
+    //
+    //  Witnessed on real state through the real verb, never on the sentence. The sentence was
+    //  the honest half; the inventory was the lying half.
+    if (section("ITEM 4 — a success costs what it says it costs")) {
+
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.inventory = { ...state.inventory, wood: 30, sharpblade: 30, fiber: 30 };
+        state.blueprints = [{ recipeId: 'axe', name: 'Hafted axe', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+    `);
+    await sleep(800);
+
+    //  Drive the REAL verb until one genuinely succeeds. The confidence curve makes any single
+    //  attempt uncertain, and the claim under test is specifically about what a success costs.
+    const axeRun = await page.evaluate(() => {
+        const before = { ...window.__drift.state().inventory };
+        let outcome = null, tries = 0;
+        for (let i = 0; i < 40; i++) {
+            tries = i + 1;
+            const s = window.__drift.state();
+            s.inventory.wood = before.wood;
+            s.inventory.sharpblade = before.sharpblade;
+            s.inventory.fiber = before.fiber;
+            s.experimentCount = i;
+            const r = window.__drift.makeChosen
+                ? window.__drift.makeChosen(['wood', 'sharpblade', 'fiber'], 'axe')
+                : null;
+            if (!r) return { supported: false };
+            if (r.outcome === 'invented') { outcome = r; break; }
+        }
+        const after = { ...window.__drift.state().inventory };
+        return { supported: true, outcome: outcome ? outcome.outcome : null, tries, before, after };
+    });
+    await shot('item4-01-axe-cost');
+
+    check('ITEM 4 — setup: a real invention actually happened to measure',
+        axeRun.supported && axeRun.outcome === 'invented',
+        axeRun.supported ? `outcome ${axeRun.outcome} after ${axeRun.tries} attempt(s)` : 'no makeChosen hook');
+
+    check('ITEM 4 — REACHABILITY: a three-material success charges ALL THREE, binding included',
+        axeRun.supported && axeRun.outcome === 'invented'
+        && axeRun.before.wood - axeRun.after.wood === 1
+        && axeRun.before.sharpblade - axeRun.after.sharpblade === 1
+        && axeRun.before.fiber - axeRun.after.fiber === 1,
+        axeRun.supported
+            ? `wood ${axeRun.before.wood}->${axeRun.after.wood},`
+              + ` blade ${axeRun.before.sharpblade}->${axeRun.after.sharpblade},`
+              + ` fibre ${axeRun.before.fiber}->${axeRun.after.fiber}`
+              + ` — an unchanged fibre is the defect`
+            : 'no makeChosen hook');
+
+    //  ---- And the reported line, verified against the state it names --------------------
+    //
+    //  Through the SAME verb, not a second hook: drive attempts until one genuinely fails, and
+    //  read the wear the sentence claims. The sentence was always the honest half — this is
+    //  what makes that a measurement rather than a reading of the source.
+    const wearRun = await page.evaluate(() => {
+        let said = null, before = null, after = null;
+        for (let i = 0; i < 40; i++) {
+            const s = window.__drift.state();
+            s.inventory.wood = 30; s.inventory.sharpblade = 30; s.inventory.fiber = 30;
+            s.experimentCount = i;
+            before = s.matterWear.sharpblade ?? 0;
+            const r = window.__drift.makeChosen(['wood', 'sharpblade', 'fiber'], 'axe');
+            if (r && r.outcome === 'failed-attempt') {
+                said = r.reason;
+                after = window.__drift.state().matterWear.sharpblade ?? 0;
+                break;
+            }
+        }
+        return { said, before, after };
+    });
+    check('ITEM 4 — the reported line is HONEST: the wear it announces really happens',
+        wearRun.said !== null && wearRun.after > wearRun.before && /lost its edge/i.test(wearRun.said ?? ''),
+        wearRun.said === null
+            ? 'no failed attempt in 40 tries — the claim is untested'
+            : `it said "${(wearRun.said ?? '').slice(-40)}" and wear went ${wearRun.before} -> ${wearRun.after}`);
     }
 
     // ---- Hygiene ----
