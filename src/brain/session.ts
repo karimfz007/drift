@@ -18,7 +18,7 @@ import { canSleep, createInitialState, isFireLit, isShelteredSleep, updateCavePr
 import { chargeConnects, chargeHarm, faceSurvivor, moveBoar, senseSurvivor, stepBoar } from './fauna';
 import { injuriesFromCharge, stepInjuries } from './injury';
 import { illnessStage, onsetFrom, stepIllness } from './illness';
-import { thermalStrain } from './thermal';
+import { coldStage, thermalStrain, type ColdStage } from './thermal';
 import { pruneDropped } from './dropped';
 import { developFromPaddling, developFromSwimming, isAtWreck, waterCostsFor } from './water';
 import { airCapacityOf, airRecoveryPerGameHour, canSubmerge, developFromDiving, diveCostsFor, surfaceOnAbsence } from './dive';
@@ -86,6 +86,9 @@ export class Session {
     private lastCrashStage: CrashStage | null = null;
     private lastIllnessStage: IllnessStage | null = null;
     private announcedIllnessStage: IllnessStage | null = null;
+    //  THE COLD, watched the same way and for the same reason — see `coldStage`.
+    private lastColdStage: ColdStage | null = null;
+    private announcedColdStage: ColdStage | null = null;
     private lastWentFlat = false;
 
     constructor(
@@ -248,6 +251,7 @@ export class Session {
         //  stage against the last one ANNOUNCED catches every cause and every path, and
         //  announces once per crossing rather than once per tick.
         this.watchIllness();
+        this.watchCold();
         //  Item 2 — dropped stacks weather away on the ONLINE tick and nowhere else. There
         //  is deliberately no absence-path counterpart: absence never erases, and a stack on
         //  the ground is the survivor's property exactly as the store box's contents are.
@@ -643,6 +647,25 @@ export class Session {
         const stage = this.lastIllnessStage;
         this.lastIllnessStage = null;
         return stage;
+    }
+
+    /** The cold rung just crossed into, consumed by reading — same contract as illness's. */
+    takeColdStage(): ColdStage | null {
+        const stage = this.lastColdStage;
+        this.lastColdStage = null;
+        return stage;
+    }
+
+    /**
+     * Notice when the body crosses a cold rung. Announced ONCE per crossing rather than every
+     * tick, which is the whole reason this is a watcher and not a readout: a sensation repeated
+     * every frame is not a warning, it is noise, and noise is what players learn to ignore.
+     */
+    private watchCold(): void {
+        const stage = coldStage(this.state.warmth);
+        if (stage === this.announcedColdStage) return;
+        this.announcedColdStage = stage;
+        this.lastColdStage = stage;
     }
 
     /** Notice when the body crosses into a new illness stage, whatever put it there. */

@@ -1441,3 +1441,89 @@ export class GhostView {
         return { shown: this.root.isEnabled(), valid: this.material.diffuseColor.g > this.material.diffuseColor.r };
     }
 }
+
+/**
+ * DROPPED STACKS — P0-3, and the half of it that was never built.
+ *
+ * THE DEFECT, director-confirmed twice: *"dropped items still vanish."* The brain was fine and
+ * had been all along — `dropAll` writes a stack into `state.dropped` at the player's feet,
+ * `pruneDropped` is online-only so [[D-011]] holds, and save v20 migrates the array. What did
+ * not exist, anywhere, was a single line of render code. `state.dropped` was read in exactly
+ * one place in the whole body — `droppedWithinReach`, for the pick-up verb — so a survivor who
+ * put something down watched it disappear and could only get it back by standing on an
+ * invisible pile and guessing. The state was right and the world said nothing, which is this
+ * project's oldest shape: **a law enforced in one layer is enforced nowhere.**
+ *
+ * POOLED, because the count changes every time anything is put down or taken back up. Meshes
+ * are made once and enabled as needed rather than created and disposed per drop — the same
+ * reason `NodeViews` pools: allocating in the render loop is how a walk starts stuttering.
+ *
+ * PICKABLE, AND THAT IS THE POINT. Each mesh carries `{ droppedId }`, so a tap on the pile
+ * resolves to the pile's own position through the same metadata path the fire, the shelter and
+ * the crate already use — the player aims at the thing they can see, rather than at a patch of
+ * sand they have to remember.
+ */
+export class DroppedView {
+    private readonly pool: Mesh[] = [];
+    private readonly shadows: Mesh[] = [];
+    private readonly scene: Scene;
+    private readonly material: StandardMaterial;
+
+    constructor(scene: Scene) {
+        this.scene = scene;
+        //  Sacking-brown, and deliberately not any material a NODE uses: a bundle you put down
+        //  must not read as driftwood you have yet to pick up.
+        this.material = flat(scene, 'm_droppedStack', [0.46, 0.38, 0.26]);
+    }
+
+    private grow(): void {
+        const i = this.pool.length;
+        const bundle = CreateBox(`droppedStack${i}`, { width: 0.5, height: 0.32, depth: 0.5 }, this.scene);
+        bundle.material = this.material;
+        bundle.isPickable = true;
+        bundle.setEnabled(false);
+        //  A second, smaller box sitting askew on the first, so a pile reads as a PILE at a
+        //  glance rather than as a crate someone lost.
+        const cap = CreateBox(`droppedCap${i}`, { width: 0.34, height: 0.2, depth: 0.34 }, this.scene);
+        cap.material = this.material;
+        cap.parent = bundle;
+        cap.position.y = 0.24;
+        cap.rotation.y = 0.6;
+        cap.isPickable = true;
+        const shadow = makeShadow(this.scene, 0.42);
+        shadow.setEnabled(false);
+        this.pool.push(bundle);
+        this.shadows.push(shadow);
+    }
+
+    update(state: GameState, heightAt: (x: number, z: number) => number): void {
+        const items = state.dropped;
+        while (this.pool.length < items.length) this.grow();
+        for (let i = 0; i < this.pool.length; i++) {
+            const item = items[i];
+            const mesh = this.pool[i];
+            const shadow = this.shadows[i];
+            if (!item) {
+                if (mesh.isEnabled()) mesh.setEnabled(false);
+                if (shadow.isEnabled()) shadow.setEnabled(false);
+                //  Cleared so a disabled mesh can never answer a pick with a stale id.
+                mesh.metadata = null;
+                for (const child of mesh.getChildMeshes()) child.metadata = null;
+                continue;
+            }
+            const y = heightAt(item.x, item.y);
+            mesh.position.set(item.x, y + 0.16, item.y);
+            shadow.position.set(item.x, y + 0.02, item.y);
+            const tag = { droppedId: item.id };
+            mesh.metadata = tag;
+            for (const child of mesh.getChildMeshes()) child.metadata = tag;
+            if (!mesh.isEnabled()) mesh.setEnabled(true);
+            if (!shadow.isEnabled()) shadow.setEnabled(true);
+        }
+    }
+
+    /** What the harness and the pick path both ask: is this stack genuinely on screen? */
+    shownCount(): number {
+        return this.pool.filter((m) => m.isEnabled()).length;
+    }
+}

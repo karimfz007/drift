@@ -3,6 +3,26 @@
 
 ---
 
+**D-161 · 2026-08-16 — THE PILE HAD NO PIXEL, THE COLD HAD NO VOICE, AND THE SIX-ZONE RULE HAD BEEN OVERRULED.**
+
+**THE ZONE COUNT WAS A SUPERSEDED SPEC, NOT A BUG.** v0_7 §9 named six fixed access zones, and [[D-157]] deliberately made two of them conditional — the hub must not name a backpack nobody owns or a crate nobody built. The check still asserted the old six and had been red on main since that ruling shipped. It now asserts what was actually ruled: the four body zones, a carry row that is honest about whether it is a pack or your arms, and no Storage row until one exists. Measured: `Active hand | Support hand | Belt | Pockets | Backpack`.
+
+**"DROPPED ITEMS STILL VANISH" WAS RIGHT, AND HAD BEEN ROOT-CAUSED ONE LAYER TOO SHALLOW.** The brain was correct and always had been: `dropAll` writes a stack at the player's feet, `pruneDropped` is online-only so [[D-011]] holds, save v20 migrates the array. **THREE separate body-layer pieces were missing, and each one alone was enough to produce the report:**
+
+1. **No mesh.** `state.dropped` had zero lines of render code anywhere. The pile existed in state and had no pixel.
+2. **No tap target.** `worldCandidateAt` had no `dropped` kind — so `verbs.ts`'s `dropped` target and its `pick-up` verb, both shipped with the feature, were **unreachable through the world**. A reachability proof that bypasses the surface, [[D-114]]'s exact class.
+3. **No walk target.** `pendingTarget` had no `dropped` case and ended in a catch-all `return { x: POND.x, z: POND.y }` — so a tap that finally resolved correctly walked the survivor **to the pond** and did nothing on arrival.
+
+The third is why the earlier fix read as working: state was right at every step, and the player watched their wood disappear. **That fail-open default is the defect behind the defect** — silent mis-routing of any target nobody remembered to wire — so the pond is now named explicitly and an unlisted kind returns null to be refused out loud ([[D-042]]).
+
+**AND THE COLD COULD KILL YOU WITHOUT EVER SAYING A WORD.** Illness has had a five-rung grammar since the Medicine Slice whose first two rungs cost nothing and SAY something. Cold had the identical five-rung shape in `thermalStrain` — and it was read in **exactly one place in the whole codebase**, to decide whether wet plus hypothermic seeds a chill. The only cold signal a player ever got was a HUD bar changing colour, while health drains 6/hour from the moment warmth hits zero. So the rungs are mapped onto illness's rather than invented: `chilled` is `unsettled`, `freezing` is `ailing`, and empty warmth is where the diagnostic voice belongs — which is why `coldStage` reads WARMTH and not the strain band, since that band calls 12 and 0 both "hypothermic" and the difference between them is the whole fair-challenge line.
+
+**HONEST LIMIT, RECORDED RATHER THAN PAPERED OVER:** cold's warning rungs are free of HEALTH cost, not of all cost. `impairmentOf` has always charged `cold` 0.5 and `hypothermic` 1.0, where `illnessImpairmentShare` returns 0 until `feverish`. Closing that is a balance change, not a grammar one, and is not what this did.
+
+**Class: OPERATIVE** (`DroppedView` and the `dropped` target/pending/walk path in `src/body`; `coldStage`/`coldSymptom` in `src/brain/thermal.ts` with its watcher in `session.ts` and `announceCold` in `game.ts`; all shipped in this batch).
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity (56 brain files), tune-mirror, docs-integrity. **UNIT: 1411/1411**, +6 for the cold grammar including a sweep of every warmth asserting nothing costs health before something has spoken; the D-011 offline-death property re-run green. **DEVICE: 20/20** in a new `ITEMS` section plus the corrected zone check, `--only` targeted, active hours, no full sweep. **FAIL-THEN-PASS, both fixes:** removing the disclosure sentence fails the cold suite on `chilled said nothing`; removing the mesh turns four ITEM 1 checks red at once and reproduces the report exactly — `stacks 1` in state, `enabled false`, tap `resolved to "null"`, `wood 0 -> 0`. **LIVE:** the push SHA and served-SHA gate in this batch's report.*
+
 **D-160 · 2026-08-16 — WHAT YOU HAVE EARNED ALREADY OUTLIVES YOUR MATERIALS; WHAT WAS MISSING IS THE TRIPWIRE.**
 
 **ASKED TO CONFIRM BEFORE CHANGING ANYTHING, AND THE ANSWER IS THAT NOTHING NEEDED CHANGING.** `revealedInPanel` is `atLeast(ladderFor(state, id), 'demonstrated')`, `ladderFor` reads `state.blueprints`, and there is no inventory term anywhere in that chain. Measured across all eleven recipes: `known+rich` true, `known+EMPTY` true, `unknown+rich` false, every one. The row that renders on a shortfall is `buildItemMarkup`'s ordinary one — `x / n` gates marked `unmet`, a *"from driftwood on the sand…"* source hint, and a **disabled "Not enough yet"** button. The only thing that removes a row is `!item.revealed`.

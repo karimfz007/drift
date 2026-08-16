@@ -161,6 +161,7 @@ import {
     noticedOnSurfacing,
     slowWorkNote,
     illnessSymptom,
+    coldSymptom,
     heldMatches,
     hasUnknownRival,
     EXPERIMENT_CHOICE,
@@ -197,7 +198,7 @@ import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, surfaceHeightAt } from '../da
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { CaveView, FireView, GhostView, NodeViews, PlayerView, RaftView, ShelterView, StorageView, type NodeView } from './entities';
+import { CaveView, DroppedView, FireView, GhostView, NodeViews, PlayerView, RaftView, ShelterView, StorageView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -227,6 +228,12 @@ type Pending =
     | { kind: 'shelter' }
     | { kind: 'boar'; id: string }
     | { kind: 'storage' }
+    //  P0-3 — A STACK ON THE GROUND, and the second half of why dropped items 'vanished'.
+    //  `verbs.ts` has had a `dropped` target with a `pick-up` verb since the drop shipped,
+    //  and NOTHING in the body ever produced that target: `worldCandidateAt` had no such
+    //  kind, so the verb was unreachable through the world. Drawing the pile without this
+    //  would have made it visible and still untouchable.
+    | { kind: 'dropped'; id: string }
     //  THE MARITIME SLICE. Routed through exactly the same tap/hold/circle machinery as the
     //  four above — a vehicle does not get a bespoke input path, because a bespoke path is
     //  where the Default-Verb Law quietly stops applying.
@@ -285,6 +292,8 @@ export class Game {
     private ghost: GhostView;
     private storage: StorageView;
     private raftView: RaftView;
+    //  P0-3 — the pile you put down, finally drawn. See `DroppedView`.
+    private droppedView: DroppedView;
     private hud: Hud;
     private controls: Controls;
     private cues = new Cues();
@@ -386,6 +395,7 @@ export class Game {
         this.ghost = new GhostView(this.scene);
         runtime.ghostReadout = () => this.ghost.debugState();
         this.storage = new StorageView(this.scene);
+        this.droppedView = new DroppedView(this.scene);
         this.raftView = new RaftView(this.scene);
 
         const state = session().state;
@@ -1229,6 +1239,14 @@ export class Game {
             const st = session().state.storage;
             return { x: st.x, z: st.y, unexpectedMesh: null };
         }
+        //  P0-3 — a tap on a dropped stack aims at THE STACK. Without this the pile is drawn,
+        //  tappable, and resolves to whatever bare ground is behind it, which is the same
+        //  "visible but unaimable" gap the shelter silhouette had.
+        if (hit?.hit && hit.pickedMesh?.metadata?.droppedId) {
+            const id = hit.pickedMesh.metadata.droppedId as string;
+            const d = session().state.dropped.find((it) => it.id === id);
+            if (d) return { x: d.x, z: d.y, unexpectedMesh: null };
+        }
         if (hit?.hit && hit.pickedMesh?.metadata?.traceId) {
             const t = traceById(hit.pickedMesh.metadata.traceId as string);
             if (t) return { x: t.x, z: t.y, unexpectedMesh: null };
@@ -1287,9 +1305,9 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped'; d: number };
         const candidates: Candidate[] = [];
         {
             //  DROP 3B(i) — the appointment. A candidate ONLY while there is something out
@@ -1331,6 +1349,13 @@ export class Game {
         if (s.raft.built) {
             const d = distance(point.x, point.z, s.raft.x, s.raft.y);
             if (d <= TUNE.raftTapRadiusM) candidates.push({ kind: 'raft', d });
+        }
+        //  P0-3 — every stack on the ground, nearest wins like everything else here. A tight
+        //  radius on purpose: a pile is a small thing at your feet, and a generous one would
+        //  let an abandoned bundle swallow taps meant for the sand around it.
+        for (const d of s.dropped) {
+            const dist = distance(point.x, point.z, d.x, d.y);
+            if (dist <= TUNE.droppedTapRadiusM) candidates.push({ kind: 'dropped', d: dist });
         }
         candidates.sort((a, b) => a.d - b.d);
         return candidates[0]?.kind ?? null;
@@ -1523,6 +1548,20 @@ export class Game {
             return;
         }
         if (winner) {
+            //  P0-3 — WHICH stack, captured at the tap. `worldCandidateAt` answers "what kind of
+            //  thing is there"; for a pile that is not enough, because two piles a metre apart
+            //  are two different targets. The same shape `boar` and `node` already use.
+            if (winner === 'dropped') {
+                const s2 = session().state;
+                const nearest = s2.dropped
+                    .map((d) => ({ d, dist: distance(point.x, point.z, d.x, d.y) }))
+                    .sort((a, b) => a.dist - b.dist)[0];
+                if (!nearest) { this.clearPending(); return; }
+                this.pending = { kind: 'dropped', id: nearest.d.id };
+                this.cues.play(CUES.target);
+                this.recordTap(screenX, screenY, winner);
+                return;
+            }
             this.pending = { kind: winner };
             this.cues.play(CUES.target);
             this.recordTap(screenX, screenY, winner);
@@ -1712,7 +1751,18 @@ export class Game {
             const rf = session().state.raft;
             return rf.built ? { x: rf.x, z: rf.y } : null;
         }
-        return { x: POND.x, z: POND.y }; // pond: aim at the centre; the reach check uses the bank
+        if (this.pending.kind === 'dropped') {
+            const d = session().state.dropped.find((it) => it.id === (this.pending as { id: string }).id);
+            return d ? { x: d.x, z: d.y } : null;
+        }
+        //  ...AND THIS DEFAULT IS WHY P0-3 SURVIVED A FIX. Every branch above names its kind;
+        //  anything unlisted fell through to the POND, so a tap on a dropped pile walked the
+        //  survivor to the water and did nothing when they got there. Silent mis-routing of a
+        //  target nobody remembered to wire is the exact class D-042's fail-loud law exists
+        //  for — so the pond is now named, and an unwired kind returns null and is refused out
+        //  loud instead of taking a walk.
+        if (this.pending.kind === 'pond') return { x: POND.x, z: POND.y }; // aim at the centre; the reach check uses the bank
+        return null;
     }
 
     private clearPending(): void {
@@ -1810,6 +1860,10 @@ export class Game {
 
         if (this.pending.kind === 'pond' || this.pending.kind === 'shelter'
             || this.pending.kind === 'storage' || this.pending.kind === 'fire'
+            //  P0-3 — the same branch, deliberately, rather than a bespoke one: a stack gets
+            //  the Default-Verb Law and the hold-asks/tap-acts contract for free, which is
+            //  exactly what a private path for it would have quietly opted out of.
+            || this.pending.kind === 'dropped'
             || this.pending.kind === 'raft') {
             const target = this.pending.kind;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
@@ -2968,6 +3022,21 @@ export class Game {
         this.showHint(felt);
     }
 
+    /**
+     * THE COLD, FELT — the director's *"died of cold with no warning"*, closed through the
+     * channel `announceIllness` already opened rather than a second one. Same shape, same
+     * once-per-crossing contract, same cue: what changes is only which ladder is being read.
+     */
+    private announceCold(state: ReturnType<typeof session>['state']): void {
+        const crossed = session().takeColdStage();
+        if (!crossed) return;
+        const felt = coldSymptom(state.warmth);
+        if (!felt) return;
+        this.lastReadoutSaid = felt;
+        this.cues.play(CUES.denied);
+        this.showHint(felt);
+    }
+
     private announceAppointment(state: ReturnType<typeof session>['state']): void {
         this.island.setCrashVisible(state.crash.stage);
         const crossed = session().takeCrashStage();
@@ -3028,6 +3097,7 @@ export class Game {
         //  so both free warning stages were silent and the director drank pond water and
         //  felt nothing at all. Symptoms are sensation, never diagnosis (Law 145).
         this.announceIllness(state);
+        this.announceCold(state);
 
         this.guardPanelLock(stamp);
 
@@ -3045,6 +3115,7 @@ export class Game {
         this.shelter.update(state, this.island.heightAt(state.shelter.x, state.shelter.y));
         this.cave.update(state, this.island.heightAt(state.cave.x, state.cave.y));
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
+        this.droppedView.update(state, (x, z) => this.island.heightAt(x, z));
         this.raftView.update(state);
 
         this.nodes.sync(state);

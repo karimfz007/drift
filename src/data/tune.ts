@@ -382,6 +382,10 @@ export const TUNE = {
     healthDrainPerGameHourPerEmptyVital: 5,
     /** [TUNE] C03 — health lost per game hour while warmth is at 0. Adds to the stack. */
     warmthEmptyHealthDrainPerGameHour: 6,
+    /** [TUNE] P0-3 — how close a tap must land to a dropped stack to mean THAT stack.
+     *  Tight on purpose: a pile is a small thing at your feet, and a generous radius would let
+     *  an abandoned bundle swallow taps meant for the sand around it. */
+    droppedTapRadiusM: 1.2,
     /** [TUNE] C03+ — health recovered per game hour, ONLINE only, while no vital is empty.
      *  Recovery preserves momentum (§I.18 rule 3): a crisis survived is a crisis you climb out of. */
     healthRegenPerGameHour: 4,

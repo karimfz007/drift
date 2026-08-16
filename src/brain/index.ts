@@ -9,6 +9,9 @@ export * from './vitals';
 export * from './movement';
 export * from './verbs';
 export * from './ladder';
+//  THE COLD'S WARNING GRAMMAR — the body reads `coldSymptom` through the same door it reads
+//  `illnessSymptom`, so the two hazards stay one surface rather than two.
+export * from './thermal';
 export * from './workload';
 export * from './resolver';
 export * from './affordance';

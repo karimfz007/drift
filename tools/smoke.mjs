@@ -4661,7 +4661,19 @@ async function main() {
         const load = el.querySelector('.load-line');
         return { zones: names, load: load ? load.textContent.trim() : '', hasClose: Boolean(el.querySelector('.close-btn')) };
     });
-    check('D-063 — it shows all SIX access zones (v0_7 §9)', Boolean(panelProbe) && panelProbe.zones.length === 6, panelProbe ? panelProbe.zones.join(' | ') : 'panel not found');
+    //  SUPERSEDED BY [[D-157]], and deliberately so rather than reverted. v0_7 §9 named SIX
+    //  fixed zones, and the panel duly drew a "Backpack" row for a survivor who owned no pack
+    //  and a "Storage" row for a crate nobody had built — the director read the empty Backpack
+    //  row as the game telling him he had one. The ruling is that THE HUB MUST NOT NAME A THING
+    //  THAT DOES NOT EXIST, so the count is now a floor plus two conditionals: the four body
+    //  zones and the carry row always exist, Storage appears only once built. Asserting a fixed
+    //  six here would hold the panel to the invariant it was corrected FOR.
+    check('D-063 — it shows the four body zones and an honest carry row (v0_7 §9, as ruled by D-157)',
+        Boolean(panelProbe) && panelProbe.zones.length === 5
+        && [/active hand/i, /support hand/i, /belt/i, /pocket/i].every((re) => panelProbe.zones.some((z) => re.test(z)))
+        && panelProbe.zones.some((z) => /backpack|in your arms/i.test(z))
+        && !panelProbe.zones.some((z) => /^storage$/i.test(z)),
+        panelProbe ? panelProbe.zones.join(' | ') : 'panel not found');
     check('D-063 — mass AND bulk are both visible', Boolean(panelProbe) && /kg/.test(panelProbe.load) && /bulk/.test(panelProbe.load), panelProbe ? panelProbe.load : '');
     check('D-063 — there is one obvious close action (§9 input safety)', Boolean(panelProbe) && panelProbe.hasClose);
 
@@ -9971,6 +9983,154 @@ async function main() {
         rich.open && leaked.length === 0,
         leaked.length ? `LEAKED: [${leaked.join(', ')}]` : `rows: [${rich.rows.map((r) => r.title).join(' | ')}]`);
     }
+
+    // ======== ITEMS — the pile you can see, and the cold that speaks first ========
+    //
+    //  TWO REPORTS, TWO DIFFERENT FAILURES. "Dropped items still vanish" was a brain that had
+    //  been right all along and a body that had never drawn it — `state.dropped` was read in
+    //  exactly ONE place in the whole body, for the pick-up verb, so the stack existed and had
+    //  no pixel. "Died of cold with no warning" was a hazard that could kill with no announced
+    //  crossing at all, while illness beside it has had two free warnings since the Medicine
+    //  Slice. Both are witnessed here on the real surface: a bounded on-screen projection for
+    //  the pile, the actual hint text for the cold.
+    if (section('ITEMS — the dropped pile is drawn, and the cold warns first')) {
+
+    // ---- 1 · DROP IT, SEE IT, GET IT BACK ---------------------------------------------
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.hunger = 90; state.thirst = 90;
+        state.dropped = []; state.dropCount = 0;
+        state.inventory = { ...state.inventory, wood: 7, stone: 0, fiber: 0, sharpblade: 0 };`);
+    await sleep(900);
+
+    //  Put it down through the pack's own control, not through a hook.
+    await realTapDom('.carried-button');
+    await sleep(600);
+    const dropTap = await realTapDom('.drop-chip[data-drop="wood"]');
+    await sleep(700);
+    await page.evaluate(() => {
+        const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+        if (c instanceof HTMLElement) c.click();
+    });
+    await sleep(700);
+
+    const afterDrop = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { dropped: s.dropped.map((d) => ({ id: d.id, kind: d.kind, amount: d.amount })), wood: s.inventory.wood };
+    });
+    check('ITEM 1 — a real tap on the drop control put the wood down',
+        dropTap.ok && afterDrop.dropped.length === 1 && afterDrop.wood === 0,
+        `tap ${dropTap.ok ? 'ok' : dropTap.reason}, stacks ${afterDrop.dropped.length}, wood in hand ${afterDrop.wood}`);
+
+    //  THE PIXEL. Not `isEnabled` — a bounded on-screen projection of the drawn mesh, which is
+    //  the standard this project settled on after "revealed" kept meaning nothing.
+    const seen = await page.evaluate(() => {
+        const info = window.__drift.meshInfo('droppedStack0');
+        const at = window.__drift.screenOfMesh('droppedStack0');
+        return { info, at, w: window.innerWidth, h: window.innerHeight };
+    });
+    await shot('items-01-dropped-visible');
+
+    check('ITEM 1 — the dropped stack EXISTS as a drawn mesh and is enabled',
+        Boolean(seen.info) && seen.info.enabled === true,
+        seen.info ? `enabled ${seen.info.enabled}, y ${seen.info.y?.toFixed?.(2)}` : 'no mesh named droppedStack0');
+
+    check('ITEM 1 — ...and it projects to a real point INSIDE the viewport',
+        Boolean(seen.at) && seen.at.x >= 0 && seen.at.x <= seen.w && seen.at.y >= 0 && seen.at.y <= seen.h,
+        seen.at ? `(${Math.round(seen.at.x)}, ${Math.round(seen.at.y)}) in ${seen.w}x${seen.h}` : 'behind the camera / not projectable');
+
+    //  ...and it is AIMABLE AND RECOVERABLE through the real path: tap the drawn pile, walk
+    //  to it, take the verb. `verbs.ts` has had a `dropped` target with a `pick-up` verb since
+    //  the drop shipped and NOTHING in the body ever produced that target, so this is the half
+    //  that makes a visible pile touchable rather than just decorative.
+    const aimed = await tapMesh('droppedStack0');
+    await sleep(2600);
+    const target = await page.evaluate(() => window.__drift.lastTapOutcome());
+
+    check('ITEM 1 — a tap on the drawn pile RESOLVES to the pile, not to the sand behind it',
+        aimed.ok && target === 'dropped',
+        `tap ${aimed.ok ? aimed.why : aimed.why}, resolved to "${target}"`);
+
+    //  The stack as it was PUT DOWN — what recovering it has to give back, exactly.
+    const stack0 = afterDrop.dropped[0];
+    const circle = await page.evaluate(() => {
+        const el = document.querySelector('.panel.verb-circle');
+        return el ? Array.from(el.querySelectorAll('.verb-seg')).map((s) => ({
+            id: s.dataset.verb ?? '', label: (s.querySelector('.verb-label')?.textContent ?? '').trim(),
+        })) : [];
+    });
+    const beforePick = await page.evaluate(() => window.__drift.state().inventory.wood);
+    if (circle.length > 0) {
+        await page.evaluate(() => {
+            const seg = document.querySelector('.panel.verb-circle .verb-seg[data-verb="pick-up"]')
+                ?? document.querySelector('.panel.verb-circle .verb-seg');
+            if (seg instanceof HTMLElement) seg.click();
+        });
+        await sleep(1200);
+    }
+    const recovered = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { wood: s.inventory.wood, stacks: s.dropped.length, meshOn: window.__drift.meshInfo('droppedStack0')?.enabled };
+    });
+    await shot('items-02-recovered');
+
+    check('ITEM 1 — recovering it returns the wood AND takes the pile off the ground',
+        recovered.wood === (stack0?.amount ?? -1) && recovered.stacks === 0 && recovered.meshOn === false,
+        `wood ${beforePick} -> ${recovered.wood} (dropped ${stack0?.amount}), stacks ${recovered.stacks}, mesh drawn: ${recovered.meshOn}`);
+
+    // ---- 2 · THE COLD SAYS SOMETHING BEFORE IT TAKES ANYTHING --------------------------
+    //
+    //  Warm, then walked down across each rung. What is asserted is the SENTENCE on screen at
+    //  the crossing and that health has not moved — a warning that arrives with the damage is
+    //  not a warning.
+    const coldCrossing = async (warmth) => {
+        await page.evaluate((w) => {
+            const s = window.__drift.state();
+            s.warmth = w;
+        }, warmth);
+        //  Let the session's own watcher notice the crossing and the body announce it.
+        await sleep(1400);
+        return page.evaluate(() => ({
+            said: window.__drift.hints().last ?? '',
+            health: window.__drift.state().health,
+        }));
+    };
+
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 90;
+        state.hunger = 90; state.thirst = 90;`);
+    await sleep(900);
+
+    const first = await coldCrossing(30);
+    await shot('items-03-cold-first-warning');
+    check('ITEM 2 — crossing into cold SAYS something (it used to say nothing at all)',
+        first.said.length > 0 && /cold|fingers|slow/i.test(first.said), `"${first.said}"`);
+
+    check('ITEM 2 — ...and that first warning costs no health',
+        first.health >= 99.5, `health ${first.health.toFixed(1)}`);
+
+    const second = await coldCrossing(6);
+    await shot('items-04-cold-last-warning');
+    check('ITEM 2 — the LAST free warning is a different sentence, not the same one again',
+        second.said.length > 0 && second.said !== first.said && /shak|hands/i.test(second.said),
+        `"${second.said}"`);
+
+    check('ITEM 2 — ...and it too is free',
+        second.health >= 99.5, `health ${second.health.toFixed(1)}`);
+
+    const costing = await coldCrossing(0);
+    await shot('items-05-cold-costing');
+    check('ITEM 2 — and only PAST both warnings does it name what is happening',
+        costing.said.length > 0 && costing.said !== second.said && /taking you|fire/i.test(costing.said),
+        `"${costing.said}"`);
+
+    check('ITEM 2 — every rung said something DIFFERENT — three warnings, not one repeated',
+        new Set([first.said, second.said, costing.said]).size === 3,
+        [first.said, second.said, costing.said].map((s) => `"${s.slice(0, 28)}…"`).join(' | '));
+    }
+
 
 
 

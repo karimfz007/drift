@@ -213,6 +213,66 @@ export function strainCosts(strain: ThermalStrain): boolean {
 }
 
 /**
+ * THE COLD'S WARNING GRAMMAR — the same one illness already speaks, not a second one.
+ *
+ * THE DEFECT, director-confirmed in play: *"died of cold with no warning."* Illness has had a
+ * five-stage ladder since the Medicine Slice whose first TWO rungs cost nothing and SAY
+ * something — `illnessSymptom` announces a sensation at each crossing, and only past them does
+ * health start moving. Cold had the ladder (`thermalStrain`, five rungs, same shape) and no
+ * voice at all: `thermalStrain` was read in exactly one place in the whole codebase — deciding
+ * whether wet + hypothermic seeds a chill illness — and the only thing the player ever saw was
+ * a HUD bar changing colour at 30. Health then drains at 6/hour from the moment warmth hits
+ * zero. A hazard that can kill you was the one hazard that never spoke.
+ *
+ * SO THE RUNGS ARE MAPPED ONTO ILLNESS'S RATHER THAN INVENTED. `cold` is `unsettled`: the body
+ * has noticed, nothing is being taken. `hypothermic` is `ailing`: the last warning before it
+ * costs. Empty warmth is where health actually starts draining, so that is the crossing the
+ * diagnostic voice belongs to — which is why this reads WARMTH and not just the strain: the
+ * strain band calls 12 and 0 both "hypothermic", and the difference between them is the whole
+ * fair-challenge line.
+ *
+ * WHAT THEY SAY IS A SENSATION (Law 145, Bible §6.5), exactly as `illnessSymptom` does — no
+ * number, no stage word, no instruction. A survivor knows their hands have stopped working
+ * before they know what a thermal band is, and the inference is the player's to make.
+ *
+ * HONEST LIMIT, stated because the parallel is not perfect: cold already contributes to
+ * IMPAIRMENT below this line (`impairmentOf` gives `cold` 0.5 and `hypothermic` 1.0), where
+ * illness's two warning rungs contribute nothing. So cold's warning rungs are free of HEALTH
+ * cost, not free of all cost. Closing that gap is a balance change, not a grammar one, and is
+ * not what this fixes.
+ */
+export type ColdStage = 'warm' | 'chilled' | 'freezing' | 'failing';
+
+export function coldStage(warmth: number): ColdStage {
+    if (warmth <= 0) return 'failing';
+    if (warmth <= TUNE.thermalHypothermicAt) return 'freezing';
+    if (warmth < TUNE.thermalComfortLow) return 'chilled';
+    return 'warm';
+}
+
+/** Does this rung take health? The line the two warnings sit in front of. */
+export function coldCosts(stage: ColdStage): boolean {
+    return stage === 'failing';
+}
+
+/** What the body feels, at the crossing. Null when there is nothing to say. */
+export function coldSymptom(warmth: number): string | null {
+    return COLD_FELT[coldStage(warmth)];
+}
+
+const COLD_FELT: Record<ColdStage, string | null> = {
+    //  Coming right is a crossing too, and worth nothing said — the bar is already climbing.
+    warm: null,
+    //  FIRST, and free. The body has noticed; nothing is being taken yet.
+    chilled: 'The cold is getting into you. Your fingers are slow to answer.',
+    //  SECOND, and still free of health. The last warning before it starts costing.
+    freezing: 'You are shaking hard and cannot stop. Your hands will barely close.',
+    //  PAST THE LINE — the diagnostic voice, because now it IS taking something, and a
+    //  survivor who is being killed by the cold is owed the word for it.
+    failing: 'The shivering has stopped, and that is worse. The cold is taking you now — get to a fire.',
+};
+
+/**
  * One plain sentence about where the heat is going, for the rest card. Names the LARGEST loss
  * rather than listing all of them — a player deciding whether to sleep here needs the one
  * thing to fix, not a table.
