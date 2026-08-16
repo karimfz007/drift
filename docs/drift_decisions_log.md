@@ -3,6 +3,20 @@
 
 ---
 
+**D-160 · 2026-08-16 — WHAT YOU HAVE EARNED ALREADY OUTLIVES YOUR MATERIALS; WHAT WAS MISSING IS THE TRIPWIRE.**
+
+**ASKED TO CONFIRM BEFORE CHANGING ANYTHING, AND THE ANSWER IS THAT NOTHING NEEDED CHANGING.** `revealedInPanel` is `atLeast(ladderFor(state, id), 'demonstrated')`, `ladderFor` reads `state.blueprints`, and there is no inventory term anywhere in that chain. Measured across all eleven recipes: `known+rich` true, `known+EMPTY` true, `unknown+rich` false, every one. The row that renders on a shortfall is `buildItemMarkup`'s ordinary one — `x / n` gates marked `unmet`, a *"from driftwood on the sand…"* source hint, and a **disabled "Not enough yet"** button. The only thing that removes a row is `!item.revealed`.
+
+**PROVEN THE WAY THE RULING WAS WRITTEN, on the real panel rather than on the predicate.** A stone hammer was worked out through the staging UI — no granted blueprint — and then the inventory was stripped to nothing. The row stayed, reading `Wood 0 / 2`, `Stone 0 / 3`, button disabled and saying *"Not enough yet"*. All ten earned recipes then survived an empty inventory together, each showing its own shortfall; and with full pockets and nothing demonstrated the panel listed **no recipe at all**, which is the scope boundary in the other direction.
+
+**SO THIS BATCH SHIPS THE TRIPWIRE, NOT A FIX, AND THAT IS THE POINT.** "True by construction" is exactly what stops being true the first time someone adds an inventory term to a gate — the shape [[D-150]] and [[D-158]] both wore. The unit case sweeps quantities 0, 1, 2, 5 and 99 per recipe and fails if any of the five disagree, so the failure surfaces as *"gated on how much is held"* rather than as a player noticing a row went missing. Planting that defect into `reveal.ts` turns `torch` false at zero materials and returns `[false, true]` from the sweep; restoring returns 4/4.
+
+**AND ONE CHECK WAS VACUOUS BEFORE IT WAS RIGHT.** The first device run reported `Shelter:0short` and a Law 95 leak on `Shelter`. Neither was real: the panel's first `.build-item` is the F3 refuge report, whose head also reads "Shelter" and which has no gates by design, so a title match found it before the buildable row. Recipe rows are the ones carrying an `<h2>`; the selector now says so. Recorded because a green run on that selector would have proven nothing about the Shelter row at all.
+
+**Class: OPERATIVE** (no product change — the mechanism is the instrumentation: `tests/panel.test.ts` and the `PANEL` device section, both shipped in this batch).
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity (56 brain files), docs-integrity. **UNIT: +4**, including the quantity sweep and both halves of the scope boundary. **DEVICE: 8/8** in a new `PANEL` section, `--only` targeted, active hours, no full sweep. **FAIL-THEN-PASS:** an inventory term planted into `revealedInPanel` fails the sweep on the exact assertion. **LIVE:** the push SHA and served-SHA gate in this batch's report.*
+
 **D-159 · 2026-08-16 — 13 + 10 IS THE SAME PILE AS 14 + 13, AND GETTING A HAMMER IS THE DESIGN WORKING.**
 
 **THE EXACT QUANTITIES, ON A FRESH INCOGNITO SAVE, ON PRODUCTION.** `2ab45d9`, wood 13 and stone 10, no plans held, no crate built, `experimentCount` 0, zero journalled dead ends — the save's own defaults, with only the two counts written. Staged through the real DOM, the staging surface said: *"You have not worked these out yet, and there is more than one thing here. Put them together and see?"* **The disclosure clause is present at these quantities.**

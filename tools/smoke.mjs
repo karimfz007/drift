@@ -9808,6 +9808,171 @@ async function main() {
         [one, many, blind, lone].map((r) => shape(r.message)).join(','));
     }
 
+    // ======== PANEL — what you have earned stays on the list, empty-handed or not ========
+    //
+    //  THE RULING: once a recipe is genuinely DEMONSTRATED it is a permanent row, whatever is
+    //  in the survivor's hands. Running out of stone is a shortfall to be shown, not a reason
+    //  to un-know a thing. The scope boundary is the other half and is checked here too:
+    //  anything NOT demonstrated stays absent (Law 95), because "list what is earned" must not
+    //  quietly become "list the catalogue".
+    if (section('PANEL — a known recipe outlives its materials')) {
+
+    const ALL_RECIPES = ['torch', 'axe', 'shelter', 'storage', 'stonehammer', 'spear',
+        'backpack', 'raft', 'fishingline', 'net'];
+    const ROW_TITLES = ['Torch', 'Crude axe', 'Shelter', 'Storage', 'Stone hammer', 'Spear',
+        'Backpack', 'Raft', 'Fishing line', 'Net'];
+
+    /** Every row the Build panel is actually showing, with its gates and its button. */
+    const buildRows = async () => {
+        const opened = await openBuild();
+        if (!opened.ok) return { open: false, reason: opened.reason, rows: [] };
+        const rows = await page.evaluate(() => {
+            const vis = (e) => {
+                const st = getComputedStyle(e);
+                return st.display !== 'none' && st.visibility !== 'hidden' && e.getBoundingClientRect().height > 0;
+            };
+            //  RECIPE ROWS ONLY. The panel's first .build-item is the F3 REFUGE REPORT, whose
+            //  head also reads 'Shelter' and which has no gates and no button by design — so a
+            //  title match against it reported the buildable Shelter row as gate-less AND as a
+            //  Law 95 leak. Recipe rows are the ones `buildItemMarkup` writes, and those are
+            //  the ones carrying an <h2>; refuge, rest, mend and hint use .build-head instead.
+            const SKIP = ['refuge-item', 'rest-item', 'mend-item', 'hint-item'];
+            return Array.from(document.querySelectorAll('.panel.build .build-item'))
+                .filter((it) => vis(it) && it.querySelector('h2') && !SKIP.some((c) => it.classList.contains(c)))
+                .map((it) => {
+                const btn = it.querySelector('button');
+                return {
+                    title: (it.querySelector('h2')?.textContent ?? '').trim(),
+                    done: it.classList.contains('done'),
+                    gates: Array.from(it.querySelectorAll('.gate')).map((g) => ({
+                        text: g.textContent.replace(/\s+/g, ' ').trim(),
+                        unmet: g.classList.contains('unmet'),
+                    })),
+                    button: btn ? btn.textContent.trim() : null,
+                    disabled: btn ? btn.disabled : null,
+                };
+            });
+        });
+        await realTapDom('.panel.build .close-btn');
+        await sleep(400);
+        return { open: true, reason: null, rows };
+    };
+    const rowNamed = (rows, title) => rows.find((r) => r.title.toLowerCase().startsWith(title.toLowerCase()));
+
+    // ---- 1 · THE DIRECTOR'S OWN TEST, discovered for real then stripped bare -----------
+    //
+    //  Not a granted blueprint: the hammer is worked out through the staging UI, exactly as a
+    //  player earns it, and only then are the materials taken away.
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [];
+        state.tools = { ...state.tools, stoneHammer: false };
+        state.storage = { ...state.storage, built: false };
+        state.inventory = { ...state.inventory, wood: 13, stone: 10, sharpblade: 0, fiber: 0 };`);
+    await sleep(800);
+
+    await realTapDom('.carried-button');
+    await sleep(600);
+    await realTapDom('.combine-chip[data-mat="wood"]');
+    await realTapDom('.combine-chip[data-mat="stone"]');
+    await sleep(400);
+    await realTapDom('.panel.loadout .try-combine-btn');
+    await sleep(1100);
+    await page.evaluate(() => {
+        const seg = document.querySelector('.panel.verb-circle .verb-seg');
+        if (seg instanceof HTMLElement) seg.click();
+    });
+    await sleep(1600);
+    const earned = await page.evaluate(() => window.__drift.state().blueprints.map((b) => b.recipeId));
+    await shot('panel-01-earned');
+
+    check('PANEL 1 — a recipe was genuinely DEMONSTRATED through the real UI first',
+        earned.length >= 1, `plans: [${earned.join(', ') || 'none'}]`);
+
+    //  ...and now the materials go away entirely. 0 wood, 0 stone, against a hammer that
+    //  costs 2 and 3.
+    const learned = earned[0] ?? 'stonehammer';
+    const TITLE = learned === 'storage' ? 'Storage' : 'Stone hammer';
+    await page.evaluate(() => {
+        const s = window.__drift.state();
+        s.inventory.wood = 0; s.inventory.stone = 0; s.inventory.fiber = 0; s.inventory.sharpblade = 0;
+    });
+    await sleep(500);
+    const stripped = await buildRows();
+    await shot('panel-02-stripped');
+    const row = rowNamed(stripped.rows, TITLE);
+
+    check(`PANEL 1 — the earned recipe SURVIVES an empty inventory (${TITLE})`,
+        Boolean(row), `rows: [${stripped.rows.map((r) => r.title).join(' | ')}]`);
+
+    check('PANEL 1 — ...and the row NAMES the shortfall rather than just vanishing',
+        Boolean(row) && row.gates.length > 0 && row.gates.some((g) => g.unmet)
+        && row.gates.every((g) => /\d+ *\/ *\d+/.test(g.text)),
+        row ? `gates: [${row.gates.map((g) => g.text).join(' | ')}]` : 'no row');
+
+    check('PANEL 1 — ...with the button disabled and saying so, not silently dead',
+        Boolean(row) && row.disabled === true && /not enough/i.test(row.button ?? ''),
+        row ? `button "${row.button}" disabled=${row.disabled}` : 'no row');
+
+    // ---- 2 · EVERY earned recipe, all at once, with nothing in hand --------------------
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [${ALL_RECIPES.map((id) => `{ recipeId: '${id}', name: '${id}', version: 1, discoveredAtGameHours: 0, workmanship: 'serviceable' }`).join(', ')}];
+        state.tools = { ...state.tools, axe: false, spear: false, backpack: false,
+            stoneHammer: false, fishingLine: false, net: false };
+        state.torch = { ...state.torch, owned: false };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.raft = { ...state.raft, built: false };
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0, coconut: 0 };`);
+    await sleep(900);
+    const bare = await buildRows();
+    await shot('panel-03-all-known-nothing-held');
+    const missingRows = ROW_TITLES.filter((t) => !rowNamed(bare.rows, t));
+
+    check('PANEL 2 — every one of the ten earned recipes is listed with nothing in hand',
+        bare.open && missingRows.length === 0,
+        missingRows.length ? `MISSING: [${missingRows.join(', ')}]` : `all ${ROW_TITLES.length} present`);
+
+    check('PANEL 2 — ...and every one of them shows its shortfall',
+        bare.open && ROW_TITLES.every((t) => {
+            const r = rowNamed(bare.rows, t);
+            return r && r.gates.some((g) => g.unmet) && r.disabled === true;
+        }),
+        ROW_TITLES.map((t) => {
+            const r = rowNamed(bare.rows, t);
+            return `${t}:${r ? (r.gates.filter((g) => g.unmet).length + 'short') : 'ABSENT'}`;
+        }).join(' '));
+
+    // ---- 3 · THE SCOPE BOUNDARY — earned only, never a catalogue -----------------------
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 60;
+        state.hunger = 90; state.thirst = 90;
+        state.blueprints = [];
+        state.knowledge = { ...state.knowledge, nullPairs: [] };
+        state.tools = { ...state.tools, axe: false, spear: false, backpack: false,
+            stoneHammer: false, fishingLine: false, net: false };
+        state.torch = { ...state.torch, owned: false };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.raft = { ...state.raft, built: false };
+        state.inventory = { ...state.inventory, wood: 99, stone: 99, fiber: 99, sharpblade: 99, coconut: 99 };`);
+    await sleep(900);
+    const rich = await buildRows();
+    await shot('panel-04-unearned-stays-absent');
+    const leaked = ROW_TITLES.filter((t) => rowNamed(rich.rows, t));
+
+    check('PANEL 3 — SCOPE: full pockets and nothing demonstrated still lists NO recipe',
+        rich.open && leaked.length === 0,
+        leaked.length ? `LEAKED: [${leaked.join(', ')}]` : `rows: [${rich.rows.map((r) => r.title).join(' | ')}]`);
+    }
+
+
 
     // ---- Hygiene ----
     console.log('\nHygiene');
