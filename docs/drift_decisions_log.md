@@ -11,7 +11,7 @@
 
 **AND RESOLVING TO ONE REAL OUTCOME IS CORRECT.** The probe followed the survivor's own click through: attempt 1 produced the stone hammer, floated as *"Stone hammer — you see how it works"*, and cost 1 wood + 1 stone. Attempt 2 on the same pile then offered `Stone hammer` **plus** *"Try something new"* — and produced storage. That is `resolveRecipe` step 2 preferring undiscovered outcomes, which exists precisely so a tie's loser stays reachable, doing exactly what it was written to do. **Law 95 forbids listing two products nobody has worked out**, so the surface cannot name them; what [[D-158]] added is the one thing it CAN honestly say — that a choice exists — and the second attempt is where the other half is actually collected. A result is not a silent choice; the silence was the defect, and it is gone.
 
-**Class: NON-OPERATIVE** (a verification of [[D-158]] at the director's own quantities; no product change. Instrument: `tools/pile-13-10.mjs`, one device check at 13+10, one unit case asserting quantity-independence).
+**Class: OPERATIVE** (no product change — this batch ships INSTRUMENTS, and they are the mechanism: `tools/pile-13-10.mjs`, a device check at the director's exact quantities, and a unit case asserting 13+10 and 14+13 build the same string. All three shipped in this batch).
 
 *Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity, docs-integrity. **UNIT: 1401/1401**, +1 asserting 13+10 and 14+13 produce the same string. **DEVICE: targeted 19/19**, `--only=BRANCH`, active hours, no full sweep. **LIVE:** the quoted run above against `2ab45d9`. **FAIL-THEN-PASS at the product level:** removing the `validCount` arm from `namingQuestionFor` fails the 13+10 case specifically.*
 
