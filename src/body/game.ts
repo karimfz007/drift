@@ -454,6 +454,8 @@ export class Game {
         //  inland. Without this the audible half was unwitnessable and only the visible
         //  half — which needs a camera tilt — could be checked at all.
         runtime.lastCue = () => this.lastCuePlayed;
+        runtime.cuePlays = () => this.cues.playsSince();
+        runtime.forgetCuePlays = () => this.cues.forgetPlays();
         //  DROP 6 — the last thing the READOUT said, read-only ([[D-075]]). A hint is the
         //  right surface for it and the wrong witness: the standing-hint system legitimately
         //  replaces it moments later, so a device check reading `hints().last` measures
@@ -1595,24 +1597,32 @@ export class Game {
         //  game, and it is a [[D-042]] breach hiding in the one branch nobody thought of as an
         //  interaction: silence is never a legal outcome, and "never mind" is still an outcome.
         //
-        //  So the gesture now does what it always claimed. The survivor TURNS to face the point,
-        //  which is real feedback (the body moves), costs nothing, cannot nag, and is useful —
-        //  `onBuildFire` and `onBuildShelter` both place by `this.facing`, so looking somewhere
-        //  is how you aim where the fire goes. Facing is safe to write here: `stepMovement`
-        //  returns before its own slerp whenever the survivor is standing still, so nothing
-        //  overwrites this until they walk.
+        //  ...AND THE DIRECTOR OVERRULED THE ANSWER, WHICH IS WHY THE ARGUMENT ABOVE IS KEPT
+        //  RATHER THAN DELETED. The reasoning stands on its own terms and was still wrong for
+        //  this game: a turn and a chime on EVERY tap that hits nothing is the whole beach
+        //  answering back, and a survivor's aimless taps are most of the early game. Feedback
+        //  that fires on the null case is not feedback, it is noise with a rationale — and the
+        //  §I.18 rule 7 defence only ever established that the cue had a visible mirror, never
+        //  that either belonged here at all. Reverted by standing ruling: a tap on nothing does
+        //  NOTHING. No turn, no sound, no visible change.
+        //
+        //  THE COUNTING STAYS, and that half was never in dispute. `markGroundTap` and the
+        //  `empty-ground` breadcrumb are how the miss rate is known at all — the number whose
+        //  absence cost three sessions of guessing — and they are silent by construction. Being
+        //  measured is not the same as being answered, and it is only the answer that goes.
         this.clearPending();
-        this.faceToward(point.x, point.z);
-        //  `target` rather than a new asset: it is already the "you aimed at something" cue and
-        //  the quietest in the set, and looking is the degenerate case of aiming. The audible
-        //  half is garnish either way — the body turning is the visible mirror the cue rule
-        //  (§I.18 rule 7) actually requires, so this stays fully legible on mute.
-        this.cues.play(CUES.target);
         session().markGroundTap();
         this.recordTap(screenX, screenY, 'empty-ground');
     }
 
-    /** Turn the body to look at a world point. The visible half of the never-mind gesture. */
+    /**
+     * Turn the body to look at a world point.
+     *
+     * Kept though its only caller is gone: `onBuildFire` and `onBuildShelter` place by
+     * `this.facing`, so aiming by looking is a real affordance this game may want back on a
+     * DELIBERATE gesture. What the ruling forbids is spending it on the null case.
+     */
+    // @ts-expect-error -- retained affordance, currently uncalled by ruling (see above).
     private faceToward(x: number, z: number): void {
         const s = session().state;
         const dx = x - s.player.x;

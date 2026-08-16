@@ -10131,6 +10131,96 @@ async function main() {
         [first.said, second.said, costing.said].map((s) => `"${s.slice(0, 28)}…"`).join(' | '));
     }
 
+    // ======== GROUND — a tap on nothing does nothing, and is still counted ========
+    //
+    //  STANDING RULING, REVERTING THIS BRANCH'S OWN FIX. A tap that hits bare ground used to
+    //  turn the survivor and play `CUES.target`; the ruling is that it does NOTHING visible or
+    //  audible. The counting half was never in dispute and is the harder thing to witness:
+    //  silence and "not counted" look identical on screen, so the trace is read directly.
+    if (section('GROUND — silent on nothing, counted anyway')) {
+
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 90;`);
+    await sleep(900);
+
+    /** A patch of sand with nothing on it, in screen space. */
+    const bareGround = async () => {
+        const view = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+        //  Scan across the lower band — that is ground in front of the camera — and take the
+        //  first point the SHIPPED pick path says is nothing. Asking the game rather than
+        //  guessing a pixel is the harness-fidelity rule ([[D-050]]).
+        for (let fx = 0.12; fx <= 0.9; fx += 0.06) {
+            const x = Math.round(view.w * fx);
+            const y = Math.round(view.h * 0.86);
+            const t = await page.evaluate(({ x, y }) => window.__drift.tapTargetAt(x, y), { x, y });
+            if (t === null) return { x, y };
+        }
+        return null;
+    };
+
+    const spot = await bareGround();
+    check('GROUND — a genuinely empty patch of ground was found to tap',
+        Boolean(spot), spot ? `(${spot.x}, ${spot.y})` : 'every probed point hit something');
+
+    const before = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return {
+            groundTaps: s.trace.groundTaps,
+            facing: window.__drift.meshInfo('player')?.rotY ?? null,
+            hint: window.__drift.hints().last ?? '',
+        };
+    });
+    //  Zero the cue log so what is measured is THESE eight taps, not the whole boot.
+    await page.evaluate(() => window.__drift.forgetCuePlays());
+
+    //  EIGHT TAPS, spread across the sand — the director's own opening signature.
+    const TAPS = 8;
+    if (spot) {
+        for (let i = 0; i < TAPS; i++) {
+            await tapAt(spot.x + ((i % 4) - 2) * 18, spot.y - (i % 3) * 12);
+            await sleep(220);
+        }
+    }
+    await sleep(700);
+
+    const after = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return {
+            groundTaps: s.trace.groundTaps,
+            facing: window.__drift.meshInfo('player')?.rotY ?? null,
+            //  EVERY cue REQUESTED since the reset — not `lastCue`, which two call sites set
+            //  by hand and which stayed null with the reverted `cues.play` planted back in.
+            cues: window.__drift.cuePlays(),
+            hint: window.__drift.hints().last ?? '',
+            trail: window.__drift.tapTrail().filter((t) => t.outcome === 'empty-ground').length,
+        };
+    });
+    await shot('ground-01-after-eight-taps');
+
+    // ---- THE PLAYER-FACING HALF: nothing happened ------------------------------------
+    check('GROUND — the survivor did NOT turn (facing unchanged across eight taps)',
+        before.facing !== null && after.facing !== null
+        && Math.abs(after.facing - before.facing) < 0.001,
+        `rotY ${before.facing?.toFixed?.(4)} -> ${after.facing?.toFixed?.(4)}`);
+
+    check('GROUND — ...and no cue was even REQUESTED',
+        after.cues.length === 0, `cues requested: [${after.cues.join(", ")}]`);
+
+    check('GROUND — ...and nothing was said',
+        after.hint === before.hint, `"${before.hint}" -> "${after.hint}"`);
+
+    // ---- THE TRACKING HALF: counted anyway -------------------------------------------
+    check('GROUND — every one of the eight taps was still COUNTED',
+        after.groundTaps - before.groundTaps === TAPS,
+        `groundTaps ${before.groundTaps} -> ${after.groundTaps} (+${after.groundTaps - before.groundTaps}, wanted +${TAPS})`);
+
+    check('GROUND — ...and each left an empty-ground breadcrumb in the trail',
+        after.trail >= TAPS, `empty-ground breadcrumbs: ${after.trail}`);
+    }
+
+
 
 
 

@@ -136,6 +136,9 @@ export const runtime = {
     //  have now done three times (C3 finding A9).
     lastTapOutcome: (() => null) as () => string | null,
     lastCue: (() => null) as () => string | null,
+    //  EVERY cue REQUESTED, not just the two that are recorded by hand — see `Cues.play`.
+    cuePlays: (() => []) as () => string[],
+    forgetCuePlays: (() => {}) as () => void,
     lastReadout: (() => null) as () => string | null,
     tapTrail: (() => []) as () => Array<{ tMs: number; screenX: number; screenY: number; outcome: string }>,
     //  Slice 1 feel-court: whether the last movement frame touched an obstacle, whether the
@@ -317,6 +320,8 @@ function installDebugHook(): void {
         tapTargetAt: (x: number, y: number) => runtime.tapTargetAt(x, y),
         lastTapOutcome: () => runtime.lastTapOutcome(),
         lastCue: () => runtime.lastCue(),
+        cuePlays: () => runtime.cuePlays(),
+        forgetCuePlays: () => runtime.forgetCuePlays(),
         lastReadout: () => runtime.lastReadout(),
         tapTrail: () => runtime.tapTrail(),
         slideReadout: () => runtime.slideReadout(),

@@ -72,12 +72,37 @@ export class Cues {
         this.ready = true;
     }
 
+    /** Every cue REQUESTED this run, newest last. Read-only witness ([[D-075]]). */
+    private readonly playLog: CueKey[] = [];
+
+    /** What has been asked for since the last `forgetPlays`. */
+    playsSince(): CueKey[] {
+        return [...this.playLog];
+    }
+
+    /** Zero the log so a check can measure one gesture rather than the whole run. */
+    forgetPlays(): void {
+        this.playLog.length = 0;
+    }
+
     /** Browsers hold audio until a gesture; call this from the first tap. */
     unlock(): void {
         if (this.context?.state === 'suspended') void this.context.resume();
     }
 
     play(key: CueKey): void {
+        //  RECORDED BEFORE THE EARLY RETURNS, and that placement is the whole point. A device
+        //  probe cannot hear anything, and headless audio is frequently never `ready`, so a
+        //  witness built on "did a sound come out" is green whether or not the game asked for
+        //  one. What a check must be able to see is the REQUEST — `play` being called at all —
+        //  because that is what a ruling about feedback is actually about.
+        //
+        //  Added because the empty-ground revert's own cue check was VACUOUS: `runtime.lastCue`
+        //  reads `lastCuePlayed`, which two call sites set by hand, so planting the reverted
+        //  `cues.play(CUES.target)` back left the check green. Bounded so a long run cannot
+        //  grow it without limit.
+        this.playLog.push(key);
+        if (this.playLog.length > 200) this.playLog.shift();
         if (!this.ready || !this.context || !this.master) return;
         const buffer = this.buffers.get(key);
         if (!buffer) return;
