@@ -99,10 +99,7 @@ import {
     tryCombine,
     ALL_MATERIAL_KINDS,
     growthReport,
-    availableOutcomes,
-    siteHasAnything,
     previewAt,
-    settleOnTerrain,
     bodyReport,
     revealedInPanel,
     makerOffers,
@@ -161,6 +158,10 @@ import {
     slowWorkNote,
     illnessSymptom,
     combineSlate,
+    isPlaced,
+    drawIntoHands,
+    placedCost,
+    reachFor,
     discoverWith,
     coldSymptom,
     makeChosen,
@@ -204,7 +205,6 @@ import {
     levelToast,
     pickupToast,
     showBuildCard,
-    showSiteCard,
     type BackpackTab,
     showColdOpen,
     showDeath,
@@ -287,6 +287,19 @@ export class Game {
     private shelter: ShelterView;
     private cave: CaveView;
     private ghost: GhostView;
+    /**
+     * SITING — chosen from the slate, waiting for a place to put it.
+     *
+     * The slate answers WHAT and this answers WHERE, which is the whole of the merge: the site
+     * card used to ask both at once and had to be entered from a hold on open ground, so a
+     * survivor who wanted a crate had to already be standing somewhere a crate could go before
+     * the game would admit crates existed. Now the pile names the thing and the next world tap
+     * places it.
+     *
+     * The MATERIALS are carried along because they are spent on the build, not on the choosing —
+     * cancelling costs nothing, which is the same promise the old card made.
+     */
+    private siting: { recipeId: string; materials: string[]; storageOpen: boolean } | null = null;
     private storage: StorageView;
     private raftView: RaftView;
     //  P0-3 — the pile you put down, finally drawn. See `DroppedView`.
@@ -867,7 +880,14 @@ export class Game {
                 //  could not select it, could not attempt the axe, and could not proceed. The
                 //  UI label for it already existed — only the selectable list had drifted
                 //  from the type it was supposed to mirror.
-                combinable: ALL_MATERIAL_KINDS.filter((m) => (s.inventory[m] ?? 0) > 0),
+                //  ITEM 2 — WHAT IS WITHIN REACH, not merely what is carried. With a crate open
+                //  in front of you its contents are reachable too, so the chips list the union
+                //  and the whole combine path downstream sees one pool. Closed, this is exactly
+                //  the carried list it replaced.
+                combinable: (() => {
+                    const reach = reachFor(s, atStorage && s.storage.built);
+                    return ALL_MATERIAL_KINDS.filter((m) => (reach.counts[m] ?? 0) > 0);
+                })(),
                 //  LAW 126's other two tabs, both READ from the brain. The hub renders
                 //  them; nothing about their content is decided here.
                 //  LAW 126: the maker's gate, read from the HUD's own computation so the
@@ -911,8 +931,8 @@ export class Game {
             () => this.tryRepair('storage'),
             //  THE REDESIGN'S THREE. A pure read, then one commit per intention.
             (materials: string[]) => combineSlate(session().state, materials as 'wood'[]),
-            (materials: string[], recipeId: string) => this.onCombine(materials, recipeId),
-            (materials: string[]) => this.onDiscover(materials),
+            (materials: string[], recipeId: string) => this.onCombine(materials, recipeId, atStorage),
+            (materials: string[]) => this.onDiscover(materials, atStorage),
             (material: string) => {
                 const s2 = session().state;
                 const item = dropAll(s2, material as never);
@@ -1018,8 +1038,22 @@ export class Game {
      * recipe that does not match the pile or that they have not demonstrated, so a stale slate
      * cannot mint anything — the guard is the brain's, not this layer's.
      */
-    private onCombine(materials: string[], recipeId: string): void {
-        const result = makeChosen(session().state, materials as 'wood'[], recipeId);
+    private onCombine(materials: string[], recipeId: string, storageOpen = false): void {
+        //  A PLACED OUTCOME IS NOT COMMITTED HERE. Shelter and storage go in the world, so
+        //  choosing one arms the siting step and spends nothing — the build happens on the tap
+        //  that picks the spot, through the SAME `placeAtSite` the site card always used.
+        //  Duplicating that would mean two paths that spend materials and decide a grade.
+        if (isPlaced(recipeId)) {
+            this.siting = { recipeId, materials, storageOpen };
+            this.ghost.hide();
+            this.cues.play(CUES.target);
+            this.showHint(recipeId === 'storage'
+                ? 'Tap where the crate should stand.'
+                : 'Tap where the shelter should stand.');
+            this.lastActivityAt = now();
+            return;
+        }
+        const result = makeChosen(session().state, materials as 'wood'[], recipeId, storageOpen);
         this.recordTap(0, 0, `combine:${recipeId}:${result.outcome}`);
         session().persist(now());
         const said = announcementFor(result);
@@ -1036,8 +1070,8 @@ export class Game {
      * tie-break and its suspicion/rotation logic already answer that, and they give the same
      * answer the old generic "put them together and see" path gave. This is a door, not a rule.
      */
-    private onDiscover(materials: string[]): void {
-        const result = discoverWith(session().state, materials as 'wood'[]);
+    private onDiscover(materials: string[], storageOpen = false): void {
+        const result = discoverWith(session().state, materials as 'wood'[], storageOpen);
         this.recordTap(0, 0, `discover:${result.outcome}`);
         session().persist(now());
         const said = announcementFor(result);
@@ -1379,48 +1413,71 @@ export class Game {
         //  Silent when there is genuinely nothing to say: a survivor with no demonstrated
         //  pattern has no construction to be offered, and inventing a message for that would
         //  be teaching them about a menu they do not have.
-        if (!siteHasAnything(s, point.x, point.z)) { runtime.holdTrace.push('nothing-here'); return; }
-        runtime.holdTrace.push('opening');
-        this.openSiteCard(point.x, point.z);
-        runtime.holdTrace.push(runtime.panelOpen ? 'opened' : 'open-failed');
+        //  RETIRED BY THE SLATE MERGE, and the reasoning above is kept because it is still
+        //  right about WHERE mattering — it is only wrong about which surface should ask.
+        //
+        //  The card asked WHAT and WHERE at once, and could only be entered from a hold on
+        //  ground that already had something to offer. So a survivor who wanted a crate had to
+        //  be standing somewhere a crate could go before the game would admit crates existed —
+        //  which is the catalogue problem wearing a gesture. The pile names the thing now, and
+        //  the tap that follows places it, so WHERE is still a decision and it is simply asked
+        //  second instead of first.
+        //
+        //  A HOLD ON OPEN GROUND THEREFORE DOES NOTHING, and does it the way [[D-162]] ruled a
+        //  tap on nothing does: silently, and still traced. The trace is what makes "the
+        //  gesture is retired" distinguishable from "the gesture broke".
+        void s;
+        runtime.holdTrace.push('site-card-retired');
     }
 
+
     /**
-     * THE SITE CARD. Opens where the survivor chose, offers §9.6's human outcomes, and hands
-     * the chosen one to the SAME `buildShelter`/`buildStorage` the Build panel used — one
-     * path that spends materials, one that decides a grade, however the player got there.
+     * COMMIT A SLATE CHOICE AT A PLACE — the merge point, and deliberately thin.
+     *
+     * The materials are spent by `makeChosen` exactly as they are for every other outcome, and
+     * the structure goes up through `placeAtSite`, which is the same function the retired site
+     * card called. Nothing about placement is re-implemented here: this is a join, not a second
+     * system, which is what keeps "one path that spends materials, one that decides a grade"
+     * true after the merge.
+     *
+     * ORDER MATTERS AND IS DELIBERATE. The world's veto is asked FIRST, through a dry run of
+     * the same geometry `placeAtSite` uses, because spending the wood and then discovering the
+     * ground refuses is the exact "robbed by a silent rule" shape the raft's site blocker exists
+     * to prevent. A refusal here costs nothing and leaves the choice re-armed.
      */
-    private openSiteCard(x: number, z: number): void {
-        if (runtime.panelOpen) { this.explain('Something else is open. Close it first.'); return; }
-        this.beginPanel();
+    private placeFromSlate(recipeId: string, materials: string[], storageOpen: boolean, x: number, z: number): void {
         const s = session().state;
-        const offers = availableOutcomes(s, x, z);
-
-        //  THE GHOST (bar property 1). It goes up the instant the card opens, at the point the
-        //  survivor chose — BEFORE any commit, which is the whole property. Its colour is the
-        //  verdict and nothing else (property 2): `previewAt` returns a real boolean, and the
-        //  reason it also returns stays on the card for anyone who wants it.
+        const radius = recipeId === 'storage' ? TUNE.storageCollisionRadius : TUNE.shelterCollisionRadius;
+        const clear = this.island.resolveCollision(x, z, radius, this.dynamicObstacles());
+        const preview = previewAt(s, clear.x, clear.z, (px, pz) => this.island.heightAt(px, pz), null);
+        if (!preview.valid) {
+            //  Re-armed, not cancelled: the survivor still means to build it, they just picked
+            //  a bad spot, and making them walk back through the pack for that would be a
+            //  punishment for aiming.
+            this.siting = { recipeId, materials, storageOpen };
+            this.explain(preview.reason ?? 'That will not go up here.');
+            return;
+        }
+        //  CHARGED ONCE, AND BY THE BUILDER. The first cut called `makeChosen` here as well,
+        //  and a device check caught it inside one run: a crate costs 5 wood and the survivor
+        //  paid 6 — one per staged material for the "invention", then the recipe cost for the
+        //  build. That is a surcharge for using the new surface, and on a SECOND crate, whose
+        //  plan is already held, it is a surcharge for nothing at all. Combine only ever offers
+        //  outcomes the survivor has already demonstrated, so there is no invention to pay for:
+        //  the build IS the act, and `buildStorage`/`buildShelter` already price it.
         //
-        //  The site is valid when SOMETHING can go up here. Asking `previewAt` for a blanket
-        //  answer and ignoring the offers would paint green over a spot where every outcome is
-        //  refused for want of materials, which is a ghost that lies.
-        const settled = settleOnTerrain(x, z, (px, pz) => this.island.heightAt(px, pz));
-        const preview = previewAt(s, x, z, (px, pz) => this.island.heightAt(px, pz),
-            offers.find((o) => o.buildable) ?? offers[0] ?? null);
-        this.ghost.show(settled.x, settled.y, settled.groundY, preview.valid);
-
-        showSiteCard(
-            this.overlay,
-            offers.map((o) => ({
-                outcome: o.outcome, label: o.label, buildable: o.buildable, reason: o.reason,
-            })),
-            //  ONE TAP COMMITS (property 4). This tap IS the build — there is no confirm step
-            //  between them, and adding one is the specific thing the bar forbids.
-            (outcome) => { this.ghost.hide(); this.endPanel(() => this.placeAtSite(outcome, x, z)); },
-            //  ...and ONE TAP CANCELS, clearing the ghost with it. A ghost that outlived its
-            //  card would be a translucent building the player cannot dismiss.
-            () => { this.ghost.hide(); this.endPanel(); },
-        );
+        //  ...AND THE BOX HAS TO BE EMPTIED INTO THE HANDS FIRST, because those two builders
+        //  read `state.inventory` and nothing else. Teaching them a second source would mean
+        //  teaching every future builder the same thing; moving the material is one line here
+        //  and is what a person does anyway.
+        for (const { kind, amount } of placedCost(recipeId)) {
+            if (!drawIntoHands(s, kind, amount, storageOpen)) {
+                this.siting = { recipeId, materials, storageOpen };
+                this.explain('You do not have enough for that yet.');
+                return;
+            }
+        }
+        this.placeAtSite(recipeId, clear.x, clear.z);
     }
 
     /** Place the anchor and build. Refuses loudly if the world's own geometry says no. */
@@ -1447,6 +1504,18 @@ export class Game {
         //  A fresh tap is a tap until proven otherwise — clearing this here means a hold's
         //  flag can never be inherited by the next ordinary tap.
         this.pendingWasHold = false;
+        //  SITING OUTRANKS EVERYTHING. A survivor who has just said "a crate, here" means the
+        //  next tap as a PLACE, not as a target — and letting a tree or the pond win it would
+        //  swallow the gesture and leave the siting armed with no sign of why.
+        if (this.siting && !runtime.panelOpen) {
+            const at = this.pickHitPoint(screenX, screenY);
+            if (!at) { this.explain('Not there — pick a spot on the ground.'); return; }
+            const armed = this.siting;
+            this.siting = null;
+            this.recordTap(screenX, screenY, `site:${armed.recipeId}`);
+            this.placeFromSlate(armed.recipeId, armed.materials, armed.storageOpen, at.x, at.z);
+            return;
+        }
         if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
         this.lastActivityAt = now();
 

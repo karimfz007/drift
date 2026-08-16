@@ -682,10 +682,14 @@ export function showBuildCard(
                 { wood: TUNE.torchWoodCost, fiber: TUNE.torchFiberCost }, 'Owned.', 'Make the torch', 'torch-btn')}
             ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
                 { wood: TUNE.axeWoodCost, sharpblade: TUNE.axeSharpbladeCost, fiber: TUNE.axeFiberCost }, 'Owned.', 'Make the axe', 'axe-btn')}
-            ${buildItemMarkup('Shelter', 'Somewhere to rest — it becomes home.', view.shelter,
-                { wood: TUNE.shelterWoodCost, stone: TUNE.shelterStoneCost, fiber: TUNE.shelterFiberCost }, 'Standing.', 'Raise the shelter', 'shelter-btn')}
-            ${buildItemMarkup('Storage', 'A second place to keep what you gather.', view.storage,
-                { wood: TUNE.storageWoodCost, stone: TUNE.storageStoneCost }, 'Set.', 'Set the crate', 'storage-btn')}
+            <!--  SHELTER AND STORAGE ARE NOT HERE ANY MORE. They are PLACED outcomes, and the
+                  combine slate owns them now: stage the materials, pick the named outcome, and
+                  the next tap on the ground puts it there. Two surfaces that both spent
+                  materials and both decided a grade was one surface too many, and the Build
+                  panel's version could not say WHERE — it dropped the thing 2.2 m ahead of
+                  wherever the survivor happened to be standing.
+                  The refuge line and Mend below are untouched: reading how your shelter is
+                  doing, and repairing it, are not the same act as raising one.  -->
             ${buildItemMarkup('Stone hammer', 'Tier 0. Its one job: knapping stone into a blade, below.', view.stoneHammer,
                 { wood: TUNE.stoneHammerWoodCost, stone: TUNE.stoneHammerStoneCost }, 'Owned.', 'Make the hammer', 'stonehammer-btn')}
             ${buildItemMarkup('Spear', 'A shaft and a knapped edge, lashed tight. The only thing that answers a boar.', view.spear,

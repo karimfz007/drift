@@ -248,6 +248,21 @@ export interface CombineSlate {
     unknownCount: number;
 }
 
+/**
+ * THE OUTCOMES THAT GO IN THE WORLD RATHER THAN IN YOUR HANDS.
+ *
+ * A short explicit set, deliberately not derived from `domain === 'construction'`: the domain
+ * is about what KNOWLEDGE a thing trains, and reading placement off it would silently enrol the
+ * next construction recipe into a placement flow nobody wired. If something belongs here,
+ * someone types it here — the same rule `SURVIVAL_BASIC` follows and for the same reason.
+ */
+export const PLACED_OUTCOMES: ReadonlySet<string> = new Set(['shelter', 'storage']);
+
+/** Does committing to this outcome need somewhere to put it? */
+export function isPlaced(recipeId: string): boolean {
+    return PLACED_OUTCOMES.has(recipeId);
+}
+
 export function combineSlate(state: GameState, materials: MaterialKind[]): CombineSlate {
     const pool = matchPool(materials);
     const known: KnownOutcome[] = [];
@@ -260,6 +275,104 @@ export function combineSlate(state: GameState, materials: MaterialKind[]): Combi
         }
     }
     return { known, unknownCount };
+}
+
+/**
+ * EVERYTHING WITHIN REACH OF THIS COMBINE — held, plus an OPEN container's contents.
+ *
+ * THE SCOPE IS THE OPEN BOX AND NOTHING ELSE. `withStorage` is true only while a survivor is
+ * standing at a built crate with it open in front of them; walking away closes it and the reach
+ * shrinks back to what is carried. This is deliberately not a general "combine from anywhere"
+ * rule — a crate you remember owning is not a crate you can reach into.
+ *
+ * ONE MAP, not two lists, because everything downstream — `matchPool`, the slate, the gate, the
+ * charge — already speaks in "how much of this kind is there". Merging at the source means the
+ * whole combine path is reused unchanged rather than taught about a second source.
+ */
+export interface CombineReach {
+    counts: Partial<Record<MaterialKind, number>>;
+    withStorage: boolean;
+}
+
+export function reachFor(state: GameState, storageOpen: boolean): CombineReach {
+    const withStorage = storageOpen && state.storage.built;
+    const counts: Partial<Record<MaterialKind, number>> = { ...state.inventory };
+    if (withStorage) {
+        for (const [kind, count] of Object.entries(state.storage.stored)) {
+            if (typeof count !== 'number' || count <= 0) continue;
+            const k = kind as MaterialKind;
+            counts[k] = (counts[k] ?? 0) + count;
+        }
+    }
+    return { counts, withStorage };
+}
+
+/**
+ * SPEND ONE OF A KIND, held first and the box second.
+ *
+ * The order is the simplest rule that is also the right one: what is in your hands is what your
+ * hands reach for. It matters only when a material is split across both, and choosing HELD
+ * FIRST means a survivor who empties the box into a build still ends up carrying less, never
+ * mysteriously more. Returns false if there was none anywhere — the caller has already gated on
+ * the reach, so that is a bug rather than a refusal, and it fails loudly by doing nothing.
+ */
+export function spendFromReach(state: GameState, kind: MaterialKind, withStorage: boolean): boolean {
+    if ((state.inventory[kind] ?? 0) > 0) { state.inventory[kind] -= 1; return true; }
+    if (withStorage) {
+        const stored = state.storage.stored as Partial<Record<MaterialKind, number>>;
+        if ((stored[kind] ?? 0) > 0) { stored[kind] = (stored[kind] ?? 0) - 1; return true; }
+    }
+    return false;
+}
+
+/**
+ * TAKE `n` OF A KIND OUT OF THE BOX AND INTO YOUR HANDS.
+ *
+ * The inverse of `spendFromReach`, and it exists because `buildStorage` and `buildShelter` read
+ * `state.inventory` and nothing else. Rather than teach two shipped builders about a second
+ * source — and every future builder after them — a placed outcome moves what it needs into the
+ * hands first and then builds exactly as it always did. That is also what a person does: you
+ * take the timber out of the crate before you raise the frame.
+ *
+ * Moves what it can and reports whether the hands ended up holding enough, so the caller can
+ * refuse before anything irreversible happens.
+ */
+export function drawIntoHands(state: GameState, kind: MaterialKind, need: number, withStorage: boolean): boolean {
+    if (!withStorage) return (state.inventory[kind] ?? 0) >= need;
+    const stored = state.storage.stored as Partial<Record<MaterialKind, number>>;
+    while ((state.inventory[kind] ?? 0) < need && (stored[kind] ?? 0) > 0) {
+        stored[kind] = (stored[kind] ?? 0) - 1;
+        state.inventory[kind] = (state.inventory[kind] ?? 0) + 1;
+    }
+    return (state.inventory[kind] ?? 0) >= need;
+}
+
+/**
+ * WHAT A PLACED OUTCOME COSTS — read from the SAME constants the builders charge.
+ *
+ * Deliberately not derived from the recipe slots. A slot carries a TAG, tags are optional and
+ * several raw kinds can satisfy one, so deriving the material would be a clever guess that
+ * happens to be right today. What must be true is narrower and checkable: this has to agree
+ * with what `buildStorage` and `buildShelter` actually deduct, because the caller tops the
+ * hands up by these numbers and those two then spend. `tests/reach.test.ts` asserts the
+ * agreement by building one of each and reading the inventory, so a retune that moves one and
+ * not the other fails loudly instead of short-changing a survivor.
+ */
+export function placedCost(recipeId: string): Array<{ kind: MaterialKind; amount: number }> {
+    if (recipeId === 'storage') {
+        return [
+            { kind: 'wood', amount: TUNE.storageWoodCost },
+            { kind: 'stone', amount: TUNE.storageStoneCost },
+        ];
+    }
+    if (recipeId === 'shelter') {
+        return [
+            { kind: 'wood', amount: TUNE.shelterWoodCost },
+            { kind: 'stone', amount: TUNE.shelterStoneCost },
+            { kind: 'fiber', amount: TUNE.shelterFiberCost },
+        ];
+    }
+    return [];
 }
 
 /** Is this pile a question rather than an attempt? */
@@ -464,12 +577,23 @@ export function canExperiment(state: GameState, a: MaterialKind, b: MaterialKind
  * hard pair was never the spec, it was the discovery probe's arity, and it turned out to make
  * two recipes permanently unreachable (see `resolveRecipe`).
  */
-export function canExperimentWith(state: GameState, materials: MaterialKind[]): string | null {
+export function canExperimentWith(
+    state: GameState,
+    materials: MaterialKind[],
+    //  ITEM 2 — the reach, defaulting to HELD ONLY. Every existing caller keeps exactly the
+    //  behaviour it had; only a caller that knows a box is open passes anything else.
+    storageOpen = false
+): string | null {
     if (materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
     if (materials.length > TUNE.combineMaxInputs) return `That is more than you can hold together at once — ${TUNE.combineMaxInputs} at most.`;
     if (new Set(materials).size !== materials.length) return 'Pick two different things to try together.';
+    const reach = reachFor(state, storageOpen);
     for (const m of materials) {
-        if (state.inventory[m] <= 0) return 'You need all of those in hand to try them.';
+        if ((reach.counts[m] ?? 0) <= 0) {
+            return reach.withStorage
+                ? 'You need all of those, in hand or in the box.'
+                : 'You need all of those in hand to try them.';
+        }
     }
     if (state.energy < TUNE.experimentEnergyCost) return 'Too spent to concentrate on that right now.';
     return null;
@@ -493,7 +617,12 @@ export function tryCombine(state: GameState, a: MaterialKind, b: MaterialKind): 
  * and one the survivor actually knows, so a body that offered a stale list — or a caller that
  * invented an id — cannot mint something out of nothing.
  */
-export function makeChosen(state: GameState, materials: MaterialKind[], recipeId: string): ExperimentResult {
+export function makeChosen(
+    state: GameState,
+    materials: MaterialKind[],
+    recipeId: string,
+    storageOpen = false
+): ExperimentResult {
     //  THE GUARD IS "MATCHES AND IS KNOWN", not "is one of two". My first cut checked the
     //  choice against `knownMatches`, which returns nothing at all below two — so naming the
     //  thing you meant was REFUSED whenever the pile was unambiguous, and three shipped tests
@@ -510,7 +639,7 @@ export function makeChosen(state: GameState, materials: MaterialKind[], recipeId
         if (!hasUnknownRival(state, materials)) {
             return refuse('You already know everything these make.');
         }
-        return tryCombineWith(state, materials, EXPERIMENT_CHOICE);
+        return tryCombineWith(state, materials, EXPERIMENT_CHOICE, storageOpen);
     }
     const chosen = recipesMatching(materials).find((r) => r.id === recipeId);
     if (!chosen) return refuse('That is not one of the things these make.');
@@ -519,7 +648,7 @@ export function makeChosen(state: GameState, materials: MaterialKind[], recipeId
     if (!state.blueprints.some((bp) => bp.recipeId === recipeId)) {
         return refuse('You have not worked that out yet.');
     }
-    return tryCombineWith(state, materials, recipeId);
+    return tryCombineWith(state, materials, recipeId, storageOpen);
 }
 
 /**
@@ -536,17 +665,23 @@ export function makeChosen(state: GameState, materials: MaterialKind[], recipeId
  * undiscovered-first tie-break and its suspicion/rotation logic already answer that, and they
  * are the same answer the old generic path gave. This adds a door, not a rule.
  */
-export function discoverWith(state: GameState, materials: MaterialKind[]): ExperimentResult {
-    const blocked = canExperimentWith(state, materials);
+export function discoverWith(state: GameState, materials: MaterialKind[], storageOpen = false): ExperimentResult {
+    const blocked = canExperimentWith(state, materials, storageOpen);
     if (blocked) return refuse(blocked);
     if (!hasUnknownRival(state, materials)) {
         return refuse('You already know everything these make.');
     }
-    return tryCombineWith(state, materials, EXPERIMENT_CHOICE);
+    return tryCombineWith(state, materials, EXPERIMENT_CHOICE, storageOpen);
 }
 
-export function tryCombineWith(state: GameState, materials: MaterialKind[], chosenRecipeId?: string): ExperimentResult {
-    const blocked = canExperimentWith(state, materials);
+export function tryCombineWith(
+    state: GameState,
+    materials: MaterialKind[],
+    chosenRecipeId?: string,
+    storageOpen = false
+): ExperimentResult {
+    const withStorage = reachFor(state, storageOpen).withStorage;
+    const blocked = canExperimentWith(state, materials, storageOpen);
     if (blocked) return refuse(blocked);
 
     //  P0-1, WIDENED TO P0-C — NEVER COMMIT A PLAN THE SURVIVOR HOLDS WITHOUT NAMING IT FIRST.
@@ -709,7 +844,9 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[], chos
     //  survived the widening to four inputs because the widening happened in the GATE and
     //  nowhere else. A loop is safe at any arity — the gate above rejects duplicates and
     //  requires every material to be in hand, so no stack can be driven negative.
-    for (const staged of materials) state.inventory[staged] -= 1;
+    //  ITEM 2 — spent through the reach, held first and the box second. At `storageOpen: false`
+    //  this is exactly `state.inventory[staged] -= 1`, which is what it replaced.
+    for (const staged of materials) spendFromReach(state, staged, withStorage);
 
     //  §10.5's versioning: re-deriving a plan you already hold bumps its version rather than
     //  minting a duplicate. A plan is one object with a history, not a pile of copies.

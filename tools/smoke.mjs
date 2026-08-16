@@ -9829,10 +9829,15 @@ async function main() {
     //  quietly become "list the catalogue".
     if (section('PANEL — a known recipe outlives its materials')) {
 
+    //  SUPERSEDED IN PART BY THE SLATE MERGE. `shelter` and `storage` are PLACED outcomes and
+    //  the Build panel no longer offers them — they are staged in the combine slate and sited
+    //  by a tap on the ground. Their blueprints are still granted below so the panel is being
+    //  asked the honest question: given that these are earned, does it correctly NOT list them?
     const ALL_RECIPES = ['torch', 'axe', 'shelter', 'storage', 'stonehammer', 'spear',
         'backpack', 'raft', 'fishingline', 'net'];
-    const ROW_TITLES = ['Torch', 'Crude axe', 'Shelter', 'Storage', 'Stone hammer', 'Spear',
+    const ROW_TITLES = ['Torch', 'Crude axe', 'Stone hammer', 'Spear',
         'Backpack', 'Raft', 'Fishing line', 'Net'];
+    const PLACED_TITLES = ['Shelter', 'Storage'];
 
     /** Every row the Build panel is actually showing, with its gates and its button. */
     const buildRows = async () => {
@@ -9946,7 +9951,7 @@ async function main() {
     await shot('panel-03-all-known-nothing-held');
     const missingRows = ROW_TITLES.filter((t) => !rowNamed(bare.rows, t));
 
-    check('PANEL 2 — every one of the ten earned recipes is listed with nothing in hand',
+    check('PANEL 2 — every earned HAND-HELD recipe is listed with nothing in hand',
         bare.open && missingRows.length === 0,
         missingRows.length ? `MISSING: [${missingRows.join(', ')}]` : `all ${ROW_TITLES.length} present`);
 
@@ -9978,6 +9983,14 @@ async function main() {
     const rich = await buildRows();
     await shot('panel-04-unearned-stays-absent');
     const leaked = ROW_TITLES.filter((t) => rowNamed(rich.rows, t));
+
+    //  ...AND THE TWO PLACED OUTCOMES ARE ABSENT EVEN THOUGH THEY ARE EARNED. Their absence
+    //  here is the merge, not a regression: the slate owns them now. Asserted explicitly so
+    //  that a future change quietly restoring the rows shows up as a contradiction rather
+    //  than as a harmless extra.
+    check('PANEL 2 — ...and the two PLACED outcomes are NOT here, because the slate owns them',
+        bare.open && PLACED_TITLES.every((t) => !rowNamed(bare.rows, t)),
+        `Build rows: [${bare.rows.map((r) => r.title).join(' | ')}]`);
 
     check('PANEL 3 — SCOPE: full pockets and nothing demonstrated still lists NO recipe',
         rich.open && leaked.length === 0,
@@ -10399,6 +10412,279 @@ async function main() {
         full.discoverDisabled === true, `discover disabled ${full.discoverDisabled}`);
     await closePack();
     }
+
+    // ======== MERGE — the slate sites what it makes, and reaches into an open box ========
+    //
+    //  TWO MERGES, ONE SURFACE. Shelter and storage were the last things with their own way in
+    //  — a hold on open ground opened a card that asked WHAT and WHERE at once, so a survivor
+    //  had to be standing somewhere buildable before the game would admit crates existed. And
+    //  a combine could only ever draw on what was carried, so standing at a full crate with
+    //  empty hands meant standing next to your own materials and being unable to use them.
+    if (section('MERGE — sited from the slate, fed from the box')) {
+
+    const openPack = async () => { await realTapDom('.carried-button'); await sleep(650); };
+    const closePack = async () => {
+        await page.evaluate(() => {
+            const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+            if (c instanceof HTMLElement) c.click();
+        });
+        await sleep(450);
+    };
+    const pick = async (...mats) => {
+        for (const m of mats) { await realTapDom(`.combine-chip[data-mat="${m}"]`); await sleep(260); }
+    };
+    const slateNow = async () => page.evaluate(() => {
+        const el = document.querySelector('.combine-slate');
+        return {
+            known: el ? Array.from(el.querySelectorAll('.slate-slot.known')).map((s) => (s.textContent ?? '').trim()) : [],
+            unknown: el ? el.querySelectorAll('.slate-slot.unknown').length : 0,
+            chips: Array.from(document.querySelectorAll('.combine-chip')).map((c) => c.dataset.mat),
+            combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        };
+    });
+
+    const WELL = 'state.player = { x: 0, y: 96 }; state.energy = 100; state.health = 100;'
+        + ' state.warmth = 70; state.hunger = 90; state.thirst = 90;';
+    const CRATE = "{ recipeId: 'storage', name: 'Storage crate', version: 1,"
+        + " discoveredAtGameHours: 0, workmanship: 'serviceable' }";
+
+    // ---- 1 · THE CRATE IS AN ORDINARY SLATE ENTRY, AND COMBINE SITES IT ---------------
+    await editSave(`${WELL}
+        state.blueprints = [${CRATE}];
+        state.storage = { ...state.storage, built: false };
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 0, sharpblade: 0 };`);
+    await sleep(900);
+    await openPack();
+    await pick('wood', 'stone');
+    const listed = await slateNow();
+    await shot('merge-01-crate-on-the-slate');
+
+    check('MERGE 1 — the crate is a NAMED slate entry like anything else',
+        listed.known.some((k) => /crate/i.test(k)),
+        `known: [${listed.known.join(' | ')}]`);
+
+    //  Choose it, and Combine should ARM A PLACE rather than build where you stand.
+    await page.evaluate(() => {
+        const k = Array.from(document.querySelectorAll('.slate-slot.known'))
+            .find((s) => /crate/i.test(s.textContent ?? ''));
+        if (k instanceof HTMLElement) k.click();
+    });
+    await sleep(350);
+    const beforeSite = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { built: s.storage.built, wood: s.inventory.wood };
+    });
+    await realTapDom('.combine-btn');
+    await sleep(1200);
+    const armed = await page.evaluate(() => ({
+        said: window.__drift.hints().last ?? '',
+        built: window.__drift.state().storage.built,
+        wood: window.__drift.state().inventory.wood,
+        panelOpen: window.__drift.panelOpen(),
+    }));
+    await shot('merge-02-siting-armed');
+
+    check('MERGE 1 — Combine on a PLACED outcome asks WHERE instead of building on the spot',
+        /tap where/i.test(armed.said) && armed.built === false,
+        `"${armed.said}", built ${armed.built}`);
+
+    check('MERGE 1 — ...and nothing has been spent yet (choosing is not building)',
+        armed.wood === beforeSite.wood,
+        `wood ${beforeSite.wood} -> ${armed.wood}`);
+
+    //  ...and the next tap on the ground puts it there.
+    const spot = await page.evaluate(() => {
+        const view = { w: window.innerWidth, h: window.innerHeight };
+        return { x: Math.round(view.w * 0.5), y: Math.round(view.h * 0.82) };
+    });
+    await tapAt(spot.x, spot.y);
+    await sleep(1800);
+    const placed = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return {
+            built: s.storage.built, x: s.storage.x, y: s.storage.y,
+            wood: s.inventory.wood, said: window.__drift.hints().last ?? '',
+            outcome: window.__drift.lastTapOutcome(),
+        };
+    });
+    await shot('merge-03-sited');
+
+    check('MERGE 1 — the tap that follows PLACES it, and the tap is recorded as a siting',
+        placed.built === true && /site:storage/.test(placed.outcome ?? ''),
+        `built ${placed.built} at (${placed.x?.toFixed?.(1)}, ${placed.y?.toFixed?.(1)}), tap "${placed.outcome}"`);
+
+    //  EXACT, not merely 'less'. The loose version passed under a planted double charge —
+    //  it only asked whether any wood had gone, and 6 is fewer than 14 just as 5 is.
+    check('MERGE 1 — ...and THAT is when the materials were spent, at exactly the crate price',
+        beforeSite.wood - placed.wood === 5,
+        `wood ${beforeSite.wood} -> ${placed.wood}`);
+
+    // ---- 2 · THE RETIRED GESTURE IS GENUINELY RETIRED ---------------------------------
+    await editSave(`${WELL}
+        state.blueprints = [${CRATE}];
+        state.storage = { ...state.storage, built: false };
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 0, sharpblade: 0 };`);
+    await sleep(900);
+    await page.evaluate(() => { window.__drift.holdTrace().length = 0; });
+    const holdSpot = { x: Math.round(915 * 0.5), y: Math.round(412 * 0.82) };
+    await page.touchscreen.touchStart(holdSpot.x, holdSpot.y);
+    await sleep(900);
+    await page.touchscreen.touchEnd();
+    await sleep(900);
+    const held = await page.evaluate(() => ({
+        trace: [...window.__drift.holdTrace()],
+        panelOpen: window.__drift.panelOpen(),
+        card: Boolean(document.querySelector('.panel.site')),
+    }));
+    await shot('merge-04-hold-retired');
+
+    check('MERGE 2 — a hold on open ground no longer opens a site card',
+        held.card === false && held.panelOpen === false,
+        `card ${held.card}, panelOpen ${held.panelOpen}`);
+
+    check('MERGE 2 — ...and says so in the trace rather than failing silently',
+        held.trace.some((t) => /site-card-retired/.test(t)),
+        `trace: [${held.trace.join(' > ')}]`);
+
+    // ---- 3 · THE BOX FEEDS THE COMBINE, BUT ONLY WHILE IT IS OPEN ---------------------
+    await editSave(`${WELL}
+        state.blueprints = [${CRATE}];
+        state.storage = { ...state.storage, built: true, x: 2, y: 96, stored: { ...state.storage.stored, wood: 9, stone: 9 } };
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0 };`);
+    await sleep(900);
+
+    //  CLOSED FIRST: empty hands beside a full crate must offer nothing.
+    await openPack();
+    const shut = await slateNow();
+    await closePack();
+    await shot('merge-05-box-shut');
+
+    check('MERGE 3 — with the box SHUT, empty hands can stage nothing',
+        shut.chips.length === 0,
+        `chips: [${shut.chips.join(', ')}]`);
+
+    //  ...now open it by tapping the crate, and the same empty hands can reach in.
+    const at = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { x: s.storage.x, y: s.storage.y };
+    });
+    await tapWorld(at.x, at.y, 55);
+    await sleep(2200);
+    const opened = await slateNow();
+    await shot('merge-06-box-open');
+
+    check('MERGE 3 — with the box OPEN, its contents are stageable',
+        opened.chips.includes('wood') && opened.chips.includes('stone'),
+        `chips: [${opened.chips.join(', ')}]`);
+
+    await pick('wood', 'stone');
+    const boxSlate = await slateNow();
+
+    check('MERGE 3 — ...and the slate answers for that pile exactly as it always did',
+        boxSlate.known.some((k) => /crate/i.test(k)),
+        `known: [${boxSlate.known.join(' | ')}] · anonymous ${boxSlate.unknown}`);
+
+    check('MERGE 3 — LAW 95 holds with the box open — anonymous slots stay anonymous',
+        await page.evaluate(() => Array.from(document.querySelectorAll('.slate-slot.unknown'))
+            .every((s) => !/storage|crate|hammer|shelter/i.test(
+                (s.textContent ?? '') + ' ' + Array.from(s.attributes).map((a) => a.name + '=' + a.value).join(' ')))),
+        `anonymous slots: ${boxSlate.unknown}`);
+
+    //  ...AND SPENDING DRAWS FROM THE BOX. The first cut of this check tried to build a SECOND
+    //  crate from the box and proved nothing: the crate has to already be built for the box to
+    //  be open, and `canBuildStorage` refuses a second one, so nothing was spent and nothing
+    //  was built. Two honest paths instead, because they charge through different doors —
+    //  DISCOVER spends one per staged material through `spendFromReach`, and a PLACED build
+    //  spends the recipe cost after `drawIntoHands` has moved it.
+    const beforeBox = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { stored: s.storage.stored.wood, held: s.inventory.wood };
+    });
+    await realTapDom('.discover-btn');
+    await sleep(1700);
+    const afterDiscover = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { stored: s.storage.stored.wood, held: s.inventory.wood, plans: s.blueprints.length };
+    });
+    await shot('merge-07-discovered-from-the-box');
+
+    check('MERGE 3 — DISCOVER spends out of the box when the hands are empty',
+        afterDiscover.stored < beforeBox.stored && afterDiscover.held === 0,
+        `box wood ${beforeBox.stored} -> ${afterDiscover.stored}, held ${afterDiscover.held}, plans ${afterDiscover.plans}`);
+
+    // ---- 4 · A PLACED BUILD, PAID FOR ENTIRELY OUT OF THE BOX -------------------------
+    //
+    //  The shelter, because it is the one placed outcome that is NOT already standing here.
+    await editSave(`${WELL}
+        state.blueprints = [{ recipeId: 'shelter', name: 'Shelter', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: true, x: 2, y: 96,
+            stored: { ...state.storage.stored, wood: 20, stone: 20, fiber: 20 } };
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0 };`);
+    await sleep(900);
+    const shelterAt = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { x: s.storage.x, y: s.storage.y };
+    });
+    await tapWorld(shelterAt.x, shelterAt.y, 55);
+    await sleep(2200);
+    await pick('wood', 'stone', 'fiber');
+    const shelterSlate = await slateNow();
+
+    check('MERGE 4 — a three-material pile staged ENTIRELY from the box names the shelter',
+        shelterSlate.known.some((k) => /lean-to|shelter/i.test(k)),
+        `chips [${shelterSlate.chips.join(', ')}] known [${shelterSlate.known.join(' | ')}]`);
+
+    const beforeShelter = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { wood: s.storage.stored.wood, stone: s.storage.stored.stone, fiber: s.storage.stored.fiber };
+    });
+    await page.evaluate(() => {
+        const k = Array.from(document.querySelectorAll('.slate-slot.known'))
+            .find((s) => /lean-to|shelter/i.test(s.textContent ?? ''));
+        if (k instanceof HTMLElement) k.click();
+    });
+    await sleep(350);
+    await realTapDom('.combine-btn');
+    await sleep(1300);
+    //  FIND A SPOT, the way a player does. Two earlier cuts of this check failed for two
+    //  different geometry reasons and neither was a product fault: tapping underfoot put
+    //  the shelter inside the crate spacing rule (the survivor has to STAND at the box for
+    //  it to be open), and `tapWorld` at a chosen world point silently does nothing when
+    //  that point is not on screen. So this sweeps a few real screen points and stops at
+    //  the first that takes — which is also the honest gesture, since a survivor who is
+    //  refused simply taps somewhere else. `placeFromSlate` re-arms on a refusal, so the
+    //  siting survives every miss.
+    let siteSaid = '';
+    for (const [fx, fy] of [[0.30, 0.66], [0.70, 0.66], [0.18, 0.74], [0.82, 0.74], [0.50, 0.62]]) {
+        await tapAt(Math.round(915 * fx), Math.round(412 * fy));
+        await sleep(1600);
+        siteSaid = await page.evaluate(() => window.__drift.hints().last ?? '');
+        if (await page.evaluate(() => window.__drift.state().shelter.built)) break;
+    }
+    const afterShelter = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return {
+            built: s.shelter.built,
+            wood: s.storage.stored.wood, stone: s.storage.stored.stone, fiber: s.storage.stored.fiber,
+            held: s.inventory.wood,
+        };
+    });
+    await shot('merge-08-shelter-from-the-box');
+
+    check('MERGE 4 — ...and it goes up, paid for out of the box with empty hands',
+        afterShelter.built === true && afterShelter.wood < beforeShelter.wood,
+        `built ${afterShelter.built} · said "${siteSaid}" · box wood ${beforeShelter.wood} -> ${afterShelter.wood}, stone ${beforeShelter.stone} -> ${afterShelter.stone}, fibre ${beforeShelter.fiber} -> ${afterShelter.fiber}`);
+
+    check('MERGE 4 — ...charged exactly what a shelter costs, not a surcharge for the surface',
+        beforeShelter.wood - afterShelter.wood === 8
+        && beforeShelter.stone - afterShelter.stone === 4
+        && beforeShelter.fiber - afterShelter.fiber === 3,
+        `spent wood ${beforeShelter.wood - afterShelter.wood}, stone ${beforeShelter.stone - afterShelter.stone}, fibre ${beforeShelter.fiber - afterShelter.fiber} (want 8/4/3)`);
+
+    }
+
 
 
 
