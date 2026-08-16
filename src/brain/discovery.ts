@@ -51,12 +51,25 @@ export interface DiscoveryRoute {
  */
 export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
     {
-        //  Fire's own route, the one the shaping calls out as deliberately scaffolded. The
-        //  need is the plainest in the game and arrives on schedule the first night.
+        //  FIRE'S OWN ROUTE, AND THE ONE WHOSE NEED IS NOW UNCONDITIONAL — director's ruling.
+        //
+        //  It read `isNight || warmth < low`, so the thought was only available to a survivor
+        //  who was already cold or already in the dark. That is a defensible model of NEED and
+        //  a bad model of DISCOVERY: a person holding a stick and a handful of dry fibre in
+        //  full daylight can work out what they are for, and making them wait for dusk to be
+        //  allowed to think it is the game withholding an idea until its cue.
+        //
+        //  So the route now fires on the makings alone. Everything else about the scaffold is
+        //  unchanged: `makings` still gates it on wood AND fibre genuinely in hand, the prompt
+        //  still names a need and a material and never the product, and it still produces a
+        //  SUSPICION rather than a row — `revealedInPanel` requires `demonstrated`, which only
+        //  making one can give. Law 113 (scaffold the basics) and Law 95 (never name what is
+        //  unworked-out) both hold; what changes is that the clock no longer decides when a
+        //  survivor is permitted to have the idea.
         recipeId: 'torch',
-        need: (s) => timeOfDay(s.gameHoursElapsed).isNight || s.warmth < TUNE.warmthLowThreshold,
+        need: () => true,
         makings: ['wood', 'fiber'],
-        prompt: 'The dark is closing in, and you are holding something that burns.',
+        prompt: 'Dry fibre, and something to wrap it around. That would take a flame and hold it.',
     },
     {
         //  Cold at night with no roof. The shelter is the answer to a night, not to a list.

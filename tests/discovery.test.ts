@@ -18,6 +18,7 @@ import {
     DISCOVERY_ROUTES, activeSuspicions, hasDiscoveryRoute, hasHandled, suspicionFor,
 } from '../src/brain/discovery';
 import { namesAFinishedAnswer } from '../src/brain/affordance';
+import { revealedInPanel } from '../src/brain/reveal';
 import { ladderFor } from '../src/brain/ladder';
 import { createInitialState } from '../src/brain/state';
 import { allRecipes } from '../src/brain/recipes';
@@ -133,16 +134,31 @@ describe('all three legs, or no suspicion', () => {
 });
 
 describe('each of the five needs is a real reading of state', () => {
-    it('torch — the dark, or the cold', () => {
+    it('torch — THE CLOCK NO LONGER DECIDES: warm, in broad daylight, still suspected', () => {
+        //  SUPERSEDED BY THE DIRECTOR'S RULING, and this test is rewritten rather than deleted
+        //  so the reversal is legible. It used to assert the opposite of its first line — that
+        //  midday with the makings in hand suspected NOTHING — because the route's need was
+        //  `isNight || cold`. The ruling is that a survivor holding a stick and dry fibre can
+        //  work out what they are for at any hour.
         const day = atMidday(give(createInitialState(0), 'wood', 'fiber'));
-        expect(suspicionFor(day, 'torch')!.suspected).toBe(false);
-        expect(suspicionFor(atNight(day), 'torch')!.suspected).toBe(true);
+        day.warmth = TUNE.warmthMax;
+        expect(suspicionFor(day, 'torch')!.suspected, 'daylight still withheld the idea').toBe(true);
+        expect(suspicionFor(atNight(day), 'torch')!.suspected, 'and night must not have lost it').toBe(true);
     });
 
-    it('torch — cold in daylight counts too, warmth being the other half of the need', () => {
-        const s = atMidday(give(createInitialState(0), 'wood', 'fiber'));
-        s.warmth = TUNE.warmthLowThreshold - 1;
-        expect(suspicionFor(s, 'torch')!.suspected).toBe(true);
+    it('torch — ...but the MAKINGS still gate it, which is the half that did not change', () => {
+        //  The scaffold is unconditional in TIME and not in MATTER. Wood alone is not a torch
+        //  route, and a survivor holding nothing is not handed the thought.
+        const empty = atNight(createInitialState(0));
+        expect(suspicionFor(empty, 'torch')!.suspected, 'suspected with empty hands').toBe(false);
+        const woodOnly = atNight(give(createInitialState(0), 'wood'));
+        expect(suspicionFor(woodOnly, 'torch')!.suspected, 'suspected on wood alone').toBe(false);
+    });
+
+    it('torch — ...and a suspicion is still NOT a row (Law 95 / the invention pivot)', () => {
+        const day = atMidday(give(createInitialState(0), 'wood', 'fiber'));
+        expect(suspicionFor(day, 'torch')!.suspected).toBe(true);
+        expect(revealedInPanel(day, 'torch'), 'a daylight hunch minted a Build row').toBe(false);
     });
 
     it('axe — a blade in the palm, and no axe yet', () => {

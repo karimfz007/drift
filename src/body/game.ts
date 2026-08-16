@@ -98,7 +98,6 @@ import {
     refugeReport,
     tryCombine,
     ALL_MATERIAL_KINDS,
-    tryCombineWith,
     growthReport,
     availableOutcomes,
     siteHasAnything,
@@ -161,11 +160,9 @@ import {
     noticedOnSurfacing,
     slowWorkNote,
     illnessSymptom,
+    combineSlate,
+    discoverWith,
     coldSymptom,
-    heldMatches,
-    hasUnknownRival,
-    EXPERIMENT_CHOICE,
-    recipeDisplayName,
     makeChosen,
     crashBlockedReason,
     crashGone,
@@ -912,7 +909,10 @@ export class Game {
             () => this.endPanel(),
             () => this.tryUseStorage(),
             () => this.tryRepair('storage'),
-            (materials: string[]) => this.onTryCombine(materials),
+            //  THE REDESIGN'S THREE. A pure read, then one commit per intention.
+            (materials: string[]) => combineSlate(session().state, materials as 'wood'[]),
+            (materials: string[], recipeId: string) => this.onCombine(materials, recipeId),
+            (materials: string[]) => this.onDiscover(materials),
             (material: string) => {
                 const s2 = session().state;
                 const item = dropAll(s2, material as never);
@@ -1010,74 +1010,17 @@ export class Game {
      * debug hook. Outcome is reported in plain words, because a null result that says nothing
      * is indistinguishable from a broken button — which is how this stayed invisible.
      */
-    private onTryCombine(materials: string[]): void {
-        //  C3 finding F2 on D-073: the first cut tested `outcome === 'failed'`, which is not
-        //  one of the five real outcomes — so `failed-attempt`, `already-known` AND `refused`
-        //  all fell through to the success branch and were announced with the unlock cue,
-        //  and a genuine invention never named its plan because the field is `blueprint`,
-        //  not `blueprintName`. The `as { outcome: string }` cast is what hid all of it.
-        //
-        //  C3 finding A4 on the F3 remediation: the regression written for that locked the
-        //  BRAIN's contract, which had never broken — so it passed on the pre-fix tree and
-        //  proved nothing. The mistranslation was HERE, and this layer cannot be unit-tested
-        //  (Babylon; the purity law). So the decision moved to `announcementFor`, where a
-        //  test can reach it, and this is now rendering only.
-        const result = tryCombineWith(session().state, materials as 'wood'[]);
-
-        //  P0-1 — THE QUESTION, ASKED. `choose` is not an outcome to announce; it is the game
-        //  declining to pick for the player, which is what silently built a crate when the
-        //  director wanted a hammer. The shipped radial circle carries it — two positions, one
-        //  choice, no new interaction system and no third position ([[D-087]]'s own surface,
-        //  which exists precisely so a target with two verbs never has to be arbitrated).
-        //
-        //  NOTHING IS SPENT YET. Cancelling leaves the pile exactly as it was, because being
-        //  asked a question is not an attempt.
-        if (result.outcome === 'choose') {
-            //  P0-C — `heldMatches`, NOT `knownMatches`. The brain now asks for confirmation at
-            //  ONE held plan as well as two, and `knownMatches` returns an empty list below two
-            //  by design — so reading it here would have opened a circle with no positions in
-            //  it, which is a silent refusal wearing a question's clothes. The list the body
-            //  offers must be the same list the brain asked about.
-            const offered = heldMatches(session().state, materials as 'wood'[]);
-            const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
-            this.showHint(result.reason ?? 'Which are you making?');
-            //  EVERY HELD PLAN IS NAMED IN THE LIST — that is the director's "named list of
-            //  every attemptable outcome, each clearly labelled", and it is the same list the
-            //  brain asked about, at one match or at three.
-            const positions = offered.map((r) => ({ id: r.id, label: recipeDisplayName(r.id), available: true, reason: null }));
-            //  ...and the door invention comes through, LABELLED FOR WHAT IT IS. It is offered
-            //  only when this pile genuinely still has an outcome nobody has worked out, and it
-            //  names no product — Law 95 — so the wording says what the survivor is choosing to
-            //  DO rather than dressing an unknown up as a menu entry. On a pile with nothing
-            //  held it is the only position, and it is the whole of the question: the survivor
-            //  is agreeing to experiment, which is exactly what they were about to do anyway.
-            if (hasUnknownRival(session().state, materials as 'wood'[])) {
-                positions.push({
-                    id: EXPERIMENT_CHOICE,
-                    label: offered.length > 0 ? 'Try something new' : 'Put them together',
-                    available: true, reason: null,
-                });
-            }
-            showVerbCircle(this.overlay, positions,
-                at.x, at.y,
-                (id: string) => {
-                    //  A CHOICE IS A TAP OUTCOME, so it leaves the same breadcrumb every other
-                    //  resolved gesture does ([[D-136]]'s `tapTrail`). Without it, a pick that
-                    //  silently does nothing is indistinguishable from a pick that never
-                    //  happened — which is exactly what the first device run could not tell.
-                    const chosen = makeChosen(session().state, materials as 'wood'[], id);
-                    this.recordTap(at.x, at.y, `chose:${id}:${chosen.outcome}`);
-                    session().persist(now());
-                    const named = announcementFor(chosen);
-                    if (named.presentation === 'float') this.floatText(named.text);
-                    else this.explain(named.text);
-                    if (named.triumphant) this.cues.play(CUES.unlock);
-                    this.lastActivityAt = now();
-                },
-                () => { this.lastActivityAt = now(); });
-            return;
-        }
-
+    /**
+     * COMBINE — commit to a thing this survivor already knows how to make.
+     *
+     * No question, because the question was the surface: the slate named every known outcome
+     * before a button was pressed and the survivor picked one. `makeChosen` still refuses a
+     * recipe that does not match the pile or that they have not demonstrated, so a stale slate
+     * cannot mint anything — the guard is the brain's, not this layer's.
+     */
+    private onCombine(materials: string[], recipeId: string): void {
+        const result = makeChosen(session().state, materials as 'wood'[], recipeId);
+        this.recordTap(0, 0, `combine:${recipeId}:${result.outcome}`);
         session().persist(now());
         const said = announcementFor(result);
         if (said.presentation === 'float') this.floatText(said.text);
@@ -1085,6 +1028,25 @@ export class Game {
         if (said.triumphant) this.cues.play(CUES.unlock);
         this.lastActivityAt = now();
     }
+
+    /**
+     * DISCOVER — commit to finding out what one of the grey slots is.
+     *
+     * WHICH one is not decided here and must not be: `resolveRecipe`'s undiscovered-first
+     * tie-break and its suspicion/rotation logic already answer that, and they give the same
+     * answer the old generic "put them together and see" path gave. This is a door, not a rule.
+     */
+    private onDiscover(materials: string[]): void {
+        const result = discoverWith(session().state, materials as 'wood'[]);
+        this.recordTap(0, 0, `discover:${result.outcome}`);
+        session().persist(now());
+        const said = announcementFor(result);
+        if (said.presentation === 'float') this.floatText(said.text);
+        else this.explain(said.text);
+        if (said.triumphant) this.cues.play(CUES.unlock);
+        this.lastActivityAt = now();
+    }
+
 
 
     private openSettings(): void {

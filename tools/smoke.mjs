@@ -10220,6 +10220,187 @@ async function main() {
         after.trail >= TAPS, `empty-ground breadcrumbs: ${after.trail}`);
     }
 
+    // ======== SLATE — the pile's outcomes, live, and the grey slot that says nothing ========
+    //
+    //  THE REDESIGN, on the real surface. Three things have to be true at once and only a
+    //  device run can see all three: the slate updates as the pile changes, a known outcome is
+    //  named and committable, and an unknown one is VISIBLE, INERT and IDENTITY-FREE. The last
+    //  is Law 95 and is checked against the rendered markup — attributes included — rather than
+    //  against the brain, because the brain's guarantee is a type and the risk lives here.
+    if (section('SLATE — live outcomes, named or anonymous')) {
+
+    const openPack = async () => {
+        await realTapDom('.carried-button');
+        await sleep(650);
+    };
+    const closePack = async () => {
+        await page.evaluate(() => {
+            const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+            if (c instanceof HTMLElement) c.click();
+        });
+        await sleep(450);
+    };
+    /** Pick chips, then read the slate exactly as drawn. */
+    const slateFor = async (...mats) => {
+        for (const m of mats) {
+            await realTapDom(`.combine-chip[data-mat="${m}"]`);
+            await sleep(260);
+        }
+        return page.evaluate(() => {
+            const el = document.querySelector('.combine-slate');
+            const slot = (s) => ({
+                cls: s.className,
+                text: (s.textContent ?? '').trim(),
+                disabled: s.disabled === true,
+                //  EVERY attribute, so a leak through data-*/title/aria is caught too.
+                attrs: Array.from(s.attributes).map((a) => a.name + '=' + a.value).join(' '),
+            });
+            return {
+                html: el ? el.innerHTML : '',
+                known: el ? Array.from(el.querySelectorAll('.slate-slot.known')).map(slot) : [],
+                unknown: el ? Array.from(el.querySelectorAll('.slate-slot.unknown')).map(slot) : [],
+                combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+                discoverDisabled: document.querySelector('.discover-btn')?.disabled ?? null,
+            };
+        });
+    };
+    const unpick = async (...mats) => {
+        for (const m of mats) { await realTapDom(`.combine-chip[data-mat="${m}"]`); await sleep(220); }
+    };
+
+    const WELL = 'state.player = { x: 0, y: 96 }; state.energy = 100; state.health = 100;'
+        + ' state.warmth = 70; state.hunger = 90; state.thirst = 90;'
+        + ' state.storage = { ...state.storage, built: false };'
+        + ' state.tools = { ...state.tools, stoneHammer: false, spear: false };';
+
+    // ---- 1 · NOTHING KNOWN — anonymous slots, and they give nothing away ---------------
+    await editSave(`${WELL}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 8, sharpblade: 6 };`);
+    await sleep(900);
+    await openPack();
+    const blind = await slateFor('wood', 'stone');
+    await shot('slate-01-nothing-known');
+
+    check('SLATE 1 — an unearned pile still SHOWS that outcomes exist',
+        blind.unknown.length >= 2 && blind.known.length === 0,
+        `known ${blind.known.length}, anonymous ${blind.unknown.length}`);
+
+    check('SLATE 1 — ...and every anonymous slot is INERT (disabled, cannot be chosen)',
+        blind.unknown.length > 0 && blind.unknown.every((s) => s.disabled === true),
+        blind.unknown.map((s) => 'disabled=' + s.disabled).join(' | '));
+
+    //  LAW 95, AGAINST THE MARKUP. Not the brain — the rendered attributes and text.
+    check('SLATE 1 — LAW 95: no anonymous slot names, hints at, or encodes its outcome',
+        blind.unknown.length > 0
+        && blind.unknown.every((s) => !/storage|crate|hammer|shelter|spear|torch|axe|raft|net|line/i.test(s.attrs + ' ' + s.text)),
+        blind.unknown.map((s) => JSON.stringify(s.text) + ' [' + s.attrs + ']').join(' | '));
+
+    check('SLATE 1 — ...and every anonymous slot is IDENTICAL to every other',
+        blind.unknown.length >= 2
+        && new Set(blind.unknown.map((s) => s.text + '|' + s.attrs)).size === 1,
+        `distinct renderings: ${new Set(blind.unknown.map((s) => s.text + '|' + s.attrs)).size}`);
+
+    check('SLATE 1 — Combine is refused with nothing known; Discover is offered',
+        blind.combineDisabled === true && blind.discoverDisabled === false,
+        `combine disabled ${blind.combineDisabled}, discover disabled ${blind.discoverDisabled}`);
+
+    // ---- 2 · THE SLATE IS LIVE — change the pile, change the answer --------------------
+    const changed = await (async () => { await unpick('stone'); return slateFor('sharpblade'); })();
+    await shot('slate-02-live-update');
+
+    check('SLATE 2 — swapping a material redraws the slate for the NEW pile',
+        changed.unknown.length >= 1
+        && (changed.unknown.length !== blind.unknown.length || changed.known.length !== blind.known.length
+            || changed.html !== blind.html),
+        `wood+stone: ${blind.known.length}k/${blind.unknown.length}? -> wood+sharpblade: ${changed.known.length}k/${changed.unknown.length}?`);
+    await closePack();
+
+    // ---- 3 · ONE KNOWN — named, choosable, and the rival stays anonymous ---------------
+    await editSave(`${WELL}
+        state.blueprints = [{ recipeId: 'storage', name: 'Storage crate', version: 1,
+            discoveredAtGameHours: 0, workmanship: 'serviceable' }];
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 8, sharpblade: 6 };`);
+    await sleep(900);
+    await openPack();
+    const mixed = await slateFor('wood', 'stone');
+    await shot('slate-03-one-known');
+
+    check('SLATE 3 — the demonstrated outcome is NAMED, not a raw id',
+        mixed.known.length === 1 && /crate/i.test(mixed.known[0].text)
+        && mixed.known[0].text !== 'storage',
+        `known: [${mixed.known.map((s) => s.text).join(' | ')}]`);
+
+    check('SLATE 3 — ...and the outcome NOBODY has worked out is still anonymous',
+        mixed.unknown.length >= 1
+        && mixed.unknown.every((s) => !/hammer/i.test(s.attrs + ' ' + s.text)),
+        `anonymous ${mixed.unknown.length}: ${mixed.unknown.map((s) => JSON.stringify(s.text)).join(' | ')}`);
+
+    //  ...selecting the known slot arms Combine, and only then.
+    await page.evaluate(() => {
+        const k = document.querySelector('.slate-slot.known');
+        if (k instanceof HTMLElement) k.click();
+    });
+    await sleep(400);
+    const armed = await page.evaluate(() => ({
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        chosen: document.querySelectorAll('.slate-slot.known.chosen').length,
+    }));
+    check('SLATE 3 — choosing the named outcome arms Combine',
+        armed.combineDisabled === false && armed.chosen === 1,
+        `combine disabled ${armed.combineDisabled}, chosen ${armed.chosen}`);
+
+    // ---- 4 · COMBINE COMMITS, and succeeds ---------------------------------------------
+    const beforeCombine = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { wood: s.inventory.wood, built: s.storage.built, plans: s.blueprints.length };
+    });
+    await realTapDom('.combine-btn');
+    await sleep(1400);
+    const afterCombine = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { wood: s.inventory.wood, plans: s.blueprints.map((b) => b.recipeId), said: window.__drift.hints().last ?? '' };
+    });
+    await shot('slate-04-combined');
+
+    check('SLATE 4 — Combine committed the chosen plan and spent the materials',
+        afterCombine.wood < beforeCombine.wood && afterCombine.plans.includes('storage'),
+        `wood ${beforeCombine.wood} -> ${afterCombine.wood}, plans [${afterCombine.plans.join(', ')}]`);
+
+    // ---- 5 · DISCOVER finds the OTHER one, without ever having named it ----------------
+    await openPack();
+    const beforeDiscover = await page.evaluate(() => window.__drift.state().blueprints.map((b) => b.recipeId));
+    const preDiscover = await slateFor('wood', 'stone');
+    await realTapDom('.discover-btn');
+    await sleep(1600);
+    const afterDiscover = await page.evaluate(() => ({
+        plans: window.__drift.state().blueprints.map((b) => b.recipeId),
+    }));
+    await shot('slate-05-discovered');
+
+    check('SLATE 5 — Discover was offered while an anonymous slot remained',
+        preDiscover.discoverDisabled === false && preDiscover.unknown.length >= 1,
+        `discover disabled ${preDiscover.discoverDisabled}, anonymous ${preDiscover.unknown.length}`);
+
+    check('SLATE 5 — ...and pressing it worked out the outcome nobody had named',
+        afterDiscover.plans.length > beforeDiscover.length,
+        `plans [${beforeDiscover.join(', ')}] -> [${afterDiscover.plans.join(', ')}]`);
+
+    // ---- 6 · EVERYTHING KNOWN — no grey slots, no Discover -----------------------------
+    await openPack();
+    const full = await slateFor('wood', 'stone');
+    await shot('slate-06-all-known');
+
+    check('SLATE 6 — once everything is worked out there are no anonymous slots left',
+        full.unknown.length === 0 && full.known.length >= 2,
+        `known ${full.known.length}, anonymous ${full.unknown.length}`);
+
+    check('SLATE 6 — ...and Discover is refused, having nothing left to find',
+        full.discoverDisabled === true, `discover disabled ${full.discoverDisabled}`);
+    await closePack();
+    }
+
+
 
 
 

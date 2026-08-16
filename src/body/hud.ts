@@ -419,6 +419,19 @@ function ordinal(n: number): string {
     return `${n}${suffix}`;
 }
 
+/**
+ * WHAT A PILE COULD BECOME, as this layer receives it. Mirrors `CombineSlate` from the brain
+ * and derives NOTHING.
+ *
+ * `unknownCount` is an integer and that is the entire Law 95 guarantee: the brain hands over
+ * no id, no name and no ordering for an unknown outcome, so this layer cannot leak an identity
+ * however carelessly it renders. Do not widen it.
+ */
+export interface CombineSlateView {
+    known: Array<{ recipeId: string; name: string }>;
+    unknownCount: number;
+}
+
 /** A material key the Build panel can gate a recipe on (Ch.1 v3, D-055 adds sharpblade). */
 type BuildMaterial = 'wood' | 'stone' | 'fiber' | 'sharpblade' | 'coconut';
 
@@ -1100,7 +1113,11 @@ export function showLoadout(
     onClose: () => void,
     onUseStorage: () => void = () => {},
     onRepairStorage: () => void = () => {},
-    onTryCombine: (materials: string[]) => void = () => {},
+    //  THE REDESIGN'S THREE CALLBACKS, replacing `onTryCombine`. `onSlate` is a pure READ —
+    //  what could this pile become — and the other two are the commits, one per intention.
+    onSlate: (materials: string[]) => CombineSlateView = () => ({ known: [], unknownCount: 0 }),
+    onCombine: (materials: string[], recipeId: string) => void = () => {},
+    onDiscover: (materials: string[]) => void = () => {},
     onDrop: (material: string) => void = () => {},
     onEquipHand: (tool: string, hand: 'left' | 'right') => void = () => {},
     /** THE WRECK SLICE — spend one salvaged medical store. Defaulted like every optional
@@ -1166,14 +1183,38 @@ export function showLoadout(
     //
     //  It lives here because this is the panel about what you are carrying, and combining is
     //  a thing you do with what you carry. Pick two, and the button appears.
+    //  THE REDESIGN, and why each piece is where it is:
+    //
+    //    THE SLATE IS LIVE. It lists what this pile could become and redraws on every chip, so
+    //    the survivor sees the answer BEFORE anything is spent. The old surface staged,
+    //    committed, and only then said something.
+    //
+    //    KNOWN slots are named and selectable — naming what you have already made has not been
+    //    a spoiler since [[D-156]].
+    //
+    //    UNKNOWN slots are grey, disabled, and carry NOTHING that identifies them: no name, no
+    //    id, no data attribute, no per-slot text. They are generated from an INTEGER, which is
+    //    the only thing the brain hands over, so this markup could not leak an identity if it
+    //    tried. Law 95 held by construction rather than by remembering — which matters, because
+    //    every previous version of this rule lived in a sentence somebody had to remember not
+    //    to write.
+    //
+    //    TWO VERBS, because they are two intentions. Combine commits to a thing you know;
+    //    Discover commits to finding out what a grey slot is. The old flow made those a single
+    //    press with a question in between, so wanting to experiment meant first being offered
+    //    something you already knew and then declining it.
     const combineRow = view.combinable.length >= 2
         ? `<div class="combine-row">
-             <p class="subtitle">Put two to four things together and see what happens.</p>
+             <p class="subtitle">Put two to four things together.</p>
              <div class="combine-chips">${view.combinable.map((m) =>
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
              ).join('')}</div>
+             <div class="combine-slate"></div>
              <p class="subtitle evidence-line"></p>
-             <button class="primary try-combine-btn" type="button" disabled>Try combining</button>
+             <div class="combine-actions">
+               <button class="primary combine-btn" type="button" disabled>Combine</button>
+               <button class="quiet discover-btn" type="button" disabled>Discover</button>
+             </div>
            </div>`
         : '';
 
@@ -1302,24 +1343,70 @@ export function showLoadout(
     //  always resolved to the shelter. The button stays asleep below two, so the verb can
     //  never fire half-formed.
     const picked: string[] = [];
-    const tryBtn = el.querySelector<HTMLButtonElement>('.try-combine-btn');
+    let chosenRecipe: string | null = null;
+    const combineBtn = el.querySelector<HTMLButtonElement>('.combine-btn');
+    const discoverBtn = el.querySelector<HTMLButtonElement>('.discover-btn');
+    const slateEl = el.querySelector<HTMLElement>('.combine-slate');
+
+    /** Redraw the slate for the current pile. The surface is a pure function of the selection. */
+    const redraw = (): void => {
+        const enough = picked.length >= TUNE.combineMinInputs;
+        const slate: CombineSlateView = enough ? onSlate(picked) : { known: [], unknownCount: 0 };
+        //  A selection cannot survive a pile change that removes it.
+        if (chosenRecipe && !slate.known.some((k) => k.recipeId === chosenRecipe)) chosenRecipe = null;
+
+        if (slateEl) {
+            const knownMarkup = slate.known.map((k) =>
+                `<button class="quiet slate-slot known${chosenRecipe === k.recipeId ? ' chosen' : ''}" data-recipe="${k.recipeId}" type="button">${k.name}</button>`
+            ).join('');
+            //  Generated from a COUNT. Every unknown slot is byte-identical to every other, so
+            //  there is nothing to read off one of them — not a name, not an order, not a hint.
+            const unknownMarkup = Array.from({ length: slate.unknownCount }, () =>
+                '<button class="quiet slate-slot unknown" type="button" disabled aria-disabled="true">?</button>'
+            ).join('');
+            const nothing = !enough
+                ? '<p class="subtitle">Pick two or more.</p>'
+                : (slate.known.length + slate.unknownCount === 0
+                    ? '<p class="subtitle">Nothing comes to mind for these.</p>'
+                    : '');
+            slateEl.innerHTML = nothing + knownMarkup + unknownMarkup;
+            slateEl.querySelectorAll<HTMLButtonElement>('.slate-slot.known').forEach((slot) => {
+                slot.addEventListener('click', () => {
+                    const id = slot.dataset.recipe ?? '';
+                    chosenRecipe = chosenRecipe === id ? null : id;
+                    redraw();
+                });
+            });
+        }
+        if (combineBtn) combineBtn.disabled = !enough || chosenRecipe === null;
+        if (discoverBtn) discoverBtn.disabled = !enough || slate.unknownCount === 0;
+
+        //  The evidence line stays as it was: it speaks about PROPERTIES and never identity,
+        //  and it is the one part of the old surface the redesign does not replace.
+        const ev = el.querySelector('.evidence-line');
+        if (ev) ev.textContent = enough ? (onPreview(picked) ?? '') : '';
+    };
+
     el.querySelectorAll<HTMLButtonElement>('.combine-chip').forEach((chip) => {
         chip.addEventListener('click', () => {
             const mat = chip.dataset.mat ?? '';
             const at = picked.indexOf(mat);
             if (at >= 0) { picked.splice(at, 1); chip.classList.remove('picked'); }
             else if (picked.length < TUNE.combineMaxInputs) { picked.push(mat); chip.classList.add('picked'); }
-            if (tryBtn) tryBtn.disabled = picked.length < TUNE.combineMinInputs;
-            //  ITEM 5 — the evidence preview, refreshed as the pile changes. What it says
-            //  depends on the ladder: properties only until something has been made, the
-            //  outcome WITH its uncertainty once it has, and full reliability once understood.
-            const ev = el.querySelector('.evidence-line');
-            if (ev) ev.textContent = picked.length >= TUNE.combineMinInputs
-                ? (onPreview(picked) ?? '')
-                : '';
+            redraw();
         });
     });
-    tryBtn?.addEventListener('click', () => { if (picked.length >= TUNE.combineMinInputs) { onTryCombine([...picked]); fade(el, onClose); } });
+    redraw();
+
+    combineBtn?.addEventListener('click', () => {
+        if (picked.length >= TUNE.combineMinInputs && chosenRecipe) {
+            onCombine([...picked], chosenRecipe);
+            fade(el, onClose);
+        }
+    });
+    discoverBtn?.addEventListener('click', () => {
+        if (picked.length >= TUNE.combineMinInputs) { onDiscover([...picked]); fade(el, onClose); }
+    });
 
     //  The old standalone entry point, kept as a shortcut INTO the Skills tab. Same
     //  selector, same destination — it just no longer opens a competing surface.

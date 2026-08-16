@@ -16,6 +16,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, type GameState } from '../src/brain';
 import {
+    COMBINE_ALWAYS_SUCCEEDS,
     EXPERIMENT_CHOICE,
     hasUnknownRival,
     heldMatches,
@@ -159,7 +160,12 @@ describe('P0-C — a plan you HOLD is never committed without being named first'
         }
     });
 
-    it('LAW 217 — attempt and outcome are separate: BOTH teach the technique', () => {
+    //  PARKED WITH THE FEATURE, NOT DELETED. `COMBINE_ALWAYS_SUCCEEDS` makes every combine and
+    //  discovery succeed by explicit direction, so a check that waits for a failure would hang
+    //  forever on a product that is behaving exactly as ruled. `skipIf` keys off the SAME
+    //  constant the behaviour does, so flipping it back re-arms this in the same edit — the
+    //  claim is suspended, never weakened, and Law 128 comes back with its own witness.
+    it.skipIf(COMBINE_ALWAYS_SUCCEEDS)('LAW 217 — attempt and outcome are separate: BOTH teach the technique', () => {
         //  Not a change, a lock. `applyLearningEvent` fires before the success/failure branch,
         //  so a failed attempt still returns information to the domain. The ruling names this
         //  explicitly, so it gets a test rather than a reading of the code.

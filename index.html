@@ -260,7 +260,22 @@
         .panel .combine-row { display: flex; flex-direction: column; gap: 6px; align-items: center; }
         .panel .combine-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
         .panel .combine-chip.picked { outline: 2px solid var(--good); color: var(--fg); }
-        .panel .try-combine-btn[disabled] { opacity: 0.45; }
+        /* THE SLATE — what this pile could become, live. */
+        .panel .combine-slate { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .panel .slate-slot { margin-top: 0; min-height: 40px; padding: 0 14px; font-size: 14px; }
+        .panel .slate-slot.known { color: var(--fg); border-color: var(--edge); }
+        .panel .slate-slot.known.chosen { outline: 2px solid var(--good); }
+        /* UNKNOWN: grey, flat, and inert. Every one is identical to every other by design —
+           it says SOMETHING ELSE IS POSSIBLE HERE and nothing whatever about what. Law 95. */
+        .panel .slate-slot.unknown {
+            color: var(--dim);
+            opacity: 0.42;
+            border-style: dashed;
+            cursor: default;
+            pointer-events: none;
+        }
+        .panel .combine-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .panel .combine-btn[disabled], .panel .discover-btn[disabled] { opacity: 0.45; }
         .panel .storage-row {
             display: flex;
             flex-wrap: wrap;

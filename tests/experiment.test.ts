@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    COMBINE_ALWAYS_SUCCEEDS,
     canExperiment,
     experimentGameHoursFor,
     experimentPairKey,
@@ -262,7 +263,12 @@ describe('experiment — the confidence curve reuses Ch.2, never a second progre
         );
     });
 
-    it('even a real relationship can fail while unpractised — practice is what makes it reliable', () => {
+    //  PARKED WITH THE FEATURE, NOT DELETED. `COMBINE_ALWAYS_SUCCEEDS` makes every combine and
+    //  discovery succeed by explicit direction, so a check that waits for a failure would hang
+    //  forever on a product that is behaving exactly as ruled. `skipIf` keys off the SAME
+    //  constant the behaviour does, so flipping it back re-arms this in the same edit — the
+    //  claim is suspended, never weakened, and Law 128 comes back with its own witness.
+    it.skipIf(COMBINE_ALWAYS_SUCCEEDS)('even a real relationship can fail while unpractised — practice is what makes it reliable', () => {
         const novice = withTechnique(ready(), 0);
         let failures = 0;
         for (let i = 0; i < 20; i++) {

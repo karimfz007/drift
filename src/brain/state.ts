@@ -1003,10 +1003,16 @@ export function fireBurnHoursRemaining(state: GameState): number {
  * the room it was standing in and missed the door.
  *
  * Fire is SURVIVAL-BASIC, so it is scaffolded rather than gated behind blind experiment
- * (Law 113): the knowledge arrives when the need is real and the makings are in hand, which
- * is `discovery.ts`'s torch route — the dark closing in, and something that burns in your
- * hands. It is not arbitrary knowledge to be stumbled on; it is knowledge that arrives when
- * a person in that situation would arrive at it.
+ * (Law 113): the knowledge arrives when the MAKINGS are in hand, which is `discovery.ts`'s
+ * torch route. That route's need was `isNight || cold` until the director ruled it out — the
+ * sentence this comment used to end on was "the dark closing in, and something that burns in
+ * your hands", and it is recorded here as superseded rather than quietly rewritten, because
+ * the reasoning was sound and the ruling still overrides it: a person holding a stick and dry
+ * fibre in daylight can work out what they are for, and gating the THOUGHT on dusk withholds
+ * an idea until its cue. The trigger is now wood and fibre, at any hour.
+ *
+ * What did NOT change is the shape of the scaffold: the route yields a SUSPICION and a prompt
+ * that names a need and a material, never the product, and a row still requires `demonstrated`.
  *
  * And once you have made fire, you know how. That half is monotonic on purpose.
  */

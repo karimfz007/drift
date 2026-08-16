@@ -16,6 +16,7 @@
  *      go after wear the player was told about — never on the first attempt, never silently.
  */
 import { describe, expect, it } from 'vitest';
+import { COMBINE_ALWAYS_SUCCEEDS } from '../src/brain/experiment';
 import {
     freshMatterWear, isNearlySpent, stressedMaterial, transformOnFailure, transformationFor,
 } from '../src/brain/matter';
@@ -132,7 +133,12 @@ describe('LOSS IS EARNED, AND ANNOUNCED — never a hidden roll', () => {
 });
 
 describe('through the real verb, not just the helper', () => {
-    it('a failed Try-Combine leaves the matter changed and says what happened', () => {
+    //  PARKED WITH THE FEATURE, NOT DELETED. `COMBINE_ALWAYS_SUCCEEDS` makes every combine and
+    //  discovery succeed by explicit direction, so a check that waits for a failure would hang
+    //  forever on a product that is behaving exactly as ruled. `skipIf` keys off the SAME
+    //  constant the behaviour does, so flipping it back re-arms this in the same edit — the
+    //  claim is suspended, never weakened, and Law 128 comes back with its own witness.
+    it.skipIf(COMBINE_ALWAYS_SUCCEEDS)('a failed Try-Combine leaves the matter changed and says what happened', () => {
         //  Driven through `tryCombineWith` so this asserts the shipped path. Domains are left
         //  at the innate floor so failures are common; the loop stops at the first one.
         const s = stocked();

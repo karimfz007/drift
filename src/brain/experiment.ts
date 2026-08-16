@@ -214,6 +214,54 @@ export function heldMatches(state: GameState, materials: MaterialKind[]): Recipe
     return matchPool(materials).filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
 }
 
+/**
+ * WHAT THIS PILE COULD BECOME, LIVE — the crafting redesign's whole data contract.
+ *
+ * The old surface staged a pile, committed, and THEN said something. This one answers before
+ * anything is spent and updates as the selection changes, so a survivor can see what they are
+ * holding rather than discover it afterwards.
+ *
+ * LAW 95 IS ENFORCED BY THE TYPE, NOT BY THE RENDERER, and that is the load-bearing decision
+ * in this whole change. An unknown outcome contributes to `unknownCount` — an INTEGER — and to
+ * nothing else. There is no id, no name, no domain, no material signature, no ordering that
+ * could be correlated back: a body cannot leak an identity it was never handed, however
+ * carelessly it renders. Every previous version of this rule lived in a sentence somebody had
+ * to remember not to write, and this project has three decisions' worth of evidence about how
+ * that ends. A count cannot be un-remembered into a name.
+ *
+ * KNOWN outcomes carry their display name, because the survivor has made one and naming what
+ * you already know is not a spoiler — that has been the line since [[D-156]].
+ */
+export interface KnownOutcome {
+    recipeId: string;
+    /** The player-facing name. Safe: they have demonstrated this one. */
+    name: string;
+}
+
+export interface CombineSlate {
+    /** Named, selectable, committable via `makeChosen`. */
+    known: KnownOutcome[];
+    /**
+     * HOW MANY other things this pile makes. Existence and count ONLY — never identity.
+     * If you are tempted to widen this to carry anything else, re-read the note above.
+     */
+    unknownCount: number;
+}
+
+export function combineSlate(state: GameState, materials: MaterialKind[]): CombineSlate {
+    const pool = matchPool(materials);
+    const known: KnownOutcome[] = [];
+    let unknownCount = 0;
+    for (const recipe of pool) {
+        if (state.blueprints.some((bp) => bp.recipeId === recipe.id)) {
+            known.push({ recipeId: recipe.id, name: recipeDisplayName(recipe.id) });
+        } else {
+            unknownCount += 1;
+        }
+    }
+    return { known, unknownCount };
+}
+
 /** Is this pile a question rather than an attempt? */
 export function isAmbiguousToPlayer(state: GameState, materials: MaterialKind[]): boolean {
     return knownMatches(state, materials).length >= 2;
@@ -304,6 +352,17 @@ export function namingQuestionFor(offered: Recipe[], validCount = 0): string {
  * plain yes-or-no and never dangles a door with nothing behind it.
  */
 export const EXPERIMENT_CHOICE = 'try-something-else';
+
+/**
+ * TEMPORARY, BY EXPLICIT DIRECTION — every combine and every discovery succeeds.
+ *
+ * EXPORTED so the tests that assert failure can key off THIS constant rather than being
+ * deleted or blind-skipped: they are `skipIf(COMBINE_ALWAYS_SUCCEEDS)`, so flipping this back
+ * to `false` re-arms both the behaviour and its checks in one edit. A parked feature whose
+ * tests have to be remembered separately is a gate with a delay on it, and this codebase has
+ * paid for that shape more than once.
+ */
+export const COMBINE_ALWAYS_SUCCEEDS = true;
 
 /** Does this pile have an outcome the survivor has NOT yet worked out? */
 export function hasUnknownRival(state: GameState, materials: MaterialKind[]): boolean {
@@ -463,6 +522,29 @@ export function makeChosen(state: GameState, materials: MaterialKind[], recipeId
     return tryCombineWith(state, materials, recipeId);
 }
 
+/**
+ * THE DELIBERATE TRIAL — the redesign's second verb, and the reason it is separate.
+ *
+ * Combine commits to a thing you KNOW. Discover commits to finding out what one of the grey
+ * slots is. Splitting them is the whole point of the new surface: the old flow made "make the
+ * axe" and "see what happens" the same button press with a question in between, so a survivor
+ * who wanted to experiment had to first be offered something they already knew and then
+ * decline it. Now the intent is chosen before the act, which is what `EXPERIMENT_CHOICE`
+ * always meant and never had a control for.
+ *
+ * WHICH unknown it lands on is NOT decided here and deliberately so — `resolveRecipe`'s
+ * undiscovered-first tie-break and its suspicion/rotation logic already answer that, and they
+ * are the same answer the old generic path gave. This adds a door, not a rule.
+ */
+export function discoverWith(state: GameState, materials: MaterialKind[]): ExperimentResult {
+    const blocked = canExperimentWith(state, materials);
+    if (blocked) return refuse(blocked);
+    if (!hasUnknownRival(state, materials)) {
+        return refuse('You already know everything these make.');
+    }
+    return tryCombineWith(state, materials, EXPERIMENT_CHOICE);
+}
+
 export function tryCombineWith(state: GameState, materials: MaterialKind[], chosenRecipeId?: string): ExperimentResult {
     const blocked = canExperimentWith(state, materials);
     if (blocked) return refuse(blocked);
@@ -570,7 +652,22 @@ export function tryCombineWith(state: GameState, materials: MaterialKind[], chos
     applyLearningEvent(state, domain, tryFactorsFor(state.knowledge.domains[domain]));
 
     const already = state.blueprints.find((bp) => bp.recipeId === recipe.id);
-    const succeeded = seedFraction(seed) < successChanceFor(state, domain);
+    //  ============ TEMPORARY, BY EXPLICIT DIRECTION — NOT A DELETION ============
+    //
+    //  Every combine and every discovery succeeds, for now. This is a PARKED DESIGN QUESTION,
+    //  not a ruling that failure is wrong: what a near-miss should cost, and whether trial and
+    //  error should be able to come up empty at all, is being decided separately. Flipping this
+    //  one constant back to `false` restores the confidence curve exactly as it was — the curve,
+    //  `successChanceFor`, `tryFactorsFor` and the whole learning-from-failure path are
+    //  untouched below and above this line.
+    //
+    //  WHAT THIS COSTS, STATED PLAINLY rather than left for someone to discover: this is the
+    //  ONLY caller of `transformOnFailure`, so Law 128's failure-transform — matter wearing,
+    //  blades dulling, a stack breaking on the third attempt — has no live caller while this
+    //  is true. It is dormant, not removed: `matter.ts`, `matterWear`, the save field and
+    //  `tests/matter.test.ts` all stay exactly as they are and come straight back with the
+    //  constant. Anyone reading this looking for why blades stopped dulling: it is this line.
+    const succeeded = COMBINE_ALWAYS_SUCCEEDS || seedFraction(seed) < successChanceFor(state, domain);
 
     if (!succeeded) {
         //  LAW 128's POSITIVE HALF (Slice 2C). The attempt was real and it happened to real
