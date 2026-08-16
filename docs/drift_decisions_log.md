@@ -3,6 +3,18 @@
 
 ---
 
+**D-159 · 2026-08-16 — 13 + 10 IS THE SAME PILE AS 14 + 13, AND GETTING A HAMMER IS THE DESIGN WORKING.**
+
+**THE EXACT QUANTITIES, ON A FRESH INCOGNITO SAVE, ON PRODUCTION.** `2ab45d9`, wood 13 and stone 10, no plans held, no crate built, `experimentCount` 0, zero journalled dead ends — the save's own defaults, with only the two counts written. Staged through the real DOM, the staging surface said: *"You have not worked these out yet, and there is more than one thing here. Put them together and see?"* **The disclosure clause is present at these quantities.**
+
+**QUANTITY IS NOT A CODE PATH, AND THAT IS STRUCTURAL RATHER THAN LUCKY.** `recipesMatching` assigns material KINDS to slot tags through `assignable` and never reads a count; `canExperimentWith` gates only on `inventory[m] > 0`; the costs (`storage` 5 wood + 3 stone, `stonehammer` 2 + 3) are charged AFTER the naming branch returns, not before it. So `matchPool(['wood','stone'])` is `[storage, stonehammer]` at every quantity the gate admits, and 13+10, 14+13 and 1+1 build the identical sentence — asserted as an equality rather than three separate matches.
+
+**AND RESOLVING TO ONE REAL OUTCOME IS CORRECT.** The probe followed the survivor's own click through: attempt 1 produced the stone hammer, floated as *"Stone hammer — you see how it works"*, and cost 1 wood + 1 stone. Attempt 2 on the same pile then offered `Stone hammer` **plus** *"Try something new"* — and produced storage. That is `resolveRecipe` step 2 preferring undiscovered outcomes, which exists precisely so a tie's loser stays reachable, doing exactly what it was written to do. **Law 95 forbids listing two products nobody has worked out**, so the surface cannot name them; what [[D-158]] added is the one thing it CAN honestly say — that a choice exists — and the second attempt is where the other half is actually collected. A result is not a silent choice; the silence was the defect, and it is gone.
+
+**Class: NON-OPERATIVE** (a verification of [[D-158]] at the director's own quantities; no product change. Instrument: `tools/pile-13-10.mjs`, one device check at 13+10, one unit case asserting quantity-independence).
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity, docs-integrity. **UNIT: 1401/1401**, +1 asserting 13+10 and 14+13 produce the same string. **DEVICE: targeted 19/19**, `--only=BRANCH`, active hours, no full sweep. **LIVE:** the quoted run above against `2ab45d9`. **FAIL-THEN-PASS at the product level:** removing the `validCount` arm from `namingQuestionFor` fails the 13+10 case specifically.*
+
 **D-158 · 2026-08-15 — THE BRANCH WAS RIGHT; WHAT IT LEFT OUT WAS THAT IT WAS CHOOSING FOR HIM.**
 
 **MEASURED FIRST, ONE CASE AT A TIME, ON THE DEPLOYED BUILD — and the branch does not collapse.** Driven through the real DOM on a clean context against production (`5af3f26`), each case takes its own branch and says its own sentence:

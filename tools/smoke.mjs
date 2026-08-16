@@ -9772,6 +9772,22 @@ async function main() {
     check('BRANCH 3 — ...without naming either product (Law 95)',
         !/crate|hammer|storage/i.test(blind.message), `"${blind.message}"`);
 
+
+    //  ...AND THE EXACT PILE THE DIRECTOR RAN, at his quantities rather than mine. Asked
+    //  whether 13+10 lands somewhere else than 14+13: it cannot, because the pool is built
+    //  from material KINDS against slot tags and never reads a count. Checked here anyway,
+    //  because "it cannot" is an argument and this is a measurement.
+    await editSave(`${WELL}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 13, stone: 10, sharpblade: 0, fiber: 0 };`);
+    await sleep(800);
+    const exact = await askedFor('wood', 'stone');
+    await shot('branch-05-thirteen-ten');
+
+    check('BRANCH 3 — 13 wood + 10 stone gets the SAME disclosure as 14 + 13',
+        /more than one thing here/i.test(exact.message) && exact.message === blind.message,
+        `"${exact.message}"`);
+
     //  ...and a pile with only ONE possible outcome does not claim a choice it does not have.
     await editSave(`${WELL}
         state.blueprints = [];

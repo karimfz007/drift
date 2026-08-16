@@ -68,6 +68,22 @@ describe('the staging question takes the branch the pile deserves', () => {
         expect(msg).not.toMatch(/storage|crate|hammer/i);
     });
 
+    it('QUANTITY IS NOT A CODE PATH — 13+10 says exactly what 14+13 says', () => {
+        //  Asked whether a smaller pile lands somewhere else. It cannot: `recipesMatching`
+        //  assigns material KINDS to slot tags and never reads a count, so the pool — and the
+        //  sentence built from it — is identical at every quantity that clears the "in hand"
+        //  gate. Costs (storage 5+3, hammer 2+3) are charged AFTER the question, not before it.
+        const at = (wood: number, stone: number) => {
+            const s = fresh();
+            s.inventory.wood = wood; s.inventory.stone = stone;
+            return tryCombineWith(s, ['wood', 'stone']).reason ?? '';
+        };
+        expect(at(13, 10)).toMatch(/more than one thing here/i);
+        expect(at(13, 10), 'a smaller pile took a different branch').toBe(at(14, 13));
+        //  ...down to the smallest pile the gate admits at all.
+        expect(at(1, 1)).toBe(at(14, 13));
+    });
+
     it('...and a pile with only ONE possible outcome does not claim there are several', () => {
         const s = fresh();
         s.inventory.wood = 14; s.inventory.sharpblade = 6;
