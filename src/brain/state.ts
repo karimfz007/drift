@@ -2008,7 +2008,7 @@ export function refugeReport(state: GameState): RefugeReport {
         return {
             reduction: 0, reductionPct: 0, potentialPct: pct(potential), wetPenaltyPct, working: false,
             status: 'none', upkeep,
-            line: `No shelter. The night takes its full toll — a lean-to would cut it by about half.${wetTail}`,
+            line: `No shelter. The night takes its full toll — a shelter would cut it by about half.${wetTail}`,
         };
     }
     if (isInDisrepair(state.shelter)) {

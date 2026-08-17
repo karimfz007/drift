@@ -508,100 +508,21 @@ export interface BuildCardView {
     rest: { sheltered: boolean };
 }
 
-/** Knapping (Ch.1 v3, D-055): repeatable, not a one-time build — no "done" state, just a
- *  standing stone-cost gate, shown only once the hammer is owned. */
+
+
+/**
+ * KNAPPING — repeatable, so never a "done" state, just a standing stone gate shown once the
+ * hammer is owned.
+ *
+ * THE LAST MAKER IN THIS PANEL, and it is here because it cannot be anywhere else: `knap` has
+ * ONE slot and staging wants two materials, so it can never reach the combine slate. Sharp
+ * blades gate the axe and the spear, so losing this button would strand the tree.
+ */
 export interface KnapView {
     owned: boolean;
     stoneHave: number;
     stoneCost: number;
     sharpbladeHave: number;
-}
-
-//  When a part is short, say where it comes from — the C03 defect was fibre feeling
-//  sourceless (D-040/D-043). A met gate needs no hint; a short one names the source.
-const MATERIAL_SOURCE: Record<string, string> = {
-    Wood: 'driftwood on the sand, deadfall by the trees',
-    Stone: 'grey rock outcrops on the beach',
-    Fibre: 'reeds at the pond, or a coconut palm',
-    'Sharp blade': 'knap raw stone with a stone hammer, below',
-    Coconut: 'the coconut palms in the scrub'
-};
-
-function buildItemMarkup(
-    title: string,
-    subtitle: string,
-    item: BuildItemView,
-    need: Partial<Record<BuildMaterial, number>>,
-    doneLabel: string,
-    buttonLabel: string,
-    buttonClass: string
-): string {
-    //  THE PIVOT (Slice 2B Stage 2b). An unearned thing is not a greyed-out row with a
-    //  teasing cost list — that is still a catalogue, just a rude one. It is ABSENT.
-    if (!item.revealed) return '';
-    if (item.done) {
-        return `<div class="build-item done"><h2>${title}</h2><p class="subtitle">${doneLabel}</p></div>`;
-    }
-    const labels: Record<BuildMaterial, string> = { wood: 'Wood', stone: 'Stone', fiber: 'Fibre', sharpblade: 'Sharp blade', coconut: 'Coconut' };
-    const rows = (Object.keys(need) as BuildMaterial[]).map((key) => {
-        const n = need[key] ?? 0;
-        const h = item.have[key] ?? 0;
-        const met = h >= n;
-        const label = labels[key];
-        const hint = met ? '' : `<div class="gate-hint">from ${MATERIAL_SOURCE[label]}</div>`;
-        return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${label}</span><span>${h} / ${n}</span></div>${hint}`;
-    }).join('');
-    const ready = (Object.keys(need) as BuildMaterial[]).every((key) => (item.have[key] ?? 0) >= (need[key] ?? 0));
-    return `
-        <div class="build-item">
-            <h2>${title}</h2>
-            <p class="subtitle">${subtitle}</p>
-            <div class="gates">${rows}</div>
-            <button class="primary ${buttonClass}" type="button" ${ready ? '' : 'disabled'}>${ready ? buttonLabel : 'Not enough yet'}</button>
-        </div>`;
-}
-
-/**
- * THE RAFT'S OWN MARKUP (the Maritime Slice), and it needs one because it is the only
- * craftable whose gate is not a cost.
- *
- * Every other row here answers "have you got enough". The raft additionally answers "are you
- * standing in the right place" — and that has to be said BEFORE the button is pressed, not
- * discovered after. Fourteen wood is the most expensive thing in the game; a survivor who
- * spends it and gets a raft they cannot move has been robbed by a silent rule. So the site
- * blocker is rendered as its own line, and the button is disabled with the reason on it.
- */
-function raftMarkup(view: BuildItemView & { siteBlocker: string | null }): string {
-    if (!view.revealed) return '';
-    if (view.done) {
-        return `<div class="build-item done raft-item"><h2>Raft</h2>`
-            + `<p class="subtitle">Moored at the water's edge. Walk to it and climb aboard.</p></div>`;
-    }
-    const need: Partial<Record<BuildMaterial, number>> = {
-        wood: TUNE.raftWoodCost, fiber: TUNE.raftFiberCost, coconut: TUNE.raftCoconutCost,
-    };
-    const labels: Record<string, string> = { wood: 'Wood', fiber: 'Fibre', coconut: 'Coconut' };
-    const rows = (Object.keys(need) as BuildMaterial[]).map((key) => {
-        const n = need[key] ?? 0;
-        const h = view.have[key] ?? 0;
-        const met = h >= n;
-        const hint = met ? '' : `<div class="gate-hint">from ${MATERIAL_SOURCE[labels[key]]}</div>`;
-        return `<div class="gate ${met ? 'met' : 'unmet'}"><span>${labels[key]}</span><span>${h} / ${n}</span></div>${hint}`;
-    }).join('');
-    const stocked = (Object.keys(need) as BuildMaterial[]).every((k) => (view.have[k] ?? 0) >= (need[k] ?? 0));
-    const siteLine = view.siteBlocker
-        ? `<p class="subtitle raft-site">${view.siteBlocker}</p>`
-        : '';
-    const ready = stocked && !view.siteBlocker;
-    const label = !stocked ? 'Not enough yet' : view.siteBlocker ? 'Not here' : 'Build the raft';
-    return `
-        <div class="build-item raft-item">
-            <h2>Raft</h2>
-            <p class="subtitle">A deck of logs, coir lashing, and husks underneath to float it. It goes where the island cannot.</p>
-            <div class="gates">${rows}</div>
-            ${siteLine}
-            <button class="primary raft-btn" type="button" ${ready ? '' : 'disabled'}>${label}</button>
-        </div>`;
 }
 
 /** Knapping's own small markup — repeatable, so never a "done" state like the crafts
@@ -678,35 +599,27 @@ export function showBuildCard(
                     : 'No roof, no bedding. You will rest, but not well — and the weather gets at you.'}</p>
                 <button class="primary sleep-btn" type="button">${view.rest.sheltered ? 'Sleep' : 'Sleep rough'}</button>
             </div>
-            ${buildItemMarkup('Torch', 'Wood and fibre — light it at any active fire.', view.torch,
-                { wood: TUNE.torchWoodCost, fiber: TUNE.torchFiberCost }, 'Owned.', 'Make the torch', 'torch-btn')}
-            ${buildItemMarkup('Crude axe', 'Gather the parts. Knowledge, this time, is in your hands.', view.axe,
-                { wood: TUNE.axeWoodCost, sharpblade: TUNE.axeSharpbladeCost, fiber: TUNE.axeFiberCost }, 'Owned.', 'Make the axe', 'axe-btn')}
-            <!--  SHELTER AND STORAGE ARE NOT HERE ANY MORE. They are PLACED outcomes, and the
-                  combine slate owns them now: stage the materials, pick the named outcome, and
-                  the next tap on the ground puts it there. Two surfaces that both spent
-                  materials and both decided a grade was one surface too many, and the Build
-                  panel's version could not say WHERE — it dropped the thing 2.2 m ahead of
-                  wherever the survivor happened to be standing.
-                  The refuge line and Mend below are untouched: reading how your shelter is
-                  doing, and repairing it, are not the same act as raising one.  -->
-            ${buildItemMarkup('Stone hammer', 'Tier 0. Its one job: knapping stone into a blade, below.', view.stoneHammer,
-                { wood: TUNE.stoneHammerWoodCost, stone: TUNE.stoneHammerStoneCost }, 'Owned.', 'Make the hammer', 'stonehammer-btn')}
-            ${buildItemMarkup('Spear', 'A shaft and a knapped edge, lashed tight. The only thing that answers a boar.', view.spear,
-                { wood: TUNE.spearWoodCost, sharpblade: TUNE.spearSharpbladeCost, fiber: TUNE.spearFiberCost }, 'Owned.', 'Make the spear', 'spear-btn')}
-            ${buildItemMarkup('Backpack', 'A frame and a lashing. Carry properly instead of in your arms.', view.backpack,
-                { fiber: TUNE.backpackFiberCost, wood: TUNE.backpackWoodCost }, 'Owned.', 'Make the pack', 'backpack-btn')}
-            ${raftMarkup(view.raft)}
-            ${buildItemMarkup(
-                'Fishing line', 'Cord, spun fine. One fish at a time, and it costs you the waiting.',
-                view.fishingLine, { fiber: TUNE.fishingLineFiberCost, sharpblade: TUNE.fishingLineBladeCost },
-                'You have a line.', 'Spin the line', 'fishingline-btn'
-            )}
-            ${buildItemMarkup(
-                'Net', 'A wall of cord. It fishes while your hands are busy — if you stay near it.',
-                view.net, { fiber: TUNE.netFiberCost, sharpblade: TUNE.netSharpbladeCost },
-                'You have a net.', 'Knot the net', 'net-btn'
-            )}
+            <!--  EVERY CRAFT ROW IS GONE, and with it the last reason this panel was called
+                  a Build panel. Combine makes things now — a known outcome is chosen on the
+                  slate and produced on the spot, hand-held straight into your hands and
+                  placed by the tap that picks its spot. Two surfaces that both spent
+                  materials and both rolled a grade was one surface too many, and this one
+                  could not say WHERE: it dropped a shelter 2.2 m ahead of wherever you
+                  happened to be standing.
+
+                  WHAT IS LEFT IS HERE BECAUSE IT HAS NOWHERE ELSE TO BE, checked rather than
+                  assumed before anything was deleted:
+
+                    KNAP is a ONE-slot recipe and staging needs two materials, so it can never
+                      reach the slate — and sharp blades gate the axe and the spear. This
+                      button is its only entry point in the game.
+                    SLEEP ROUGH lives only here: the circle's  verb wants a shelter to
+                      aim at, so a survivor with no roof has no other way to lie down.
+                    THE REFUGE LINE is a reading, not a making.
+                    MEND is genuinely redundant — the shelter's own verb circle carries it —
+                      and is kept only because removing a working control is not this
+                      batch's ruling to make.
+                    THE HINTS are the teaching half of the invention pivot.  -->
             ${view.mendShelter ? `
             <div class="build-item mend-item">
                 <div class="build-head"><strong>Mend the shelter</strong></div>

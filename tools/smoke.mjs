@@ -9905,33 +9905,19 @@ async function main() {
     const earned = await page.evaluate(() => window.__drift.state().blueprints.map((b) => b.recipeId));
     await shot('panel-01-earned');
 
-    check('PANEL 1 — a recipe was genuinely DEMONSTRATED through the real UI first',
-        earned.length >= 1, `plans: [${earned.join(', ') || 'none'}]`);
-
-    //  ...and now the materials go away entirely. 0 wood, 0 stone, against a hammer that
-    //  costs 2 and 3.
-    const learned = earned[0] ?? 'stonehammer';
-    const TITLE = learned === 'storage' ? 'Storage' : 'Stone hammer';
-    await page.evaluate(() => {
-        const s = window.__drift.state();
-        s.inventory.wood = 0; s.inventory.stone = 0; s.inventory.fiber = 0; s.inventory.sharpblade = 0;
-    });
-    await sleep(500);
-    const stripped = await buildRows();
-    await shot('panel-02-stripped');
-    const row = rowNamed(stripped.rows, TITLE);
-
-    check(`PANEL 1 — the earned recipe SURVIVES an empty inventory (${TITLE})`,
-        Boolean(row), `rows: [${stripped.rows.map((r) => r.title).join(' | ')}]`);
-
-    check('PANEL 1 — ...and the row NAMES the shortfall rather than just vanishing',
-        Boolean(row) && row.gates.length > 0 && row.gates.some((g) => g.unmet)
-        && row.gates.every((g) => /\d+ *\/ *\d+/.test(g.text)),
-        row ? `gates: [${row.gates.map((g) => g.text).join(' | ')}]` : 'no row');
-
-    check('PANEL 1 — ...with the button disabled and saying so, not silently dead',
-        Boolean(row) && row.disabled === true && /not enough/i.test(row.button ?? ''),
-        row ? `button "${row.button}" disabled=${row.disabled}` : 'no row');
+    //  PANEL 1 IS RETIRED, AND WHAT IT PROTECTED IS WORTH RECORDING RATHER THAN LOSING.
+    //
+    //  It asserted [[D-160]]'s ruling: a recipe you have earned keeps its row when the
+    //  materials run short, showing the shortfall instead of vanishing. That was a real
+    //  invariant while this panel listed recipes. It lists none now — Combine makes them —
+    //  so there is no row left to survive anything, and the check would pass on an empty
+    //  room while proving nothing.
+    //
+    //  IT DOES NOT TRANSPARENTLY MOVE TO THE SLATE, and that is the honest part: chips
+    //  exist only for materials genuinely in reach, so a survivor with no wood cannot stage
+    //  wood and therefore cannot see the spear at all. The Build panel used to show it as
+    //  "Wood 0 / 3". The affordance is GONE, not relocated, and it is named in this batch's
+    //  report as a ruling the director should make rather than something quietly dropped.
 
     // ---- 2 · EVERY earned recipe, all at once, with nothing in hand --------------------
     await editSave(`
@@ -9949,52 +9935,22 @@ async function main() {
     await sleep(900);
     const bare = await buildRows();
     await shot('panel-03-all-known-nothing-held');
-    const missingRows = ROW_TITLES.filter((t) => !rowNamed(bare.rows, t));
 
-    check('PANEL 2 — every earned HAND-HELD recipe is listed with nothing in hand',
-        bare.open && missingRows.length === 0,
-        missingRows.length ? `MISSING: [${missingRows.join(', ')}]` : `all ${ROW_TITLES.length} present`);
-
-    check('PANEL 2 — ...and every one of them shows its shortfall',
-        bare.open && ROW_TITLES.every((t) => {
-            const r = rowNamed(bare.rows, t);
-            return r && r.gates.some((g) => g.unmet) && r.disabled === true;
-        }),
-        ROW_TITLES.map((t) => {
-            const r = rowNamed(bare.rows, t);
-            return `${t}:${r ? (r.gates.filter((g) => g.unmet).length + 'short') : 'ABSENT'}`;
-        }).join(' '));
-
-    // ---- 3 · THE SCOPE BOUNDARY — earned only, never a catalogue -----------------------
-    await editSave(`
-        state.player = { x: 0, y: 96 };
-        state.energy = 100; state.health = 100; state.warmth = 60;
-        state.hunger = 90; state.thirst = 90;
-        state.blueprints = [];
-        state.knowledge = { ...state.knowledge, nullPairs: [] };
-        state.tools = { ...state.tools, axe: false, spear: false, backpack: false,
-            stoneHammer: false, fishingLine: false, net: false };
-        state.torch = { ...state.torch, owned: false };
-        state.shelter = { ...state.shelter, built: false };
-        state.storage = { ...state.storage, built: false };
-        state.raft = { ...state.raft, built: false };
-        state.inventory = { ...state.inventory, wood: 99, stone: 99, fiber: 99, sharpblade: 99, coconut: 99 };`);
-    await sleep(900);
-    const rich = await buildRows();
-    await shot('panel-04-unearned-stays-absent');
-    const leaked = ROW_TITLES.filter((t) => rowNamed(rich.rows, t));
-
-    //  ...AND THE TWO PLACED OUTCOMES ARE ABSENT EVEN THOUGH THEY ARE EARNED. Their absence
-    //  here is the merge, not a regression: the slate owns them now. Asserted explicitly so
-    //  that a future change quietly restoring the rows shows up as a contradiction rather
-    //  than as a harmless extra.
-    check('PANEL 2 — ...and the two PLACED outcomes are NOT here, because the slate owns them',
-        bare.open && PLACED_TITLES.every((t) => !rowNamed(bare.rows, t)),
+    //  SUPERSEDED AGAIN, and this time completely. Combine makes everything now — hand-held
+    //  straight into your hands, placed by the tap that picks the spot — so the Build panel
+    //  offers NO craft rows at all. What it still offers is what has nowhere else to be, and
+    //  the checks below name each one rather than asserting a count nobody can read.
+    check('PANEL 2 — the Build panel offers NO craft rows: Combine owns every one of them',
+        bare.open && ROW_TITLES.every((t) => !rowNamed(bare.rows, t))
+        && PLACED_TITLES.every((t) => !rowNamed(bare.rows, t)),
         `Build rows: [${bare.rows.map((r) => r.title).join(' | ')}]`);
 
-    check('PANEL 3 — SCOPE: full pockets and nothing demonstrated still lists NO recipe',
-        rich.open && leaked.length === 0,
-        leaked.length ? `LEAKED: [${leaked.join(', ')}]` : `rows: [${rich.rows.map((r) => r.title).join(' | ')}]`);
+    //  PANEL 3 IS GONE, AND IT IS WORTH SAYING WHY RATHER THAN JUST DELETING IT. It asserted
+    //  that full pockets with nothing demonstrated listed no recipe — the Law 95 scope
+    //  boundary — and that was a real check while this panel listed recipes. It lists none
+    //  now, so the assertion passes on an empty room and proves nothing about the rule.
+    //  The boundary moved with the feature: `SLATE 1` asserts it where it now lives, against
+    //  the anonymous slots, including their rendered attributes.
     }
 
     // ======== ITEMS — the pile you can see, and the cold that speaks first ========
@@ -10363,22 +10319,48 @@ async function main() {
         armed.combineDisabled === false && armed.chosen === 1,
         `combine disabled ${armed.combineDisabled}, chosen ${armed.chosen}`);
 
-    // ---- 4 · COMBINE COMMITS, and succeeds ---------------------------------------------
+    // ---- 4 · COMBINE COMMITS — and for a PLACED outcome that is two beats ---------------
+    //
+    //  WRITTEN BEFORE PLACEMENT EXISTED, and red since [[D-164]] made the crate a placed
+    //  outcome. It pressed Combine and expected the materials gone in the same breath; a
+    //  crate now arms a siting and spends NOTHING until the tap that picks the spot. The old
+    //  assertion was not wrong when it was written, and it is not a product fault now — it was
+    //  simply never re-read after the design under it changed. Both beats are asserted here so
+    //  the distinction cannot rot again.
     const beforeCombine = await page.evaluate(() => {
         const s = window.__drift.state();
         return { wood: s.inventory.wood, built: s.storage.built, plans: s.blueprints.length };
     });
     await realTapDom('.combine-btn');
-    await sleep(1400);
+    await sleep(1300);
+    const sited = await page.evaluate(() => ({
+        wood: window.__drift.state().inventory.wood,
+        said: window.__drift.hints().last ?? '',
+        built: window.__drift.state().storage.built,
+    }));
+
+    check('SLATE 4 — Combine on the crate asks WHERE, and spends nothing yet',
+        /tap where/i.test(sited.said) && sited.built === false && sited.wood === beforeCombine.wood,
+        `"${sited.said}", built ${sited.built}, wood ${beforeCombine.wood} -> ${sited.wood}`);
+
+    //  ...and the tap that follows is the one that builds and charges.
+    let placedOk = false;
+    for (const [fx, fy] of [[0.50, 0.82], [0.30, 0.70], [0.70, 0.70]]) {
+        await tapAt(Math.round(915 * fx), Math.round(412 * fy));
+        await sleep(1600);
+        placedOk = await page.evaluate(() => window.__drift.state().storage.built);
+        if (placedOk) break;
+    }
     const afterCombine = await page.evaluate(() => {
         const s = window.__drift.state();
-        return { wood: s.inventory.wood, plans: s.blueprints.map((b) => b.recipeId), said: window.__drift.hints().last ?? '' };
+        return { wood: s.inventory.wood, plans: s.blueprints.map((b) => b.recipeId), built: s.storage.built };
     });
     await shot('slate-04-combined');
 
-    check('SLATE 4 — Combine committed the chosen plan and spent the materials',
-        afterCombine.wood < beforeCombine.wood && afterCombine.plans.includes('storage'),
-        `wood ${beforeCombine.wood} -> ${afterCombine.wood}, plans [${afterCombine.plans.join(', ')}]`);
+    check('SLATE 4 — ...and the siting tap builds it, at exactly the crate price',
+        afterCombine.built === true && beforeCombine.wood - afterCombine.wood === 5
+        && afterCombine.plans.includes('storage'),
+        `built ${afterCombine.built}, wood ${beforeCombine.wood} -> ${afterCombine.wood} (want -5), plans [${afterCombine.plans.join(', ')}]`);
 
     // ---- 5 · DISCOVER finds the OTHER one, without ever having named it ----------------
     await openPack();
@@ -10684,6 +10666,201 @@ async function main() {
         `spent wood ${beforeShelter.wood - afterShelter.wood}, stone ${beforeShelter.stone - afterShelter.stone}, fibre ${beforeShelter.fiber - afterShelter.fiber} (want 8/4/3)`);
 
     }
+
+    // ======== MAKES — Combine produces the thing, and the shelter is a Shelter ========
+    //
+    //  THE HALF-RULE THIS CLOSES. [[D-164]] gave shelter and storage a real build from the
+    //  slate and left every hand-held outcome refining a plan version, so a crate went up and
+    //  a spear did not. Both shapes are driven here on the real surface, and the DIFFERENCE is
+    //  asserted as hard as the sameness: placed asks WHERE, hand-held asks nothing.
+    if (section('MAKES — everything known builds from Combine')) {
+
+    const openPack = async () => { await realTapDom('.carried-button'); await sleep(650); };
+    const pickMats = async (...mats) => {
+        for (const m of mats) { await realTapDom(`.combine-chip[data-mat="${m}"]`); await sleep(260); }
+    };
+    const chooseNamed = async (re) => page.evaluate((src) => {
+        const rx = new RegExp(src, 'i');
+        const k = Array.from(document.querySelectorAll('.slate-slot.known'))
+            .find((x) => rx.test(x.textContent ?? ''));
+        if (k instanceof HTMLElement) { k.click(); return (k.textContent ?? '').trim(); }
+        return null;
+    }, re);
+
+    const WELL = 'state.player = { x: 0, y: 96 }; state.energy = 100; state.health = 100;'
+        + ' state.warmth = 70; state.hunger = 90; state.thirst = 90;';
+    const plan = (id, name) => `{ recipeId: '${id}', name: '${name}', version: 1,`
+        + " discoveredAtGameHours: 0, workmanship: 'serviceable' }";
+
+    // ---- 1 · A KNOWN SPEAR IS MADE, NOT RE-PLANNED -----------------------------------
+    await editSave(`${WELL}
+        state.blueprints = [${plan('spear', 'Fire-hardened spear')}];
+        state.tools = { ...state.tools, spear: false };
+        state.inventory = { ...state.inventory, wood: 12, sharpblade: 6, fiber: 9, stone: 0 };`);
+    await sleep(900);
+    await openPack();
+    //  TWO CHIPS, NOT THREE. The spear has TWO slots — [[D-155]] folded the lashing into the
+    //  operation so its signature would stop colliding with the axe, and `craftSpear` still
+    //  spends fibre without it being staged. Staging three materials therefore excludes the
+    //  spear by exact arity and leaves the AXE alone on the slate, which is what the first cut
+    //  of this check measured and misread as a broken build.
+    await pickMats('wood', 'sharpblade');
+    //  DIAGNOSTIC FIRST. A null label says only that nothing matched; what is needed is
+    //  WHICH chips took and WHAT the slate actually rendered.
+    const spearSlate = await page.evaluate(() => ({
+        chips: Array.from(document.querySelectorAll('.combine-chip')).map((c) => c.dataset.mat),
+        picked: Array.from(document.querySelectorAll('.combine-chip.picked')).map((c) => c.dataset.mat),
+        known: Array.from(document.querySelectorAll('.slate-slot.known')).map((k) => (k.textContent ?? '').trim()),
+        unknown: document.querySelectorAll('.slate-slot.unknown').length,
+    }));
+    check('MAKES 1 — the pile staged and the slate named the spear',
+        spearSlate.picked.length === 2 && spearSlate.known.some((k) => /spear/i.test(k)),
+        `chips [${spearSlate.chips.join(', ')}] picked [${spearSlate.picked.join(', ')}] known [${spearSlate.known.join(' | ')}] anon ${spearSlate.unknown}`);
+
+    const spearLabel = await chooseNamed('spear');
+    await sleep(300);
+    const beforeSpear = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { spear: s.tools.spear, wood: s.inventory.wood, blade: s.inventory.sharpblade, fiber: s.inventory.fiber,
+                 version: s.blueprints.find((b) => b.recipeId === 'spear')?.version ?? 0 };
+    });
+    await realTapDom('.combine-btn');
+    await sleep(1500);
+    const afterSpear = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { spear: s.tools.spear, wood: s.inventory.wood, blade: s.inventory.sharpblade, fiber: s.inventory.fiber,
+                 version: s.blueprints.find((b) => b.recipeId === 'spear')?.version ?? 0,
+                 outcome: window.__drift.lastTapOutcome(), panelOpen: window.__drift.panelOpen() };
+    });
+    await shot('makes-01-spear');
+
+    check('MAKES 1 — a known hand-held outcome is MADE, not re-planned',
+        beforeSpear.spear === false && afterSpear.spear === true,
+        `label "${spearLabel}" · tools.spear ${beforeSpear.spear} -> ${afterSpear.spear}, plan version ${beforeSpear.version} -> ${afterSpear.version}`);
+
+    check('MAKES 1 — ...charged exactly what a spear costs (3 wood, 1 blade, 2 fibre)',
+        beforeSpear.wood - afterSpear.wood === 3
+        && beforeSpear.blade - afterSpear.blade === 1
+        && beforeSpear.fiber - afterSpear.fiber === 2,
+        `spent wood ${beforeSpear.wood - afterSpear.wood}, blade ${beforeSpear.blade - afterSpear.blade}, fibre ${beforeSpear.fiber - afterSpear.fiber}`);
+
+    check('MAKES 1 — ...with NO placement step: it is in your hands, and hands are where you are',
+        /combine:spear:made/.test(afterSpear.outcome ?? '') && afterSpear.panelOpen === false,
+        `tap "${afterSpear.outcome}", panel open ${afterSpear.panelOpen}`);
+
+    // ---- 2 · ...AND A TORCH, to prove it is the rule and not the spear ----------------
+    await editSave(`${WELL}
+        state.blueprints = [${plan('torch', 'Bundled torch')}];
+        state.torch = { ...state.torch, owned: false };
+        state.inventory = { ...state.inventory, wood: 9, fiber: 9, sharpblade: 0, stone: 0 };`);
+    await sleep(900);
+    await openPack();
+    await pickMats('wood', 'fiber');
+    await chooseNamed('torch');
+    await sleep(300);
+    const beforeTorch = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { owned: s.torch.owned, wood: s.inventory.wood, fiber: s.inventory.fiber };
+    });
+    await realTapDom('.combine-btn');
+    await sleep(1500);
+    const afterTorch = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return { owned: s.torch.owned, wood: s.inventory.wood, fiber: s.inventory.fiber };
+    });
+    await shot('makes-02-torch');
+
+    check('MAKES 2 — a torch is made the same way, at its own price (2 wood, 2 fibre)',
+        beforeTorch.owned === false && afterTorch.owned === true
+        && beforeTorch.wood - afterTorch.wood === 2 && beforeTorch.fiber - afterTorch.fiber === 2,
+        `owned ${beforeTorch.owned} -> ${afterTorch.owned}, spent wood ${beforeTorch.wood - afterTorch.wood}, fibre ${beforeTorch.fiber - afterTorch.fiber}`);
+
+    // ---- 3 · THE DISTINCTION HOLDS — a placed outcome still asks WHERE ----------------
+    await editSave(`${WELL}
+        state.blueprints = [${plan('storage', 'Storage crate')}];
+        state.storage = { ...state.storage, built: false };
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 0, sharpblade: 0 };`);
+    await sleep(900);
+    await openPack();
+    await pickMats('wood', 'stone');
+    await chooseNamed('crate');
+    await sleep(300);
+    const beforeCrate = await page.evaluate(() => window.__drift.state().inventory.wood);
+    await realTapDom('.combine-btn');
+    await sleep(1300);
+    const armed = await page.evaluate(() => ({
+        said: window.__drift.hints().last ?? '',
+        built: window.__drift.state().storage.built,
+        wood: window.__drift.state().inventory.wood,
+    }));
+    await shot('makes-03-placed-still-asks');
+
+    check('MAKES 3 — a PLACED outcome still asks WHERE and still spends nothing yet',
+        /tap where/i.test(armed.said) && armed.built === false && armed.wood === beforeCrate,
+        `"${armed.said}", built ${armed.built}, wood ${beforeCrate} -> ${armed.wood}`);
+
+    // ---- 4 · THE SHELTER IS A SHELTER -------------------------------------------------
+    await editSave(`${WELL}
+        state.blueprints = [${plan('shelter', 'Shelter')}];
+        state.shelter = { ...state.shelter, built: false };
+        state.inventory = { ...state.inventory, wood: 20, stone: 20, fiber: 20, sharpblade: 0 };`);
+    await sleep(900);
+    await openPack();
+    await pickMats('wood', 'stone', 'fiber');
+    const shelterLabel = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.slate-slot.known')).map((k) => (k.textContent ?? '').trim()));
+    await shot('makes-04-shelter-name');
+
+    check('MAKES 4 — the shelter is named "Shelter", not a tier',
+        shelterLabel.some((l) => /^shelter$/i.test(l)) && !shelterLabel.some((l) => /lean-to/i.test(l)),
+        `slate: [${shelterLabel.join(' | ')}]`);
+    await page.evaluate(() => {
+        const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+        if (c instanceof HTMLElement) c.click();
+    });
+    await sleep(450);
+
+    // ---- 5 · WHAT THE BUILD PANEL STILL HAS, and why it could not be deleted ----------
+    await editSave(`${WELL}
+        state.tools = { ...state.tools, stoneHammer: true };
+        state.inventory = { ...state.inventory, wood: 9, stone: 9, fiber: 9, sharpblade: 0 };`);
+    await sleep(900);
+    const left = await (async () => {
+        const opened = await openBuild();
+        if (!opened.ok) return { open: false, heads: [], knap: false, sleep: false };
+        const r = await page.evaluate(() => ({
+            open: true,
+            //  CRAFT ROWS ONLY. The refuge report's head also reads "Shelter" — it is a
+            //  READING of how your shelter is doing, not an offer to build one — and matching
+            //  it reported a craft row that is not there. Same confusion PANEL hit in [[D-160]],
+            //  and the same fix: skip the blocks that were never craft rows.
+            heads: Array.from(document.querySelectorAll('.panel.build .build-item'))
+                .filter((it) => !['refuge-item', 'rest-item', 'hint-item', 'mend-item', 'knap-item']
+                    .some((c) => it.classList.contains(c)))
+                .map((it) => (it.querySelector('h2, .build-head strong')?.textContent ?? '').trim()),
+            allHeads: Array.from(document.querySelectorAll('.panel.build .build-item h2, .panel.build .build-head strong'))
+                .map((h) => (h.textContent ?? '').trim()),
+            knap: Boolean(document.querySelector('.knap-btn')),
+            sleep: Boolean(document.querySelector('.sleep-btn')),
+        }));
+        await realTapDom('.panel.build .close-btn');
+        await sleep(400);
+        return r;
+    })();
+    await shot('makes-05-what-remains');
+
+    check('MAKES 5 — KNAP survives, and had to: one slot, so it can never reach the slate',
+        left.open && left.knap === true,
+        `knap button present: ${left.knap} · heads [${left.heads.join(' | ')}]`);
+
+    check('MAKES 5 — ...and SLEEP ROUGH survives, having no other entry point in the game',
+        left.open && left.sleep === true, `sleep button present: ${left.sleep}`);
+
+    check('MAKES 5 — ...and not one craft row is left',
+        left.open && left.heads.length === 0,
+        `craft rows: [${left.heads.join(' | ')}] · everything in the panel: [${left.allHeads.join(' | ')}]`);
+    }
+
 
 
 

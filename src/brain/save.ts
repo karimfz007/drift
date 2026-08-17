@@ -459,7 +459,7 @@ function migrateV11toV12(envelope: SaveEnvelope): SaveEnvelope {
 
     //  Possession is proof. Each pair is (recipe, the evidence that it was once made).
     const evidence: Array<[string, boolean, string, MaterialKind[]]> = [
-        ['shelter', old.shelter?.built === true, 'Lean-to, as built', ['wood', 'stone', 'fiber']],
+        ['shelter', old.shelter?.built === true, 'Shelter, as built', ['wood', 'stone', 'fiber']],
         ['storage', old.storage?.built === true, 'Store, as built', ['wood', 'stone']],
         ['axe', old.tools?.axe === true, 'Hafted axe, as made', ['wood', 'sharpblade', 'fiber']],
         ['stonehammer', old.tools?.stoneHammer === true, 'Stone hammer, as made', ['wood', 'stone']],

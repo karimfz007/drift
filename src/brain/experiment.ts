@@ -348,7 +348,7 @@ export function drawIntoHands(state: GameState, kind: MaterialKind, need: number
 }
 
 /**
- * WHAT A PLACED OUTCOME COSTS — read from the SAME constants the builders charge.
+ * WHAT ANY BUILDABLE OUTCOME COSTS — read from the SAME constants the makers charge.
  *
  * Deliberately not derived from the recipe slots. A slot carries a TAG, tags are optional and
  * several raw kinds can satisfy one, so deriving the material would be a clever guess that
@@ -358,21 +358,53 @@ export function drawIntoHands(state: GameState, kind: MaterialKind, need: number
  * agreement by building one of each and reading the inventory, so a retune that moves one and
  * not the other fails loudly instead of short-changing a survivor.
  */
-export function placedCost(recipeId: string): Array<{ kind: MaterialKind; amount: number }> {
-    if (recipeId === 'storage') {
-        return [
+export function recipeCost(recipeId: string): Array<{ kind: MaterialKind; amount: number }> {
+    switch (recipeId) {
+        //  PLACED — the two that go in the world.
+        case 'storage': return [
             { kind: 'wood', amount: TUNE.storageWoodCost },
-            { kind: 'stone', amount: TUNE.storageStoneCost },
-        ];
-    }
-    if (recipeId === 'shelter') {
-        return [
+            { kind: 'stone', amount: TUNE.storageStoneCost }];
+        case 'shelter': return [
             { kind: 'wood', amount: TUNE.shelterWoodCost },
             { kind: 'stone', amount: TUNE.shelterStoneCost },
-            { kind: 'fiber', amount: TUNE.shelterFiberCost },
-        ];
+            { kind: 'fiber', amount: TUNE.shelterFiberCost }];
+        //  HAND-HELD — the ones that end up in your hands.
+        case 'torch': return [
+            { kind: 'wood', amount: TUNE.torchWoodCost },
+            { kind: 'fiber', amount: TUNE.torchFiberCost }];
+        case 'axe': return [
+            { kind: 'wood', amount: TUNE.axeWoodCost },
+            { kind: 'sharpblade', amount: TUNE.axeSharpbladeCost },
+            { kind: 'fiber', amount: TUNE.axeFiberCost }];
+        case 'spear': return [
+            { kind: 'wood', amount: TUNE.spearWoodCost },
+            { kind: 'sharpblade', amount: TUNE.spearSharpbladeCost },
+            { kind: 'fiber', amount: TUNE.spearFiberCost }];
+        case 'backpack': return [
+            { kind: 'fiber', amount: TUNE.backpackFiberCost },
+            { kind: 'wood', amount: TUNE.backpackWoodCost }];
+        case 'stonehammer': return [
+            { kind: 'wood', amount: TUNE.stoneHammerWoodCost },
+            { kind: 'stone', amount: TUNE.stoneHammerStoneCost }];
+        case 'raft': return [
+            { kind: 'wood', amount: TUNE.raftWoodCost },
+            { kind: 'fiber', amount: TUNE.raftFiberCost },
+            { kind: 'coconut', amount: TUNE.raftCoconutCost }];
+        case 'fishingline': return [
+            { kind: 'fiber', amount: TUNE.fishingLineFiberCost },
+            { kind: 'sharpblade', amount: TUNE.fishingLineBladeCost }];
+        case 'net': return [
+            { kind: 'fiber', amount: TUNE.netFiberCost },
+            { kind: 'sharpblade', amount: TUNE.netSharpbladeCost }];
+        //  `knap` has ONE slot, so it can never be staged (the gate wants two) and never
+        //  reaches this. It keeps its own button for exactly that reason — see the Build panel.
+        default: return [];
     }
-    return [];
+}
+
+/** Kept as the placed-only name for readers who want the narrower question. */
+export function placedCost(recipeId: string): Array<{ kind: MaterialKind; amount: number }> {
+    return isPlaced(recipeId) ? recipeCost(recipeId) : [];
 }
 
 /** Is this pile a question rather than an attempt? */
@@ -920,7 +952,13 @@ function blueprintNameFor(recipeId: string): string {
     switch (recipeId) {
         case 'axe': return 'Hafted axe';
         case 'torch': return 'Bound torch';
-        case 'shelter': return 'Lean-to frame';
+        //  DIRECTOR'S RULING: it is a SHELTER, and future improvements make THIS shelter
+        //  better rather than replacing it with a differently-named tier. Nothing had to be
+        //  restructured for that — there is no tier ladder in the model to begin with:
+        //  `ShelterState` is one structure with `built`, `durability` and named `defects`, so
+        //  "upgrade in place" is already the only thing it can do. "Lean-to" was a word in the
+        //  prose, never a rung.
+        case 'shelter': return 'Shelter';
         case 'storage': return 'Storage crate';
         case 'stonehammer': return 'Stone hammer';
         case 'knap': return 'Knapped blade';

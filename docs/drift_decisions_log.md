@@ -3,6 +3,30 @@
 
 ---
 
+**D-165 · 2026-08-17 — COMBINE MAKES THE THING NOW, ALL OF IT; AND RETIRING A SURFACE TOOK TWO INVARIANTS WITH IT.**
+
+**THE HALF-RULE IS CLOSED.** [[D-164]] gave shelter and storage a real build from the slate and left every hand-held outcome bumping a plan version — *"You refine your plan for X"* — so a crate went up and a spear did not. Every known outcome is now MADE on the spot: `Game.MAKERS` routes each recipe id to its own SHIPPED craft function, unchanged, so nothing about making an axe moved except which surface asks for one. Measured on the real surface: `tools.spear false -> true` with **plan version 1 -> 1**, `spent wood 3, blade 1, fibre 2`, tap `combine:spear:made`.
+
+**TWO SHAPES, ONE VERB, AND THE DIFFERENCE IS ONLY WHERE THE THING LANDS.** Placed outcomes ask WHERE — arm a siting, spend nothing, build on the tap that picks the spot. Hand-held outcomes ask nothing at all, because there is no question: a spear goes in your hands and your hands are where you are. A confirm step there would be ceremony. Both draw through `drawIntoHands`, so an open crate feeds a spear exactly as it feeds a shelter.
+
+**THE BUILD PANEL COULD NOT BE DELETED, AND THE DEPENDENTS WERE CHECKED RATHER THAN ASSUMED.** All eight craft rows are gone, with `buildItemMarkup` and `raftMarkup`. What survives, survives because it has nowhere else to be: **KNAP** is a ONE-slot recipe and staging wants two materials, so it can never reach the slate — and sharp blades gate the axe and the spear, so deleting its button would strand the tree. **SLEEP ROUGH** exists only there; the circle's `sleep` verb wants a shelter to aim at. The refuge line is a reading, the hints are the teaching half of the pivot, and **MEND** is genuinely redundant (the shelter's own circle carries it) and kept only because removing a working control was not this batch's ruling.
+
+**THE SHELTER IS A SHELTER, AND NOTHING NEEDED RESTRUCTURING TO MAKE THAT TRUE.** Asked whether the tier model needed rework: **no**. There is no ladder — `ShelterState` is one structure with `built`, `durability` and named `defects`, and `shelter` is a single recipe id. "Lean-to" was a word in the prose, never a rung, so "improvements make THIS shelter better" is already the only thing the model can express. A pure display fix in three places: the name, the migrated-save label, and the refuge sentence. A test asserts no recipe name anywhere still reads "lean-to".
+
+**AND RETIRING THE ROWS COST TWO THINGS, WHICH ARE NAMED HERE RATHER THAN DISCOVERED LATER.**
+
+**FIRST, [[D-160]]'s RULING IS GONE, NOT RELOCATED.** That batch ruled that a recipe you have earned keeps its row when the materials run short, showing the shortfall instead of vanishing. It does not transfer: slate chips exist only for materials genuinely in reach, so a survivor with no wood cannot stage wood and therefore cannot see the spear AT ALL. The panel used to show it as `Wood 0 / 3`. Two rulings in tension, this one implemented as directed, and the loss recorded in `PANEL`'s own comment where the check used to be.
+
+**SECOND, THE HARNESS IS BADLY OUT OF DATE, AND THE SCHEDULE RULE IS WHY NOBODY SAW IT.** Thirty-five references across the device harness drive selectors that no longer exist — `try-combine-btn` (8, dead since [[D-163]]) and ten craft buttons (27, dead as of this batch). Twenty checks across six sections are red on main, and **the product is correct in every one of them**: they assert surfaces that were deliberately retired. They went unseen because active-hours discipline means only the sections being touched are ever run, so a retirement's blast radius is invisible until something runs the rest. That is a real hole in the process and not merely a to-do: the rule that keeps runs cheap also keeps their consequences hidden.
+
+**Class: OPERATIVE** (`Game.MAKERS` and the hand-held branch of `onCombine` in `src/body/game.ts`; `recipeCost` in `src/brain/experiment.ts`; the craft rows' removal from `src/body/hud.ts`; the `Shelter` rename; shipped in this batch).
+
+**NO SAVE MIGRATION.** No state shape changed — the makers are the shipped ones and write the fields they always wrote. The migrated-save blueprint LABEL changed, which is a string in a v-migration and not a shape.
+
+*Witness — legs named per [[D-066]] (c). **STATIC: ran** — typecheck, purity (56 brain files), tune-mirror, docs-integrity. **UNIT: 1461 passed / 3 skipped** across 80 files, +17. Two earlier reds were my own concurrency — a unit run against a HELD bench lock, caught by `the bench mutex` test itself — and the suite is clean with the bench free. **DEVICE: MAKES 19/19**, plus PANEL, SLATE and MERGE re-run together so a neighbour cannot drift unseen. **FAIL-THEN-PASS, both changes:** restoring the tier name fails on `expected 'Lean-to frame' to be 'Shelter'`; removing the maker lookup returns the exact original defect — `plan version 1 -> 2` with `tools.spear` unmoved, cost `1/1/0` instead of `3/1/2`, and the tap reading `combine:spear:invented`. **LIVE:** the push SHA and served-SHA gate in this batch's report.*
+
+**NAMED, NOT FIXED:** the thirty-five stale selector references and the twenty red legacy checks, which want a batch of their own; and the [[D-160]] affordance, which wants a ruling.
+
 **D-164 · 2026-08-16 — THE LAST TWO THINGS WITH THEIR OWN WAY IN JOINED THE SLATE, AND A CRATE STOPPED BEING SOMETHING YOU STAND NEXT TO AND CANNOT USE.**
 
 **SHELTER AND STORAGE WERE ALREADY ORDINARY RECIPES; WHAT THEY HAD WAS A PRIVATE DOOR.** They sit in `matchPool` like everything else and have appeared in the slate — named when demonstrated, anonymous when not — since [[D-163]]. What made them special was the ENTRY: a hold on open ground opened a card that asked WHAT and WHERE at once, so a survivor had to already be standing somewhere buildable before the game would admit crates existed. That is the catalogue problem wearing a gesture. The pile names the thing now, and the tap that follows places it.

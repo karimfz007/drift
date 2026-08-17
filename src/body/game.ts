@@ -159,8 +159,9 @@ import {
     illnessSymptom,
     combineSlate,
     isPlaced,
+    recipeDisplayName,
     drawIntoHands,
-    placedCost,
+    recipeCost,
     reachFor,
     discoverWith,
     coldSymptom,
@@ -1038,6 +1039,48 @@ export class Game {
      * recipe that does not match the pile or that they have not demonstrated, so a stale slate
      * cannot mint anything — the guard is the brain's, not this layer's.
      */
+    /**
+     * EVERY MAKER, BY RECIPE ID — the map that finishes the Build panel's retirement.
+     *
+     * These are the SHIPPED craft functions, unchanged: each one validates its own materials,
+     * rolls its own grade, sets its own tool flag and records its own domain practice. Nothing
+     * about making an axe moved; what changed is only which surface asks for one.
+     *
+     * `knap` is deliberately absent. It is a ONE-slot recipe, and staging needs two materials,
+     * so it can never appear on the slate — which is why the Build panel keeps its knap button
+     * and cannot be deleted outright. See the note there.
+     */
+    private static readonly MAKERS: Record<string, (state: GameState) => boolean> = {
+        torch: craftTorch,
+        axe: craftAxe,
+        spear: craftSpear,
+        backpack: makeBackpack,
+        stonehammer: craftStoneHammer,
+        raft: craftRaft,
+        fishingline: craftFishingLine,
+        net: craftNet,
+    };
+
+    /**
+     * COMBINE, AND NOW IT ACTUALLY MAKES THE THING.
+     *
+     * THE DEFECT THIS CLOSES, flagged at the end of the batch that created it: a known outcome
+     * chosen from the slate only ever BUMPED ITS PLAN VERSION — *"You refine your plan for X"* —
+     * because `tryCombineWith` mints plans and the Build panel turned plans into objects. Once
+     * [[D-164]] gave shelter and storage a real build from the slate, a crate went up and a
+     * spear did not, which is the kind of half-rule a player meets once and stops trusting.
+     *
+     * TWO SHAPES, ONE VERB, and the difference is only WHERE the thing ends up:
+     *
+     *   PLACED (shelter, storage) — asks WHERE. Arms a siting, spends nothing, and the tap that
+     *     picks the spot does the building.
+     *   HAND-HELD (everything else) — no extra step at all, because there is no question to
+     *     ask: a spear goes in your hands, and the only place your hands can be is where you
+     *     are. Adding a confirm here would be ceremony for its own sake.
+     *
+     * The box feeds both: `drawIntoHands` moves what is needed out of an open crate first,
+     * because every shipped maker reads `state.inventory` and nothing else.
+     */
     private onCombine(materials: string[], recipeId: string, storageOpen = false): void {
         //  A PLACED OUTCOME IS NOT COMMITTED HERE. Shelter and storage go in the world, so
         //  choosing one arms the siting step and spends nothing — the build happens on the tap
@@ -1053,6 +1096,34 @@ export class Game {
             this.lastActivityAt = now();
             return;
         }
+        //  HAND-HELD: make it now. Top the hands up from the box, then call the shipped maker.
+        const maker = Game.MAKERS[recipeId];
+        if (maker) {
+            const s = session().state;
+            for (const { kind, amount } of recipeCost(recipeId)) {
+                if (!drawIntoHands(s, kind, amount, storageOpen)) {
+                    this.explain('You do not have enough for that yet.');
+                    return;
+                }
+            }
+            if (!maker(s)) {
+                //  The maker's own refusal, in its own words where it has any — the raft is the
+                //  one with something to say (it wants water), and saying "you cannot" instead
+                //  would be the silent-refusal shape [[D-042]] exists to forbid.
+                this.explain(recipeId === 'raft'
+                    ? (raftBlocker(s) ?? 'That will not come together here.')
+                    : 'You cannot make that right now.');
+                return;
+            }
+            this.recordTap(0, 0, `combine:${recipeId}:made`);
+            this.cues.play(CUES.craft);
+            this.floatText(`${recipeDisplayName(recipeId)} — made`);
+            session().markFirstCraft(msSinceControl());
+            session().persist(now());
+            this.lastActivityAt = now();
+            return;
+        }
+
         const result = makeChosen(session().state, materials as 'wood'[], recipeId, storageOpen);
         this.recordTap(0, 0, `combine:${recipeId}:${result.outcome}`);
         session().persist(now());
@@ -1470,7 +1541,7 @@ export class Game {
         //  read `state.inventory` and nothing else. Teaching them a second source would mean
         //  teaching every future builder the same thing; moving the material is one line here
         //  and is what a person does anyway.
-        for (const { kind, amount } of placedCost(recipeId)) {
+        for (const { kind, amount } of recipeCost(recipeId)) {
             if (!drawIntoHands(s, kind, amount, storageOpen)) {
                 this.siting = { recipeId, materials, storageOpen };
                 this.explain('You do not have enough for that yet.');
