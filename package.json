@@ -19,6 +19,7 @@
     "smoke": "node tools/smoke.mjs",
     "build:raw": "vite build --config vite/config.prod.mjs",
     "tune-mirror": "node tools/check-tune-mirror.mjs",
+    "selectors": "node tools/check-selectors.mjs",
     "deploy-witness": "node tools/deploy-witness.mjs"
   },
   "devDependencies": {

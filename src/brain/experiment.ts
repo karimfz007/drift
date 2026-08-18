@@ -407,6 +407,71 @@ export function placedCost(recipeId: string): Array<{ kind: MaterialKind; amount
     return isPlaced(recipeId) ? recipeCost(recipeId) : [];
 }
 
+/**
+ * WHAT THIS SURVIVOR KNOWS HOW TO MAKE, AND WHAT THEY ARE SHORT OF — [[RULING 1]] restored.
+ *
+ * THE REPEAL THIS UNDOES. The Build panel listed every earned recipe with its cost as `x / n`
+ * and named where the missing part comes from, so a survivor could see the whole of what they
+ * had learned and what standing between them and it. Retiring that panel took the affordance
+ * with it, and the slate did not inherit it: the slate answers "what does THIS PILE make", and
+ * a pile can only contain materials you are already holding, so a plan you cannot currently
+ * afford became invisible. Three separate checks caught the loss from three directions — a
+ * minted blueprint no longer "put the row back", knowledge appeared to "switch off" when the
+ * materials ran out, and the gated source hints vanished. An affordance that disappears in a
+ * refactor is a silent repeal, which is the thing being corrected.
+ *
+ * KNOWLEDGE IS THE GATE; MATERIALS ONLY INFORM. That order is the whole ruling and it is the
+ * exact inverse of the defect that killed the Build panel, where a row's PRESENCE depended on
+ * what you were carrying — Law 216's "no possession may stand in for knowing". So: every
+ * demonstrated recipe appears here, always. What changes with the reach is only the SHORTFALL
+ * beside it.
+ *
+ * LAW 95 IS UNTOUCHED. This lists only what the survivor has demonstrated. Unknown patterns are
+ * not here at all — they remain the slate's anonymous slots, property-hint-only, and nothing in
+ * this structure can name one.
+ */
+export interface KnownRecipe {
+    recipeId: string;
+    name: string;
+    /** Every material it wants, with how much is within reach right now. */
+    needs: Array<{ kind: MaterialKind; need: number; have: number }>;
+    /** Can it be made right now? Derived, never a gate on being listed. */
+    afford: boolean;
+}
+
+export function knownRecipes(state: GameState, storageOpen = false): KnownRecipe[] {
+    const reach = reachFor(state, storageOpen);
+    const out: KnownRecipe[] = [];
+    //  ONE ENTRY PER RECIPE, not per blueprint record. §10.5 bumps a plan's version rather than
+    //  minting a second copy, so duplicates should not exist — but a device check found
+    //  "Hafted axe" listed twice, and this list is a statement about what you KNOW. You either
+    //  know a thing or you do not; it cannot be known twice.
+    const seen = new Set<string>();
+    for (const bp of state.blueprints) {
+        if (seen.has(bp.recipeId)) continue;
+        seen.add(bp.recipeId);
+        const cost = recipeCost(bp.recipeId);
+        if (cost.length === 0) continue;
+        const needs = cost.map(({ kind, amount }) => ({
+            kind, need: amount, have: reach.counts[kind] ?? 0,
+        }));
+        out.push({
+            recipeId: bp.recipeId,
+            name: recipeDisplayName(bp.recipeId),
+            needs,
+            afford: needs.every((x) => x.have >= x.need),
+        });
+    }
+    //  Affordable first, then alphabetical — a stable order, so the list does not reshuffle
+    //  under the survivor as they pick things up.
+    return out.sort((a, b) => (Number(b.afford) - Number(a.afford)) || a.name.localeCompare(b.name));
+}
+
+/** Where a missing material comes from, in the survivor's own terms. Empty when nothing is short. */
+export function shortfallSources(entry: KnownRecipe): MaterialKind[] {
+    return entry.needs.filter((x) => x.have < x.need).map((x) => x.kind);
+}
+
 /** Is this pile a question rather than an attempt? */
 export function isAmbiguousToPlayer(state: GameState, materials: MaterialKind[]): boolean {
     return knownMatches(state, materials).length >= 2;
@@ -700,7 +765,12 @@ export function makeChosen(
 export function discoverWith(state: GameState, materials: MaterialKind[], storageOpen = false): ExperimentResult {
     const blocked = canExperimentWith(state, materials, storageOpen);
     if (blocked) return refuse(blocked);
-    if (!hasUnknownRival(state, materials)) {
+    //  REFUSED ONLY WHEN THERE IS GENUINELY NOTHING LEFT TO LEARN — which means the pile HAS
+    //  outcomes and you already hold every one of them. A pile that makes NOTHING is not that
+    //  case: trying it is how [[D-055]]'s null-outcome journal gets written, and that is a
+    //  teaching path, not a dead end. The old guard refused both situations identically and told
+    //  a survivor they "already knew everything these make" about two things that make nothing.
+    if (matchPool(materials).length > 0 && !hasUnknownRival(state, materials)) {
         return refuse('You already know everything these make.');
     }
     return tryCombineWith(state, materials, EXPERIMENT_CHOICE, storageOpen);

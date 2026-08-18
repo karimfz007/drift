@@ -427,6 +427,36 @@ function ordinal(n: number): string {
  * no id, no name and no ordering for an unknown outcome, so this layer cannot leak an identity
  * however carelessly it renders. Do not widen it.
  */
+//  WHERE A MISSING PART COMES FROM, in the survivor's own terms — restored with [[RULING 1]].
+//
+//  This table went out with `buildItemMarkup`, and losing it was the quietest third of what the
+//  retirements took: not merely "you are short of fibre", but where fibre IS. A shortfall with no
+//  source is a locked door with no keyhole — D-040/D-043 named that once already, when fibre felt
+//  sourceless to the director.
+const MATERIAL_SOURCE: Record<string, string> = {
+    Wood: 'driftwood on the sand, deadfall by the trees',
+    Stone: 'grey rock outcrops on the beach',
+    Fibre: 'reeds at the pond, or a coconut palm',
+    //  Reworded: it used to end "below", meaning the knap row beneath it in the Build panel.
+    //  That row is no longer beneath anything — knapping keeps its own button in the maker panel.
+    'Sharp blade': 'knap raw stone with a stone hammer',
+    Coconut: 'the coconut palms in the scrub',
+};
+
+/**
+ * WHAT THIS SURVIVOR KNOWS HOW TO MAKE — [[RULING 1]]. Mirrors `KnownRecipe` and derives nothing.
+ *
+ * Every entry is DEMONSTRATED, so naming it is not a spoiler. `afford` never decides whether an
+ * entry exists — knowledge does that — it only decides how the entry LOOKS. That order is the
+ * ruling: the Build panel died because a row's presence depended on what you were carrying.
+ */
+export interface KnownRecipeView {
+    recipeId: string;
+    name: string;
+    needs: Array<{ kind: string; need: number; have: number }>;
+    afford: boolean;
+}
+
 export interface CombineSlateView {
     known: Array<{ recipeId: string; name: string }>;
     unknownCount: number;
@@ -549,22 +579,15 @@ export function showBuildCard(
     overlay: HTMLElement,
     view: BuildCardView,
     knap: KnapView,
-    onCraftTorch: () => void,
-    onCraftAxe: () => void,
-    onBuildShelter: () => void,
-    onBuildStorage: () => void,
-    onCraftStoneHammer: () => void,
-    onCraftSpear: () => void,
-    onMakeBackpack: () => void,
-    onCraftRaft: () => void,
+    //  TEN CRAFT CALLBACKS ARE GONE, and their `bind` calls with them. [[D-165]] removed the
+    //  rows those buttons lived in — Combine makes everything now — and left the wiring behind:
+    //  ten parameters threaded from `game.ts`, ten `bind` calls looking for selectors nothing
+    //  renders. Dead wiring is worse than no wiring, because it reads as a live surface to
+    //  anyone auditing this file and it is what a stale harness check attaches itself to.
     onKnapSharpblade: () => void,
     onClose: () => void,
     onMendShelter: () => void = () => {},
-    onSleep: () => void = () => {},
-    //  FISHING — TRAILING AND OPTIONAL, so not one existing call site changes. The same
-    //  additive shape `onMendShelter` and `onSleep` already use.
-    onCraftFishingLine: () => void = () => {},
-    onCraftNet: () => void = () => {}
+    onSleep: () => void = () => {}
 ): void {
     const el = panel(overlay, 'build');
     const hintMarkup = view.hints.length
@@ -636,16 +659,6 @@ export function showBuildCard(
     };
     bind('.mend-shelter-btn', onMendShelter);
     bind('.sleep-btn', onSleep);
-    bind('.torch-btn', onCraftTorch);
-    bind('.axe-btn', onCraftAxe);
-    bind('.shelter-btn', onBuildShelter);
-    bind('.storage-btn', onBuildStorage);
-    bind('.stonehammer-btn', onCraftStoneHammer);
-    bind('.spear-btn', onCraftSpear);
-    bind('.backpack-btn', onMakeBackpack);
-    bind('.raft-btn', onCraftRaft);
-    bind('.fishingline-btn', onCraftFishingLine);
-    bind('.net-btn', onCraftNet);
     bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
 }
@@ -847,6 +860,9 @@ export interface LoadoutPanelView {
     /** Materials the player can try putting together (Try-Combining, D-063 item 4).
      *  Empty when there is nothing to experiment with. */
     combinable: string[];
+    /** RULING 1 — every DEMONSTRATED recipe, with what it still wants. Knowledge gates this
+     *  list; materials only inform how each entry looks. */
+    known: KnownRecipeView[];
     /** LAW 126: the Backpack's other two tabs. Both are READ from the brain — this layer
      *  renders them and derives nothing, exactly as the Inventory tab already does. */
     vitals: BodyReportView;
@@ -1127,6 +1143,23 @@ export function showLoadout(
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
              ).join('')}</div>
              <div class="combine-slate"></div>
+             <!--  RULING 1 — THE THINGS YOU KNOW, AND WHAT THEY STILL WANT. Present whenever the
+                   survivor has demonstrated anything, whether or not they can afford it today:
+                   the Build panel showed this and the slate did not inherit it, so a plan you
+                   were short for became invisible and knowledge appeared to switch off. Costs
+                   read "have / need", short ones are marked and say where the material comes
+                   from — which is the same "from driftwood on the sand" hint the retired rows
+                   carried, and the other half of what went missing.  -->
+             ${view.known.length === 0 ? '' : `<div class="known-list">
+                <p class="subtitle">You know how to make:</p>
+                ${view.known.map((k) => `<div class="known-row ${k.afford ? 'ready' : 'short'}" data-known="${k.recipeId}">
+                    <span class="known-name">${k.name}</span>
+                    <span class="known-costs">${k.needs.map((x) => `<span class="known-gate ${x.have >= x.need ? 'met' : 'unmet'}">${MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind} ${x.have}/${x.need}</span>`).join('')}</span>
+                    ${k.afford ? '' : `<span class="known-where">${k.needs.filter((x) => x.have < x.need)
+                        .map((x) => MATERIAL_SOURCE[MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind] ?? '')
+                        .filter(Boolean).join(' · ')}</span>`}
+                </div>`).join('')}
+             </div>`}
              <p class="subtitle evidence-line"></p>
              <div class="combine-actions">
                <button class="primary combine-btn" type="button" disabled>Combine</button>
@@ -1296,7 +1329,25 @@ export function showLoadout(
             });
         }
         if (combineBtn) combineBtn.disabled = !enough || chosenRecipe === null;
-        if (discoverBtn) discoverBtn.disabled = !enough || slate.unknownCount === 0;
+        //  OFFERED WHENEVER TWO THINGS ARE STAGED. Gating this on `unknownCount > 0` disabled the
+        //  verb for a pile that makes nothing — which is exactly the attempt [[D-055]]'s journal
+        //  exists to record, so the one gesture that could teach "these two do not go together"
+        //  was the one gesture refused. The brain still refuses the genuinely pointless case (a
+        //  pile whose every outcome you already hold) and says so out loud.
+        //  ...BUT NOT WHEN THERE IS GENUINELY NOTHING TO FIND. The distinction the first cut
+        //  missed is between a pool that is EMPTY and a pool that is FULLY KNOWN, and
+        //  `unknownCount` is zero for both:
+        //
+        //    empty pool        — the pile makes nothing, and trying is the null attempt D-055
+        //                        journals. Offered.
+        //    fully known pool  — every outcome is already held. Nothing to find, and a button
+        //                        that is always going to refuse is a control telling a small lie.
+        //
+        //  Pool size is `known.length + unknownCount`, so the two cases are separable here.
+        if (discoverBtn) {
+            const nothingLeftToFind = slate.known.length > 0 && slate.unknownCount === 0;
+            discoverBtn.disabled = !enough || nothingLeftToFind;
+        }
 
         //  The evidence line stays as it was: it speaks about PROPERTIES and never identity,
         //  and it is the one part of the old surface the redesign does not replace.

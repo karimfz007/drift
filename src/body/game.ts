@@ -100,6 +100,7 @@ import {
     ALL_MATERIAL_KINDS,
     growthReport,
     previewAt,
+    settleOnTerrain,
     bodyReport,
     revealedInPanel,
     makerOffers,
@@ -159,6 +160,7 @@ import {
     illnessSymptom,
     combineSlate,
     isPlaced,
+    knownRecipes,
     recipeDisplayName,
     drawIntoHands,
     recipeCost,
@@ -834,6 +836,16 @@ export class Game {
      * card's own handoff failed a session ago.
      */
     private openLoadout(atStorage = false, tab: BackpackTab = 'inventory', reopening = false): void {
+        //  OPENING THE PACK CANCELS AN ARMED SITING, and takes the ghost with it — the other half
+        //  of LDOE bar property 4. Without this a survivor who chose a crate and changed their mind
+        //  had no way out but to put it somewhere: the site card had an explicit cancel and the
+        //  slate flow shipped without one. Reaching for the pack IS "let me choose something else",
+        //  so it needs no control of its own.
+        if (this.siting && !reopening) {
+            this.siting = null;
+            this.ghost.hide();
+            this.showHint('Never mind that, then.');
+        }
         //  FAIL-LOUD (D-046(d)): silence is never a legal outcome. This used to `return`
         //  without a word when a panel was already open, and that silence cost this session
         //  four device runs — a storage tap became a no-op, and the failure surfaced six
@@ -885,6 +897,9 @@ export class Game {
                 //  in front of you its contents are reachable too, so the chips list the union
                 //  and the whole combine path downstream sees one pool. Closed, this is exactly
                 //  the carried list it replaced.
+                //  RULING 1 — the shortfall-visible list, READ from the brain. Present whenever
+                //  anything has been demonstrated, affordable or not.
+                known: knownRecipes(s, atStorage && s.storage.built),
                 combinable: (() => {
                     const reach = reachFor(s, atStorage && s.storage.built);
                     return ALL_MATERIAL_KINDS.filter((m) => (reach.counts[m] ?? 0) > 0);
@@ -1088,7 +1103,13 @@ export class Game {
         //  Duplicating that would mean two paths that spend materials and decide a grade.
         if (isPlaced(recipeId)) {
             this.siting = { recipeId, materials, storageOpen };
-            this.ghost.hide();
+            //  THE GHOST, BEFORE ANYTHING IS SPENT (LDOE bar properties 1 and 2). It stands where
+            //  a tap on "here" would put the thing — in front of the survivor, on the ground —
+            //  and its colour is the real verdict from `previewAt`, not a guess. This is the
+            //  preview the site card used to carry; retiring the card took it with it and left a
+            //  survivor siting blind. No confirm step is added: choosing shows it, the next tap
+            //  commits, which is property 4 intact.
+            this.showSitingGhost(recipeId);
             this.cues.play(CUES.target);
             this.showHint(recipeId === 'storage'
                 ? 'Tap where the crate should stand.'
@@ -1502,6 +1523,33 @@ export class Game {
     }
 
 
+    //  `onBuildShelter` / `onBuildStorage` REMOVED ([[D-166]]). They placed a structure
+    //  `shelterBuildOffsetM` ahead of whichever way the survivor happened to be facing —
+    //  precisely the "it could not say WHERE" defect the slate merge fixed. Both structures
+    //  are sited by the tap that picks their spot now; see `placeFromSlate` below.
+
+    /**
+     * SHOW WHERE IT WOULD GO, AND WHETHER IT MAY — the ghost, restored with the siting flow.
+     *
+     * Defaults to the ground just ahead of the survivor, which is where a tap on "here" lands;
+     * takes an explicit point when a tap has already chosen one and been refused. The colour is
+     * `previewAt`'s real verdict, so a green ghost cannot promise a spot the world will reject.
+     */
+    private showSitingGhost(recipeId: string, atX?: number, atZ?: number): void {
+        const s = session().state;
+        //  EACH STRUCTURE'S OWN OFFSET. Both are 2.2 m today, so this is not a live defect —
+        //  it is a trap: retuning one would silently move the other's preview, and a ghost
+        //  drawn at the wrong distance is a preview that lies about where the thing goes.
+        const ahead = recipeId === 'storage' ? TUNE.storageBuildOffsetM : TUNE.shelterBuildOffsetM;
+        const x = atX ?? s.player.x + Math.sin(this.facing) * ahead;
+        const z = atZ ?? s.player.y + Math.cos(this.facing) * ahead;
+        const radius = recipeId === 'storage' ? TUNE.storageCollisionRadius : TUNE.shelterCollisionRadius;
+        const clear = this.island.resolveCollision(x, z, radius, this.dynamicObstacles());
+        const settled = settleOnTerrain(clear.x, clear.z, (px, pz) => this.island.heightAt(px, pz));
+        const preview = previewAt(s, clear.x, clear.z, (px, pz) => this.island.heightAt(px, pz), null);
+        this.ghost.show(settled.x, settled.y, settled.groundY, preview.valid);
+    }
+
     /**
      * COMMIT A SLATE CHOICE AT A PLACE — the merge point, and deliberately thin.
      *
@@ -1585,6 +1633,11 @@ export class Game {
             this.siting = null;
             this.recordTap(screenX, screenY, `site:${armed.recipeId}`);
             this.placeFromSlate(armed.recipeId, armed.materials, armed.storageOpen, at.x, at.z);
+            //  The ghost outlives a REFUSAL, because `placeFromSlate` re-arms the siting and the
+            //  survivor is about to aim again — a preview that vanished on the one tap that needed
+            //  it would be the worst possible moment to lose it. It clears once something stands.
+            if (this.siting) this.showSitingGhost(armed.recipeId, at.x, at.z);
+            else this.ghost.hide();
             return;
         }
         if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
@@ -2348,31 +2401,7 @@ export class Game {
 
     /** Build the shelter — same placement pattern as the fire: an arm's length ahead, on
      *  clear ground. Once built, it is also the new respawn anchor (state.ts's respawn). */
-    private onBuildShelter(): void {
-        const s = session().state;
-        const x = s.player.x + Math.sin(this.facing) * TUNE.shelterBuildOffsetM;
-        const z = s.player.y + Math.cos(this.facing) * TUNE.shelterBuildOffsetM;
-        const clear = this.island.resolveCollision(x, z, TUNE.shelterCollisionRadius, this.dynamicObstacles());
-        if (!buildShelter(s, clear.x, clear.z)) return;
-        this.cues.play(CUES.craft);
-        this.floatText('the shelter stands');
-        session().persist(now());
-        this.lastActivityAt = now();
-        this.showHint('Tap the shelter to sleep — it is home now.');
-    }
 
-    private onBuildStorage(): void {
-        const s = session().state;
-        const x = s.player.x + Math.sin(this.facing) * TUNE.storageBuildOffsetM;
-        const z = s.player.y + Math.cos(this.facing) * TUNE.storageBuildOffsetM;
-        const clear = this.island.resolveCollision(x, z, TUNE.storageCollisionRadius, this.dynamicObstacles());
-        if (!buildStorage(s, clear.x, clear.z)) return;
-        this.cues.play(CUES.craft);
-        this.floatText('the crate is set');
-        session().persist(now());
-        this.lastActivityAt = now();
-        this.showHint('Carrying materials? Tap the crate to store them.');
-    }
 
     /**
      * FEED THE FIRE. The declared default verb for the fire, and now only that — the
@@ -2911,91 +2940,10 @@ export class Game {
                 net: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.net, revealed: revealedInPanel(s, 'net') }
             },
             { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
-            () => {
-                this.endPanel();
-                if (craftTorch(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the torch is yours — light it at a fire');
-                    session().markFirstCraft(msSinceControl());
-                    session().persist(now());
-                    this.showHint('Tap the fire to light your torch.');
-                }
-                this.lastActivityAt = now();
-            },
-            () => {
-                this.endPanel();
-                if (craftAxe(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the axe is yours');
-                    session().markFirstCraft(msSinceControl());
-                    session().persist(now());
-                    this.showHint('Now tap a standing tree, or that sealed box, to use it.');
-                }
-                this.lastActivityAt = now();
-            },
-            () => { this.endPanel(); this.onBuildShelter(); },
-            () => { this.endPanel(); this.onBuildStorage(); },
-            () => {
-                this.endPanel();
-                if (craftStoneHammer(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the stone hammer is yours');
-                    session().markFirstCraft(msSinceControl());
-                    session().persist(now());
-                    this.showHint('Open Build again to knap a sharp blade.');
-                }
-                this.lastActivityAt = now();
-            },
-            //  DROP 1 FIX — the spear's handler. There was never one: `craftSpear` shipped
-            //  with ZERO callers, so a survivor who discovered the recipe and reached
-            //  `demonstrated` on the ladder had nowhere to turn that into an object.
-            () => {
-                this.endPanel();
-                if (craftSpear(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the spear is yours');
-                    session().persist(now());
-                    this.showHint('Hold a boar to thrust. Wait for the aftermath.');
-                } else {
-                    this.explain('Not enough for a spear yet.');
-                }
-                this.lastActivityAt = now();
-            },
-            () => {
-                this.endPanel();
-                if (makeBackpack(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the pack is yours');
-                    session().persist(now());
-                    this.showHint('You can carry properly now.');
-                } else {
-                    this.explain('Not enough for a pack yet.');
-                }
-                this.lastActivityAt = now();
-            },
-            //  THE MARITIME SLICE — the raft's handler. Written in the same breath as the
-            //  craft function, because the one thing this project has now shipped twice is a
-            //  craftable with no caller (`craftSpear`, then `makeBackpack`), and the sweep in
-            //  `tests/fauna.test.ts` fails the build until this exists.
-            () => {
-                this.endPanel();
-                const state = session().state;
-                const blocker = raftBlocker(state);
-                if (craftRaft(state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the raft is built');
-                    session().markFirstCraft(msSinceControl());
-                    session().persist(now());
-                    this.raftView.sync(state, (x, z) => this.island.heightAt(x, z));
-                    this.showHint('It is moored at the water. Walk to it and climb aboard.');
-                } else {
-                    //  Fail-loud (D-042/D-049): the exact reason, never a shrug. `raftBlocker`
-                    //  is read BEFORE the attempt because a successful craft changes the state
-                    //  it would be read from.
-                    this.explain(blocker ?? 'You cannot build a raft here.');
-                }
-                this.lastActivityAt = now();
-            },
+            //  TEN CRAFT CALLBACKS REMOVED WITH THEIR ROWS ([[D-165]], tidied in [[D-166]]).
+            //  Every one of them still threaded a closure into a panel that no longer draws a
+            //  button to call it. The craft functions themselves are untouched and live in
+            //  `Game.MAKERS`, which is what Combine now uses.
             () => {
                 this.endPanel();
                 if (knapSharpblade(session().state)) {
@@ -3007,27 +2955,7 @@ export class Game {
             },
             () => this.endPanel(),
             () => { this.endPanel(); this.tryRepair('shelter'); },
-            () => { this.endPanel(); this.trySleep(); },
-            () => {
-                this.endPanel();
-                if (craftFishingLine(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the line is spun');
-                    session().persist(now());
-                    this.showHint('Find water with fish in it — the rings on the surface — and cast.');
-                }
-                this.lastActivityAt = now();
-            },
-            () => {
-                this.endPanel();
-                if (craftNet(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('the net is knotted');
-                    session().persist(now());
-                    this.showHint('Set it at a fishing spot, then stay nearby while it soaks.');
-                }
-                this.lastActivityAt = now();
-            }
+            () => { this.endPanel(); this.trySleep(); }
         );
     }
 
@@ -3917,8 +3845,8 @@ export class Game {
      * the idle hint and both tap-explain sites that used to hardcode the flat message.
      */
     private axeNearestReason(s: ReturnType<typeof session>['state']): string {
-        if (!s.tools.stoneHammer) return 'You need a stone hammer first — knap a blade, then make the axe (Build panel).';
-        if (s.inventory.sharpblade < TUNE.axeSharpbladeCost) return 'You need a knapped blade for the axe (Build panel).';
+        if (!s.tools.stoneHammer) return 'You need a stone hammer first — knap a blade, then put wood, blade and cord together in your pack.';
+        if (s.inventory.sharpblade < TUNE.axeSharpbladeCost) return 'You need a knapped blade for the axe — knap one with your stone hammer.';
         return 'You have a blade — you need wood and fibre for the axe.';
     }
 
@@ -3938,7 +3866,7 @@ export class Game {
         if (s.hunger <= TUNE.hungerLowHintAt && (s.inventory.berries || s.inventory.coconut || s.inventory.shellfish)) return 'Tap a food in your pack to eat it.';
         if (!s.tools.axe && canCraftAxe(s)) return 'You have the parts for an axe. Craft it.';
         if (!s.tools.axe) return this.axeNearestReason(s);
-        if (!s.torch.owned && canCraftTorch(s)) return 'You have the parts for a torch, too — Build panel.';
+        if (!s.torch.owned && canCraftTorch(s)) return 'You have the parts for a torch, too — put them together in your pack.';
         if (!s.fire.built && s.inventory.wood >= TUNE.woodPerFire) return 'You have enough wood. Build the fire.';
         if (!s.fire.built) return 'Tap a standing tree to chop it, then build a fire.';
         if (!isFireLit(s)) return 'The fire is out. Tap it to add wood.';
@@ -3946,7 +3874,7 @@ export class Game {
         //  line above, which stays the carefully-sequenced axe/fire/shelter funnel
         //  (D-040/D-042). The torch is optional content; it earns a hint, not a gate.
         if (canLightTorch(s)) return 'Your torch is unlit. Tap the fire to light it.';
-        if (!s.shelter.built) return 'The Build panel has more than the axe now — a shelter awaits.';
+        if (!s.shelter.built) return 'You know more than the axe now — a shelter is yours to raise.';
         if (!isSheltered(s)) return 'Stand in the firelight to warm up.';
         return 'You are warming. Close the app — the island keeps the time.';
     }
@@ -3974,8 +3902,22 @@ export class Game {
                 case 'warning':
                     //  THE ONE THE PLAYER MUST NOT MISS. Loud, and said in words as well,
                     //  because the wind-up is the whole of the fair-challenge promise.
+                    //
+                    //  `say`, NOT `explain`. This runs from the frame loop — a boar walking into
+                    //  range, with no tap and no player action anywhere near it — and `explain`
+                    //  calls `markFailedTap()`, so an ambient threat warning was incrementing
+                    //  `trace.failedInteractionTaps`. That is the sixteenth instance of the class
+                    //  `say()` was split out to fix, and the worst kind: the fifteen already
+                    //  reclassified were SUCCESSES miscounted as refusals, where this is no
+                    //  interaction at all. It also corrupts the number non-deterministically,
+                    //  because it fires on proximity rather than on anything a player did — which
+                    //  is how it was found, failing a harness check that had passed three sweeps
+                    //  running while the product misbehaved identically in all of them.
+                    //
+                    //  The loud cue is kept and is now played ONCE. `explain` plays CUES.denied
+                    //  itself, so the line above was a second, doubled play of the same cue.
                     this.cues.play(CUES.denied);
-                    this.explain('It snorts and paws the ground. It is going to come.');
+                    this.say('It snorts and paws the ground. It is going to come.');
                     break;
                 case 'charge':
                     this.cues.play(CUES.fell);

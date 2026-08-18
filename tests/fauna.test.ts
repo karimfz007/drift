@@ -471,10 +471,27 @@ describe('EVERY CRAFTABLE HAS A SURFACE — the defect Drop 1 actually shipped',
         expect(stranded, `craftable(s) with no surface: ${stranded.join(', ')}`).toEqual([]);
     });
 
-    it('the spear specifically is offered by the Build card', async () => {
-        const { readFileSync } = await import('node:fs');
-        const hud = readFileSync('src/body/hud.ts', 'utf8');
-        expect(hud).toContain('spear-btn');
-        expect(readFileSync('src/body/game.ts', 'utf8')).toContain('craftSpear');
+    it('the spear specifically is offered on the SLATE, which is where making happens now', async () => {
+        //  REWRITTEN, AND THE OLD VERSION IS A LESSON WORTH KEEPING. It asserted a surface by
+        //  grepping `hud.ts` for the string 'spear-btn' — and it stayed GREEN for three
+        //  retirements after that button stopped being drawn, because a leftover
+        //  `bind('.spear-btn', …)` satisfied the grep. It only broke when the dead wiring was
+        //  finally deleted. A test that greps source for a selector proves the selector is
+        //  TYPED somewhere, never that anything renders it.
+        //
+        //  So the claim is asserted where it can actually be true or false: the brain offers
+        //  the spear on the slate once the survivor has demonstrated it, and
+        //   separately guarantees no harness check drives a control
+        //  the body does not emit.
+        const { combineSlate } = await import('../src/brain/experiment');
+        const { createInitialState } = await import('../src/brain');
+        const s = createInitialState(1_770_000_000_000);
+        s.inventory.wood = 20; s.inventory.sharpblade = 20; s.inventory.fiber = 20;
+        s.blueprints.push({
+            recipeId: 'spear', name: 'spear', version: 1, discoveredAtGameHours: 0,
+            workmanship: 'serviceable',
+        } as never);
+        const slate = combineSlate(s, ['wood', 'sharpblade']);
+        expect(slate.known.map((k) => k.recipeId), 'the spear is not offered anywhere').toContain('spear');
     });
 });
