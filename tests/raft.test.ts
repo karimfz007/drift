@@ -322,7 +322,12 @@ describe('it BOARDS and it CARRIES — not a prop', () => {
         s.player.y = s.raft.y;
         expect(availableVerbs(s, 'raft').length).toBe(1);
         expect(defaultVerb(s, 'raft')?.id).toBe('board-raft');
-        expect(holdOpensCircle(s, 'raft')).toBe(false);
+        //  INVERTED BY THE UNIVERSAL LONG-PRESS RULING. The raft's two verbs can never both be
+        //  available, so it was the permanent one-segment case and the old rule meant a hold on
+        //  it never opened anything. It now asks like everything else — and this target is the
+        //  reason the ruling matters: stepping off a raft a hundred metres out is exactly the
+        //  irreversible act that should never arrive from a gesture that did not show its hand.
+        expect(holdOpensCircle(s, 'raft')).toBe(true);
 
         boardRaft(s);
         expect(availableVerbs(s, 'raft').length).toBe(1);

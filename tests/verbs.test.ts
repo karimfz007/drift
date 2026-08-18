@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     availableVerbs, canFish, declaredDefaultVerbId, defaultVerb, holdOpensCircle,
-    tapOpensCircle, verbsFor, type VerbTarget,
+    tapOpensCircle, verbsFor, verbsWith, UNIVERSAL_VERBS, type UniversalVerb, type VerbTarget,
 } from '../src/brain/verbs';
 import { buildShelter, buildStorage, createInitialState } from '../src/brain/state';
 import { POND } from '../src/data/world';
@@ -153,13 +153,28 @@ describe('a tap is the DEFAULT VERB — the circle is the exception, not the rul
         expect(defaultVerb(s, 'pond')).not.toBeNull();
     });
 
-    it('a BLOCKED extra segment does not open a HOLD circle — a grey option is not a choice', () => {
-        //  The trap this guards: counting total segments instead of usable ones would open a
-        //  wheel for a survivor with no flask, forcing a decision between one real option and
-        //  one they cannot take. That is the early game getting slower for nothing.
+    it('a BLOCKED segment still does not COUNT — availability is usable verbs, never total ones', () => {
+        //  REWRITTEN BY THE UNIVERSAL LONG-PRESS RULING, not deleted, and the half that changed
+        //  is worth separating from the half that did not.
+        //
+        //  WHAT CHANGED: this asserted `holdOpensCircle === false` for a survivor at the pond
+        //  with only drink available, because a one-segment wheel was held to be ceremony. A
+        //  hold now always asks, so that expectation is inverted below.
+        //
+        //  WHAT DID NOT: the trap the test was written for is still live. Counting TOTAL
+        //  segments rather than usable ones would open a wheel of refusals at a target where
+        //  nothing can be done — five grey options and no act — which is a worse failure under
+        //  the new rule than it was under the old one, because now only the zero case stops it.
         const s = atPond();
-        expect(verbsFor(s, 'pond').length).toBeGreaterThan(1);   // the segments exist...
-        expect(holdOpensCircle(s, 'pond')).toBe(false);          // ...and still no circle
+        expect(verbsFor(s, 'pond').length).toBeGreaterThan(1);      // blocked segments exist...
+        expect(availableVerbs(s, 'pond')).toHaveLength(1);          // ...only one is usable...
+        expect(holdOpensCircle(s, 'pond')).toBe(true);              // ...and the hold asks anyway
+
+        //  The zero case is the one the usable-vs-total distinction now carries alone.
+        const away = createInitialState(2);
+        expect(verbsFor(away, 'pond').length).toBeGreaterThan(1);
+        expect(availableVerbs(away, 'pond')).toHaveLength(0);
+        expect(holdOpensCircle(away, 'pond')).toBe(false);
     });
 
     it('nothing available means no default and no circle — the tap does nothing here', () => {
@@ -265,3 +280,114 @@ function builtEverything(): GameState {
     s.inventory.wood = 0;   // so "Feed" is blocked for a stated reason
     return s;
 }
+
+describe('UNIVERSAL LONG-PRESS — a hold ALWAYS asks, even when there is only one answer', () => {
+    /**
+     * THE RULING THAT SUPERSEDES THE ONE ABOVE. The circle used to open only when there was
+     * something to choose BETWEEN, on the reasoning that a wheel with one segment is a
+     * ceremony charged for nothing. The director overruled it: a hold must never auto-perform,
+     * because "it only did the one thing that was possible" is exactly the reasoning that makes
+     * an irreversible act arrive unannounced. The never-auto-commit discipline built for
+     * crafting now governs every hold-to-act target.
+     *
+     * A TAP IS UNTOUCHED. The Default-Verb Law still holds on the frequent path: tap the pond
+     * and drink, tap the fire and feed it. Only the deliberate gesture asks.
+     */
+    const ALL: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'boar', 'dropped', 'raft', 'fishingspot'];
+
+    it('ONE available verb still opens the circle — the case the old rule sent straight to the act', () => {
+        const s = atPond();
+        expect(availableVerbs(s, 'pond')).toHaveLength(1);
+        expect(holdOpensCircle(s, 'pond')).toBe(true);
+    });
+
+    it('a lone verb opens the circle at EVERY target that can reach one, never just the crowded ones', () => {
+        //  Swept rather than spot-checked: the defect this replaces was per-target reasoning
+        //  about when a choice is "real enough" to show, and that reasoning is what produced a
+        //  boar with no circle path at all.
+        //
+        //  AND THE SWEEP PROVES IT REACHED THE INTERESTING CASE. The first cut of this asserted
+        //  `holdOpensCircle === (n >= 1)` across the targets and passed against the OLD code,
+        //  because in that fixture every target happened to have zero verbs or several — never
+        //  exactly one. A sweep that never meets the condition it exists for is green on
+        //  nothing, so the count of one-verb targets is asserted too.
+        const s = atPond();
+        buildShelter(s, s.player.x, s.player.y);
+        buildStorage(s, s.player.x + 1, s.player.y);
+        const lone: string[] = [];
+        for (const t of ALL) {
+            const n = availableVerbs(s, t).length;
+            if (n === 1) lone.push(t);
+            expect(holdOpensCircle(s, t), `${t} with ${n} available verb(s)`).toBe(n >= 1);
+        }
+        expect(lone.length, `targets with exactly one available verb: [${lone.join(', ')}]`).toBeGreaterThan(0);
+    });
+
+    it('NOTHING available still opens nothing — an empty circle would be a menu of refusals', () => {
+        const s = createInitialState(2);   // nowhere near the pond
+        expect(availableVerbs(s, 'pond')).toHaveLength(0);
+        expect(holdOpensCircle(s, 'pond')).toBe(false);
+    });
+
+    it('the TAP contract is untouched — the frequent path never became slower', () => {
+        const s = atPond();
+        expect(tapOpensCircle(s, 'pond')).toBe(false);
+        expect(defaultVerb(s, 'pond')?.id).toBe('drink');
+    });
+});
+
+describe('THE UNIVERSAL SEAM — room for Examine, proven while it is still empty', () => {
+    /**
+     * Examine/study is NOT built here. What is asserted is that the room for it works, because
+     * an extension point nothing exercises is indistinguishable from a broken one and would
+     * stay that way until the day it is needed — which is precisely when nobody wants to
+     * discover it never worked.
+     *
+     * The seam exists because the audit found the eight per-target verb functions had no shared
+     * composition point. Adding one verb that belongs everywhere meant editing all eight and
+     * trusting whoever did it to find all eight; the boar's missing circle path is what that
+     * costs when someone does not.
+     */
+    const ALL: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'boar', 'dropped', 'raft', 'fishingspot'];
+    const examineStub: UniversalVerb = () => ({
+        id: 'examine-stub', label: 'Look closely', available: true, reason: null,
+    });
+
+    it('is EMPTY in production — no Examine shipped, no verb added anywhere', () => {
+        expect(UNIVERSAL_VERBS).toHaveLength(0);
+        for (const t of ALL) {
+            expect(verbsFor(createInitialState(4), t).map((v) => v.id)).not.toContain('examine-stub');
+        }
+    });
+
+    it('carries a verb to ALL EIGHT targets when one is supplied — the room actually works', () => {
+        const s = createInitialState(4);
+        for (const t of ALL) {
+            const ids = verbsWith([examineStub], s, t).map((v) => v.id);
+            expect(ids, `${t} did not receive the universal verb`).toContain('examine-stub');
+            //  APPENDED, never prepended: the target's own most-ordinary act stays the first
+            //  segment, which is the muscle-memory guarantee `verbsFor` documents.
+            expect(ids[ids.length - 1]).toBe('examine-stub');
+        }
+    });
+
+    it('a universal verb reaches availability and the circle, with no further wiring', () => {
+        //  The seam is only real if what comes through it is a first-class verb everywhere the
+        //  target's own verbs are — otherwise Examine would need the eight-site edit anyway.
+        const away = createInitialState(2);                 // nowhere near anything
+        expect(availableVerbs(away, 'pond')).toHaveLength(0);
+        expect(holdOpensCircle(away, 'pond')).toBe(false);
+        const withSeam = verbsWith([examineStub], away, 'pond').filter((v) => v.available);
+        expect(withSeam.map((v) => v.id)).toEqual(['examine-stub']);
+    });
+
+    it('a universal verb NEVER steals the tap — the declared default still wins', () => {
+        //  Examine must not become what a tap does at the pond. `defaultVerb` resolves the
+        //  declared default first and only falls back to a lone option, so this holds by
+        //  construction — asserted because "by construction" is how the boar got its bespoke
+        //  path too.
+        const s = atPond();
+        expect(defaultVerb(s, 'pond')?.id).toBe('drink');
+        expect(declaredDefaultVerbId('pond')).toBe('drink');
+    });
+});

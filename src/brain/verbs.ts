@@ -64,6 +64,50 @@ export function canFish(state: GameState): boolean {
  * "tap the pond to drink" keeps that muscle memory after the circle appears.
  */
 export function verbsFor(state: GameState, target: VerbTarget): VerbOption[] {
+    return verbsWith(UNIVERSAL_VERBS, state, target);
+}
+
+/**
+ * A verb that belongs at EVERY target rather than to one of them.
+ *
+ * Returns null when it does not apply in this state, so a universal verb can still be
+ * situational without every target's own function learning about it.
+ */
+export type UniversalVerb = (state: GameState, target: VerbTarget) => VerbOption | null;
+
+/**
+ * THE UNIVERSAL TAIL — the seam, deliberately empty.
+ *
+ * Examine/study is designed (it belongs to the banked Weighted Shore work) and is NOT built
+ * here: no study time, no understanding gained, no content of any kind. What is built is the
+ * room for it, because the alternative was discovered by audit — the eight per-target verb
+ * functions have no shared composition point, so adding one verb that applies everywhere would
+ * mean editing all eight and trusting whoever does it to find all eight. That is the shape of
+ * defect this project keeps paying for: the boar's missing circle path existed because its
+ * branch was written separately and nobody noticed it had opted out.
+ *
+ * Anything appended here reaches all eight targets, `availableVerbs`, `holdOpensCircle` and the
+ * circle itself, with no further wiring.
+ *
+ * IT IS NOT THE DEFAULT, and cannot become one: `defaultVerb` resolves `DEFAULT_VERB[target]`
+ * first, and only falls back to a lone option. A universal verb arriving alongside a target's
+ * own default therefore never steals the tap.
+ */
+export const UNIVERSAL_VERBS: UniversalVerb[] = [];
+
+/**
+ * `verbsFor` with the tail passed in — which is what makes the seam testable while it is empty.
+ *
+ * An empty extension point that nothing exercises is indistinguishable from a broken one, and
+ * would stay that way until the day someone needs it. Taking the tail as a parameter lets a test
+ * push a stub verb through and prove it reaches every target, today, without shipping Examine.
+ */
+export function verbsWith(universal: UniversalVerb[], state: GameState, target: VerbTarget): VerbOption[] {
+    return [...targetVerbs(state, target), ...universal.map((f) => f(state, target)).filter((v) => v !== null)];
+}
+
+/** Each target's own verbs — the switch, unchanged; composition happens above it. */
+function targetVerbs(state: GameState, target: VerbTarget): VerbOption[] {
     switch (target) {
         case 'pond': return pondVerbs(state);
         case 'shelter': return shelterVerbs(state);
@@ -150,11 +194,25 @@ export function tapOpensCircle(state: GameState, target: VerbTarget): boolean {
 }
 
 /**
- * Does a HOLD open the circle? Whenever there is more than one thing to choose between.
- * This is the deliberate route to the rarer verbs, and it costs nothing to the frequent one.
+ * Does a HOLD open the circle? Whenever there is anything at all to do here.
+ *
+ * THE UNIVERSAL LONG-PRESS RULING, and it supersedes `> 1`. The circle used to open only when
+ * there was something to choose BETWEEN, on the reasoning that a wheel with one segment is a
+ * ceremony charged for nothing. That reasoning is wrong in the way that matters: "it only did
+ * the one thing that was possible" is exactly how an irreversible act arrives unannounced, and
+ * it is the same argument the crafting slate already rejected when it stopped auto-committing a
+ * single match. A hold is the deliberate gesture; deliberate means it shows you what it is about
+ * to do and waits.
+ *
+ * ZERO STILL OPENS NOTHING. An empty circle is a menu of refusals, and the caller says the
+ * nearest true reason instead ([[D-042]]).
+ *
+ * THE TAP IS UNTOUCHED. `tapOpensCircle` still answers false whenever a sensible default exists,
+ * so the frequent path — tap the pond and drink — costs exactly what it always did. The two
+ * gestures were split precisely so this ruling could apply to one of them and not the other.
  */
 export function holdOpensCircle(state: GameState, target: VerbTarget): boolean {
-    return availableVerbs(state, target).length > 1;
+    return availableVerbs(state, target).length >= 1;
 }
 
 /** The declared default for a target, whether or not it is currently available. */

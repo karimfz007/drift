@@ -11324,6 +11324,213 @@ async function main() {
         console.log('BENCH PROFILE could not be written: ' + String(e));
     }
 
+    // ======== UNIVERSAL LONG-PRESS — a hold ALWAYS asks ========
+    //
+    //  THE RULING. A hold used to auto-fire whenever exactly one verb was possible, on the
+    //  reasoning that a one-segment wheel is ceremony charged for nothing. The director
+    //  overruled it: "it only did the one thing that was possible" is exactly how an
+    //  irreversible act arrives unannounced, and the crafting slate already rejected that
+    //  reasoning when it stopped auto-committing a single match.
+    //
+    //  WITNESSED ON THE THINGS THAT CAN ONLY EVER HAVE ONE VERB. A dropped stack has exactly
+    //  one (`pick-up`) and a boar has exactly one (`thrust`), so before this ruling neither
+    //  could show a circle in any state whatsoever — the boar could not even in principle,
+    //  because its branch never called the circle at all. They are therefore the two targets
+    //  where a green here cannot be an accident of the fixture.
+    if (section('LONG-PRESS — a hold shows what it will do, at every target, however few')) {
+
+    await ensureNoPanel('long-press setup');
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.hunger = 90; state.thirst = 90;
+        state.dropped = []; state.dropCount = 0;
+        state.inventory = { ...state.inventory, wood: 6 };`);
+    await sleep(900);
+
+    //  Put a stack on the ground through the pack's own control — the same route ITEMS uses,
+    //  because a stack planted by hook is a stack whose mesh nobody proved.
+    await realTapDom('.carried-button');
+    await sleep(600);
+    await realTapDom('.drop-chip[data-drop="wood"]');
+    await sleep(700);
+    await ensureNoPanel('after dropping');
+    await sleep(500);
+
+    const pile = await page.evaluate(() => {
+        const s = window.__drift.state();
+        const d = s.dropped[0];
+        return d ? { id: d.id, x: d.x, y: d.y, amount: d.amount, wood: s.inventory.wood } : null;
+    });
+    check('setup — a stack is on the ground and the hands are empty',
+        pile !== null && pile.wood === 0,
+        pile ? `stack ${pile.id} of ${pile.amount} at ${pile.x.toFixed(1)},${pile.y.toFixed(1)}, wood in hand ${pile.wood}` : 'no stack');
+
+    if (pile) {
+        await approach(pile.x, pile.y, 15);
+        await faceNode(pile.x, pile.y);
+        await sleep(400);
+
+        // ---- 1 · THE HOLD ASKS, AND SPENDS NOTHING WHILE ASKING ----------------------
+        const beforeHold = await page.evaluate(() => window.__drift.state().inventory.wood);
+        const held = await holdWorld(pile.x, pile.y);
+        await sleep(700);
+        const circle = await page.evaluate(() => {
+            const el = document.querySelector('.verb-circle');
+            if (!el) return { up: false, segs: [], onScreen: false };
+            const segs = Array.from(el.querySelectorAll('.verb-seg')).map((b) => ({
+                verb: b.getAttribute('data-verb') ?? '',
+                label: (b.querySelector('.verb-label')?.textContent ?? '').trim(),
+                enabled: !b.disabled,
+                box: b.getBoundingClientRect(),
+            }));
+            return {
+                up: true,
+                segs: segs.map((s) => ({ verb: s.verb, label: s.label, enabled: s.enabled })),
+                //  REACHABILITY, not existence: a segment off the glass is a control that does
+                //  not exist, whatever the DOM says.
+                onScreen: segs.every((s) => s.box.left >= 0 && s.box.top >= 0
+                    && s.box.right <= window.innerWidth && s.box.bottom <= window.innerHeight),
+            };
+        });
+        const duringHold = await page.evaluate(() => window.__drift.state().inventory.wood);
+
+        check('LONG-PRESS 1 — a hold on a ONE-VERB target opens the circle instead of acting',
+            held.ok && circle.up && circle.segs.length === 1 && circle.segs[0].verb === 'pick-up',
+            `hold ${held.why} · circle ${circle.up} with [${circle.segs.map((s) => `${s.verb}:"${s.label}"`).join(' | ')}]`);
+
+        check('LONG-PRESS 1 — ...and it SPENT NOTHING while asking: the stack is still on the ground',
+            duringHold === beforeHold && duringHold === 0,
+            `wood in hand ${beforeHold} -> ${duringHold} (0 means the pile was not silently taken)`);
+
+        check('LONG-PRESS 1 — ...and the single segment is REACHABLE, not drawn off the glass',
+            circle.up && circle.onScreen,
+            `every segment inside the viewport: ${circle.onScreen}`);
+
+        // ---- 2 · AND CONFIRMING COMPLETES IT ----------------------------------------
+        const picked = await realTapDom('.verb-circle .verb-seg[data-verb="pick-up"]');
+        await sleep(800);
+        const afterConfirm = await page.evaluate(() => ({
+            wood: window.__drift.state().inventory.wood,
+            stacks: window.__drift.state().dropped.length,
+            circle: Boolean(document.querySelector('.verb-circle')),
+        }));
+        check('LONG-PRESS 2 — confirming the one segment DOES the thing, and closes the circle',
+            picked.ok && afterConfirm.wood > 0 && afterConfirm.stacks === 0 && !afterConfirm.circle,
+            `pick ${picked.ok ? 'ok' : picked.reason} · wood ${beforeHold} -> ${afterConfirm.wood}, stacks ${afterConfirm.stacks}, circle still up ${afterConfirm.circle}`);
+
+        // ---- 3 · THE TAP IS UNTOUCHED ------------------------------------------------
+        //
+        //  THE REGRESSION THIS RULING COULD EASILY HAVE CAUSED, and the reason it is asserted
+        //  on the same target in the same breath: the Default-Verb Law says a tap ACTS. If the
+        //  circle had been wired to the tap as well, every frequent action in the game would
+        //  have silently cost two gestures — which is the exact defect C1 named when the circle
+        //  was first built.
+        await ensureNoPanel('before the tap half');
+        await editSave('state.dropped = []; state.dropCount = 0; state.inventory = { ...state.inventory, wood: 6 };');
+        await sleep(800);
+        await realTapDom('.carried-button');
+        await sleep(600);
+        await realTapDom('.drop-chip[data-drop="wood"]');
+        await sleep(700);
+        await ensureNoPanel('after the second drop');
+        await sleep(500);
+        const pile2 = await page.evaluate(() => {
+            const d = window.__drift.state().dropped[0];
+            return d ? { x: d.x, y: d.y } : null;
+        });
+        if (pile2) {
+            await approach(pile2.x, pile2.y, 15);
+            await faceNode(pile2.x, pile2.y);
+            await sleep(400);
+            await tapWorld(pile2.x, pile2.y, 55);
+            await sleep(800);
+            const afterTap = await page.evaluate(() => ({
+                wood: window.__drift.state().inventory.wood,
+                stacks: window.__drift.state().dropped.length,
+                circle: Boolean(document.querySelector('.verb-circle')),
+            }));
+            check('LONG-PRESS 3 — a TAP still acts at once: the frequent path never became slower',
+                afterTap.wood > 0 && afterTap.stacks === 0 && !afterTap.circle,
+                `wood ${afterTap.wood}, stacks ${afterTap.stacks}, circle opened ${afterTap.circle} (a circle here would be the two-gesture regression)`);
+        } else {
+            check('LONG-PRESS 3 — a TAP still acts at once: the frequent path never became slower',
+                false, 'setup failed: no second stack to tap');
+        }
+    }
+
+    // ---- 4 · THE BOAR, WHICH COULD NOT SHOW A CIRCLE IN ANY STATE BEFORE -------------
+    //
+    //  Its branch went straight to `defaultVerb` -> `performVerb` and never mentioned the
+    //  circle, while the comment above it claimed the opposite. `boarVerbs` carries one verb,
+    //  so a hold always thrust. This is the check that the branch is genuinely gone rather
+    //  than repaired in place.
+    await ensureNoPanel('before the boar');
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.tools = { ...state.tools, spear: true };
+        state.boars = [{ id: 'lp-boar', x: 3, y: 97, homeX: 3, homeY: 97, facing: 0,
+            stage: 'alert', stageSinceGameHours: 0, chargeBearing: null, hunger: 0.5, alive: true }];`);
+    await sleep(1100);
+    //  RE-PINNED, NOT MERELY RE-READ. A 'warning' boar escalates to 'charge' after just
+    //  `boarWarningGameHours` (0.03 gh ≈ 4.5 real seconds at this clock's rate) and then
+    //  moves at `boarChargeSpeedMPerGameHour` (720 gh ≈ 4.8 m/s) — fast enough that the
+    //  settle sleep above, plus facing, plus the hold itself, could cross that window and leave
+    //  the touch aimed at ground the boar had already left. This section went red exactly once,
+    //  in a combined run, with the touch landing on-screen and no circle opening — traced to
+    //  `no-target -> site-card-retired`, i.e. the pick found empty ground, not the boar — and
+    //  passed clean on an immediate re-run with no code changed: the signature of a race, not a
+    //  defect in the ruling. So the escalation TIMER is reset to "now" immediately before
+    //  interacting, giving the full budget to a sequence that normally finishes in one to two
+    //  seconds, rather than trusting a position read some indeterminate stretch earlier.
+    const boarPin = { x: 3, y: 97 };
+    await page.evaluate((p) => {
+        const s = window.__drift.state();
+        const b = s.boars.find((x) => x.id === 'lp-boar');
+        if (b) { b.x = p.x; b.y = p.y; b.stage = 'warning'; b.stageSinceGameHours = s.gameHoursElapsed; b.chargeBearing = null; }
+    }, boarPin);
+    await sleep(150);
+
+    const boarAt = await page.evaluate(() => {
+        const b = window.__drift.state().boars.find((x) => x.id === 'lp-boar');
+        return b ? { x: b.x, y: b.y, alive: b.alive, stage: b.stage } : null;
+    });
+    check('setup — a boar stands within reach for the hold, freshly pinned so it cannot have escalated',
+        boarAt !== null && boarAt.alive && boarAt.stage === 'warning',
+        boarAt ? `boar at ${boarAt.x.toFixed(1)},${boarAt.y.toFixed(1)}, stage ${boarAt.stage}` : 'no boar');
+
+    if (boarAt) {
+        await faceNode(boarAt.x, boarAt.y);
+        const boarHold = await holdWorld(boarAt.x, boarAt.y);
+        await sleep(700);
+        const boarCircle = await page.evaluate(() => {
+            const el = document.querySelector('.verb-circle');
+            if (!el) return { up: false, segs: [] };
+            return {
+                up: true,
+                segs: Array.from(el.querySelectorAll('.verb-seg')).map((b) => b.getAttribute('data-verb') ?? ''),
+            };
+        });
+        const boarAfter = await page.evaluate(() => {
+            const b = window.__drift.state().boars.find((x) => x.id === 'lp-boar');
+            return { alive: b?.alive ?? null, stage: b?.stage ?? null };
+        });
+        check('LONG-PRESS 4 — the BOAR asks too: a hold opens the circle it never had a path to',
+            boarHold.ok && boarCircle.up && boarCircle.segs.includes('thrust'),
+            `hold ${boarHold.why} · circle ${boarCircle.up} with [${boarCircle.segs.join(' | ')}]`);
+        check('LONG-PRESS 4 — ...and nothing was thrust while it asked',
+            boarAfter.alive === true,
+            `boar alive ${boarAfter.alive}, stage ${boarAfter.stage} (a dead boar here means it acted on the hold)`);
+        await page.evaluate(() => {
+            const el = document.querySelector('.verb-circle');
+            if (el instanceof HTMLElement) el.remove();
+        });
+        await sleep(300);
+    }
+
+    }
+
     await browser.close();
     const openCount = results.filter((r) => r.knownOpen).length;
     const graded = results.length - openCount;

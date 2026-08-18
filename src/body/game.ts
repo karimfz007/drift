@@ -2011,20 +2011,25 @@ export class Game {
         //  third fire verb, which is what finally forces the issue — three verbs cannot be
         //  arbitrated by a priority order without starving one of them. So the fire joins the
         //  other three here, and `tryFeedFire`'s internal priority goes with it.
-        if (this.pending.kind === 'boar') {
-            //  Through the SAME circle machinery as everything else — a predator does not get
-            //  a bespoke input path, because a bespoke path is where the Default-Verb Law
-            //  quietly stops applying.
-            const only = defaultVerb(s, 'boar');
-            const blocked = verbsFor(s, 'boar').find((v) => v.reason);
-            this.pending = null;
-            if (only) this.performVerb(only.id);
-            else this.explain(blocked?.reason ?? 'Nothing you can do about it.');
-            return;
-        }
+        //  THE BOAR'S BESPOKE BRANCH IS GONE, and its own comment is why it had to.
+        //
+        //  It read: "Through the SAME circle machinery as everything else — a predator does not
+        //  get a bespoke input path, because a bespoke path is where the Default-Verb Law
+        //  quietly stops applying." It then called `defaultVerb` and `performVerb` directly and
+        //  never mentioned `holdOpensCircle` or `showVerbCircle` at all. `boarVerbs` carries
+        //  exactly one verb, so a hold on a boar always thrust, and no code path existed that
+        //  could have shown it a circle — the comment described the intent and the code did the
+        //  opposite, which is the most expensive kind of comment there is.
+        //
+        //  So the branch is deleted rather than repaired, and `boar` joins the shared list
+        //  below. That is the difference between claiming one mechanism and having one.
 
         if (this.pending.kind === 'pond' || this.pending.kind === 'shelter'
             || this.pending.kind === 'storage' || this.pending.kind === 'fire'
+            //  The boar, by the same reasoning the stack below was folded in on: a predator
+            //  taking the shared path is what makes "a hold always asks" a property of the
+            //  game rather than a property of six branches that happen to agree.
+            || this.pending.kind === 'boar'
             //  P0-3 — the same branch, deliberately, rather than a bespoke one: a stack gets
             //  the Default-Verb Law and the hold-asks/tap-acts contract for free, which is
             //  exactly what a private path for it would have quietly opted out of.
