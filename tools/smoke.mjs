@@ -1726,8 +1726,10 @@ async function main() {
     const emptyPanel = await page.evaluate(() => ({
         craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
         hints: document.querySelectorAll('.hint-line').length,
-        //  RULING (C1) — REST NO LONGER LIVES HERE. It moved to the Vitals tab; only the
-        //  refuge READING (never an offer to build) is this panel's to keep.
+        //  RULING (C1), this batch — THE REFUGE READING LEFT TOO. It had been kept here on
+        //  purpose ("the pivot removed the catalogue, NOT the panel — the refuge reading
+        //  survives") until this exact overturn; the negative is asserted directly rather
+        //  than silently dropping the check, the same discipline [[D-168]] named.
         hasRefuge: Boolean(document.querySelector('.refuge-item')),
     }));
     check('SLICE 2B — THE PIVOT: a fresh castaway is offered NOTHING to build',
@@ -1735,19 +1737,29 @@ async function main() {
         `${emptyPanel.craftables.length} row(s): ${emptyPanel.craftables.join(', ') || '(none)'}`);
     check('SLICE 2B — and is not nagged either, holding nothing on a warm afternoon',
         emptyPanel.hints === 0, `${emptyPanel.hints} hint(s)`);
-    check('SLICE 2B — the pivot removed the catalogue, NOT the panel (the refuge reading survives)',
-        emptyPanel.hasRefuge, `refuge ${emptyPanel.hasRefuge}`);
+    check('SLICE 2B — RULING (C1) — the refuge reading is GONE from here too, not just the catalogue',
+        emptyPanel.hasRefuge === false, `refuge row still in Build: ${emptyPanel.hasRefuge}`);
     await realTapDom('.panel.build .close-btn');
     await sleep(300);
     //  RULING (C1) — AND SLEEP SURVIVES TOO, on ITS surface now, still reachable with
     //  nothing built and nothing carried — a fresh castaway can still lie down.
+    //  THE REFUGE READING JOINS IT (RULING, C1, this batch) — `refugeReport` answers
+    //  gracefully with nothing built at all ("No shelter. The night takes its full
+    //  toll...", state.ts's own words), so a fresh castaway reads a real, present line here
+    //  too, not an absence.
     await realTapDom('.carried-button');
     await sleep(600);
     await realTapDom('.backpack-tab[data-tab="vitals"]');
     await sleep(500);
-    const freshVitals = await page.evaluate(() => Boolean(document.querySelector('.sleep-btn')));
+    const freshVitals = await page.evaluate(() => {
+        const el = document.querySelector('.refuge-item .refuge-line');
+        return { sleep: Boolean(document.querySelector('.sleep-btn')), refugeLine: el ? el.textContent.trim() : null };
+    });
     check('SLICE 2B — ...and REST, relocated, is reachable from Vitals with nothing built either',
-        freshVitals, `sleep button on Vitals: ${freshVitals}`);
+        freshVitals.sleep, `sleep button on Vitals: ${freshVitals.sleep}`);
+    check('SLICE 2B — ...and the refuge reading, relocated, reads truthfully with no shelter at all',
+        freshVitals.refugeLine !== null && /no shelter/i.test(freshVitals.refugeLine),
+        `refuge line on Vitals: "${freshVitals.refugeLine ?? 'ABSENT'}"`);
     await page.evaluate(() => {
         const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
         if (c instanceof HTMLElement) c.click();
@@ -2347,8 +2359,12 @@ async function main() {
     //  superseded rather than deleted, because three of them were real design properties and
     //  someone reading this later deserves to know where each one went:
     //
-    //    "a hold opens the SITE CARD"  — reversed by ruling. [[D-164]] made the hold do
-    //      nothing and moved WHAT to the slate; `MERGE 2` asserts the reversal directly.
+    //    "a hold opens the SITE CARD"  — reversed by ruling, twice over now. [[D-164]] made
+    //      the hold do nothing and moved WHAT to the slate; `MERGE 2` asserted THAT reversal
+    //      directly. RULING (C1), this batch, reversed it again — a hold on open ground now
+    //      opens the same universal verb circle every other hold target uses, per item 2 —
+    //      so `MERGE 2` now asserts the SECOND reversal: no site card (still, and never
+    //      again), but a real circle where "nothing" used to be correct.
     //    "outcomes are named as NEEDS, never as the object they produce" — superseded by
     //      [[D-156]]. That vocabulary existed because the card offered things you had NOT
     //      made, where naming the product would have handed over the catalogue. The slate
@@ -2721,26 +2737,31 @@ async function main() {
     //  full. Asserting "it went up" is the honest check now; the exact curve is unit-tested.
     check('sleep RECOVERS energy on waking, along a rate rather than jumping to full (Ch.6)', afterSleep.energy > beforeSleep.energy, `energy ${beforeSleep.energy.toFixed(1)} -> ${afterSleep.energy.toFixed(1)}`);
 
-    //  UPKEEP, REWRITTEN (Gate 0 Part 1). This used to assert that a tap on a damaged
-    //  shelter REPAIRED it instead of sleeping — the priority hack that has now been deleted
-    //  twice over. A tap on the shelter always sleeps; mending is an explicit action on the
-    //  construction surface, reachable at ANY durability below full. The check therefore
-    //  moves to that control, and gains the thing the old one could never test: that the
-    //  dead zone is gone. 60% durability sat squarely inside the old unreachable band.
+    //  UPKEEP, REWRITTEN (Gate 0 Part 1), THEN RELOCATED AGAIN (RULING, C1, this batch).
+    //  A tap on the shelter always sleeps (Default-Verb Law); mending used to be an explicit
+    //  action on the construction surface, then moved to the shelter's own verb circle
+    //  (`shelterVerbs`' `mend` entry, reachable on a HOLD) once the Build-panel duplicate was
+    //  found genuinely redundant and removed outright — no capability lost, one path instead
+    //  of two. The check moves with it, and keeps the thing the old one proved: the old
+    //  unreachable dead zone stays gone. 60% durability sat squarely inside it.
     await editSave('state.shelter.durability = 60; state.inventory.wood = 10;');
     await approach(afterShelter.shelter.x, afterShelter.shelter.y, 20);
     await faceNode(afterShelter.shelter.x, afterShelter.shelter.y);
     const beforeMend = await live();
-    const buildForMend = await openBuild();
-    await sleep(500);
-    const mendTap = await realTapDom('.panel.build .mend-shelter-btn');
+    const mendHold = await holdWorld(afterShelter.shelter.x, afterShelter.shelter.y);
+    await sleep(600);
+    const mendTap = await realTapDom('.verb-circle .verb-seg[data-verb="mend"]');
     await sleep(700);
     const afterRepair = await live();
-    check('a WORN shelter (60%, inside the old dead zone) can be mended at all', buildForMend.ok && mendTap.ok, `build ${buildForMend.reason ?? 'ok'}, mend ${mendTap.reason ?? 'ok'}`);
+    check('a WORN shelter (60%, inside the old dead zone) can be mended at all, from its own hold-circle', mendHold.ok && mendTap.ok, `hold ${mendHold.why}, mend ${mendTap.reason ?? 'ok'}`);
     check('mending spends one wood and restores durability', afterRepair.shelter.durability > beforeMend.shelter.durability && afterRepair.inventory.wood === 9, `durability ${beforeMend.shelter.durability.toFixed(1)} -> ${afterRepair.shelter.durability.toFixed(1)}, wood ${afterRepair.inventory.wood}`);
-    //  And the Build card is still the Build card — the first attempt at this put Mend on the
-    //  secondary button, where it displaced Build outright and made storage unbuildable.
-    check('REGRESSION — offering Mend did not displace Build', buildForMend.ok);
+    //  REGRESSION GUARD, UPDATED: the ORIGINAL concern (Mend displacing Build on a shared
+    //  secondary-button slot) cannot recur now that mend lives on a different surface
+    //  entirely from Build — asserted directly rather than left implicit.
+    const buildStillOpensClean = await openBuild();
+    check('REGRESSION — Build still opens clean, unaffected by mending living elsewhere now', buildStillOpensClean.ok, buildStillOpensClean.reason ?? 'ok');
+    await realTapDom('.panel.build .close-btn');
+    await sleep(300);
 
     //  URGENT FIX (2026-07-27) REGRESSION — the other half of that rule, which was never
     //  checked and was wrong: a shelter that is merely worn (repairable, not failing) must
@@ -3292,7 +3313,7 @@ async function main() {
     //  would identify one edition while the page identified another — a diagnostic that
     //  makes things worse, which is the failure mode this whole item exists to end.
     check('BUILD STAMP — the page and the bundle report the SAME edition',
-        Boolean(stamp.meta) && stamp.firstLine.includes(stamp.meta ?? ' '),
+        Boolean(stamp.meta) && stamp.firstLine.includes(stamp.meta ?? ''),
         `meta "${stamp.meta}" vs debug "${stamp.firstLine.slice(0, 40)}"`);
 
     await clickDom('.panel .done');
@@ -4470,17 +4491,16 @@ async function main() {
     afterHammer = await live();
     check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.tools.stoneHammer === true, JSON.stringify(afterHammer.tools.stoneHammer));
 
-    //  RULING (C1) — KNAP MOVED FROM THE BUILD PANEL TO THE KNOWN LIST. Reached the same
-    //  way any known recipe now is: open the pack, select the row, act on it. It has no
-    //  staging step — see KnownRecipe.standalone — so there is no chip to drag.
-    await openSlate();
-    await sleep(300);
+    //  RULING (C1), this batch — KNAP NOW STAGES LIKE EVERY OTHER RECIPE. It used to be a
+    //  direct action on its known-list row (`.knap-btn`, D-172-era: open the pack, select
+    //  the row, act on it, no chip to drag). Today's ruling retired that shortcut for
+    //  everything, knap included — see KnownRecipe.standalone's new meaning. So this drives
+    //  the SAME slate `makeViaSlate` uses for hammer just above and axe just below, rather
+    //  than a bespoke tap sequence: stone is the whole recipe (one slot), and the arity-1
+    //  exception (`canExperimentWith`) is what lets a single chip reach the slate at all.
     const stoneBeforeKnap = (await live()).inventory.stone;
-    const knapRow = await realTapDom('.known-row[data-known="knap"]');
-    check('D-055 — knapping is a real row on the known list', knapRow.ok, knapRow.reason ?? '');
-    await sleep(400);
-    const knapTap = await realTapDom('.knap-btn');
-    check('D-055 — ...and selecting it offers a real, reachable Knap action', knapTap.ok, knapTap.reason ?? '');
+    const knapCraftTap = await makeViaSlate('blade', ['stone']);
+    check('D-055 — knapping is reachable via a real tap, staged like everything else', knapCraftTap.ok, knapCraftTap.why ?? '');
     await sleep(400);
     afterKnap = await live();
     check('D-055 — knapping spends raw stone for a sharp blade', afterKnap.inventory.sharpblade >= TUNE.knapSharpbladeYield && afterKnap.inventory.stone === stoneBeforeKnap - TUNE.knapStoneCost, `sharpblade ${afterKnap.inventory.sharpblade}, stone ${stoneBeforeKnap}->${afterKnap.inventory.stone}`);
@@ -5557,6 +5577,25 @@ async function main() {
     //  the real construction surface through a real tap and reads what is actually rendered.
     }
     if (section("F3 — the refuge line is on the screen, and says why")) {
+    //  RULING (C1), this batch — RELOCATED FROM THE BUILD PANEL TO VITALS. Same classes
+    //  (`.refuge-item`/`.refuge-line`/`refuge-on`/`refuge-off`), same source (`refugeReport`),
+    //  same six claims this section always proved — only the ROUTE to the row changed, from
+    //  `openBuild()` to the backpack's Vitals tab, matching the exact navigation `sleep`'s own
+    //  relocation already established.
+    const openVitals = async () => {
+        const packTap = await realTapDom('.carried-button');
+        await sleep(600);
+        const tabTap = await realTapDom('.backpack-tab[data-tab="vitals"]');
+        await sleep(500);
+        return { ok: packTap.ok && tabTap.ok, reason: !packTap.ok ? packTap.reason : tabTap.reason };
+    };
+    const closeVitals = async () => {
+        await page.evaluate(() => {
+            const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+            if (c instanceof HTMLElement) c.click();
+        });
+        await sleep(400);
+    };
     const shelterForF3 = (await live()).shelter;
     if (shelterForF3.built) {
         //  Stand at the shelter, dry, so the working case is the one under test.
@@ -5571,8 +5610,7 @@ async function main() {
         //  regardless of whether it is on-screen or covered — the exact gap that once let a
         //  real bug past 57/57 checks — so it cannot tell "the card did not open" from "the
         //  row is missing". This settles which, by reporting BOTH separately.
-        opened = await openBuild();
-        await sleep(500);
+        opened = await openVitals();
         const dom = await page.evaluate(() => {
             panel = document.querySelector('.panel');
             const el = document.querySelector('.panel .refuge-item .refuge-line');
@@ -5588,10 +5626,10 @@ async function main() {
                 visible: el ? getComputedStyle(el).opacity !== '0' : false,
             };
         });
-        check('F3 — the Build card actually opened under a real tap',
+        check('F3 — the Vitals tab actually opened under real taps',
             opened.ok === true && dom.panelOpen,
-            `realTapDom ${JSON.stringify(opened)}, panel ${dom.panelClass ?? 'ABSENT'}`);
-        check('F3 — the Build card shows what the refuge is doing, in words and a number',
+            `open ${JSON.stringify(opened)}, panel ${dom.panelClass ?? 'ABSENT'}`);
+        check('F3 — Vitals shows what the refuge is doing, in words and a number',
             dom.rowInDom && Boolean(dom.line) && /\d+%/.test(dom.line) && dom.visible,
             dom.rowInDom ? `head "${dom.head}" / line "${dom.line}"` : `refuge row NOT in the DOM (panel ${dom.panelOpen ? 'was open' : 'never opened'})`);
         //  The row must announce it is WORKING, not merely contain a percentage — C3
@@ -5625,8 +5663,7 @@ async function main() {
         check('F3 (Stage 2c) — the number a PLAYER sees is inside the certified 40-50% band, post-pivot',
             Number.isFinite(shownPct) && shownPct >= 40 && shownPct <= 50,
             `crude shelter, screen reads ${Number.isFinite(shownPct) ? shownPct + '%' : 'no number'} — band 40-50%, line "${dom.line ?? 'none'}"`);
-        await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
-        await sleep(400);
+        await closeVitals();
 
         //  The FAILURE mode has to be legible too — walking away must say so, not go quiet.
         await editSave(`state.player = { x: ${shelterForF3.x + TUNE.shelterRadius + 12}, y: ${shelterForF3.y} };`);
@@ -5640,8 +5677,7 @@ async function main() {
         check('F3 setup — the player is genuinely out of the shelter radius before we look',
             awayDist > TUNE.shelterRadius,
             `${awayDist.toFixed(2)} m from the shelter (radius ${TUNE.shelterRadius} m)`);
-        await openBuild();
-        await sleep(500);
+        await openVitals();
         const off = await page.evaluate(() => {
             const el = document.querySelector('.panel .refuge-item .refuge-line');
             const item = document.querySelector('.panel .refuge-item');
@@ -5651,8 +5687,7 @@ async function main() {
             Boolean(off.line) && /too far/i.test(off.line) && off.line.includes(`${TUNE.shelterRadius} m`)
             && /refuge-off/.test(off.cls ?? ''),
             `at ${awayDist.toFixed(2)} m — class "${off.cls ?? 'none'}" / line "${off.line ?? 'no refuge row rendered'}"`);
-        await page.evaluate(() => document.querySelector('.panel .close-btn')?.click());
-        await sleep(300);
+        await closeVitals();
     }
 
 
@@ -10251,15 +10286,16 @@ async function main() {
                 const st = getComputedStyle(e);
                 return st.display !== 'none' && st.visibility !== 'hidden' && e.getBoundingClientRect().height > 0;
             };
-            //  RECIPE ROWS ONLY. The panel's first .build-item is the F3 REFUGE REPORT, whose
-            //  head also reads 'Shelter' and which has no gates and no button by design — so a
-            //  title match against it reported the buildable Shelter row as gate-less AND as a
-            //  Law 95 leak. Recipe rows are the ones `buildItemMarkup` writes, and those are
-            //  the ones carrying an <h2>; refuge, mend and hint use .build-head instead.
-            //  RULING (C1) — 'rest-item' dropped from this list: sleep left the Build panel
-            //  entirely, so the class no longer exists here to skip. Left as documentation of
-            //  what WAS true rather than silently shrinking the list, since a future reader
-            //  hunting for why a class isn't skipped anymore should find the answer here.
+            //  RECIPE ROWS ONLY. Recipe rows are the ones `buildItemMarkup` writes, and those
+            //  are the ones carrying an <h2>; refuge, mend and hint used .build-head instead.
+            //  RULING (C1) — 'rest-item' dropped from this list first: sleep left the Build
+            //  panel entirely, so the class no longer existed here to skip. 'refuge-item' and
+            //  'mend-item' join it this batch, for the same reason — both relocated out
+            //  entirely (see [[D-172]]/this batch's own ruling). Left IN the list anyway,
+            //  same discipline as before: neither class ever carried an <h2>, so the h2 guard
+            //  already excluded them independently and this SKIP entry was always redundant
+            //  defence, not the active filter — removing it would change nothing live, so it
+            //  stays as documentation of what WAS true rather than silently shrinking.
             const SKIP = ['refuge-item', 'mend-item', 'hint-item'];
             return Array.from(document.querySelectorAll('.panel.build .build-item'))
                 .filter((it) => vis(it) && it.querySelector('h2') && !SKIP.some((c) => it.classList.contains(c)))
@@ -10462,8 +10498,26 @@ async function main() {
     //  not a warning.
     //  A CROSSING IS A CHANGE, so the sentence has to be a NEW one. Reading `hints().last`
     //  bare lets a line left by an earlier block stand in for the cold's own announcement —
-    //  which is how this went red against a working product, quoting an axe hint.
+    //  which is how this went red against a working product, quoting an axe hint. THE SAME
+    //  DEFECT RETURNED, from a second direction: `stepIdleHint` (game.ts) fires its own
+    //  ambient hint — the axe's `axeNearestReason`, for a survivor with neither axe nor
+    //  hammer, which a fresh spawn always is — the moment `TUNE.idleHintSeconds` (10s) of
+    //  real wall-clock passes with no tap. Three crossings' worth of `sleep`, `shot`, and
+    //  `page.evaluate` round-trips is close enough to that budget that which one wins is a
+    //  coin flip on a loaded machine, not a fixed order — it hit the SECOND crossing here,
+    //  the THIRD in an earlier run. `prior !== seen` alone cannot tell "cold announced" from
+    //  "idle timer fired instead", since both are genuinely NEW lines.
+    //
+    //  FIXED AT THE CLOCK, NOT THE PATTERN. A content-based filter would need to enumerate
+    //  every `contextualHint()` sentence to reject — fragile, and `contextualHint`'s own fire
+    //  lines share the word "fire" with this test's own THIRD expected pattern, so a filter
+    //  could reject the real thing as readily as the ambient one. A harmless tap resets
+    //  `lastActivityAt` (game.ts's `onTap`, unconditionally, before any target resolution) —
+    //  aimed at the sky, well above where the survivor or any node renders, so it resolves to
+    //  D-162's own "no-hit" and does nothing else. Keeps the idle timer's own 10 s budget
+    //  reset to just BEFORE each crossing's `sleep(1400)`, never accumulated across three.
     const coldCrossing = async (warmth) => {
+        await tapAt(60, 30);
         const prior = await page.evaluate(() => window.__drift.hints().last ?? '');
         await page.evaluate((w) => {
             const s = window.__drift.state();
@@ -10872,30 +10926,24 @@ async function main() {
         knapAlone.present && /blade/i.test(knapAlone.name),
         `present ${knapAlone.present}, name "${knapAlone.name}", combinable chips ${knapAlone.chipCount} (1 — the gating case)`);
 
-    await realTapDom('.known-row[data-known="knap"]');
-    await sleep(500);
-    const knapDetail = await page.evaluate(() => {
-        const row = document.querySelector('.known-row[data-known="knap"]');
-        return {
-            hasKnapBtn: Boolean(row?.querySelector('.knap-btn')),
-            hasChipStaging: Boolean(row?.querySelector('.known-gate')),
-        };
-    });
-    check('SLATE 8 — ...selected, it offers a DIRECT action, not a staging prompt',
-        knapDetail.hasKnapBtn,
-        `knap-btn present ${knapDetail.hasKnapBtn}, gate detail present ${knapDetail.hasChipStaging}`);
-
-    //  THE NUMBER THE DIRECTOR NAMED — the hammer acts as a catalyst, never consumed.
+    //  RULING (C1), this batch — SELECTING THE ROW NO LONGER OFFERS A DIRECT ACTION. It
+    //  used to (`.knap-btn`, checked here until today); now a tap only expands the have/need
+    //  detail SLATE 7 already proved generically for one row at a time. Re-asserting that
+    //  same toggle here would be the redundant-check pattern this project keeps naming, so
+    //  what is left to prove is the thing that is actually new: the craft itself now runs
+    //  through Combine, and the hammer survives it — driven via `makeViaSlate`, the same
+    //  helper every other recipe in this file uses, rather than a bespoke tap sequence.
     const beforeKnapTap = await live();
-    const knapAction = await realTapDom('.knap-btn');
-    await sleep(500);
+    const knapCraftTap = await makeViaSlate('blade', ['stone']);
+    await sleep(400);
     const afterKnapTap = await live();
     check('SLATE 8 — knapping spends stone, yields a blade, and the HAMMER IS NOT CONSUMED',
-        knapAction.ok
+        knapCraftTap.ok
         && afterKnapTap.inventory.stone === beforeKnapTap.inventory.stone - TUNE.knapStoneCost
         && afterKnapTap.inventory.sharpblade === beforeKnapTap.inventory.sharpblade + TUNE.knapSharpbladeYield
         && afterKnapTap.tools.stoneHammer === true,
-        `stone ${beforeKnapTap.inventory.stone} -> ${afterKnapTap.inventory.stone} (want -${TUNE.knapStoneCost}),`
+        `craft ok ${knapCraftTap.ok} (${knapCraftTap.why ?? ''}),`
+        + ` stone ${beforeKnapTap.inventory.stone} -> ${afterKnapTap.inventory.stone} (want -${TUNE.knapStoneCost}),`
         + ` blade ${beforeKnapTap.inventory.sharpblade} -> ${afterKnapTap.inventory.sharpblade} (want +${TUNE.knapSharpbladeYield}),`
         + ` hammer owned before ${beforeKnapTap.tools.stoneHammer} -> after ${afterKnapTap.tools.stoneHammer}`);
 
@@ -11039,7 +11087,13 @@ async function main() {
         beforeSite.wood - placed.wood === 5,
         `wood ${beforeSite.wood} -> ${placed.wood}`);
 
-    // ---- 2 · THE RETIRED GESTURE IS GENUINELY RETIRED ---------------------------------
+    // ---- 2 · THE RETIRED GESTURE STAYS RETIRED; WHAT REPLACED IT DOES NOT (RULING, C1) ----
+    //
+    //  REVERSED A SECOND TIME. This used to assert the hold did NOTHING at all — [[D-164]]'s
+    //  own retirement of the site card — and read a `'site-card-retired'` trace marker as
+    //  the proof. RULING (C1), this batch, gave the hold a real job again: item 2's ground
+    //  verb circle. The site card itself stays gone (asserted below, unchanged); "nothing
+    //  happens" does not.
     await editSave(`${WELL}
         state.blueprints = [${CRATE}];
         state.storage = { ...state.storage, built: false };
@@ -11055,15 +11109,20 @@ async function main() {
         trace: [...window.__drift.holdTrace()],
         panelOpen: window.__drift.panelOpen(),
         card: Boolean(document.querySelector('.panel.site')),
+        circleVerbs: Array.from(document.querySelectorAll('.verb-circle .verb-seg')).map((b) => b.getAttribute('data-verb') ?? ''),
     }));
     await shot('merge-04-hold-retired');
 
-    check('MERGE 2 — a hold on open ground no longer opens a site card',
-        held.card === false && held.panelOpen === false,
-        `card ${held.card}, panelOpen ${held.panelOpen}`);
+    check('MERGE 2 — a hold on open ground still never opens the OLD site card',
+        held.card === false,
+        `card ${held.card}`);
 
-    check('MERGE 2 — ...and says so in the trace rather than failing silently',
-        held.trace.some((t) => /site-card-retired/.test(t)),
+    check('MERGE 2 — ...but it is NOT silent any more — RULING (C1) gave it the same universal circle every other hold target uses',
+        held.panelOpen === true && held.circleVerbs.includes('sleep-rough-here') && held.circleVerbs.includes('build-shelter-here'),
+        `panelOpen ${held.panelOpen}, circle verbs [${held.circleVerbs.join(' | ')}]`);
+
+    check('MERGE 2 — ...and the trace says so directly, the same discipline the old assertion relied on',
+        held.trace.some((t) => /^ground:/.test(t)),
         `trace: [${held.trace.join(' > ')}]`);
 
     // ---- 3 · THE BOX FEEDS THE COMBINE, BUT ONLY WHILE IT IS OPEN ---------------------
@@ -11374,21 +11433,30 @@ async function main() {
     await sleep(900);
     const left = await (async () => {
         const opened = await openBuild();
-        if (!opened.ok) return { open: false, heads: [], knap: false, sleep: false };
+        if (!opened.ok) return { open: false, heads: [], sleep: false };
         const r = await page.evaluate(() => ({
             open: true,
-            //  CRAFT ROWS ONLY. The refuge report's head also reads "Shelter" — it is a
+            //  CRAFT ROWS ONLY. Historically the refuge report's head also read "Shelter" — a
             //  READING of how your shelter is doing, not an offer to build one — and matching
-            //  it reported a craft row that is not there. Same confusion PANEL hit in [[D-160]],
-            //  and the same fix: skip the blocks that were never craft rows.
+            //  it reported a craft row that is not there (the same confusion PANEL hit in
+            //  [[D-160]]). RULING (C1), this batch: refuge and mend left Build entirely, so
+            //  this filter is now redundant defence rather than the active fix — kept, per
+            //  the same "document what WAS true" discipline the SKIP list just above uses.
             heads: Array.from(document.querySelectorAll('.panel.build .build-item'))
                 .filter((it) => !['refuge-item', 'hint-item', 'mend-item']
                     .some((c) => it.classList.contains(c)))
                 .map((it) => (it.querySelector('h2, .build-head strong')?.textContent ?? '').trim()),
             allHeads: Array.from(document.querySelectorAll('.panel.build .build-item h2, .panel.build .build-head strong'))
                 .map((h) => (h.textContent ?? '').trim()),
-            //  NEITHER SHOULD EXIST HERE ANY MORE — the negative half of the claim.
-            knap: Boolean(document.querySelector('.knap-btn')),
+            //  SLEEP'S NEGATIVE HALF ONLY — `.knap-btn`'s own probe RETIRED this batch, not
+            //  merely relocated: `tools/check-selectors.mjs` flags any harness reference to a
+            //  class the body no longer emits ANYWHERE, and knap's direct action is gone for
+            //  good (RULING, C1 — item 3), not moved to a surface with a new name. Asking the
+            //  DOM "does .knap-btn exist" is also now fully subsumed by "not one craft row is
+            //  left" below: a button that must live inside a `.build-item` cannot be found
+            //  once `.build-item` itself has a length of zero. The gate is the permanent
+            //  guarantee; the zero-rows check is the dynamic one; neither needs the dead
+            //  selector spelled out here to keep making the claim.
             sleep: Boolean(document.querySelector('.sleep-btn')),
         }));
         await realTapDom('.panel.build .close-btn');
@@ -11396,10 +11464,6 @@ async function main() {
         return r;
     })();
     await shot('makes-05-what-remains');
-
-    check('MAKES 5 — KNAP IS GONE FROM HERE: it reached the known list, so this button is retired',
-        left.open && left.knap === false,
-        `knap button present in Build: ${left.knap} (should be false) · heads [${left.heads.join(' | ')}]`);
 
     check('MAKES 5 — ...and SLEEP ROUGH IS GONE FROM HERE too, relocated to Vitals',
         left.open && left.sleep === false, `sleep button present in Build: ${left.sleep} (should be false)`);
@@ -12135,6 +12199,167 @@ async function main() {
     check('SHORE PERF — a near-maximum shore (plus the outboard, plus every other standing thing) holds a real frame budget',
         frameSample.avgMs < 33.3,
         `${density} shore item(s) live; avg frame ${frameSample.avgMs.toFixed(1)} ms (${(1000 / frameSample.avgMs).toFixed(0)} fps), p95 ${frameSample.p95Ms.toFixed(1)} ms, over ${frameSample.count} sampled frames`);
+
+    }
+
+    if (section('RULING (C1) — the Build panel loses shelter, ground-hold gains a real circle, knap stages like everything else')) {
+
+    // ---- 1 · GROUND-HOLD OFFERS BOTH, EXTENSIBLE, NOT A HARDCODED PAIR ----------------
+    await ensureNoPanel('ground-hold setup');
+    await editSave(`
+        state.player = { x: 6, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 80; state.thirst = 90; state.hunger = 90;
+        state.dropped = []; state.dropCount = 0;
+        state.boars = [];
+        state.shore = { items: [], lastGeneratedAtGameHours: state.gameHoursElapsed, spawnCount: 0 };
+        state.shelter = { ...state.shelter, built: false };`);
+    await sleep(900);
+    //  SEVEN METRES OUT, AND NEVER PRE-APPROACHED — found the hard way. `approach` always
+    //  closes to within `interactRadiusM * 0.7` (~1.75 m) of its target, which is exactly
+    //  right for holding ON an object but wrong for a bare ground point: at that range the
+    //  hold's own screen tap lands close enough to the survivor's OWN body that `onTap`'s
+    //  `pickedBackpack` check (game.ts) wins the race and opens the loadout instead — a real
+    //  tap ambiguity, not a harness quirk, and the ONLY pending kind that can share a spot
+    //  with the thing testing it. So this holds from where the fixture already stands and
+    //  lets the game's own walk-then-arrive carry the survivor in, exactly as a player
+    //  reaching for a distant patch of ground would experience it.
+    const groundPoint = { x: 6, y: 103 };
+    await faceNode(groundPoint.x, groundPoint.y);
+    await sleep(300);
+    const groundHold = await holdWorld(groundPoint.x, groundPoint.y);
+    //  POLLED, NOT SLEPT. The hold only ARMS a pending target here; the circle opens once the
+    //  frame loop's own walk carries the survivor within `interactRadiusM`, which is a real
+    //  walk over real frames and not a fixed delay this harness can predict.
+    const groundCircleUp = await page.waitForFunction(
+        () => document.querySelector('.verb-circle .verb-seg') !== null, { timeout: 15_000}
+    ).then(() => true).catch(() => false);
+    const groundCircle = await page.evaluate(() => {
+        const el = document.querySelector('.verb-circle');
+        if (!el) return { up: false, segs: [] };
+        return {
+            up: true,
+            segs: Array.from(el.querySelectorAll('.verb-seg')).map((b) => ({
+                verb: b.getAttribute('data-verb') ?? '', enabled: !b.disabled,
+            })),
+        };
+    });
+    const groundIds = groundCircle.segs.map((s) => s.verb);
+    //  THE TRACE, NOT A GUESS. `onHold`'s own per-event signature (game.ts) says exactly which
+    //  branch it took — the same diagnostic this file's own DEVICE VERDICT section already
+    //  relies on, for the same reason four sessions of disagreeing with brain-side checks
+    //  established it. Read on every run, not just a failing one: cheap, and the shape a
+    //  future regression here will need without anyone adding it back under time pressure.
+    const groundHoldTrace = await page.evaluate(() => (window.__drift?.holdTrace?.() ?? []).join(' -> '));
+    check('GROUND-HOLD 1 — a hold on open ground opens a real circle with BOTH options, neither greyed',
+        groundHold.ok && groundCircleUp && groundCircle.up
+            && groundIds.includes('sleep-rough-here') && groundIds.includes('build-shelter-here')
+            && groundCircle.segs.every((s) => s.enabled),
+        `hold ${groundHold.why} · circle up (polled) ${groundCircleUp} · segments [${groundIds.join(' | ')}] · trace [${groundHoldTrace}]`);
+
+    // ---- 2 · SLEEP ROUGH ACTUALLY SLEEPS, FROM THE OPEN GROUND, NOTHING BUILT --------
+    const beforeGroundSleep = await page.evaluate(() => window.__drift.state().gameHoursElapsed);
+    //  A BEAT AFTER THE CIRCLE EXISTS, before tapping a segment — the same gap the shelter's
+    //  own mend-via-circle check (above, `A1–A4 (C05)`) leaves between hold and tap. There the
+    //  circle opens the instant the hold registers (the survivor is already standing at the
+    //  object), so that check's post-hold sleep doubles as this settle time for free. Here the
+    //  circle opens only after a multi-second WALK, so `waitForFunction` above returns the
+    //  instant the segment first exists in the DOM — possibly its first animation frame — and
+    //  a tap thrown immediately at that is the ground case's own version of the same race.
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="sleep-rough-here"]');
+    await sleep(700);
+    const groundReportTap = await realTapDom('.report button');
+    await sleep(400);
+    const afterGroundSleep = await page.evaluate(() => window.__drift.state().gameHoursElapsed);
+    check('GROUND-HOLD 2 — "Sleep rough" from open ground actually sleeps: the report opens and the clock advances',
+        groundReportTap.ok && afterGroundSleep > beforeGroundSleep + 1,
+        `report tap ${JSON.stringify(groundReportTap)}, Δhours ${(afterGroundSleep - beforeGroundSleep).toFixed(2)}`);
+
+    // ---- 3 · BUILD A SHELTER OPENS THE PACK, SHELTER SELECTED — NOT AN INSTANT PLACE ----
+    //  SHELTER GRANTED, DELIBERATELY. `doOpenBuildShelter` only pre-selects a row that
+    //  actually exists on the known list — correct per RULING 1 (nothing is named before it
+    //  is earned) — so testing the shortcut against a survivor who has never discovered
+    //  shelter would prove only that nothing happens, not that the shortcut works. This is
+    //  the shortcut's real audience: someone who already knows shelter, reaching for it again.
+    await editSave(`
+        state.player = { x: 6, y: 96 };
+        state.shelter = { ...state.shelter, built: false };
+        ${grantBlueprints('shelter')}`);
+    await sleep(900);
+    //  NOT PRE-APPROACHED, same reasoning as GROUND-HOLD 1 above: this is a fresh fixture
+    //  back at the same starting point, so the same avatar-overlap risk applies.
+    await faceNode(groundPoint.x, groundPoint.y);
+    await sleep(300);
+    await holdWorld(groundPoint.x, groundPoint.y);
+    await page.waitForFunction(
+        () => document.querySelector('.verb-circle .verb-seg') !== null, { timeout: 15_000 }
+    ).catch(() => {});
+    await sleep(500);   //  the same settle beat GROUND-HOLD 2 needs, and for the same reason.
+    await realTapDom('.verb-circle .verb-seg[data-verb="build-shelter-here"]');
+    await sleep(700);
+    const afterBuildTap = await page.evaluate(() => ({
+        panel: document.querySelector('.panel')?.className ?? null,
+        selectedRow: document.querySelector('.known-row.expanded')?.dataset.known ?? null,
+        shelterBuilt: window.__drift.state().shelter.built,
+    }));
+    check('GROUND-HOLD 3 — "Build a shelter" opens the pack with shelter selected, and builds NOTHING on the spot',
+        afterBuildTap.panel !== null && afterBuildTap.selectedRow === 'shelter' && afterBuildTap.shelterBuilt === false,
+        `panel "${afterBuildTap.panel}", selected "${afterBuildTap.selectedRow}", shelter built ${afterBuildTap.shelterBuilt}`);
+    await page.evaluate(() => {
+        const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+        if (c instanceof HTMLElement) c.click();
+    });
+    await sleep(400);
+
+    // ---- 4 · KNAP STAGES IN COMBINE — ONE MATERIAL, WITH THE HAMMER — AND NO SHORTCUT EXISTS ANYWHERE ----
+    await editSave(`
+        state.player = { x: 6, y: 96 };
+        state.tools = { ...state.tools, stoneHammer: true };
+        state.inventory = { wood: 0, stone: ${TUNE.knapStoneCost + 4}, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
+        state.blueprints = [];`);
+    await sleep(900);
+    await realTapDom('.carried-button');
+    await sleep(600);
+    //  NO SEPARATE "no shortcut exists" DOM PROBE HERE. `tools/check-selectors.mjs` is that
+    //  claim, made permanently and statically: a `.knap-btn` reference anywhere in this file
+    //  now fails the gate on every run, forever, which is a stronger guarantee than one more
+    //  section-local `Boolean(document.querySelector(...))` for a class the body can no
+    //  longer draw. What THIS section still owes a dynamic witness to is that the surviving
+    //  route actually works end to end — proved below by staging the chip and combining.
+    const knapDom = await page.evaluate(() => ({
+        stoneChip: Boolean(document.querySelector('.combine-chip[data-mat="stone"]')),
+        knownText: document.querySelector('.known-list')?.textContent ?? '',
+    }));
+    check('KNAP 1 — holding ONLY stone (plus the hammer), a stone CHIP is genuinely offered — the arity-1 exception reaches the UI',
+        knapDom.stoneChip, `chip present: ${knapDom.stoneChip}`);
+    await realTapDom('.combine-chip[data-mat="stone"]');
+    await sleep(400);
+    const slateAfterStone = await page.evaluate(() => ({
+        knownSlots: Array.from(document.querySelectorAll('.slate-slot.known')).map((s) => s.textContent.trim()),
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+    }));
+    check('KNAP 2 — the slate shows "Knapped blade" as a real option from one staged stone',
+        slateAfterStone.knownSlots.some((s) => /blade/i.test(s)),
+        `slate known slots: [${slateAfterStone.knownSlots.join(' | ')}]`);
+    const knapSlot = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('.slate-slot.known')).find((s) => /blade/i.test(s.textContent ?? ''));
+        return Boolean(btn);
+    });
+    if (knapSlot) await realTapDom('.slate-slot.known');
+    await sleep(300);
+    const beforeKnapCombine = await page.evaluate(() => ({ ...window.__drift.state().inventory }));
+    await realTapDom('.combine-btn');
+    await sleep(700);
+    const afterKnapCombine = await page.evaluate(() => ({ ...window.__drift.state().inventory }));
+    check('KNAP 3 — tapping Combine genuinely GRANTS the blade and spends the stone — not just a discovered plan',
+        afterKnapCombine.sharpblade > (beforeKnapCombine.sharpblade ?? 0)
+            && afterKnapCombine.stone < beforeKnapCombine.stone,
+        `sharpblade ${beforeKnapCombine.sharpblade ?? 0} -> ${afterKnapCombine.sharpblade}, stone ${beforeKnapCombine.stone} -> ${afterKnapCombine.stone}`);
+    await page.evaluate(() => {
+        const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+        if (c instanceof HTMLElement) c.click();
+    });
+    await sleep(300);
 
     }
 

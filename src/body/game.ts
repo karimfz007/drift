@@ -159,6 +159,7 @@ import {
     slowWorkNote,
     illnessSymptom,
     combineSlate,
+    canExperimentWith,
     isPlaced,
     knownRecipes,
     recipeDisplayName,
@@ -207,6 +208,7 @@ import {
     shoreWithinReach,
     pickUpShoreItem,
     type TeardownRung,
+    type MaterialKind,
     type GameState
 } from '../brain';
 import { TUNE, fireLoudnessAt } from '../data/tune';
@@ -264,6 +266,11 @@ type Pending =
     //  tap/hold/circle machinery as everything above — no bespoke input path for either.
     | { kind: 'outboard' }
     | { kind: 'shoreitem'; id: string }
+    //  RULING (C1) — GROUND-HOLD. A plain point, not an object: the position is captured at
+    //  the hold (the same "captured at the tap" shape `dropped`/`boar` already use, since a
+    //  world point has nothing else to be looked up by later). Same tap/hold/circle machinery
+    //  as everything above it.
+    | { kind: 'ground'; x: number; y: number }
     | null;
 
 /** One entry in the debug tap log (D-050) — what a tap resolved to, and where. */
@@ -972,6 +979,10 @@ export class Game {
                     //  WAVE 1 — a found, not crafted, not held capability; see `VitalsExtraView`'s
                     //  own doc for why it lives here.
                     salvageTools: s.tools.salvageTools,
+                    //  RULING (C1), this batch — F3, relocated from the Build panel; same
+                    //  source (`refugeReport`), only the tab changed. See `VitalsExtraView`'s
+                    //  own doc for why this specific reading had been an explicit earlier keep.
+                    refuge: refugeReport(s),
                 },
                 skills: growthReport(s, s.capacities),
                 playerSkills: s.skills
@@ -1078,21 +1089,6 @@ export class Game {
             //  action plus a separately-deferred close, which would let the report's fresh
             //  `beginPanel()` race this panel's own deferred release.
             () => { this.endPanel(); this.trySleep(); },
-            //  RULING (C1) — KNAPPING, RELOCATED FROM THE BUILD PANEL ONTO THE KNOWN LIST.
-            //  The IDENTICAL body `showBuildCard`'s knap callback had — nothing about making
-            //  the blade changed, only where the tap that asks for one lives. Not wrapped in
-            //  `endPanel`: this button lives beside `.medicine-btn`/`.bind-btn`/`.drink-clean-
-            //  btn` in the SAME binding shape (act now, `fade(el, onClose)` separately), and
-            //  none of THOSE call `endPanel` themselves either — the panel's own `onClose`
-            //  already does, once, after the fade.
-            () => {
-                if (knapSharpblade(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('+1 sharp blade');
-                    session().persist(now());
-                }
-                this.lastActivityAt = now();
-            },
             //  RULING (C1) — WHICH KNOWN ROW IS EXPANDED. Same shape `onTab` above already
             //  uses for "change a piece of transient UI state, then redraw in place": no
             //  panel-lock handling at all, because `reopening: true` skips it entirely (see
@@ -1100,7 +1096,25 @@ export class Game {
             (recipeId: string | null) => {
                 this.selectedKnownRecipe = recipeId;
                 this.openLoadout(atStorage, tab, true);
-            }
+            },
+            //  RULING (C1), this batch — KNAPPING NOW STAGES LIKE EVERYTHING ELSE. The direct
+            //  `knapSharpblade(session().state)` call that used to live here is gone with the
+            //  button that called it; `knapSharpblade` itself is untouched and lives on as
+            //  `Game.MAKERS`' own execution path for the recipe, called through the SAME
+            //  `onCombine` every other invention already uses, once the slate shows "Knapped
+            //  blade" as an option. `onCanAttempt` delegates straight to `canExperimentWith`
+            //  — the exact predicate the real attempt is gated by — so the slate can never
+            //  show a pile as attemptable that the attempt itself would then refuse.
+            //
+            //  `atStorage` PASSED THROUGH, not left to its default. A REGRESSION G11 caught:
+            //  `canExperimentWith`'s own reach defaults to HELD ONLY (its own comment says so
+            //  explicitly) precisely so that a caller which does not know a box is open keeps
+            //  the behaviour it always had — but this caller DOES know, the same way `onSlate`/
+            //  `onCombine`/`onDiscover` two lines above already do, and omitting it here silently
+            //  starved `enough` for any pile drawn from an open crate: two materials genuinely in
+            //  reach, `canExperimentWith` checking HELD-only reach for them, refusing, and the
+            //  slate rendering empty for a pile ITEM 2's own box-reach feature says should work.
+            (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage) === null
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -1134,9 +1148,11 @@ export class Game {
      * rolls its own grade, sets its own tool flag and records its own domain practice. Nothing
      * about making an axe moved; what changed is only which surface asks for one.
      *
-     * `knap` is deliberately absent. It is a ONE-slot recipe, and staging needs two materials,
-     * so it can never appear on the slate — which is why the Build panel keeps its knap button
-     * and cannot be deleted outright. See the note there.
+     * `knap` WAS deliberately absent, on the grounds that a one-slot recipe could never reach
+     * a slate built for two to four. RULING (C1), this batch, closed exactly that gap — see
+     * `canExperimentWith`'s arity-1 exception and `KnownRecipe.standalone` — so it now stages
+     * and combines the same as everything else in this map, and the button it used to need is
+     * gone with the panel that carried it.
      */
     private static readonly MAKERS: Record<string, (state: GameState) => boolean> = {
         torch: craftTorch,
@@ -1147,6 +1163,15 @@ export class Game {
         raft: craftRaft,
         fishingline: craftFishingLine,
         net: craftNet,
+        //  RULING (C1), this batch — KNAP JOINS THE OTHER HAND-HELD MAKERS. `knapSharpblade`
+        //  is already fully self-sufficient (`canKnapSharpblade` checks the hammer AND the
+        //  stone; a success spends the stone itself), so `recipeCost('knap')` returning
+        //  nothing to draw into hands first (knap was never in the slots-based recipe table
+        //  this reads) is harmless, not a gap — the maker was always going to do its own
+        //  spending. This is the one missing line that actually connects the staged pile to
+        //  the blade; without it the slate would show "Knapped blade" as attemptable and
+        //  tapping Combine would silently do nothing.
+        knap: knapSharpblade,
     };
 
     /**
@@ -1603,21 +1628,27 @@ export class Game {
         //  Silent when there is genuinely nothing to say: a survivor with no demonstrated
         //  pattern has no construction to be offered, and inventing a message for that would
         //  be teaching them about a menu they do not have.
-        //  RETIRED BY THE SLATE MERGE, and the reasoning above is kept because it is still
-        //  right about WHERE mattering — it is only wrong about which surface should ask.
+        //  RETIRED BY THE SLATE MERGE — AND NOW REPLACED (RULING, C1), rather than left
+        //  permanently silent. The reasoning above stayed right about WHERE mattering; it is
+        //  ALSO right that a menu invented for one specific WHAT (the old site card, which
+        //  could only ever offer whatever the pile in hand happened to make) was the wrong
+        //  shape. This is not that card: it is the SAME universal circle every other hold-to-
+        //  act target already uses, offered on a PLAIN POINT of ground instead of an object,
+        //  extensible the same way every other target's own verb list already is — "Sleep
+        //  rough" and "Build a shelter" today, whatever else genuinely belongs here later,
+        //  without a second mechanism.
         //
-        //  The card asked WHAT and WHERE at once, and could only be entered from a hold on
-        //  ground that already had something to offer. So a survivor who wanted a crate had to
-        //  be standing somewhere a crate could go before the game would admit crates existed —
-        //  which is the catalogue problem wearing a gesture. The pile names the thing now, and
-        //  the tap that follows places it, so WHERE is still a decision and it is simply asked
-        //  second instead of first.
-        //
-        //  A HOLD ON OPEN GROUND THEREFORE DOES NOTHING, and does it the way [[D-162]] ruled a
-        //  tap on nothing does: silently, and still traced. The trace is what makes "the
-        //  gesture is retired" distinguishable from "the gesture broke".
+        //  A TAP ON OPEN GROUND STILL DOES NOTHING ([[D-162]], untouched) — that ruling was
+        //  about the TAP, this is about the HOLD, and the two gestures keep the meaning
+        //  Slice 2's Default-Verb Law gave them: a tap acts (or here, still just looks), a
+        //  hold asks. Reachability is the same walk-then-arrive every other hold target uses:
+        //  the point becomes `this.pending`, the frame loop walks the survivor to it, and
+        //  `actOnArrival` opens the circle exactly as it would for an object.
         void s;
-        runtime.holdTrace.push('site-card-retired');
+        this.pending = { kind: 'ground', x: point.x, y: point.z };
+        this.pendingWasHold = true;
+        this.cues.play(CUES.target);
+        runtime.holdTrace.push(`ground:${point.x.toFixed(1)},${point.z.toFixed(1)}`);
     }
 
 
@@ -1941,6 +1972,9 @@ export class Game {
             case 'diagnose-outboard': this.doDiagnoseOutboard(); break;
             case 'repair-outboard': this.doRepairOutboard(); break;
             case 'pick-up-shore': this.doPickUpShoreItem(); break;
+            //  ---- RULING (C1) — GROUND-HOLD: an extensible list, two entries today ----
+            case 'sleep-rough-here': this.trySleep(); break;
+            case 'build-shelter-here': this.doOpenBuildShelter(); break;
             default: this.explain('Nothing to do there.'); break;
         }
         this.lastActivityAt = now();
@@ -2050,6 +2084,11 @@ export class Game {
         if (this.pending.kind === 'shoreitem') {
             const it = session().state.shore.items.find((x) => x.id === (this.pending as { id: string }).id);
             return it ? { x: it.x, z: it.y } : null;
+        }
+        //  RULING (C1) — GROUND-HOLD. Captured at the hold, never re-derived: a plain point
+        //  has no world record to look up later, unlike every kind above it.
+        if (this.pending.kind === 'ground') {
+            return { x: this.pending.x, z: this.pending.y };
         }
         //  ...AND THIS DEFAULT IS WHY P0-3 SURVIVED A FIX. Every branch above names its kind;
         //  anything unlisted fell through to the POND, so a tap on a dropped pile walked the
@@ -2170,7 +2209,10 @@ export class Game {
             //  ninth and tenth bespoke branch: this is the exact defect class the boar's own
             //  comment above warns about, paid down once instead of re-introduced twice.
             || this.pending.kind === 'outboard'
-            || this.pending.kind === 'shoreitem') {
+            || this.pending.kind === 'shoreitem'
+            //  RULING (C1) — ground-hold joins the same shared path, the same reasoning: a
+            //  plain point is not a special enough thing to earn its own dispatch branch.
+            || this.pending.kind === 'ground') {
             const target = this.pending.kind;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
             //  which gesture set this intention, so arriving after a hold opens the circle and
@@ -2284,9 +2326,31 @@ export class Game {
      */
     private trySleep(): void {
         const report = session().sleep(now());
-        if (!report) { this.explain('Too far from the shelter to sleep.'); return; }
+        //  STALE MESSAGE CORRECTED (found while wiring ground-hold's own "Sleep rough",
+        //  RULING C1): this named a shelter-distance refusal `canSleep` has not enforced
+        //  since sleep left the Build panel — reachable from Vitals, and now from open
+        //  ground too, with nothing built. A null report here is some OTHER internal
+        //  refusal, not a walk the player needs to make.
+        if (!report) { this.explain('You cannot settle down right now.'); return; }
         this.cues.stopAllBeds();
         this.openReport(report);
+    }
+
+    /**
+     * RULING (C1) — "BUILD A SHELTER" FROM GROUND-HOLD: a navigation shortcut, not an
+     * instant place. This batch's own universal ruling (every recipe is built by staging in
+     * Combine, no exceptions — see `experiment.ts`'s `canExperimentWith`) means a ground-hold
+     * verb cannot commit a structure on the spot any more than the known list's own knap
+     * entry can. So this opens the pack with 'shelter' already selected in the known list —
+     * the same `selectedKnownRecipe` mechanism a tap on that row itself uses — landing the
+     * survivor straight on its have/need rather than making them hunt for it. WHERE it
+     * actually goes is still the tap that follows a real Combine success ([[D-164]]); this
+     * only shortens the walk to that decision for someone who held ground because it looked
+     * like the right spot.
+     */
+    private doOpenBuildShelter(): void {
+        this.selectedKnownRecipe = 'shelter';
+        this.openLoadout(false, 'inventory');
     }
 
     /**
@@ -3237,24 +3301,13 @@ export class Game {
         showBuildCard(
             this.overlay,
             {
-                //  F3: rendered, not derived — `refugeReport` is the single source.
-                refuge: refugeReport(session().state),
                 //  `revealed` is READ from the brain, never decided here — the panel is a
                 //  record of what the survivor has done, and the body does not get a vote on
                 //  what they know.
                 torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned, revealed: revealedInPanel(s, 'torch') },
                 axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe, revealed: revealedInPanel(s, 'axe') },
-                shelter: { have: { wood: s.inventory.wood, stone: s.inventory.stone, fiber: s.inventory.fiber }, done: s.shelter.built, revealed: revealedInPanel(s, 'shelter') },
                 storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built, revealed: revealedInPanel(s, 'storage') },
                 hints: panelHints(s),
-                //  Mending, on the construction surface where it belongs (Gate 0 Part 1).
-                //  Reachable at ANY durability below full — no threshold, no urgency gate,
-                //  and it displaces nothing, which the secondary-button attempt did not
-                //  manage: standing at your own shelter it replaced Build outright and made
-                //  storage unbuildable. The device harness caught that within one run.
-                mendShelter: canRepairStructure(s, 'shelter')
-                    ? { durability: s.shelter.durability, max: TUNE.structureDurabilityMax, gain: TUNE.repairDurabilityPerWood }
-                    : null,
                 stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer, revealed: revealedInPanel(s, 'stonehammer') },
                 //  DROP 1 FIX — the spear finally has somewhere to be made. It shipped with a
                 //  recipe, a craft function, a thrust verb and a reachability test, and no
@@ -3295,8 +3348,10 @@ export class Game {
             //  KNAP AND SLEEP FOLLOWED THEM OUT (RULING, C1). Their callbacks moved to
             //  `openLoadout` below — `onKnapSharpblade` and `onSleep` there are the SAME
             //  closures this call used to pass, just threaded to the panel they now live on.
-            () => this.endPanel(),
-            () => { this.endPanel(); this.tryRepair('shelter'); }
+            //  MEND FOLLOWED TOO, THIS BATCH — `onMendShelter` is gone; mending the shelter
+            //  is reachable only through its own verb circle now (`performVerb`'s `'mend'`
+            //  case, unchanged), which already fully covered it.
+            () => this.endPanel()
         );
     }
 

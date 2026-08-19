@@ -53,7 +53,10 @@ export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dro
     //  id-addressable like `dropped`, resolved to the nearest one rather than threading an id
     //  through this signature — see `shoreItemVerbs` for why that already-established shape
     //  fits without changing it.
-    | 'outboard' | 'shoreitem';
+    | 'outboard' | 'shoreitem'
+    //  RULING (C1) — GROUND-HOLD. A plain point on open ground, not an object — the one
+    //  target here with no world record behind it at all.
+    | 'ground';
 
 /**
  * Does the survivor know how to fish? A capability, not an inventory item — Slice 2's
@@ -127,6 +130,7 @@ function targetVerbs(state: GameState, target: VerbTarget): VerbOption[] {
         case 'fishingspot': return fishingSpotVerbs(state);
         case 'outboard': return outboardVerbs(state);
         case 'shoreitem': return shoreItemVerbs(state);
+        case 'ground': return groundVerbs(state);
     }
 }
 
@@ -184,6 +188,14 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     outboard: 'strip-outboard',
     //  A find on the tideline has exactly one thing you want from it, same as a dropped stack.
     shoreitem: 'pick-up-shore',
+    //  RULING (C1) — GROUND-HOLD IS HOLD-ONLY BY CONSTRUCTION: a tap on open ground refuses
+    //  a target entirely ([[D-162]]), so this pending intention is only ever set by a hold,
+    //  and `holdOpensCircle` answers true wherever at least one ground verb exists — which is
+    //  always, since sleeping rough never refuses. The declared default therefore never
+    //  actually fires the tap path; it exists because every `VerbTarget` needs one, and
+    //  "sleep rough" is the honest answer to "if this were ever reached by a tap, what would
+    //  the single most frequent ground action be".
+    ground: 'sleep-rough-here',
 };
 
 /**
@@ -693,4 +705,48 @@ function shoreItemVerbs(state: GameState): VerbOption[] {
         available: !heavy,
         reason: heavy ? 'Too heavy to carry. It would have to be dragged.' : null,
     }];
+}
+
+/**
+ * OPEN GROUND — RULING (C1). A hold on a plain patch of ground asks what it is FOR: it is
+ * the direct successor to the site card the slate merge retired ("the reasoning stays right
+ * about WHERE mattering — it is only wrong about which surface should ask"), rebuilt on the
+ * SAME shared circle every other hold-to-act target already uses rather than a bespoke menu.
+ *
+ * AN EXPLICIT LIST, NOT A DERIVED ONE (director's own instruction) — a plain array literal a
+ * third entry joins by being added, not by a new shape being invented around it. Two today:
+ *
+ *   SLEEP ROUGH — the SAME `session().sleep()` Vitals already calls, reachable from a second
+ *     door. Always available; sleeping unsheltered has never needed a shelter to exist, only
+ *     a survivor tired enough to lie down.
+ *   BUILD A SHELTER — a NAVIGATION shortcut, not an instant place. RULING (C1)'s own universal
+ *     rule this same batch (every recipe is built by staging in Combine, no exceptions) means
+ *     this cannot commit a structure on the spot; it opens the pack with shelter's own known-
+ *     list row already selected, so the survivor lands straight on its have/need rather than
+ *     hunting for it. WHERE the shelter actually goes is still decided the way [[D-164]] left
+ *     it — the tap that follows a real Combine success — this only shortens the walk to that
+ *     point for someone who came here BECAUSE this ground looked like the right spot.
+ *
+ * NEITHER NAMES A REASON TO REFUSE TODAY. Sleeping rough never refuses; a shelter already
+ * standing is `shelterVerbs`' own question to answer, not this one's — a survivor with one
+ * already built is offered "build a shelter" here regardless, same as `handRows` still shows
+ * an owned tool as available: this circle answers "what can this ground be used for", not
+ * "what does the survivor already have".
+ */
+function groundVerbs(state: GameState): VerbOption[] {
+    void state; // neither verb is state-gated today; kept for the shape every other target has
+    return [
+        {
+            id: 'sleep-rough-here',
+            label: 'Sleep rough',
+            available: true,
+            reason: null,
+        },
+        {
+            id: 'build-shelter-here',
+            label: 'Build a shelter',
+            available: true,
+            reason: null,
+        },
+    ];
 }

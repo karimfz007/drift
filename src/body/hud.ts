@@ -455,8 +455,10 @@ export interface KnownRecipeView {
     name: string;
     needs: Array<{ kind: string; need: number; have: number }>;
     afford: boolean;
-    /** Mirrors `KnownRecipe.standalone` — true only for knap, whose detail view offers a
-     *  direct action rather than implying "stage these materials to make it". */
+    /** Mirrors `KnownRecipe.standalone` — true only for knap. RULING (C1), this batch: no
+     *  longer "has its own direct action" (that shortcut is gone); now "may be attempted
+     *  from a single staged material", read by the chip-picker's own visibility gate so a
+     *  survivor holding only stone still sees a chip to tap. */
     standalone?: boolean;
 }
 
@@ -498,7 +500,6 @@ export interface PanelHintView {
 export interface BuildCardView {
     torch: BuildItemView;
     axe: BuildItemView;
-    shelter: BuildItemView;
     storage: BuildItemView;
     /** The stone hammer (Ch.1 v3, D-055) — a fifth, one-time Build-panel entry. */
     stoneHammer: BuildItemView;
@@ -520,22 +521,10 @@ export interface BuildCardView {
      * a product — `discovery.ts` holds that line and its tests guard it.
      */
     hints: PanelHintView[];
-    /** Mending the shelter, or null when it is whole / out of reach / no wood held.
-     *  Lives HERE, on the construction surface, rather than on the secondary button —
-     *  the first attempt put it there and it displaced Build itself while the player stood
-     *  at their own shelter, which is the same one-control-two-verbs disease it was meant
-     *  to cure. The Build card already IS the construction surface; nothing is displaced. */
-    mendShelter: { durability: number; max: number; gain: number } | null;
-    /**
-     * F3 — refuge quality made perceivable (Slice 1 item 2). The exposure model was already
-     * honest and entirely invisible: warmth drained more slowly under a shelter and the
-     * player was told nothing — not the size of the relief, not that standing six metres away
-     * had switched it off, not that being soaked had made the night harsher anyway. A hidden
-     * number fails the depth-dial test on all three counts at once, because you cannot
-     * influence what you cannot perceive. Comes straight from `refugeReport`; this layer
-     * renders it and derives nothing.
-     */
-    refuge: { line: string; working: boolean; reductionPct: number; status: string };
+    //  MEND AND F3 ARE GONE FROM HERE (RULING, C1) — see `showBuildCard`'s own comment for
+    //  the full account. `mendShelter`/`refuge` fields removed with them: nothing here reads
+    //  them any more, and a field a view still carries after its row is gone is exactly the
+    //  "dead wiring reads as a live surface" trap this file's own D-165 comment already names.
 }
 
 
@@ -560,8 +549,18 @@ export function showBuildCard(
     //  survivor make"; knapping is one more true answer), and rest is a Vitals-tab row,
     //  where a tired survivor actually goes to ask "how am I doing." Their callbacks and
     //  `bind()` calls left with them; see `showLoadout` and `vitalsBody` for where they live.
-    onClose: () => void,
-    onMendShelter: () => void = () => {}
+    //
+    //  MEND AND THE F3 REFUGE READING FOLLOWED THEM (RULING, C1, this batch). The comment
+    //  this replaced argued both belonged here: MEND was "kept only because removing a
+    //  working control is not this batch's ruling to make" (that ruling has now been made —
+    //  it was always genuinely redundant, the shelter's own verb circle already carries it,
+    //  no capability is lost by removing the duplicate); the F3 reading was an EXPLICIT
+    //  earlier keep ("the pivot removed the catalogue, NOT the panel — the refuge reading
+    //  survives", SLICE 2B's own words), overturned rather than reversed by oversight — a
+    //  survivor asking "how am I doing tonight" belongs on the SAME surface sleep and knap
+    //  already proved out, not on the construction one. Both now live in `vitalsBody`.
+    //  `onMendShelter`, `mendShelter`, `refuge` and their markup left with them.
+    onClose: () => void
 ): void {
     const el = panel(overlay, 'build');
     const hintMarkup = view.hints.length
@@ -574,41 +573,9 @@ export function showBuildCard(
     el.innerHTML = `
         <div class="build-list">
             ${hintMarkup}
-            <!--  F3: what the refuge is doing FOR you, and when it is not, why not and what
-                  to do about it. Sits at the top of the construction surface because it is
-                  the reason to build or mend anything on the list below it.  -->
-            <div class="build-item refuge-item ${view.refuge.working ? 'refuge-on' : 'refuge-off'}">
-                <div class="build-head">
-                    <strong>Shelter${view.refuge.working ? `  ·  −${view.refuge.reductionPct}% cold` : ''}</strong>
-                </div>
-                <p class="subtitle refuge-line">${view.refuge.line}</p>
-            </div>
-            <!--  SLEEP AND KNAP ARE GONE FROM HERE (RULING, C1) — relocated, not deleted.
-                  Sleep is now a Vitals-tab row (vitalsBody's restRow); knapping is now a
-                  standalone entry on the known-recipes list (knownRecipes, standalone: true),
-                  reachable from the same slate RULING 1 restored. What is left is here
-                  because it genuinely has nowhere else to be, checked rather than assumed
-                  before anything was deleted:
-
-                    THE REFUGE LINE is a reading, not a making.
-                    MEND is genuinely redundant — the shelter's own verb circle carries it —
-                      and is kept only because removing a working control is not this
-                      batch's ruling to make.
-                    THE HINTS are the teaching half of the invention pivot.  -->
-            ${view.mendShelter ? `
-            <div class="build-item mend-item">
-                <div class="build-head"><strong>Mend the shelter</strong></div>
-                <p class="subtitle">Worn to ${Math.round(view.mendShelter.durability)}/${view.mendShelter.max}. One wood restores ${view.mendShelter.gain}.</p>
-                <button class="primary mend-shelter-btn" type="button">Mend  ·  +${view.mendShelter.gain}</button>
-            </div>` : ''}
         </div>
         <button class="quiet close-btn" type="button">Close</button>`;
     let done = false;
-    const bind = (selector: string, action: () => void) => {
-        const btn = el.querySelector(selector);
-        btn?.addEventListener('click', () => { if (done) return; done = true; fade(el, action); });
-    };
-    bind('.mend-shelter-btn', onMendShelter);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
 }
 
@@ -912,6 +879,17 @@ export interface VitalsExtraView {
      *  panel, and the old location was documented as an exception with nowhere else to be —
      *  this is that else. */
     rest: { sheltered: boolean };
+    /**
+     * RULING (C1) — F3, RELOCATED FROM THE BUILD PANEL, same source (`refugeReport`,
+     * unchanged — it already answered gracefully with no shelter built at all: "No shelter.
+     * The night takes its full toll..."). An EARLIER ruling had explicitly kept this one
+     * reading in Build on purpose ("the pivot removed the catalogue, NOT the panel — the
+     * refuge reading survives", SLICE 2B's own words) while everything else controllable
+     * left; this ruling overturns that specific keep, on the same reasoning sleep/knap
+     * already proved out — a survivor asking "how am I doing tonight" comes here, not to the
+     * construction surface, and what a shelter is doing FOR you right now is exactly that
+     * question, not a different one. Nothing about the reading changes, only where it lives. */
+    refuge: { line: string; working: boolean; reductionPct: number; status: string };
     /** WAVE 1 — found, not crafted, not held in a hand: `salvageTools` is a capability the
      *  tide can wash up (see `shore.ts`'s TOOL fate), and it needed a surface of its own once
      *  it stopped fitting `TOOL_IDS`' hand-equippable shape. This is that surface — the
@@ -1002,6 +980,18 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
     //  does not reorder a readout.
     const illnessLeads = Boolean(extra) && extra!.illness.stage !== 'well';
 
+    //  RULING (C1) — F3, RELOCATED FROM THE BUILD PANEL. Same classes, same wording, same
+    //  source (`refugeReport`) as the row it replaces — see `VitalsExtraView.refuge`'s own
+    //  doc for why this specific reading was an EXPLICIT earlier keep, now overturned rather
+    //  than an oversight caught. Placed just above Rest: both are "the shelter and the
+    //  night", read together — what it is doing for you, and what to do about the night
+    //  itself.
+    const refugeRow = !extra ? '' : `
+        <div class="vital-line refuge-item ${extra.refuge.working ? 'refuge-on' : 'refuge-off'}">
+            <div class="build-head"><strong>Shelter${extra.refuge.working ? `  ·  −${extra.refuge.reductionPct}% cold` : ''}</strong></div>
+            <p class="subtitle refuge-line">${extra.refuge.line}</p>
+        </div>`;
+
     //  RULING (C1) — REST, RELOCATED FROM THE BUILD PANEL. Same wording as the row it
     //  replaces, so nothing a returning player learned to read stops being true; only where
     //  they go to read it changed. Not marked `pressing`: sleep is always available (`canSleep`
@@ -1031,7 +1021,7 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}${salvageToolsRow}${restRow}</div>`;
+        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}${salvageToolsRow}${refugeRow}${restRow}</div>`;
 }
 
 export function showLoadout(
@@ -1074,12 +1064,23 @@ export function showLoadout(
     /** RULING (C1) — sleep, relocated from the Build panel. Appended at the tail, as every
      *  optional handler here has been since P0-2 found the cost of doing otherwise. */
     onSleep: () => void = () => {},
-    //  RULING (C1) — knapping, relocated from the Build panel onto the known-recipes list.
-    //  Selecting a row toggles which one shows full detail (the simplification the SAME
-    //  ruling asked for); knap's detail additionally offers this action directly, because it
-    //  has no staging step to route through — see `KnownRecipe.standalone`.
-    onKnapSharpblade: () => void = () => {},
-    onSelectKnown: (recipeId: string | null) => void = () => {}
+    onSelectKnown: (recipeId: string | null) => void = () => {},
+    //  RULING (C1), this batch — EVERY RECIPE IS BUILT BY STAGING IN COMBINE, KNAP INCLUDED.
+    //  `onKnapSharpblade` (a direct-tap action bypassing staging entirely, the ONE remaining
+    //  violation of that rule — every other known-list entry already staged its materials)
+    //  is retired with it; knapping now succeeds through the SAME `onCombine` path as
+    //  everything else, once `stone` is staged and the slate shows "Knapped blade" as a
+    //  known option — see `experiment.ts`'s own `canExperimentWith` for the narrow arity-1
+    //  exception this shape needed to be reachable there at all.
+    //
+    //  `onCanAttempt` REPLACES the hardcoded "two or more picked" floor `redraw` used to
+    //  enforce locally: that floor is correct for ordinary combining but was ALSO the thing
+    //  standing between knap and a real staging path (its own recipe has one slot, not two).
+    //  Delegating to the brain's own `canExperimentWith` — the exact function that gates the
+    //  real attempt — means this can never drift from what the attempt itself would allow;
+    //  two copies of one rule, checked separately, is the destroy-gap bug this project keeps
+    //  finding under a different name.
+    onCanAttempt: (materials: string[]) => boolean = (materials) => materials.length >= TUNE.combineMinInputs
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1150,9 +1151,19 @@ export function showLoadout(
     //  holding one thing, stone — which would have made knap's new entry (below) invisible in
     //  its own most likely arrival scenario. So the row shows whenever EITHER half has
     //  something to offer.
+    //
+    //  RULING (C1), this batch — THE CHIP-PICKER ITSELF NEEDS THE SAME WIDENING, ONE LEVEL
+    //  DEEPER. Knap is now a STAGED recipe like every other — its direct button is gone — but
+    //  its own recipe has exactly one slot, so a survivor holding only stone would never see
+    //  a "Put two to four things together" section at all under the old `>= 2` floor, and
+    //  never get a stone CHIP to tap in the first place. `standalone` (kept, repurposed: it
+    //  no longer marks "has its own button", it marks "may be attempted from one material")
+    //  is the same flag `canExperimentWith`'s own arity exception reads on the brain side —
+    //  checked there, trusted here, not re-derived.
+    const hasStandaloneKnown = view.known.some((k) => k.standalone);
     const combineRow = view.combinable.length >= 2 || view.known.length > 0
         ? `<div class="combine-row">
-             ${view.combinable.length >= 2 ? `
+             ${view.combinable.length >= 2 || hasStandaloneKnown ? `
              <p class="subtitle">Put two to four things together.</p>
              <div class="combine-chips">${view.combinable.map((m) =>
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
@@ -1161,30 +1172,28 @@ export function showLoadout(
              <!--  RULING 1 — THE THINGS YOU KNOW, AND WHAT THEY STILL WANT. Present whenever the
                    survivor has demonstrated anything, whether or not they can afford it today.
                    RULING (C1) — SIMPLIFIED. The list itself now shows a NAME ONLY; full
-                   have/need detail (and, for a standalone entry like knap, its action) appears
-                   for exactly the SELECTED row. A survivor scanning "what do I know" was reading
-                   a wall of gate chips for every entry at once, most of them irrelevant to
-                   whatever they actually came to check.  -->
+                   have/need detail appears for exactly the SELECTED row. A survivor scanning
+                   "what do I know" was reading a wall of gate chips for every entry at once,
+                   most of them irrelevant to whatever they actually came to check.
+                   RULING (C1), this batch — AND NO ENTRY OFFERS A SHORTCUT ANY MORE. Knap's
+                   own action button is gone; every recipe, known or not, is built the same
+                   way now — staged in Combine, above, never tapped directly from here. This
+                   list still answers "what do I know", it just never answers "make it" too.  -->
              ${view.known.length === 0 ? '' : `<div class="known-list">
-                <p class="subtitle">You know how to make:</p>
                 ${view.known.map((k) => {
                     const selected = k.recipeId === view.selectedKnown;
                     const detail = !selected ? '' : `
                         <span class="known-costs">${k.needs.map((x) => `<span class="known-gate ${x.have >= x.need ? 'met' : 'unmet'}">${MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind} ${x.have}/${x.need}</span>`).join('')}</span>
                         ${k.afford ? '' : `<span class="known-where">${k.needs.filter((x) => x.have < x.need)
                             .map((x) => MATERIAL_SOURCE[MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind] ?? '')
-                            .filter(Boolean).join(' · ')}</span>`}
-                        <!--  KNAP HAS NO STAGING STEP (RULING, C1) — see KnownRecipe.standalone.
-                              Selecting it offers the action directly rather than implying chips
-                              need dragging in for a mechanic that was never discovery-based.  -->
-                        ${k.standalone ? `<button class="primary knap-btn" type="button" data-recipe="${k.recipeId}" ${k.afford ? '' : 'disabled'}>${k.afford ? 'Knap a blade' : 'Not enough stone'}</button>` : ''}`;
+                            .filter(Boolean).join(' · ')}</span>`}`;
                     return `<div class="known-row ${k.afford ? 'ready' : 'short'}${selected ? ' expanded' : ''}" data-known="${k.recipeId}">
                         <span class="known-name">${k.name}</span>${detail}
                     </div>`;
                 }).join('')}
              </div>`}
              <p class="subtitle evidence-line"></p>
-             ${view.combinable.length >= 2 ? `
+             ${view.combinable.length >= 2 || hasStandaloneKnown ? `
              <div class="combine-actions">
                <button class="primary combine-btn" type="button" disabled>Combine</button>
                <button class="quiet discover-btn" type="button" disabled>Discover</button>
@@ -1311,30 +1320,16 @@ export function showLoadout(
     //  selected" means "ask for a new view with that selection and redraw", not a partial DOM
     //  patch that could drift from what a fresh render would produce.
     //
-    //  BOUND BEFORE `.knap-btn`'s handler is attached below, and that ordering is deliberate,
-    //  not incidental: `.knap-btn` lives INSIDE a `.known-row` (a real nested button, since a
-    //  standalone entry's action has to be a genuine control, not a styled span pretending to
-    //  be one), so its own click bubbles here unless stopped. A row that also toggled itself
-    //  shut on the same tap that fired its action would be a confusing double-effect from one
-    //  gesture — see the `stopPropagation` on `.knap-btn` below, which is the actual fix; this
-    //  comment just explains why reading the two bindings in either order still makes sense.
+    //  `.knap-btn` AND ITS stopPropagation GUARD ARE GONE (RULING, C1, this batch). No known
+    //  row carries its own nested action button any more — every recipe is built by staging
+    //  in Combine, above — so a row's own click can never again need to be told apart from a
+    //  child control's.
     el.querySelectorAll<HTMLButtonElement>('.known-row').forEach((row) => {
         row.addEventListener('click', () => {
             const id = row.dataset.known;
             if (!id) return;
             el.remove();
             onSelectKnown(id === view.selectedKnown ? null : id);
-        });
-    });
-    //  KNAP HAS NO STAGING STEP, so its action lives right where it is read — see
-    //  `KnownRecipe.standalone`. `stopPropagation` keeps the parent `.known-row`'s own
-    //  click (above) from also toggling the selection on the same tap.
-    el.querySelectorAll<HTMLButtonElement>('.knap-btn').forEach((btn) => {
-        if (btn.disabled) return;
-        btn.addEventListener('click', (event) => {
-            event.stopPropagation();
-            onKnapSharpblade();
-            fade(el, onClose);
         });
     });
 
@@ -1358,6 +1353,11 @@ export function showLoadout(
     //  and it left `storage` and `stonehammer` permanently unreachable because wood+stone
     //  always resolved to the shelter. The button stays asleep below two, so the verb can
     //  never fire half-formed.
+    //
+    //  RULING (C1), this batch — "TWO TO FOUR" NOW HAS ITS ONE NAMED EXCEPTION, and it is
+    //  checked through `onCanAttempt` rather than repeated here as a second `=== 1` special
+    //  case: knap's own single-material shape either passes the brain's real gate or it does
+    //  not, and this surface only ever asks, never re-derives.
     const picked: string[] = [];
     let chosenRecipe: string | null = null;
     const combineBtn = el.querySelector<HTMLButtonElement>('.combine-btn');
@@ -1366,7 +1366,7 @@ export function showLoadout(
 
     /** Redraw the slate for the current pile. The surface is a pure function of the selection. */
     const redraw = (): void => {
-        const enough = picked.length >= TUNE.combineMinInputs;
+        const enough = onCanAttempt(picked);
         const slate: CombineSlateView = enough ? onSlate(picked) : { known: [], unknownCount: 0 };
         //  A selection cannot survive a pile change that removes it.
         if (chosenRecipe && !slate.known.some((k) => k.recipeId === chosenRecipe)) chosenRecipe = null;
@@ -1433,13 +1433,16 @@ export function showLoadout(
     redraw();
 
     combineBtn?.addEventListener('click', () => {
-        if (picked.length >= TUNE.combineMinInputs && chosenRecipe) {
+        //  SAME GATE THE SLATE ITSELF WAS DRAWN UNDER (`onCanAttempt`, not a re-derived
+        //  length check) — a pile the slate showed as attemptable must be one the button
+        //  agrees is attemptable, on the same call, not a second opinion that could drift.
+        if (onCanAttempt(picked) && chosenRecipe) {
             onCombine([...picked], chosenRecipe);
             fade(el, onClose);
         }
     });
     discoverBtn?.addEventListener('click', () => {
-        if (picked.length >= TUNE.combineMinInputs) { onDiscover([...picked]); fade(el, onClose); }
+        if (onCanAttempt(picked)) { onDiscover([...picked]); fade(el, onClose); }
     });
 
     //  The old standalone entry point, kept as a shortcut INTO the Skills tab. Same

@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
     COMBINE_ALWAYS_SUCCEEDS,
     canExperiment,
+    canExperimentWith,
+    combineSlate,
+    discoverWith,
     experimentGameHoursFor,
     experimentPairKey,
     hasTried,
+    hasUnknownRival,
+    matchPool,
     relationshipFor,
     successChanceFor,
     tryCombine,
@@ -422,5 +427,120 @@ describe('what the player is TOLD is only ever triumphant for a real invention (
         };
         const said = announcementFor(resultWith('invented', { blueprint: plan, recipeId: 'cordage' }));
         expect(said.text).toContain('Cordage');
+    });
+});
+
+describe('RULING (C1) — KNAP STAGES LIKE EVERYTHING ELSE: the one narrow arity-1 exception', () => {
+    it('a single material is refused for an ORDINARY pile — the floor of two still holds', () => {
+        const s = ready();
+        expect(canExperimentWith(s, ['wood'])).toMatch(/pick two/i);
+    });
+
+    it('a single STONE is STILL refused without the hammer — the exception is knap-shaped, not stone-shaped', () => {
+        const s = ready();
+        s.tools.stoneHammer = false;
+        expect(canExperimentWith(s, ['stone'])).toMatch(/pick two/i);
+    });
+
+    it('a single stone is ALLOWED once the hammer is owned — the one place the floor bends', () => {
+        const s = ready();
+        s.tools.stoneHammer = true;
+        expect(canExperimentWith(s, ['stone'])).toBeNull();
+    });
+
+    it('the matching machinery actually finds knap from one material — a real recipe entry, not just a gate exception', () => {
+        const s = ready();
+        s.tools.stoneHammer = true;
+        expect(matchPool(['stone']).map((r) => r.id)).toContain('knap');
+    });
+
+    it('staging just stone, with the hammer, genuinely DISCOVERS knap — mints the blueprint', () => {
+        const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
+        s.tools.stoneHammer = true;
+        s.blueprints = [];
+        const result = attemptConfirmed(s, ['stone']);
+        expect(result.ok).toBe(true);
+        expect(result.outcome).toBe('invented');
+        expect(s.blueprints.some((bp) => bp.recipeId === 'knap')).toBe(true);
+    });
+
+    it('the max-inputs ceiling is untouched — four is still the top, knap is the one floor exception, not a new ceiling', () => {
+        const s = ready();
+        s.tools.stoneHammer = true;
+        expect(canExperimentWith(s, ['wood', 'stone', 'fiber', 'berries', 'sharpblade'])).toMatch(/more than you can hold/i);
+    });
+});
+
+describe('A SEVENTH DEFECT FOUND ON A REAL DEVICE — combineSlate did not know knap the way the known-list did', () => {
+    //  THE GAP THIS CLOSES. `matchPool` finding knap (proved above) is not the same claim as
+    //  the SLATE showing it: `combineSlate` used to ask `state.blueprints.some(...)` directly,
+    //  and knap never holds a blueprint — it is a standing gate (`stoneHammer` alone), per
+    //  `KnownRecipe.standalone`'s own doc. Every test above staged stone and asked the BRAIN
+    //  to attempt it directly, which never touched `combineSlate` at all, so none of them could
+    //  have caught this — only a device run staging the chip and reading the rendered slate
+    //  did. `isRecipeKnown` is the fix; these are the tests that would have caught its absence.
+    it('the slate shows knap as a KNOWN outcome from one staged stone — not an anonymous unknown slot', () => {
+        const s = ready();
+        s.tools.stoneHammer = true;
+        s.blueprints = [];
+        const slate = combineSlate(s, ['stone']);
+        expect(slate.known.map((k) => k.recipeId)).toContain('knap');
+        expect(slate.unknownCount).toBe(0);
+    });
+
+    it('...and stays absent from the slate without the hammer — the exception is knap-shaped, not stone-shaped, here too', () => {
+        const s = ready();
+        s.tools.stoneHammer = false;
+        s.blueprints = [];
+        //  `combineSlate` itself never refuses — `canExperimentWith`'s arity gate is what a
+        //  caller checks first (`onCanAttempt` in the body layer). Asked anyway, it must not
+        //  report a phantom "you know this" for a survivor who has never picked up the hammer.
+        const slate = combineSlate(s, ['stone']);
+        expect(slate.known.map((k) => k.recipeId)).not.toContain('knap');
+    });
+
+    it('Discover refuses a stone-alone pile once the hammer is owned — it is not a fresh unknown to stumble into', () => {
+        //  THE SIBLING BUG the same blind spot produced: before `isRecipeKnown`, `hasUnknownRival`
+        //  asked the same blueprint-only question, so the DISCOVER button (not just Combine)
+        //  treated an already-known standing-gate recipe as something to invent — which would
+        //  have minted a real Blueprint for knap, charged a real attempt cost, and spent stone
+        //  through the generic one-unit-per-chip loop rather than `TUNE.knapStoneCost`.
+        const s = ready();
+        s.tools.stoneHammer = true;
+        s.blueprints = [];
+        expect(hasUnknownRival(s, ['stone'])).toBe(false);
+        const result = discoverWith(s, ['stone']);
+        expect(result.ok).toBe(false);
+        expect(result.reason).toMatch(/already know/i);
+        expect(s.blueprints.some((bp) => bp.recipeId === 'knap')).toBe(false);
+    });
+
+    it('...but Discover still works normally for a genuine unknown — the fix narrows, it does not disable', () => {
+        const s = ready();
+        s.tools.stoneHammer = true;
+        s.tools.axe = false;
+        s.blueprints = [];
+        expect(hasUnknownRival(s, ['wood', 'sharpblade', 'fiber'])).toBe(true);
+    });
+});
+
+describe('A SIXTH DEFECT FOUND WHILE VERIFYING THE ABOVE — Blueprint.inputs silently dropped materials past the first two', () => {
+    it('a THREE-material recipe records all three inputs, not just the first two staged', () => {
+        //  Found by tracing `[a, b].sort()` while checking whether knap's arity-1 case would
+        //  produce a valid `Blueprint.inputs` — it would not (`[stone, undefined]`), and
+        //  neither did any existing 3-4 material recipe: `grep` confirms `Blueprint.inputs`
+        //  is written and read nowhere else in `src/`, so this was inert, not live-broken.
+        const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
+        s.blueprints = [];
+        //  No recipeId: axe is not held yet, so this is a genuine first-time discovery, and
+        //  `attemptConfirmed`'s own fallback (nothing held -> `EXPERIMENT_CHOICE`) is the
+        //  correct way to let it resolve — passing 'axe' explicitly here would hit
+        //  `makeChosen`'s "you have not worked that out yet" guard instead, found by running
+        //  this exact test with the wrong call shape first.
+        const result = attemptConfirmed(s, ['wood', 'sharpblade', 'fiber']);
+        expect(result.ok, JSON.stringify(result)).toBe(true);
+        const bp = s.blueprints.find((b) => b.recipeId === 'axe');
+        expect(bp).toBeDefined();
+        expect(bp!.inputs.slice().sort()).toEqual(['fiber', 'sharpblade', 'wood']);
     });
 });

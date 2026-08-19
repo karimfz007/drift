@@ -272,7 +272,13 @@ export class Session {
      *
      * Energy RECOVERS at a rate on waking (Ch.6, D-058) — it is no longer refilled outright,
      * which is what this doc comment said through C05. Everything else drifts exactly as an
-     * absence of that length would. Returns null if not near a built shelter.
+     * absence of that length would.
+     *
+     * STALE CLAIM CORRECTED (found while wiring ground-hold's own "Sleep rough", RULING C1):
+     * this used to say "returns null if not near a built shelter". `canSleep` (the only gate
+     * below) has unconditionally returned `true` since sleep left the Build panel for Vitals
+     * — reachable from anywhere, nothing built, nothing carried, per that ruling's own words.
+     * The `null` return stays as the honest shape for a future gate, not a live one today.
      */
     sleep(nowMs: number): MorningReport | null {
         if (!canSleep(this.state)) return null;

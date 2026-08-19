@@ -146,6 +146,28 @@ function assignable(materials: MaterialKind[], slots: RecipeSlot[], used: Set<st
  *   3. **Otherwise the first**, unchanged, so nothing that worked before behaves differently.
  */
 /**
+ * IS THIS RECIPE SOMETHING THE SURVIVOR KNOWS — THE ONE PLACE THAT QUESTION IS ANSWERED.
+ *
+ * SIX CALL SITES ASKED THIS SEPARATELY, all as `state.blueprints.some((bp) => bp.recipeId ===
+ * X)` — correct for every recipe except one. `knap` is deliberately blueprint-less: its own
+ * doc (`KnownRecipe.standalone`) calls it "a standing gate," known the moment the survivor
+ * owns the stone hammer, with no discovery step and no plan object ever minted for it. Every
+ * one of those six sites was blind to that, which was harmless while knap could not reach any
+ * of them — its own direct button skipped Combine's known/unknown machinery entirely. RULING
+ * (C1), this batch, routed it through the SAME slate and Discover/Combine pair every other
+ * recipe uses, which made the blind spot reachable: staged stone rendered a chip (the
+ * known-LIST's own gate, already knap-aware) but the SLATE showed it as nothing at all
+ * (`combineSlate`, not knap-aware) — a known recipe that could be seen but not selected.
+ *
+ * ONE PREDICATE, not a sixth (now seventh) copy. `knownRecipes` below is refactored onto this
+ * too, so there is exactly one place "known" is decided and the two can no longer drift apart.
+ */
+function isRecipeKnown(state: GameState, recipeId: string): boolean {
+    if (state.blueprints.some((bp) => bp.recipeId === recipeId)) return true;
+    return recipeId === 'knap' && state.tools.stoneHammer;
+}
+
+/**
  * P0-1 — WHEN THE SURVIVOR ALREADY KNOWS TWO ANSWERS, THE CHOICE IS THEIRS.
  *
  * THE DEFECT, director-confirmed in play: five wood and five stone silently became STORAGE
@@ -171,7 +193,7 @@ export function knownMatches(state: GameState, materials: MaterialKind[]): Recip
     //  an answer to a two-material pile just because it overlaps.
     const exact = candidates.filter((r) => r.slots.length === materials.length);
     const pool = exact.length > 0 ? exact : candidates;
-    const known = pool.filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
+    const known = pool.filter((r) => isRecipeKnown(state, r.id));
     return known.length >= 2 ? known : [];
 }
 
@@ -211,7 +233,7 @@ export function matchPool(materials: MaterialKind[]): Recipe[] {
 }
 
 export function heldMatches(state: GameState, materials: MaterialKind[]): Recipe[] {
-    return matchPool(materials).filter((r) => state.blueprints.some((bp) => bp.recipeId === r.id));
+    return matchPool(materials).filter((r) => isRecipeKnown(state, r.id));
 }
 
 /**
@@ -268,7 +290,7 @@ export function combineSlate(state: GameState, materials: MaterialKind[]): Combi
     const known: KnownOutcome[] = [];
     let unknownCount = 0;
     for (const recipe of pool) {
-        if (state.blueprints.some((bp) => bp.recipeId === recipe.id)) {
+        if (isRecipeKnown(state, recipe.id)) {
             known.push({ recipeId: recipe.id, name: recipeDisplayName(recipe.id) });
         } else {
             unknownCount += 1;
@@ -396,8 +418,13 @@ export function recipeCost(recipeId: string): Array<{ kind: MaterialKind; amount
         case 'net': return [
             { kind: 'fiber', amount: TUNE.netFiberCost },
             { kind: 'sharpblade', amount: TUNE.netSharpbladeCost }];
-        //  `knap` has ONE slot, so it can never be staged (the gate wants two) and never
-        //  reaches this. It keeps its own button for exactly that reason — see the Build panel.
+        //  `knap` still falls through to here, but the reason changed (RULING, C1, this
+        //  batch): it stages and combines like everything else above now, yet still has no
+        //  case of its own, because `knapSharpblade` — its `Game.MAKERS` entry in game.ts —
+        //  is already fully self-sufficient and spends the stone itself. An entry here would
+        //  be drawn into hands and then spent AGAIN by the maker; leaving it out is what
+        //  keeps this list agreeing with what actually gets deducted, which is the one
+        //  invariant this function exists to hold (see the doc comment above).
         default: return [];
     }
 }
@@ -441,11 +468,15 @@ export interface KnownRecipe {
      * TRUE ONLY FOR KNAP. Every other entry here is a BLUEPRINT — discovered once through
      * Combine, made repeatedly by staging its materials again. Knapping was never discovered
      * at all: `canKnapSharpblade` is `stoneHammer && stone >= cost`, "a standing gate," with
-     * no blueprint step and no done-state (D-055). Staging two things to satisfy a system that
-     * was never asked a question would be a ritual invented for a mechanic that has no
-     * question to ask. So it is marked standalone, and the surface that reads this list acts
-     * on it directly rather than routing it through the staged-materials flow the field name
-     * `needs` otherwise implies.
+     * no blueprint step and no done-state (D-055) — and its own recipe has exactly ONE
+     * material slot, where `canExperimentWith`'s ordinary floor wants two.
+     *
+     * REPURPOSED (RULING, C1, this batch). It no longer marks "reads a direct-tap action
+     * instead of staging" — that shortcut is gone, knap stages and combines like everything
+     * else now. It marks the one shape the body's own chip-picker needs to recognise as
+     * attemptable from a SINGLE staged material, so a survivor holding only stone still sees
+     * a chip to tap and a slate that shows what it makes, rather than "Pick two or more"
+     * standing between them and the one recipe that was never a pair to begin with.
      */
     standalone?: boolean;
 }
@@ -479,7 +510,9 @@ export function knownRecipes(state: GameState, storageOpen = false): KnownRecipe
     //  survivor knows how to make" is exactly what owning the hammer already means for
     //  knapping — the gate IS the knowledge, per its own doc comment — so it belongs on this
     //  list on the same terms, gated the same way the Build panel's own row always was.
-    if (state.tools.stoneHammer) {
+    //  `isRecipeKnown` is the same question asked the same way — this branch stays because
+    //  the row below also needs `have`, which that predicate does not carry.
+    if (isRecipeKnown(state, 'knap')) {
         const have = reach.counts.stone ?? 0;
         out.push({
             recipeId: 'knap',
@@ -603,7 +636,7 @@ export const COMBINE_ALWAYS_SUCCEEDS = true;
 
 /** Does this pile have an outcome the survivor has NOT yet worked out? */
 export function hasUnknownRival(state: GameState, materials: MaterialKind[]): boolean {
-    return matchPool(materials).some((r) => !state.blueprints.some((bp) => bp.recipeId === r.id));
+    return matchPool(materials).some((r) => !isRecipeKnown(state, r.id));
 }
 
 /** "a hafted axe" / "an iron nail" — the article the name actually wants. */
@@ -625,7 +658,7 @@ export function resolveRecipe(state: GameState, materials: MaterialKind[]): Reci
     //  trying the other thing those two make. Without this, the first winner of a tie wins
     //  it forever and its rival stays unreachable, which is the exact defect above: storage
     //  and stonehammer are BOTH exactly woodwork+masonry, so no arity separates them.
-    const undiscovered = pool.filter((r) => !state.blueprints.some((bp) => bp.recipeId === r.id));
+    const undiscovered = pool.filter((r) => !isRecipeKnown(state, r.id));
     if (undiscovered.length > 0) pool = undiscovered;
     if (pool.length === 1) return pool[0];
 
@@ -708,7 +741,21 @@ export function canExperimentWith(
     //  behaviour it had; only a caller that knows a box is open passes anything else.
     storageOpen = false
 ): string | null {
-    if (materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
+    //  RULING (C1) — KNAP'S OWN SHAPE, THE ONE PLACE THE FLOOR OF TWO BENDS. Every other
+    //  recipe here is a blueprint discovered by combining two to four DISTINCT materials;
+    //  knapping is a standing gate (`canKnapSharpblade`'s own words: `stoneHammer && stone >=
+    //  cost`) with exactly one material and a held TOOL doing the rest of the gating, not a
+    //  second material. The universal "everything is staged in Combine, nothing skips it"
+    //  ruling names knap specifically as included — so rather than keep it as a permanent
+    //  exception to that rule, this is the one narrow, checked place the minimum admits a
+    //  single material, and only for the exact shape knapping actually is.
+    //
+    //  CHECKED, NOT ASSUMED, before this was written: `recipesMatching`/`assignable`'s own
+    //  recursion bottoms out at `materials.length === 0`, and `describeSet` already special-
+    //  cased a single material's own English — the matching and execution machinery was
+    //  already arity-1-safe throughout `tryCombineWith`; only this floor ever refused it.
+    const isKnapShape = materials.length === 1 && materials[0] === 'stone' && state.tools.stoneHammer;
+    if (!isKnapShape && materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
     if (materials.length > TUNE.combineMaxInputs) return `That is more than you can hold together at once — ${TUNE.combineMaxInputs} at most.`;
     if (new Set(materials).size !== materials.length) return 'Pick two different things to try together.';
     const reach = reachFor(state, storageOpen);
@@ -769,7 +816,7 @@ export function makeChosen(
     if (!chosen) return refuse('That is not one of the things these make.');
     //  ...and still nothing can be minted out of nothing: an unknown recipe is not choosable,
     //  which is what keeps a body offering a stale list from handing over the catalogue.
-    if (!state.blueprints.some((bp) => bp.recipeId === recipeId)) {
+    if (!isRecipeKnown(state, recipeId)) {
         return refuse('You have not worked that out yet.');
     }
     return tryCombineWith(state, materials, recipeId, storageOpen);
@@ -840,7 +887,6 @@ export function tryCombineWith(
         };
     }
 
-    const [a, b] = materials;
     const key = experimentKeyFor(materials);
     //  P0-C — the experiment sentinel is NOT a recipe id and must never be looked up as one:
     //  it means "resolve this the way you always did", so it falls through to `resolveRecipe`
@@ -996,7 +1042,18 @@ export function tryCombineWith(
         id: `bp${seed}`,
         name: blueprintNameFor(recipe.id),
         recipeId: recipe.id,
-        inputs: [a, b].sort() as MaterialKind[],
+        //  A SIXTH INSTANCE OF ITEM 4'S OWN DEFECT CLASS, found while verifying arity-1
+        //  support for knap (RULING, C1): this line still hardcoded the FIRST TWO staged
+        //  materials — `[a, b].sort()` — exactly the "pair-only assumption survived the
+        //  widening to four inputs because the widening happened in the GATE and nowhere
+        //  else" bug the comment on the spend loop above already names and fixes there, just
+        //  missed here. At arity 1 this produced `[stone, undefined]`, an invalid
+        //  `MaterialKind[]`; at arity 3-4 it silently dropped a real input from the record.
+        //  Currently inert — grep confirms `Blueprint.inputs` is written and never read
+        //  anywhere in src/, so no live behaviour depended on the wrong value — but a
+        //  type-unsafe landmine left for whichever future feature reads it first. Fixed the
+        //  same way the spend loop was: the whole array, not the first two names for it.
+        inputs: [...materials].sort() as MaterialKind[],
         version: 1,
         //  Recorded as evidence of THIS prototype, never granted to a later maker (§10.6).
         workmanship: workmanshipFor(seed),
