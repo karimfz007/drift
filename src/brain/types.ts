@@ -68,7 +68,7 @@
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
  */
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -254,6 +254,11 @@ export interface Tools {
      * `FishingState.net`, because a set net is a fact about the island, not about the body.
      */
     net: boolean;
+    /** WAVE 1 — a real tool set, found on the shore rather than made (a TOOL-fate item, the
+     *  rarest of the four — Laws 175-177). Feeds `heavyObjects.ts`'s teardown competence
+     *  bonus the same way a workspace does: Law 217's "adequate tools" made a concrete,
+     *  ownable fact rather than an abstract modifier. */
+    salvageTools: boolean;
 }
 
 /**
@@ -755,6 +760,122 @@ export interface GameState {
      * dropped-stack rule this project already wrote the other way ("absence never erases").
      */
     freshUntil: Partial<Record<MaterialKind, number>>;
+
+    /** WAVE 1 — the beached outboard, the one representative heavy object this slice proves
+     *  the tier system and the teardown ladder on. See heavyObjects.ts. */
+    outboard: OutboardState;
+    /** WAVE 1 — parts already freed from the outboard (or any future heavy object) and
+     *  carried loose. NOT `Inventory`: a part is a named, singular, reassemblable thing
+     *  (Law 221's controlled relation), not a stackable material — folding it into
+     *  `Inventory` would mean a fixed union field per part forever, for every future heavy
+     *  object, which is the catalogue-before-the-loop-is-fun Law 235 forbids. */
+    carriedParts: OutboardPart[];
+    /** WAVE 1 (Law 230) — real study sessions completed per OBJECT CLASS, never per
+     *  instance: a second object of the same class must show the same diminishing return the
+     *  first did, which is the whole point of "reproduction is not proof of transfer." Keyed
+     *  by a plain class id ('small-engine' this slice); read by `studyYieldFor`. */
+    studiedClasses: Record<string, number>;
+    /** WAVE 1 — the generous shore's own wash-up. See shore.ts. Generated ONCE per return,
+     *  as a pure function of elapsed hours — never during the absence itself (D-011). */
+    shore: ShoreState;
+}
+
+// ---- WAVE 1 — the weighted shore (Law 204, 217, 221-223, 226-227, 230, 234) --------------
+
+/**
+ * THE TIER TABLE (Law 204). A characteristic — here, effective strength — changes the METHOD
+ * an object moves by, never whether it can be moved at all. Every threshold in `heavyObjects.ts`
+ * is read against the SURVIVOR'S CURRENT capacity, so an object's tier is computed live and can
+ * cross downward as practice accrues; it is never stored as a fixed property of the object.
+ *
+ * Only 'dragged' has an implemented movement mechanic this slice (the brief's own scope
+ * boundary — T5 or T6, "not T8's full permanence yet"). The other seven exist in the table so
+ * a FUTURE object can be typed correctly without a breaking change here.
+ */
+export type ObjectTier =
+    | 'pocketable' | 'one-handed' | 'two-handed' | 'shouldered'
+    | 'dragged' | 'levered' | 'tackle-bound' | 'fixed';
+
+/** The five field-teardown rungs (Law 217's graded ladder, never pass/fail). */
+export type TeardownRung = 'novice' | 'basic' | 'competent' | 'skilled' | 'expert';
+
+/** One of the outboard's eleven real, named parts — what a complete Expert-rung strip yields,
+ *  and what reassembly (Law 227) needs all eleven of back. */
+export type OutboardPart =
+    | 'fuelTank' | 'tillerHandle' | 'carburetor' | 'magneto' | 'prop' | 'shearPin'
+    | 'cylinderHead' | 'piston' | 'gearcase' | 'cowling' | 'mountingBracket';
+
+/** What one strip attempt (or the axe) actually produced — the ladder's result, not its
+ *  input. `destroyed` is Law 226's line: DEGRADE keeps the object here for a better attempt
+ *  later; DESTROY replaces it with wreckage that still has mass, hazard and reuse, but no
+ *  more teardown. */
+export interface TeardownOutcome {
+    rung: TeardownRung;
+    destroyed: boolean;
+    gained: Partial<Record<MaterialKind, number>>;
+    parts: OutboardPart[];
+}
+
+/**
+ * THE OUTBOARD — one representative heavy object, present from world start (Wave 1 does not
+ * build a discovery/reveal step for it; it is visible on the beach exactly as the brief asks,
+ * "visible on the beach" being the FIRST listed requirement).
+ */
+export interface OutboardState {
+    /** Cumulative metres dragged from its original wash-up point. Distance, not a position
+     *  delta, so progress reads the same regardless of which direction it was hauled. */
+    draggedM: number;
+    /** Null until a strip attempt (or the axe) has been made. Once set, further attempts
+     *  read and refine it rather than starting over — Law 223, progress persists. */
+    teardown: TeardownOutcome | null;
+    /** True once teardown has reached Expert AND every part has since been reassembled here
+     *  (Law 227's repaired/manufactured route: a survivor who reassembles a complete
+     *  outboard has a working motor, not merely eleven parts in a pile). */
+    reassembled: boolean;
+    /** Set at the moment of reassembly; null on a clean rebuild. A named, plain-language
+     *  fault a survivor must diagnose before it can be repaired — Law 227's "repaired" route,
+     *  proven rather than merely claimed. */
+    fault: string | null;
+    /** Has the fault been correctly diagnosed yet? Gates whether `repairOutboard` may act on
+     *  it — Law 217's own "credibility" half: an undiagnosed fault cannot be legitimately
+     *  fixed, only guessed at. */
+    faultDiagnosed: boolean;
+}
+
+/** One wash-up on the shore — REFUSE/STOCK/PART/TOOL, the four fates (Laws 175-177). */
+export type ShoreFate = 'refuse' | 'stock' | 'part' | 'tool';
+
+export interface ShoreItem {
+    id: string;
+    fate: ShoreFate;
+    /** Plain sight-line description — what the fate actually IS in the survivor's terms.
+     *  For 'stock', a MaterialKind name; for 'refuse'/'part'/'tool', a short label. Never a
+     *  spoiler of value beyond what looking would tell a person standing over it. */
+    label: string;
+    /** Mass in kg. Weight is the filter (the brief's own phrase): some items are deliberately
+     *  above what the survivor can currently carry, so the beach always holds a "come back
+     *  later" reward in plain sight. */
+    massKg: number;
+    /** Only set for fate 'stock' — how much of which material, if picked up. */
+    materialKind: MaterialKind | null;
+    materialAmount: number;
+    x: number;
+    y: number;
+    /** The game-hours clock value this item washed in at — for sorting/display only; nothing
+     *  reads this as a despawn timer (D-011: nothing on the shore is ever taken back). */
+    arrivedAtGameHours: number;
+}
+
+export interface ShoreState {
+    items: ShoreItem[];
+    /** The clock value generation last ran against. Density is computed from the GAP between
+     *  this and the current clock at the moment of return, then this is advanced to match —
+     *  so two reads in the same session (no elapsed time) generate nothing twice. */
+    lastGeneratedAtGameHours: number;
+    /** The id/seed counter — Wave 1's own instance of the "counter as seed" determinism
+     *  `salvageSpawnCount`, `dropCount` and `craftRollCount` already established. No clock or
+     *  RNG read anywhere in generation; this is the only source of variation. */
+    spawnCount: number;
 }
 
 /**

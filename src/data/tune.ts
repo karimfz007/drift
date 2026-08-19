@@ -2151,7 +2151,224 @@ export const TUNE = {
      *  Sized to be recoverable inside roughly one session: at a realistic death you are
      *  carrying perhaps 10–20 units total, so this costs 2–5 units, against a single felled
      *  tree yielding 8 wood — minutes of play, a real sting that is never a setback spiral. */
-    deathResourceLossFraction: 0.25
+    deathResourceLossFraction: 0.25,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE 1 — THE WEIGHTED SHORE, FIRST SLICE (Law 204/217/221-223/226-227/230/234)
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    //  ONE representative heavy object, end to end, per the director's explicit scope
+    //  boundary — not a catalogue. See src/brain/heavyObjects.ts for the tier table and the
+    //  teardown ladder, src/brain/shore.ts for the generous-shore density system.
+
+    // ---- THE OBJECT — a beached outboard, still bolted to its transom ------------------
+    /** [TUNE] Wave 1 — the outboard's raw mass. Basis: a real single-cylinder outboard of
+     *  this era runs 30–40 kg; 35 sits mid-band, heavy enough that T5 (dragged) is the
+     *  honest tier for an untrained survivor without tipping into T6/T7 territory this
+     *  slice does not build the movement mechanics for. */
+    outboardMassKg: 35,
+    /** [TUNE] Wave 1 — the raw stone/salvage-adjacent mass that must be dragged clear of the
+     *  outboard before Competent-and-up teardown may begin: the workspace requirement (Law
+     *  219 read onto field conditions rather than a bench). Below Competent, no workspace is
+     *  needed — a novice pulling the fuel cap needs no clearance. */
+    outboardWorkspaceClearRadiusM: 2,
+    /** [TUNE] Wave 1 — tap-forgiveness radius for the outboard's mesh, the same role
+     *  `raftTapRadiusM`/`boatTapRadiusM` play for those objects. Between the two: bigger
+     *  than a dropped stack, smaller than the derelict boat it came off. */
+    outboardTapRadiusM: 2.2,
+    /** [TUNE] Wave 1 — tap-forgiveness radius for a single shore find. Matches
+     *  `droppedTapRadiusM` exactly — a small thing at your feet, deliberately tight so an
+     *  abandoned find does not swallow taps meant for the sand around it, same reasoning. */
+    shoreItemTapRadiusM: 1.2,
+
+    // ---- THE TIER TABLE (Law 204) — thresholds relative to CURRENT capacity, not fixed ----
+    //
+    //  Mirrors `effectiveCarriedKg`'s own pattern exactly: practice reduces what a load reads
+    //  as to this body, never to zero, never past a floor. An object's TIER is therefore a
+    //  function of (object mass, survivor's current effective strength) recomputed live, not
+    //  a stored property of the object — which is what makes "objects cross tiers as the
+    //  survivor trains" true without any code that explicitly moves anything.
+    /** [TUNE] Wave 1 — kg at/under which an object is T1 Pocketable, for a baseline (untrained)
+     *  survivor. Scales down with practice like every other effective-weight read. */
+    tierPocketableMaxKg: 1,
+    /** [TUNE] Wave 1 — T2 One-handed ceiling. */
+    tierOneHandedMaxKg: 5,
+    /** [TUNE] Wave 1 — T3 Two-handed ceiling. */
+    tierTwoHandedMaxKg: 15,
+    /** [TUNE] Wave 1 — T4 Shouldered ceiling. */
+    tierShoulderedMaxKg: 25,
+    /** [TUNE] Wave 1 — T5 Dragged ceiling. Above this a lone survivor cannot move it at all
+     *  without T6 apparatus (pole/rollers/skids/ramp) — not built this slice; an object
+     *  above this ceiling is inert to `drag` and says so rather than silently refusing. */
+    tierDraggedMaxKg: 60,
+    /** [TUNE] Wave 1 — how much a load-tolerance-practised survivor's EFFECTIVE mass drops
+     *  for tier purposes, reusing `loadToleranceReliefMax`'s own bounded-fraction shape so a
+     *  35 kg outboard is always felt as heavy, never free. */
+    tierPracticeReliefMax: 0.35,
+
+    // ---- DRAGGING (T5's one implemented movement) -----------------------------------------
+    /** [TUNE] Wave 1 — fraction of ordinary walking pace while dragging a T5 object. Basis:
+     *  Law 204's own T5 definition, "a fraction of walking pace." */
+    dragSpeedFraction: 0.35,
+    /** [TUNE] Wave 1 — energy multiplier while dragging, on the same curve family
+     *  `loadEnergyMultiplierForKg` already uses for carried weight. */
+    dragEnergyMultiplier: 2.2,
+    /** [TUNE] Wave 1 — with a pole/lever tool in hand, how much that multiplier eases (Law
+     *  204: the tool changes the METHOD, never turns a "no" into a "yes" that was not
+     *  already possible). A pole does not unlock dragging; it makes dragging cost less. */
+    dragPoleEaseFraction: 0.3,
+    /** [TUNE] Wave 1 — base energy cost per metre dragged, before the drag energy multiplier.
+     *  Basis: dragging 35 kg of dead-weight metal across sand is real labour; at the T5
+     *  ceiling (energyMultiplier near `dragEnergyMultiplier`'s own value) a full metre costs
+     *  noticeably more than an ordinary walked one. */
+    outboardDragEnergyPerMetre: 0.35,
+    /** [TUNE] Wave 1 — metres attempted by a single "Drag it" tap. One hearty pull, not a
+     *  continuous hold — this slice has no held-drag gesture, matching how a single thrust or
+     *  a single gather is one bounded unit of work rather than a rate. `dragOutboard` itself
+     *  turns this into fewer ACTUAL metres via `dragSpeedFraction`. */
+    outboardDragMetresPerPull: 2,
+
+    // ---- STUDY (Law 208, 230) --------------------------------------------------------------
+    /** [TUNE] Wave 1 — game hours one study session costs. */
+    studyGameHours: 1.5,
+    /** [TUNE] Wave 1 — understanding gained by the FIRST study of an object class. */
+    studyFirstGain: 18,
+    /** [TUNE] Wave 1 — how sharply repeat study of the SAME class falls off. Basis: Law 230,
+     *  "reproduction is not proof of transfer" — the third study of the same class returns
+     *  roughly a tenth of the first, which is steep enough that grinding study on one object
+     *  is visibly a poor use of time next to finding a genuinely different one. */
+    studyRepeatDecay: 0.35,
+    /** [TUNE] Wave 1 — floor on repeat-study value, so it never reaches exactly zero (a
+     *  survivor re-examining something always learns a LITTLE, per Law 208's own "evidence,
+     *  context limits" language) but stays negligible. */
+    studyRepeatFloor: 0.08,
+    /** [TUNE] Wave 1 — study alone may lift the eventual teardown outcome by at most this
+     *  many ladder rungs. Hard cap named directly in the brief; not a soft diminishing curve
+     *  because the brief specifies an exact ceiling, not a taper. */
+    studyMaxRungLift: 1,
+
+    // ---- THE TEARDOWN LADDER (Law 217, 221, 226, 227) --------------------------------------
+    //
+    //  Gap = f(technique, understanding, tools, workspace). The five thresholds below are
+    //  read against a single 0-100 "competence" score computed in heavyObjects.ts; each
+    //  threshold is the MINIMUM competence that rung requires, so the gap below Basic's own
+    //  floor decides degrade-vs-destroy on a miss (see `teardownAttempt`'s own doc).
+    /** [TUNE] Wave 1 — competence at/above which Basic (loose fasteners) is reached. Below
+     *  this, only Novice (consumables) is reachable regardless of attempt. */
+    teardownBasicAt: 20,
+    /** [TUNE] Wave 1 — competence at/above which Competent (robust parts survive, delicate
+     *  parts lost) is reached. */
+    teardownCompetentAt: 42,
+    /** [TUNE] Wave 1 — competence at/above which Skilled (subassemblies preserved) is
+     *  reached. */
+    teardownSkilledAt: 65,
+    /** [TUNE] Wave 1 — competence at/above which Expert (complete disassembly, reassembles,
+     *  diagnosable/repairable) is reached. */
+    teardownExpertAt: 85,
+    /** [TUNE] Wave 1 — how far below `teardownBasicAt` competence must fall for a Novice-only
+     *  result to DESTROY rather than DEGRADE (only Novice can ever destroy; Basic and up
+     *  always degrade toward the rung already banked, per Law 223). A near-miss (competence
+     *  just under Basic's floor) mangles the object; a wide miss (next to no technique, no
+     *  tools) destroys it — the honest cost of opening something far too early, per the
+     *  director's own framing. MUST stay strictly below `teardownBasicAt` itself, or the
+     *  branch is unreachable — competence cannot go negative, so the largest possible
+     *  shortfall against Basic's floor is `teardownBasicAt` at competence 0. */
+    teardownDestroyGapAt: 10,
+    /** [TUNE] Wave 1 — mechanicalSystems technique contributed per point of competence,
+     *  i.e. the weight technique carries in the gap formula relative to understanding. Set
+     *  above understanding's own weight because Law 217 makes ATTEMPT (technique) the thing
+     *  that closes real gaps; study (understanding) assists but is capped separately above. */
+    teardownTechniqueWeight: 0.7,
+    /** [TUNE] Wave 1 — understanding's weight in the same formula. */
+    teardownUnderstandingWeight: 0.3,
+    /** [TUNE] Wave 1 — flat competence bonus for having a real tool set in hand (a wrench
+     *  standing in for "adequate tools" — Law 217's own listed factor) versus bare hands. */
+    teardownToolBonus: 12,
+    /** [TUNE] Wave 1 — flat competence bonus for a cleared workspace, required from
+     *  Competent up (see `outboardWorkspaceClearRadiusM`). */
+    teardownWorkspaceBonus: 8,
+    /** [TUNE] Wave 1 — mechanicalSystems technique gained by a real strip attempt, win or
+     *  lose — Law 217's "the attempt teaches" line, and the ONLY thing that raises
+     *  technique this slice (study raises understanding only, per Law 208). */
+    teardownAttemptTechniqueGain: 6,
+    /** [TUNE] Wave 1 — stone-equivalent scrap mass yielded by a DESTROYED outboard. Law 226:
+     *  wreckage keeps mass and possible reuse even when the object itself is gone; this is
+     *  that floor, deliberately far below any real rung's yield. */
+    outboardDestroyedScrapStone: 3,
+    /** [TUNE] Wave 1 — loose-fastener salvage yielded from Basic rung up (added to, not
+     *  replaced by, whatever a higher rung also yields — fasteners come loose at every
+     *  depth of teardown, not only the shallowest one). */
+    outboardBasicFastenerStone: 2,
+    /** [TUNE] Wave 1 — chance a freshly reassembled outboard hides a fault (Law 227's
+     *  repaired route, proven rather than merely claimed — a reassembly that always works
+     *  perfectly would never exercise diagnosis or repair at all). */
+    outboardReassemblyFaultChance: 0.4,
+    /** [TUNE] Wave 1 — mechanicalSystems.understanding required to correctly diagnose the
+     *  reassembled outboard's fault. Set above `studyFirstGain` alone, so a single study
+     *  session never guarantees a correct diagnosis on its own — real technique from at
+     *  least one teardown attempt has to contribute too. */
+    outboardDiagnoseUnderstandingAt: 24,
+
+    // ---- THE GENEROUS SHORE (director's 19 Aug amendment, supersedes "occasional wash-up") --
+    //
+    //  Density is generated ONCE, at the moment of return, as a pure function of elapsed
+    //  hours — never simulated during the absence itself (D-011 at its strongest). See
+    //  shore.ts's own header for why this is the actual fix for the measured exhaustion
+    //  defect, and why the existing `salvage` node's regrowth rate is deliberately untouched.
+    /** [TUNE] Wave 1 — items generated per game hour away, before diminishing returns. Basis:
+     *  "return after two days: the beach has been working for you" — 2 days = 48 gh should
+     *  read as a genuinely full session's worth of sorting, not a chore. */
+    shoreItemsPerGameHourAway: 0.6,
+    /** [TUNE] Wave 1 — the point past which additional absence keeps adding items but ever
+     *  more slowly — a season-long absence must not spawn thousands of objects (the PERF
+     *  rail). Modelled as a soft ceiling via `shoreDensityFor`'s own sqrt-taper, not a hard
+     *  cap, so "more time away" always means "somewhat more," never "identical." */
+    shoreItemsSoftCapGameHours: 96,
+    /** [TUNE] Wave 1 — absolute maximum items the shore may ever hold at once, measured
+     *  rather than assumed — see the device PERF finding this ships with. Generation stops
+     *  adding once the beach is at this count; nothing already visible is ever removed to
+     *  make room, because taking something back that was already there would be exactly the
+     *  D-011 violation the rail forbids. */
+    shoreMaxItems: 40,
+    /** [TUNE] Wave 1 — floor on a genuine return: even ten minutes away earns a small chance
+     *  at one item, so the tide never reads as switched off during active play. */
+    shoreMinReturnGameHoursForAnyItem: 0.05,
+    /** [TUNE] Wave 1 — of newly generated items, the fraction that are REFUSE (worth nothing,
+     *  still weighs something — D-131's inert-object precedent, weighted toward the honest
+     *  majority per the director's own instruction). */
+    shoreFateRefuseShare: 0.62,
+    /** [TUNE] Wave 1 — the STOCK share of the remainder after REFUSE — raw material by mass. */
+    shoreFateStockShare: 0.24,
+    /** [TUNE] Wave 1 — the PART share of the remainder — a real, named component. */
+    shoreFatePartShare: 0.1,
+    //  TOOL is whatever remains (0.04 of the whole) — deliberately not its own named
+    //  constant, so the four shares are provably exhaustive by construction: three declared
+    //  fractions plus "the rest," rather than four numbers that could silently drift from
+    //  summing to 1.
+    /** [TUNE] Wave 1 — of newly generated items, the fraction whose mass alone exceeds what
+     *  the survivor can currently carry — the "weight is the filter" guarantee that the
+     *  shore always holds a too-heavy-for-now reward in plain sight. */
+    shoreHeavyItemShare: 0.15,
+    /** [TUNE] Wave 1 — mass of a "too heavy to carry yet" shore item, before effective-weight
+     *  practice relief. MUST exceed `tierShoulderedMaxKg` (25) — `tooHeavyToCarry` checks
+     *  effective mass against that exact ceiling, so anything at or under it is still
+     *  shoulderable and the "weight is the filter" guarantee silently never fires (found by
+     *  testing: the original 18 sat below the ceiling it needed to clear). Kept below the
+     *  outboard's own 35 kg so the outboard still reads as the singular heavy centrepiece
+     *  rather than one of many identical heavy items. */
+    shoreHeavyItemMassKg: 30,
+    /** [TUNE] Wave 1 — storm density multiplier. Basis: the director's own rhythm rule,
+     *  "storms deliver more and worse; calm delivers less and better" — this is the MORE
+     *  half. */
+    shoreStormDensityMultiplier: 1.8,
+    /** [TUNE] Wave 1 — the WORSE half of the same rule: added weight toward REFUSE, taken
+     *  from STOCK/PART/TOOL, during a storm batch — a churned-up sea throws ashore mostly
+     *  junk fast. Calm subtracts this instead (bounded so REFUSE never drops to zero): fewer
+     *  items, and what does wash in has more often survived intact enough to be worth
+     *  something. Checked against the brief's own wording before writing this, not assumed
+     *  from the variable's name alone — an earlier draft of this constant's comment had the
+     *  direction backwards. */
+    shoreStormQualityShift: 0.12
 } as const;
 
 export type TuneTable = typeof TUNE;

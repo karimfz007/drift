@@ -62,7 +62,7 @@ export function createInitialState(nowMs: number): GameState {
         fatigue: 0,
         resting: false,
         inventory: emptyInventory(),
-        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false, net: false },
+        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false, net: false, salvageTools: false },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
@@ -72,6 +72,12 @@ export function createInitialState(nowMs: number): GameState {
         nodes: createNodes(),
         salvageSpawnCount: 0,
         nextSalvageSpawnAtGameHours: gameHoursFromRealSeconds(TUNE.salvageSpawnMinutesMin * 60),
+        //  WAVE 1 — the outboard is present and undisturbed from world start (see OUTBOARD
+        //  in world.ts for why it needs no discovery step).
+        outboard: { draggedM: 0, teardown: null, reassembled: false, fault: null, faultDiagnosed: false },
+        carriedParts: [],
+        studiedClasses: {},
+        shore: { items: [], lastGeneratedAtGameHours: 0, spawnCount: 0 },
         craftRollCount: 0,
         knowledge: { nullPairs: [], events: [], domains: freshDomainScores() },
         loadout: freshLoadout(),

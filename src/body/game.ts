@@ -192,6 +192,21 @@ import {
     readingFor,
     traceById,
     traceSites,
+    //  WAVE 1 — THE WEIGHTED SHORE, FIRST SLICE.
+    outboardPosition,
+    dragOutboard,
+    applyStudy,
+    teardownAttempt,
+    applyTeardown,
+    axeOutboard,
+    canReassemble,
+    reassembleOutboard,
+    diagnoseFault,
+    repairOutboard,
+    partLabel,
+    shoreWithinReach,
+    pickUpShoreItem,
+    type TeardownRung,
     type GameState
 } from '../brain';
 import { TUNE, fireLoudnessAt } from '../data/tune';
@@ -199,7 +214,7 @@ import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, surfaceHeightAt } from '../da
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { CaveView, DroppedView, FireView, GhostView, NodeViews, PlayerView, RaftView, ShelterView, StorageView, type NodeView } from './entities';
+import { CaveView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -243,6 +258,12 @@ type Pending =
     //  THE FAR ISLAND — a trace site. Same tap/hold/circle machinery as everything else; a
     //  note somebody left is not special-cased into its own input path.
     | { kind: 'trace'; id: string }
+    //  WAVE 1 — THE WEIGHTED SHORE, FIRST SLICE. The outboard is singular and its position
+    //  moves as it is dragged, the same "fixed until acted on" shape `raft` already has; a
+    //  shore find is plural and id-addressable, the same shape `dropped` already has. Same
+    //  tap/hold/circle machinery as everything above — no bespoke input path for either.
+    | { kind: 'outboard' }
+    | { kind: 'shoreitem'; id: string }
     | null;
 
 /** One entry in the debug tap log (D-050) — what a tap resolved to, and where. */
@@ -251,6 +272,17 @@ interface TapBreadcrumb {
     screenX: number;
     screenY: number;
     outcome: string;
+}
+
+/** WAVE 1 — what a stripped rung reads as in plain language (Law 217/221). */
+function teardownRungLabel(rung: TeardownRung): string {
+    switch (rung) {
+        case 'novice': return 'Not much gives. A few consumables come loose.';
+        case 'basic': return 'The loose fasteners come away.';
+        case 'competent': return 'The robust parts come free; the delicate ones are lost.';
+        case 'skilled': return 'Whole subassemblies come free, intact.';
+        case 'expert': return 'It comes apart completely, clean.';
+    }
 }
 
 /** Human names for the first-pickup toasts (D-043). */
@@ -310,6 +342,9 @@ export class Game {
     private raftView: RaftView;
     //  P0-3 — the pile you put down, finally drawn. See `DroppedView`.
     private droppedView: DroppedView;
+    //  WAVE 1 — the beached outboard and the tide's own finds. See `OutboardView`/`ShoreItemsView`.
+    private outboardView: OutboardView;
+    private shoreItemsView: ShoreItemsView;
     private hud: Hud;
     private controls: Controls;
     private cues = new Cues();
@@ -413,6 +448,8 @@ export class Game {
         this.storage = new StorageView(this.scene);
         this.droppedView = new DroppedView(this.scene);
         this.raftView = new RaftView(this.scene);
+        this.outboardView = new OutboardView(this.scene);
+        this.shoreItemsView = new ShoreItemsView(this.scene);
 
         const state = session().state;
         this.nodes = new NodeViews(this.scene, state.nodes, (x, z) => this.island.heightAt(x, z));
@@ -596,22 +633,18 @@ export class Game {
         };
         runtime.screenOfMesh = (meshName: string) => {
             const mesh = this.scene.getMeshByName(meshName);
+            return mesh ? this.projectMeshCentre(mesh) : null;
+        };
+        //  WAVE 1 — THE PER-SURFACE WITNESS, ASSEMBLED ONCE (item B's confirmed gap, closed
+        //  for what this slice needs; see `runtime.surfaceByTag`'s own doc). Finds by
+        //  `mesh.metadata[key]` rather than by name, for pooled meshes whose NAME is only a
+        //  pool slot — reuses `projectMeshCentre`, the exact same projection `screenOfMesh`
+        //  runs, so the two can never quietly compute the screen point two different ways.
+        runtime.surfaceByTag = (key: string, value: string) => {
+            const mesh = this.scene.meshes.find((m) => (m.metadata as Record<string, unknown> | null)?.[key] === value);
             if (!mesh) return null;
-            const centre = mesh.getBoundingInfo().boundingBox.centerWorld;
-            //  Same guard, same reason: a mesh behind the camera is not at a negative pixel,
-            //  it is nowhere. The spear check ran into this exact shape at y = -35.
-            if (!isInFrontOfCamera(centre)) return null;
-            const projected = Vector3.Project(
-                centre,
-                Matrix.Identity(),
-                this.scene.getTransformMatrix(),
-                this.camera.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight())
-            );
-            const rect = this.canvas.getBoundingClientRect();
-            return {
-                x: rect.left + projected.x * (rect.width / this.engine.getRenderWidth()),
-                y: rect.top + projected.y * (rect.height / this.engine.getRenderHeight())
-            };
+            const enabled = mesh.isEnabled();
+            return { enabled, screen: enabled ? this.projectMeshCentre(mesh) : null };
         };
 
         //  HOW BIG A DRAWN THING ACTUALLY IS, in metres of world. Read-only ([[D-075]]).
@@ -652,11 +685,6 @@ export class Game {
          * `pt=null`: a helper that says "I cannot aim at that from here" instead of aiming at a
          * pixel that does not exist.
          */
-        const isInFrontOfCamera = (target: Vector3): boolean => {
-            const forward = this.camera.getDirection(Vector3.Forward());
-            return Vector3.Dot(target.subtract(this.camera.position), forward) > 0;
-        };
-
         runtime.projectToScreen = (worldX: number, worldZ: number) => {
             //  [[D-124]] — the SURFACE, not the terrain. This read `heightAt(worldX, worldZ)`,
             //  which is the seabed once you are past the shelf, so aiming at anything afloat
@@ -665,7 +693,7 @@ export class Game {
             const y = surfaceHeightAt(worldX, worldZ) + 0.4;
             const target = new Vector3(worldX, y, worldZ);
             //  Behind the camera has no screen position. Say so, rather than inventing one.
-            if (!isInFrontOfCamera(target)) return null;
+            if (!this.isInFrontOfCamera(target)) return null;
             const projected = Vector3.Project(
                 target,
                 Matrix.Identity(),
@@ -941,6 +969,9 @@ export class Game {
                     //  RULING (C1) — relocated from the Build panel; same read, same source
                     //  (`isShelteredSleep`), only the tab changed.
                     rest: { sheltered: isShelteredSleep(s) },
+                    //  WAVE 1 — a found, not crafted, not held capability; see `VitalsExtraView`'s
+                    //  own doc for why it lives here.
+                    salvageTools: s.tools.salvageTools,
                 },
                 skills: growthReport(s, s.capacities),
                 playerSkills: s.skills
@@ -1387,6 +1418,17 @@ export class Game {
             const rf = session().state.raft;
             return { x: rf.x, z: rf.y, unexpectedMesh: null };
         }
+        //  WAVE 1 — a tap on the outboard's own mesh aims at THE OUTBOARD, wherever it has
+        //  been dragged to, the same reasoning `raft`/`dropped` above already carry.
+        if (hit?.hit && hit.pickedMesh?.metadata?.outboard) {
+            const pos = outboardPosition(session().state);
+            return { x: pos.x, z: pos.y, unexpectedMesh: null };
+        }
+        if (hit?.hit && hit.pickedMesh?.metadata?.shoreItemId) {
+            const id = hit.pickedMesh.metadata.shoreItemId as string;
+            const it = session().state.shore.items.find((x) => x.id === id);
+            if (it) return { x: it.x, z: it.y, unexpectedMesh: null };
+        }
         if (!hit?.hit || !hit.pickedPoint) return null;
         const meshName = hit.pickedMesh?.name ?? null;
         return { x: hit.pickedPoint.x, z: hit.pickedPoint.z, unexpectedMesh: meshName === 'terrain' ? null : meshName };
@@ -1437,9 +1479,9 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem'; d: number };
         const candidates: Candidate[] = [];
         {
             //  DROP 3B(i) — the appointment. A candidate ONLY while there is something out
@@ -1488,6 +1530,20 @@ export class Game {
         for (const d of s.dropped) {
             const dist = distance(point.x, point.z, d.x, d.y);
             if (dist <= TUNE.droppedTapRadiusM) candidates.push({ kind: 'dropped', d: dist });
+        }
+        {
+            //  WAVE 1 — always a candidate, like the boat: it has been on this beach since
+            //  before the survivor washed up, and cannot be built or absent. Its point moves
+            //  as it is dragged, which `outboardPosition` already accounts for.
+            const pos = outboardPosition(s);
+            const d = distance(point.x, point.z, pos.x, pos.y);
+            if (d <= TUNE.outboardTapRadiusM) candidates.push({ kind: 'outboard', d });
+        }
+        //  WAVE 1 — every find on the tideline, nearest wins, the same shape `dropped` uses
+        //  just above.
+        for (const it of s.shore.items) {
+            const dist = distance(point.x, point.z, it.x, it.y);
+            if (dist <= TUNE.shoreItemTapRadiusM) candidates.push({ kind: 'shoreitem', d: dist });
         }
         candidates.sort((a, b) => a.d - b.d);
         return candidates[0]?.kind ?? null;
@@ -1761,6 +1817,19 @@ export class Game {
                 this.recordTap(screenX, screenY, winner);
                 return;
             }
+            //  WAVE 1 — WHICH find, captured at the tap. Same shape as `dropped` just above,
+            //  for the same reason: two finds a metre apart are two different targets.
+            if (winner === 'shoreitem') {
+                const s2 = session().state;
+                const nearest = s2.shore.items
+                    .map((it) => ({ it, dist: distance(point.x, point.z, it.x, it.y) }))
+                    .sort((a, b) => a.dist - b.dist)[0];
+                if (!nearest) { this.clearPending(); return; }
+                this.pending = { kind: 'shoreitem', id: nearest.it.id };
+                this.cues.play(CUES.target);
+                this.recordTap(screenX, screenY, winner);
+                return;
+            }
             this.pending = { kind: winner };
             this.cues.play(CUES.target);
             this.recordTap(screenX, screenY, winner);
@@ -1863,6 +1932,15 @@ export class Game {
             case 'spear-fish': this.doSpearFish(); break;
             case 'store-journal': this.doSetJournalCarried(false); break;
             case 'take-journal': this.doSetJournalCarried(true); break;
+            //  ---- WAVE 1 — THE OUTBOARD AND THE SHORE, one dispatcher, seven+one verbs ----
+            case 'drag-outboard': this.doDragOutboard(); break;
+            case 'study-outboard': this.doStudyOutboard(); break;
+            case 'strip-outboard': this.doStripOutboard(); break;
+            case 'axe-outboard': this.doAxeOutboard(); break;
+            case 'reassemble-outboard': this.doReassembleOutboard(); break;
+            case 'diagnose-outboard': this.doDiagnoseOutboard(); break;
+            case 'repair-outboard': this.doRepairOutboard(); break;
+            case 'pick-up-shore': this.doPickUpShoreItem(); break;
             default: this.explain('Nothing to do there.'); break;
         }
         this.lastActivityAt = now();
@@ -1961,6 +2039,17 @@ export class Game {
         if (this.pending.kind === 'dropped') {
             const d = session().state.dropped.find((it) => it.id === (this.pending as { id: string }).id);
             return d ? { x: d.x, z: d.y } : null;
+        }
+        //  WAVE 1 — the outboard moves as it is dragged, so its point is read fresh every
+        //  time rather than captured at the tap, the same reasoning the boar's point uses.
+        //  Always present once washed up (never "unbuilt"), the same shape the boat has.
+        if (this.pending.kind === 'outboard') {
+            const pos = outboardPosition(session().state);
+            return { x: pos.x, z: pos.y };
+        }
+        if (this.pending.kind === 'shoreitem') {
+            const it = session().state.shore.items.find((x) => x.id === (this.pending as { id: string }).id);
+            return it ? { x: it.x, z: it.y } : null;
         }
         //  ...AND THIS DEFAULT IS WHY P0-3 SURVIVED A FIX. Every branch above names its kind;
         //  anything unlisted fell through to the POND, so a tap on a dropped pile walked the
@@ -2076,7 +2165,12 @@ export class Game {
             //  the Default-Verb Law and the hold-asks/tap-acts contract for free, which is
             //  exactly what a private path for it would have quietly opted out of.
             || this.pending.kind === 'dropped'
-            || this.pending.kind === 'raft') {
+            || this.pending.kind === 'raft'
+            //  WAVE 1 — the outboard and a shore find, the same shared path rather than a
+            //  ninth and tenth bespoke branch: this is the exact defect class the boar's own
+            //  comment above warns about, paid down once instead of re-introduced twice.
+            || this.pending.kind === 'outboard'
+            || this.pending.kind === 'shoreitem') {
             const target = this.pending.kind;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
             //  which gesture set this intention, so arriving after a hold opens the circle and
@@ -2720,6 +2814,218 @@ export class Game {
         this.lastActivityAt = now();
     }
 
+    // ---- WAVE 1 — THE WEIGHTED SHORE, FIRST SLICE: the outboard's seven verbs, and the tide's one ----
+
+    /**
+     * IS THE GROUND AROUND IT ACTUALLY CLEAR? The one fact `heavyObjects.ts` cannot answer —
+     * its own header names exactly why: whether the outboard's own patch of sand is clear of
+     * collision geometry is a body-only question. Reuses `resolveCollision`, the same
+     * primitive the placement ghost already trusts, rather than a second collision system
+     * invented for one check: if the resolved point had to move, something was in the way.
+     */
+    private outboardWorkspaceClear(): boolean {
+        const pos = outboardPosition(session().state);
+        const clear = this.island.resolveCollision(pos.x, pos.y, TUNE.outboardWorkspaceClearRadiusM, this.dynamicObstacles());
+        return Math.hypot(clear.x - pos.x, clear.z - pos.y) < 0.05;
+    }
+
+    /**
+     * WAVE 1 — PULLED OUT TO A PROPER METHOD so `projectMeshCentre` below could share it
+     * without a second copy. It was a local closure inside the scene-setup method that only
+     * `runtime.projectToScreen` could see; `runtime.screenOfMesh`'s own projection had
+     * ALREADY duplicated this exact guard inline rather than reach it, which is the same
+     * "two copies of one rule" shape this slice's own teardown destroy-gap bug had. Returning
+     * false rather than a plausible-looking pixel for anything behind the camera — a helper
+     * that says "I cannot aim at that from here" instead of inventing an answer.
+     */
+    private isInFrontOfCamera(target: Vector3): boolean {
+        const forward = this.camera.getDirection(Vector3.Forward());
+        return Vector3.Dot(target.subtract(this.camera.position), forward) > 0;
+    }
+
+    /**
+     * A MESH'S OWN DRAWN CENTRE, PROJECTED TO SCREEN — the one place this maths lives.
+     * `runtime.screenOfMesh` (by name) and `runtime.surfaceByTag` (by metadata, for pooled
+     * meshes whose name is only a pool slot) both call this, so the two witness paths can
+     * never quietly diverge on how a screen point gets computed — exactly the shape of bug
+     * two independent copies of the teardown ladder's destroy-gap formula produced this slice.
+     */
+    private projectMeshCentre(mesh: AbstractMesh): { x: number; y: number } | null {
+        const centre = mesh.getBoundingInfo().boundingBox.centerWorld;
+        //  Same guard `screenOfMesh` always carried: a mesh behind the camera is not at a
+        //  negative pixel, it is nowhere. The spear check ran into this exact shape at y = -35.
+        if (!this.isInFrontOfCamera(centre)) return null;
+        const projected = Vector3.Project(
+            centre,
+            Matrix.Identity(),
+            this.scene.getTransformMatrix(),
+            this.camera.viewport.toGlobal(this.engine.getRenderWidth(), this.engine.getRenderHeight())
+        );
+        const rect = this.canvas.getBoundingClientRect();
+        return {
+            x: rect.left + projected.x * (rect.width / this.engine.getRenderWidth()),
+            y: rect.top + projected.y * (rect.height / this.engine.getRenderHeight())
+        };
+    }
+
+    /** T5's one movement (Law 204). One pull per tap; `dragOutboard` is the single source of
+     *  truth for whether it moves at all — the verb circle already previewed the same verdict
+     *  via a zero-metre dry run, so a refusal reaching here would mean the two disagreed. */
+    private doDragOutboard(): void {
+        const s = session().state;
+        const result = dragOutboard(s, TUNE.outboardDragMetresPerPull, s.tools.spear);
+        if (!result.ok) { this.explain(result.reason ?? 'It will not move.'); return; }
+        s.outboard = result.outboard;
+        s.energy = Math.max(0, s.energy - result.energyCost);
+        this.cues.play(CUES.gather);
+        this.floatText(`dragged ${result.metresMoved.toFixed(1)} m`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** STUDY — understanding only (Law 208), a real time cost through the same
+     *  `spendGameHours` path writing and brewing already use. */
+    private doStudyOutboard(): void {
+        const s = session().state;
+        if (s.outboard.teardown?.destroyed) { this.explain('There is nothing left to learn from the wreckage.'); return; }
+        const before = s.knowledge.domains.mechanicalSystems.understanding;
+        applyStudy(s);
+        const gained = s.knowledge.domains.mechanicalSystems.understanding - before;
+        session().spendGameHours(TUNE.studyGameHours, now());
+        this.cues.play(CUES.craft);
+        this.floatText(`+${gained.toFixed(0)} understanding`);
+        this.explain('You work through how it must fit together, piece by piece.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * STRIP — the graded ladder itself (Law 217/221/226). `workspaceClear` is computed here,
+     * live, and nowhere else: it is the one input `teardownAttempt` needs that this class is
+     * the only side of the brain/body split able to answer.
+     */
+    private doStripOutboard(): void {
+        const s = session().state;
+        if (s.outboard.teardown?.destroyed) { this.explain('It is already destroyed.'); return; }
+        if (s.outboard.teardown?.rung === 'expert') { this.explain('It is already stripped bare.'); return; }
+        const outcome = teardownAttempt(s, this.outboardWorkspaceClear());
+        applyTeardown(s, outcome);
+        this.cues.play(outcome.destroyed ? CUES.fell : CUES.craft);
+        if (outcome.destroyed) {
+            this.floatText(`+${TUNE.outboardDestroyedScrapStone} stone (scrap)`);
+            this.explain('It goes to pieces in your hands — you opened it up far too early.');
+        } else {
+            const gained = (Object.entries(outcome.gained) as Array<[string, number | undefined]>)
+                .filter(([, n]) => (n ?? 0) > 0).map(([k, n]) => `+${n} ${k}`).join(', ');
+            this.floatText(gained || teardownRungLabel(outcome.rung));
+            this.explain(outcome.parts.length
+                ? `${teardownRungLabel(outcome.rung)} ${outcome.parts.map(partLabel).join(', ')}, freed.`
+                : teardownRungLabel(outcome.rung));
+        }
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** THE AXE — deliberate destruction, always available once owned (Law 226's honest
+     *  floor beneath the ladder, not a shortcut around it). */
+    private doAxeOutboard(): void {
+        const s = session().state;
+        if (!s.tools.axe) { this.explain('You have nothing heavy enough to break it apart.'); return; }
+        if (s.outboard.teardown?.destroyed) { this.explain('There is nothing left to break.'); return; }
+        axeOutboard(s);
+        this.cues.play(CUES.fell);
+        this.floatText(`+${TUNE.outboardDestroyedScrapStone} stone (scrap)`);
+        this.explain('You lay into it with the axe until it stops being a shape.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * REASSEMBLE (Law 227's repaired/manufactured route). Seeded on the game clock at the
+     * moment of the act — deterministic from state, never `Math.random`/`Date.now` (D-011) —
+     * the same "counter as seed" family `craftRollCount`'s own grade roll uses; this act can
+     * only ever happen once per life (`canReassemble` requires it not already done), so no
+     * dedicated attempt counter is needed the way a repeatable roll would need one.
+     */
+    private doReassembleOutboard(): void {
+        const s = session().state;
+        if (!canReassemble(s)) { this.explain('You have not recovered enough of it yet.'); return; }
+        reassembleOutboard(s, Math.round(s.gameHoursElapsed * 1000));
+        this.cues.play(CUES.craft);
+        if (s.outboard.fault) {
+            this.floatText('reassembled — but something is wrong');
+            this.explain(s.outboard.fault);
+        } else {
+            this.floatText('reassembled — it runs true');
+            this.explain('Eleven parts, and they go back together clean. It should run.');
+        }
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** DIAGNOSE — always attemptable once there is a fault to find; credibility of the
+     *  OUTCOME (Law 217) lives in `diagnoseFault`'s own understanding gate, not in whether
+     *  this verb is offered at all. */
+    private doDiagnoseOutboard(): void {
+        const s = session().state;
+        if (!s.outboard.fault) { this.explain('There is nothing wrong with it that you can find.'); return; }
+        if (s.outboard.faultDiagnosed) { this.explain('You already know what is wrong with it.'); return; }
+        const found = diagnoseFault(s);
+        this.cues.play(found ? CUES.craft : CUES.denied);
+        if (found) {
+            this.floatText('diagnosed');
+            this.explain(s.outboard.fault ?? 'Found it.');
+        } else {
+            this.explain('You cannot work out what is wrong yet. You need to understand it better.');
+        }
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** REPAIR — the last step of Law 227's route; needs a diagnosis first, the credibility
+     *  half of the same law. */
+    private doRepairOutboard(): void {
+        const s = session().state;
+        if (!s.outboard.fault || !s.outboard.faultDiagnosed) {
+            this.explain(!s.outboard.fault ? 'There is nothing to repair.' : 'Diagnose the fault first.');
+            return;
+        }
+        if (!repairOutboard(s)) { this.explain('Something stops you — it is not ready.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('repaired');
+        this.explain('You put it right. It should run now.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * PICK UP A SHORE FIND — the generous shore's one verb (Laws 175-177). Refuses with the
+     * true reason when too heavy, exactly as the verb circle already previewed; a REFUSE fate
+     * yields nothing and says so rather than a hollow float (D-131's inert-object precedent).
+     */
+    private doPickUpShoreItem(): void {
+        const s = session().state;
+        const near = shoreWithinReach(s, TUNE.interactRadiusM)[0];
+        if (!near) { this.explain('There is nothing here to pick up.'); return; }
+        const result = pickUpShoreItem(s, near.id);
+        if (!result.ok) {
+            this.cues.play(CUES.denied);
+            this.explain(result.reason ?? 'You cannot take that.');
+            return;
+        }
+        this.cues.play(CUES.pickup);
+        if (result.gotTool) {
+            this.floatText('a working tool');
+            this.explain('A real tool. This will help with heavier work.');
+        } else if (near.materialKind) {
+            this.floatText(`+${near.materialAmount} ${near.materialKind}`);
+        } else {
+            this.floatText('nothing worth keeping');
+        }
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     /**
      * WAVE 0 / W1 — fill the vessel a survivor MADE, beside the flask they may have found.
      */
@@ -3192,6 +3498,8 @@ export class Game {
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
         this.droppedView.update(state, (x, z) => this.island.heightAt(x, z));
         this.raftView.update(state);
+        this.outboardView.update(state, (x, z) => this.island.heightAt(x, z));
+        this.shoreItemsView.update(state, (x, z) => this.island.heightAt(x, z));
 
         this.nodes.sync(state);
         this.nodes.highlight(this.highlightTarget());

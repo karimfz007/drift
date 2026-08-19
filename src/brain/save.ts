@@ -123,6 +123,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 29) current = migrateV29toV30(current);
     if (current.schemaVersion === 30) current = migrateV30toV31(current);
     if (current.schemaVersion === 31) current = migrateV31toV32(current);
+    if (current.schemaVersion === 32) current = migrateV32toV33(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -936,6 +937,33 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * zero: a returning survivor has not made a cup and is not carrying boiled water, because
  * neither existed to be made. Handing them one would be the migration inventing history.
  */
+/**
+ * v32 → v33 (Wave 1, the weighted shore). The outboard migrates in undragged and untorn down
+ * — a returning survivor has not spent time on it, because the whole tier/teardown system did
+ * not exist to spend time on. The shore migrates in EMPTY with its clock at the survivor's own
+ * current game hours, never zero: seeding it at zero would read the entire elapsed history of
+ * an old save as one enormous absence and dump the full soft-capped 40 items on the very first
+ * load, which is the migration inventing a windfall rather than declining to invent history.
+ */
+function migrateV32toV33(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return {
+        ...envelope,
+        schemaVersion: 33,
+        state: {
+            ...old,
+            outboard: { draggedM: 0, teardown: null, reassembled: false, fault: null, faultDiagnosed: false },
+            carriedParts: [],
+            studiedClasses: {},
+            shore: { items: [], lastGeneratedAtGameHours: old.gameHoursElapsed ?? 0, spawnCount: 0 },
+            //  A pre-existing save's tools object predates `salvageTools` entirely — migrate
+            //  in false, the same "you have not found this yet" default every other Wave 1
+            //  addition below uses. Spread FIRST so this is the only field that can override.
+            tools: { ...old.tools, salvageTools: false },
+        },
+    };
+}
+
 function migrateV31toV32(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
     return { ...envelope, schemaVersion: 32, state: { ...old, water: freshWater() } };

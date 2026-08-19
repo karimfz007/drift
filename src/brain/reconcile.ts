@@ -27,6 +27,7 @@ import { settleOffline } from './fauna';
 import { settleInjuriesOffline } from './injury';
 import { settleIllnessOffline } from './illness';
 import { settleOverGameHours } from './wreck';
+import { generateOnReturn } from './shore';
 import { syncLoadoutToOwnership } from './loadout';
 import {
     activeSalvageCount,
@@ -450,6 +451,15 @@ export function reconcile(state: GameState, elapsedRealSeconds: number): Reconci
         next.salvageSpawnCount += 1;
         next.nextSalvageSpawnAtGameHours += salvageIntervalGameHours(next.salvageSpawnCount);
     }
+
+    //  WAVE 1 — the generous shore. Called UNCONDITIONALLY, not gated behind
+    //  `qualifiesForReport`: "return after ten minutes: roughly as you left it" means even an
+    //  ordinary online tick may add a little, not only a qualifying absence — the density
+    //  function's own floor (`shoreMinReturnGameHoursForAnyItem`) is what does the gating, the
+    //  same way `nextSalvageSpawnAtGameHours` above needs no online/offline branch of its own.
+    //  `next.gameHoursElapsed` is already the POST-elapse clock value at this point, so this
+    //  reads the correct "how long since the shore was last generated" gap either way.
+    next.shore = generateOnReturn(next);
 
     const drifts: VitalDrift[] = [
         driftOf('warmth', state.warmth, next.warmth, warmthBound),

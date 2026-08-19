@@ -11802,6 +11802,342 @@ async function main() {
 
     }
 
+    if (section('WAVE 1 — THE OUTBOARD: reachable, all five ladder rungs, render-witnessed')) {
+
+    //  DISMISS A CIRCLE WITHOUT PICKING A SEGMENT, THE REAL WAY. `showVerbCircle`'s own onCancel
+    //  fires on a pointerdown anywhere on `.verb-circle` outside a segment (hud.ts's own
+    //  comment: "a tap anywhere else closes it") and is what actually calls `endPanel()`.
+    //  Removing the DOM node directly (an earlier draft of this section did exactly that)
+    //  never calls it, so `runtime.panelOpen` stays stuck true — invisible until the VERY NEXT
+    //  same-page interaction is silently swallowed by `if (runtime.panelOpen) return;`. Found
+    //  on the first real device run: OUTBOARD 2's drag read `draggedM 0.00 -> 0.00` because the
+    //  hold right after OUTBOARD 1's raw removal never genuinely reopened anything.
+    const closeCircle = async () => {
+        await page.evaluate(() => document.querySelector('.verb-circle')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+        await sleep(400);
+    };
+
+    //  ---- 1 · IT IS VISIBLE, TAPPABLE, AND THE HOLD SHOWS THE WHOLE CIRCLE -----------
+    await ensureNoPanel('outboard setup');
+    await editSave(`
+        state.player = { x: 26, y: 84 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.outboard = { draggedM: 0, teardown: null, reassembled: false, fault: null, faultDiagnosed: false };
+        state.carriedParts = [];
+        state.studiedClasses = {};
+        state.knowledge.domains.mechanicalSystems = { technique: 0, understanding: 0, adaptation: 0 };
+        state.tools = { ...state.tools, salvageTools: false, axe: true, spear: false };
+        state.shore = { items: [], lastGeneratedAtGameHours: state.gameHoursElapsed, spawnCount: 0 };`);
+    await sleep(900);
+
+    //  REAL PIXELS, NOT STATE — the render assertion this slice owes, on the surface built
+    //  for it: a fixed-name mesh, so `screenOfMesh` (not `surfaceByTag`) is the right tool
+    //  here, the same as `screenOfMesh('raftDeck')` would be for the raft.
+    const outboardOnScreen = await page.evaluate(() => window.__drift.screenOfMesh('outboardLeg'));
+    check('setup — the outboard is genuinely drawn on screen, not merely present in state',
+        outboardOnScreen !== null,
+        outboardOnScreen ? `at screen ${outboardOnScreen.x.toFixed(0)},${outboardOnScreen.y.toFixed(0)}` : 'screenOfMesh returned null');
+
+    await approach(30, 88, 20);
+    await faceNode(30, 88);
+    await sleep(400);
+    const held = await holdWorld(30, 88);
+    await sleep(700);
+    const circle = await page.evaluate(() => {
+        const el = document.querySelector('.verb-circle');
+        if (!el) return { up: false, segs: [] };
+        return {
+            up: true,
+            segs: Array.from(el.querySelectorAll('.verb-seg')).map((b) => ({
+                verb: b.getAttribute('data-verb') ?? '', enabled: !b.disabled,
+            })),
+        };
+    });
+    const segIds = circle.segs.map((s) => s.verb);
+    check('OUTBOARD 1 — a hold shows the whole circle: drag, study, strip, axe, reassemble (greyed)',
+        held.ok && circle.up
+            && ['drag-outboard', 'study-outboard', 'strip-outboard', 'axe-outboard', 'reassemble-outboard'].every((v) => segIds.includes(v)),
+        `hold ${held.why} · segments [${segIds.join(' | ')}]`);
+    const reassembleSeg = circle.segs.find((s) => s.verb === 'reassemble-outboard');
+    check('OUTBOARD 1 — ...reassemble is shown but GREYED — nothing recovered yet (never hidden, never a false yes)',
+        reassembleSeg !== undefined && !reassembleSeg.enabled,
+        reassembleSeg ? `enabled ${reassembleSeg.enabled}` : 'segment missing entirely');
+    await closeCircle();
+
+    // ---- 2 · DRAG MOVES IT — STATE AND PIXELS BOTH ------------------------------------
+    const beforeDrag = await page.evaluate(() => window.__drift.state().outboard.draggedM);
+    const screenBeforeDrag = await page.evaluate(() => window.__drift.screenOfMesh('outboardLeg'));
+    await holdWorld(30, 88);
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="drag-outboard"]');
+    await sleep(700);
+    const afterDrag = await page.evaluate(() => window.__drift.state().outboard.draggedM);
+    const screenAfterDrag = await page.evaluate(() => window.__drift.screenOfMesh('outboardLeg'));
+    check('OUTBOARD 2 — DRAG actually moves it: state advances AND the drawn mesh moves on screen',
+        afterDrag > beforeDrag && screenBeforeDrag !== null && screenAfterDrag !== null
+            && Math.hypot(screenAfterDrag.x - screenBeforeDrag.x, screenAfterDrag.y - screenBeforeDrag.y) > 3,
+        `draggedM ${beforeDrag.toFixed(2)} -> ${afterDrag.toFixed(2)}, screen moved ${screenBeforeDrag && screenAfterDrag ? Math.hypot(screenAfterDrag.x - screenBeforeDrag.x, screenAfterDrag.y - screenBeforeDrag.y).toFixed(1) : 'n/a'} px`);
+
+    // ---- 3 · A BARE-HANDED STRIP DESTROYS IT — degrade/destroy is a real outcome ------
+    //  Zero technique, zero understanding, no tools: competence tops out at 8 (the
+    //  workspace bonus alone, if this exact patch of sand happens to be clear) — nowhere
+    //  near enough to clear Basic's own floor by more than the destroy gap, so this is a
+    //  DETERMINISTIC destroy regardless of the real terrain around the outboard.
+    await editSave(`
+        state.outboard = { draggedM: 0, teardown: null, reassembled: false, fault: null, faultDiagnosed: false };
+        state.carriedParts = [];
+        state.knowledge.domains.mechanicalSystems = { technique: 0, understanding: 0, adaptation: 0 };
+        state.tools = { ...state.tools, salvageTools: false, axe: true };`);
+    await sleep(900);
+    await approach(30, 88, 20);
+    await faceNode(30, 88);
+    await holdWorld(30, 88);
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="strip-outboard"]');
+    await sleep(700);
+    const destroyedState = await page.evaluate(() => ({ ...window.__drift.state().outboard.teardown }));
+    //  HIDDEN MEANS `enabled === false`, NOT "screenOfMesh returns null". `screenOfMesh` only
+    //  ever gates on the camera frustum (found on the first real device run: a disabled mesh
+    //  still projects to a perfectly valid pixel — `setEnabled(false)` stops it being DRAWN,
+    //  it does not stop `getBoundingInfo()` answering). `meshInfo(...).enabled` reads the flag
+    //  `OutboardView`'s own `setChunkEnabled` actually sets — the same field every OTHER
+    //  enabled/disabled check in this file already reads for exactly this reason.
+    const destroyedLegInfo = await page.evaluate(() => window.__drift.meshInfo('outboardLeg'));
+    const wreckInfo = await page.evaluate(() => window.__drift.meshInfo('outboardWreck0'));
+    check('OUTBOARD 3 — a bare-handed strip DESTROYS it (Law 226 — the honest cost, not a soft fail)',
+        destroyedState.destroyed === true && destroyedState.rung === 'novice',
+        `teardown ${JSON.stringify(destroyedState)}`);
+    check('OUTBOARD 3 — ...and the RENDER agrees: the orderly mesh is gone, wreckage stands in its place',
+        destroyedLegInfo?.enabled === false && wreckInfo?.enabled === true,
+        `orderly mesh enabled ${destroyedLegInfo?.enabled}, wreckage enabled ${wreckInfo?.enabled}`);
+
+    // ---- 4 · MID-COMPETENCE PRESERVES PART OF IT — outcome differs by competence, --------
+    //         RENDER-WITNESSED PER CHUNK, not a single whole/gone flag.
+    //  technique 50, understanding 30, tools true: competence lands at 56-64 depending on
+    //  whether this exact patch happens to be clear (workspace only matters from Competent
+    //  up) — either way squarely inside [42, 65), i.e. Competent, regardless of terrain.
+    await editSave(`
+        state.outboard = { draggedM: 0, teardown: null, reassembled: false, fault: null, faultDiagnosed: false };
+        state.carriedParts = [];
+        state.knowledge.domains.mechanicalSystems = { technique: 50, understanding: 30, adaptation: 0 };
+        state.tools = { ...state.tools, salvageTools: true, axe: true };`);
+    await sleep(900);
+    await approach(30, 88, 20);
+    await faceNode(30, 88);
+    await holdWorld(30, 88);
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="strip-outboard"]');
+    await sleep(700);
+    const midState = await page.evaluate(() => ({ ...window.__drift.state().outboard.teardown }));
+    const midTankInfo = await page.evaluate(() => window.__drift.meshInfo('outboardTank'));
+    const midCarbInfo = await page.evaluate(() => window.__drift.meshInfo('outboardCarb'));
+    const midLegInfo = await page.evaluate(() => window.__drift.meshInfo('outboardLeg'));
+    check('OUTBOARD 4 — mid competence reaches Competent, not Novice and not Expert',
+        midState.destroyed === false && midState.rung === 'competent'
+            && midState.parts.includes('fuelTank') && !midState.parts.includes('carburetor'),
+        `teardown ${JSON.stringify(midState)}`);
+    check('OUTBOARD 4 — ...RENDER-WITNESSED per chunk: the tank/handle are gone, the carb and the frame are NOT',
+        midTankInfo?.enabled === false && midCarbInfo?.enabled === true && midLegInfo?.enabled === true,
+        `tank enabled ${midTankInfo?.enabled}, carb enabled ${midCarbInfo?.enabled}, frame enabled ${midLegInfo?.enabled}`);
+
+    // ---- 5 · FULL COMPETENCE CLEARS IT ENTIRELY — Expert, reassembles, faults are real ----
+    await editSave(`
+        state.outboard = { draggedM: 0, teardown: null, reassembled: false, fault: null, faultDiagnosed: false };
+        state.carriedParts = [];
+        state.knowledge.domains.mechanicalSystems = { technique: 100, understanding: 100, adaptation: 0 };
+        state.tools = { ...state.tools, salvageTools: true, axe: true };`);
+    await sleep(900);
+    await approach(30, 88, 20);
+    await faceNode(30, 88);
+    await holdWorld(30, 88);
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="strip-outboard"]');
+    await sleep(700);
+    const fullState = await page.evaluate(() => ({
+        teardown: window.__drift.state().outboard.teardown, parts: window.__drift.state().carriedParts,
+    }));
+    const fullLegInfo = await page.evaluate(() => window.__drift.meshInfo('outboardLeg'));
+    check('OUTBOARD 5 — full competence reaches Expert: complete disassembly, all eleven parts',
+        fullState.teardown?.destroyed === false && fullState.teardown?.rung === 'expert' && fullState.parts.length === 11,
+        `rung ${fullState.teardown?.rung}, destroyed ${fullState.teardown?.destroyed}, parts carried ${fullState.parts.length}/11`);
+    check('OUTBOARD 5 — ...and the RENDER agrees: nothing stands where it was — complete means complete',
+        fullLegInfo?.enabled === false,
+        `frame still enabled ${fullLegInfo?.enabled}`);
+
+    //  ---- 6 · REASSEMBLE, DIAGNOSE, REPAIR — and the mesh comes BACK once whole again ----
+    await holdWorld(30, 88);
+    await sleep(500);
+    const reassembleNowSeg = await page.evaluate(() => {
+        const el = document.querySelector('.verb-circle');
+        const seg = el?.querySelector('.verb-seg[data-verb="reassemble-outboard"]');
+        return seg ? { present: true, enabled: !seg.disabled } : { present: false, enabled: false };
+    });
+    check('OUTBOARD 6 — with all eleven parts carried, REASSEMBLE is now offered and enabled',
+        reassembleNowSeg.present && reassembleNowSeg.enabled, JSON.stringify(reassembleNowSeg));
+    await realTapDom('.verb-circle .verb-seg[data-verb="reassemble-outboard"]');
+    await sleep(700);
+    const afterReassemble = await page.evaluate(() => ({ ...window.__drift.state().outboard }));
+    const reassembledLeg = await page.evaluate(() => window.__drift.screenOfMesh('outboardLeg'));
+    check('OUTBOARD 6 — REASSEMBLE actually reassembles it, and consumes the carried parts',
+        afterReassemble.reassembled === true, `outboard ${JSON.stringify(afterReassemble)}`);
+    check('OUTBOARD 6 — ...and the RENDER agrees: the whole silhouette is back, not left invisible forever',
+        reassembledLeg !== null,
+        `frame on screen after reassembly ${reassembledLeg !== null} (found by tracing the full journey: rung stays 'expert' forever per Law 223, and the render must not confuse that with still-stripped)`);
+
+    //  A forced fault (deterministic, rather than hunting for a seed that rolls one) — the
+    //  credibility half of Law 217, proven on the real UI: an under-understood diagnosis
+    //  fails honestly, a sufficient one succeeds, and repair needs the diagnosis first.
+    await editSave(`
+        state.outboard.fault = 'The cylinder will not hold compression — something is fouling the seal.';
+        state.outboard.faultDiagnosed = false;
+        state.knowledge.domains.mechanicalSystems.understanding = 0;`);
+    await sleep(900);
+    await approach(30, 88, 20);
+    await faceNode(30, 88);
+    await holdWorld(30, 88);
+    await sleep(500);
+    const diagnoseLowSeg = await page.evaluate(() => Boolean(document.querySelector('.verb-circle .verb-seg[data-verb="diagnose-outboard"]')));
+    await realTapDom('.verb-circle .verb-seg[data-verb="diagnose-outboard"]');
+    await sleep(700);
+    const afterLowDiagnose = await page.evaluate(() => window.__drift.state().outboard.faultDiagnosed);
+    check('OUTBOARD 7 — DIAGNOSE is offered once a fault exists, but a low-understanding attempt fails honestly',
+        diagnoseLowSeg && afterLowDiagnose === false,
+        `segment shown ${diagnoseLowSeg}, diagnosed after low-understanding attempt ${afterLowDiagnose}`);
+
+    await editSave('state.knowledge.domains.mechanicalSystems.understanding = 30;');
+    await sleep(900);
+    await approach(30, 88, 20);
+    await faceNode(30, 88);
+    await holdWorld(30, 88);
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="diagnose-outboard"]');
+    await sleep(700);
+    const afterHighDiagnose = await page.evaluate(() => window.__drift.state().outboard.faultDiagnosed);
+    check('OUTBOARD 7 — ...and sufficient understanding correctly diagnoses it',
+        afterHighDiagnose === true, `diagnosed ${afterHighDiagnose}`);
+
+    await holdWorld(30, 88);
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="repair-outboard"]');
+    await sleep(700);
+    const afterRepair = await page.evaluate(() => window.__drift.state().outboard.fault);
+    check('OUTBOARD 7 — ...and REPAIR clears the diagnosed fault',
+        afterRepair === null, `fault after repair ${JSON.stringify(afterRepair)}`);
+
+    }
+
+    if (section('WAVE 1 — THE GENEROUS SHORE: density on return, weight is the filter, render-witnessed')) {
+
+    // ---- 1 · WEIGHT IS THE FILTER — staged fixture, refuses honestly, never silently ----
+    //  Spaced 8 m apart (not the first draft's 2 m): `approach`'s own arrival slop is up to
+    //  `interactRadiusM * 0.3` off-target, which at a 2 m spacing could leave the survivor
+    //  genuinely NEARER a neighbouring find than the one just walked to — "nearest wins"
+    //  would then silently resolve the wrong item. Found on the first real device run, where
+    //  two pickups a stone's throw from a too-heavy item both silently did nothing.
+    await ensureNoPanel('shore fixture setup');
+    await editSave(`
+        state.player = { x: 26, y: 84 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.tools = { ...state.tools, salvageTools: false };
+        state.shore = { items: [
+            { id: 'w1-heavy', fate: 'part', label: 'a bent bracket, still sound', massKg: 30,
+              materialKind: 'stone', materialAmount: 6, x: 30, y: 90, arrivedAtGameHours: state.gameHoursElapsed },
+            { id: 'w1-light', fate: 'stock', label: 'wood', massKg: 1.2,
+              materialKind: 'wood', materialAmount: 2, x: 30, y: 98, arrivedAtGameHours: state.gameHoursElapsed },
+            { id: 'w1-tool', fate: 'tool', label: 'a small pry bar', massKg: 0.6,
+              materialKind: null, materialAmount: 0, x: 30, y: 106, arrivedAtGameHours: state.gameHoursElapsed },
+        ], lastGeneratedAtGameHours: state.gameHoursElapsed, spawnCount: 3 };`);
+    await sleep(900);
+
+    await approach(30, 90, 20);
+    await faceNode(30, 90);
+    await sleep(300);
+    const heavyOnScreen = await page.evaluate(() => window.__drift.surfaceByTag('shoreItemId', 'w1-heavy'));
+    check('setup — the staged finds are genuinely drawn, found by ID rather than by pool slot',
+        heavyOnScreen !== null && heavyOnScreen.enabled && heavyOnScreen.screen !== null,
+        heavyOnScreen ? JSON.stringify(heavyOnScreen) : 'surfaceByTag returned null');
+
+    //  A TOO-HEAVY FIND IS THE SAME SHAPE AS AN UNARMED BOAR (D-171, proven for that exact
+    //  case in LONG-PRESS 5): its ONE verb is blocked, so `availableVerbs` is empty and
+    //  `holdOpensCircle` correctly answers false — a blocked segment never counts toward
+    //  opening the circle. The circle stays DOWN and the true reason is SPOKEN instead. An
+    //  earlier draft of this check asserted a greyed circle segment, which is not what this
+    //  target shape does anywhere in the game; corrected to the established precedent.
+    const hintBefore = await page.evaluate(() => document.querySelector('.hint')?.textContent?.trim() ?? '');
+    const heavyHold = await holdWorld(30, 90);
+    await sleep(700);
+    const afterHeavyHold = await page.evaluate(() => ({
+        circle: Boolean(document.querySelector('.verb-circle')),
+        hint: document.querySelector('.hint')?.textContent?.trim() ?? '',
+        items: window.__drift.state().shore.items.length,
+    }));
+    check('SHORE 1 — a too-heavy find opens NO circle (its one verb is blocked, per D-171) — and says why instead',
+        heavyHold.ok && !afterHeavyHold.circle && afterHeavyHold.hint !== hintBefore && /too heavy/i.test(afterHeavyHold.hint),
+        `hold ${heavyHold.why} · circle up ${afterHeavyHold.circle} · hint "${afterHeavyHold.hint}"`);
+    check('SHORE 1 — ...and it is untouched — still on the shore, not silently consumed',
+        afterHeavyHold.items === 3, `shore items remaining ${afterHeavyHold.items}`);
+
+    const beforeInv = await page.evaluate(() => ({ ...window.__drift.state().inventory }));
+    await approach(30, 98, 20);
+    await faceNode(30, 98);
+    await sleep(300);
+    await holdWorld(30, 98);
+    await sleep(600);
+    const lightPending = await page.evaluate(() => window.__drift.pending());
+    await realTapDom('.verb-circle .verb-seg[data-verb="pick-up-shore"]');
+    await sleep(700);
+    const afterLight = await page.evaluate(() => ({ wood: window.__drift.state().inventory.wood, items: window.__drift.state().shore.items.length }));
+    check('SHORE 1 — ...a carryable find actually picks up: material gained, removed from the shore',
+        afterLight.wood === (beforeInv.wood ?? 0) + 2 && afterLight.items === 2,
+        `wood ${beforeInv.wood ?? 0} -> ${afterLight.wood}, shore items remaining ${afterLight.items} · pending was ${JSON.stringify(lightPending)}`);
+
+    // ---- 2 · A TOOL FIND CONNECTS THE SHORE TO THE OUTBOARD'S OWN COMPETENCE ----------
+    await approach(30, 106, 20);
+    await faceNode(30, 106);
+    await sleep(300);
+    await holdWorld(30, 106);
+    await sleep(600);
+    await realTapDom('.verb-circle .verb-seg[data-verb="pick-up-shore"]');
+    await sleep(700);
+    const afterTool = await page.evaluate(() => window.__drift.state().tools.salvageTools);
+    check('SHORE 2 — a TOOL find sets salvageTools — real connective tissue to the outboard, not two parallel systems',
+        afterTool === true, `salvageTools ${afterTool}`);
+
+    // ---- 3 · DENSITY SCALES WITH TIME AWAY, generated ONCE at return (D-011) ----------
+    await editSave('state.shore = { items: [], lastGeneratedAtGameHours: state.gameHoursElapsed, spawnCount: 0 };');
+    await sleep(600);
+    await goAway(45);
+    const afterShortAway = await page.evaluate(() => window.__drift.state().shore.items.length);
+    check('SHORE 3 — a real return generates a genuine batch — not zero, not simulated tick by tick',
+        afterShortAway > 0 && afterShortAway <= 40,
+        `${afterShortAway} items after a 45-minute real absence`);
+
+    //  PERF RAIL — MEASURED, NOT ASSUMED. A long absence to approach the density cap
+    //  (`shoreMaxItems`), then a real frame-time sample while the shore, the outboard and
+    //  everything else on the beach are all live at once — the exact "many objects on
+    //  mobile" scenario this design names as where it first fails.
+    await goAway(600);
+    const density = await page.evaluate(() => window.__drift.state().shore.items.length);
+    await sleep(500);
+    const frameSample = await page.evaluate(async () => {
+        const samples = [];
+        let last = performance.now();
+        for (let i = 0; i < 60; i++) {
+            await new Promise((r) => requestAnimationFrame(r));
+            const now = performance.now();
+            samples.push(now - last);
+            last = now;
+        }
+        samples.sort((a, b) => a - b);
+        const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+        return { avgMs: avg, p95Ms: samples[Math.floor(samples.length * 0.95)], count: samples.length };
+    });
+    check('SHORE PERF — a near-maximum shore (plus the outboard, plus every other standing thing) holds a real frame budget',
+        frameSample.avgMs < 33.3,
+        `${density} shore item(s) live; avg frame ${frameSample.avgMs.toFixed(1)} ms (${(1000 / frameSample.avgMs).toFixed(0)} fps), p95 ${frameSample.p95Ms.toFixed(1)} ms, over ${frameSample.count} sampled frames`);
+
+    }
+
     await browser.close();
     const openCount = results.filter((r) => r.knownOpen).length;
     const graded = results.length - openCount;

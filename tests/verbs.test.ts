@@ -88,7 +88,11 @@ describe('THE DEFAULT-VERB LAW — no capability may ever tax the frequent verb'
         (s) => { s.shelter.durability = 40; },          // ...and worth doing
         (s) => { s.storage.durability = 40; },
     ];
-    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire'];
+    //  WAVE 1 — 'outboard' joins this list (not 'shoreitem'): drag/study/strip/axe are ALWAYS
+    //  present entries regardless of state, the same "always declares a default" property
+    //  'pond'/'shelter'/'storage'/'fire' have and 'dropped'/'boar'/'raft'/'fishingspot' do
+    //  not — a shore find can legitimately be absent, same as those four.
+    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'outboard'];
 
     it('acquiring ANY capability never changes what a tap does, at any target', () => {
         let compared = 0;
@@ -186,7 +190,7 @@ describe('a tap is the DEFAULT VERB — the circle is the exception, not the rul
 });
 
 describe('BLOCKED SEGMENTS STATE THEIR REASON — never hidden, never generic', () => {
-    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire'];
+    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'outboard'];
 
     it('every blocked segment across every target carries a reason, and every available one does not', () => {
         //  Property, not a spot-check: the invariant is that `available` and `reason` are
@@ -293,7 +297,7 @@ describe('UNIVERSAL LONG-PRESS — a hold ALWAYS asks, even when there is only o
      * A TAP IS UNTOUCHED. The Default-Verb Law still holds on the frequent path: tap the pond
      * and drink, tap the fire and feed it. Only the deliberate gesture asks.
      */
-    const ALL: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'boar', 'dropped', 'raft', 'fishingspot'];
+    const ALL: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'boar', 'dropped', 'raft', 'fishingspot', 'outboard', 'shoreitem'];
 
     it('ONE available verb still opens the circle — the case the old rule sent straight to the act', () => {
         const s = atPond();
@@ -348,7 +352,7 @@ describe('THE UNIVERSAL SEAM — room for Examine, proven while it is still empt
      * trusting whoever did it to find all eight; the boar's missing circle path is what that
      * costs when someone does not.
      */
-    const ALL: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'boar', 'dropped', 'raft', 'fishingspot'];
+    const ALL: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'boar', 'dropped', 'raft', 'fishingspot', 'outboard', 'shoreitem'];
     const examineStub: UniversalVerb = () => ({
         id: 'examine-stub', label: 'Look closely', available: true, reason: null,
     });
@@ -360,7 +364,7 @@ describe('THE UNIVERSAL SEAM — room for Examine, proven while it is still empt
         }
     });
 
-    it('carries a verb to ALL EIGHT targets when one is supplied — the room actually works', () => {
+    it('carries a verb to ALL TEN targets when one is supplied — the room actually works', () => {
         const s = createInitialState(4);
         for (const t of ALL) {
             const ids = verbsWith([examineStub], s, t).map((v) => v.id);

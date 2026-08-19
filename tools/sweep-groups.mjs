@@ -50,10 +50,16 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  *
  * G3 is 33 minutes and cannot be split: `A4 — death and respawn` reads `afterShelter` from
  * `A1–A4`, and `A4 — absence` reads `revived` from it in turn, so 9 through 14 is one atom.
+ *
+ * G12 — WAVE 1's two sections, [58, 59] — is its OWN group rather than folded onto the tail
+ * of G11: between them they run roughly a dozen `editSave` reloads plus two `goAway` returns
+ * (one of which stages a near-maximum shore for the PERF sample), which would have pushed
+ * G11 well past its own ~20 minute target. Sized on the same measured-cost basis as every
+ * other boundary here, not on "it was convenient to append".
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 59],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

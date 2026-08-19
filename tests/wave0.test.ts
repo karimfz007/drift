@@ -64,8 +64,16 @@ describe('P0-4 — the spear was real, owned, usable and invisible', () => {
         //  panel CAN show a thing is a fact about the catalogue, not about this survivor.
         const recipeIds = new Set(allRecipes().map((r) => r.id));
         const panelIdFor: Record<string, string> = { stoneHammer: 'stonehammer', fishingLine: 'fishingline' };
+        //  A THIRD CATEGORY, ARRIVING EXACTLY AS THIS TEST'S OWN COMMENT PREDICTED IT WOULD:
+        //  found, never held, never crafted. `salvageTools` (Wave 1) is a real tool set found
+        //  on the shore, not equipped to a hand and not made from a recipe — HELD and MADE do
+        //  not exhaust "reachable". Its surface is the Vitals tab (heavyObjects.ts's own
+        //  competence bonus reads it directly), verified on device rather than by this
+        //  brain-only test, which has no way to see hud.ts at all under the purity rule.
+        const foundCapability = new Set(['salvageTools']);
         const invisible = Object.keys(s.tools)
             .filter((k) => !notATool.has(k))
+            .filter((k) => !foundCapability.has(k))
             .filter((k) => !TOOL_IDS.includes(k as ToolId))
             .filter((k) => !recipeIds.has(panelIdFor[k] ?? k.toLowerCase()));
         expect(invisible,

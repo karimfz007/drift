@@ -137,6 +137,17 @@ export const CAVE_SITE = { x: 48, y: -34 } as const;
 export const WRECK = { x: 40, y: 240, heightM: 9 } as const;
 
 /**
+ * WAVE 1 — THE OUTBOARD. A small engine torn off a boat's stern in a storm and washed ashore
+ * still bolted to a fragment of transom, near enough to the arrival beach to be found early,
+ * clear of every other landmark ({@link BOAT} at 14,100; {@link POND} at -22,8).
+ *
+ * VISIBLE FROM WORLD START, deliberately: the brief's first listed requirement is "visible on
+ * the beach", and Wave 1 does not build a discovery/reveal step for it — that would be a
+ * second system layered onto a slice already proving several.
+ */
+export const OUTBOARD = { x: 30, y: 88 } as const;
+
+/**
  * THE DIVE SITE (the Underwater Slice) — the half of the wreck that went down.
  *
  * Placed just off the hull rather than somewhere new, because the fiction is already there:

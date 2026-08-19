@@ -912,6 +912,12 @@ export interface VitalsExtraView {
      *  panel, and the old location was documented as an exception with nowhere else to be —
      *  this is that else. */
     rest: { sheltered: boolean };
+    /** WAVE 1 — found, not crafted, not held in a hand: `salvageTools` is a capability the
+     *  tide can wash up (see `shore.ts`'s TOOL fate), and it needed a surface of its own once
+     *  it stopped fitting `TOOL_IDS`' hand-equippable shape. This is that surface — the
+     *  commitment the fix for `wave0.test.ts`'s HELD-or-MADE invariant made explicit rather
+     *  than quietly working around. */
+    salvageTools: boolean;
 }
 
 function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
@@ -1010,10 +1016,22 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
             <button class="primary sleep-btn" type="button">${extra.rest.sheltered ? 'Sleep' : 'Sleep rough'}</button>
         </div>`;
 
+    //  WAVE 1 — A FOUND CAPABILITY, READ HERE RATHER THAN IN A HAND SLOT. Shown always, not
+    //  only once found: a survivor who has never seen this row would have no way to know it
+    //  was a thing the tide could bring, the same reasoning `handRows` shows an honest
+    //  "nothing made yet" rather than disappearing entirely.
+    const salvageToolsRow = !extra ? '' : `
+        <div class="vital-line">
+            <div class="build-head"><strong>Salvage tools</strong><span class="standing-chip">${extra.salvageTools ? 'Found' : 'Not found'}</span></div>
+            <p class="subtitle vital-cause">${extra.salvageTools
+                ? 'A file, a pry bar, a length of good line — enough to work heavier salvage properly.'
+                : 'Nothing yet for serious teardown work. The tide sometimes brings a real tool ashore.'}</p>
+        </div>`;
+
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}${restRow}</div>`;
+        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}${salvageToolsRow}${restRow}</div>`;
 }
 
 export function showLoadout(

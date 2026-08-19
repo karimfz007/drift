@@ -26,7 +26,7 @@ import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
 //  constructed, started, and never drawn — the deep-import tree-shaking trap.
 import '@babylonjs/core/Particles/particleSystemComponent';
 
-import { isFireLit, regrowProgress, ringObstacles, type GameState, type ItemGrade, type NodeKind, type WoodNode } from '../brain';
+import { isFireLit, outboardPosition, regrowProgress, ringObstacles, type GameState, type ItemGrade, type NodeKind, type ShoreFate, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
 import { defectStage } from '../brain';
 import { WORLD, surfaceHeightAt } from '../data/world';
@@ -1523,6 +1523,246 @@ export class DroppedView {
     }
 
     /** What the harness and the pick path both ask: is this stack genuinely on screen? */
+    shownCount(): number {
+        return this.pool.filter((m) => m.isEnabled()).length;
+    }
+}
+
+/** D-049's lesson again: a disabled mesh still eats taps unless pickability is cleared on the
+ *  whole hierarchy with it. One place for the pattern `RaftView.setBuilt` established, so a
+ *  future chunk cannot forget the child loop. Cheap dedupe — this slice's whole PERF rail is
+ *  "measure, don't assume", and touching engine state every frame for an object that changes
+ *  rungs a handful of times per life is the kind of waste that rail exists to catch. */
+function setChunkEnabled(mesh: Mesh, enabled: boolean): void {
+    if (mesh.isEnabled(false) === enabled) return;
+    mesh.setEnabled(enabled);
+    mesh.isPickable = enabled;
+    for (const child of mesh.getChildMeshes()) child.isPickable = enabled;
+}
+
+/** Fixed scatter offsets for the destroyed-state debris — not `Math.random()`: a mesh-only
+ *  visual detail with no gameplay weight still has no reason to be non-deterministic, and a
+ *  fixed layout means a screenshot of a destroyed outboard looks the same on every device. */
+const OUTBOARD_WRECK_OFFSETS: ReadonlyArray<readonly [number, number, number]> = [
+    [-0.32, 0.09, 0.16], [0.26, 0.06, -0.22], [0.04, 0.11, 0.3], [-0.16, 0.07, -0.27],
+];
+
+/**
+ * WAVE 1 — THE BEACHED OUTBOARD. Wave 1's one representative heavy object, drawn to actually
+ * show its own state rather than sit as a static prop: which parts remain is read from
+ * `state.outboard.teardown?.parts` every frame, exactly what the render assertion this slice
+ * owes needs to find on screen.
+ *
+ * THREE VISIBLE GROUPS, not eleven parts — Law 235's representative-first scope again: enough
+ * geometry to make "it is coming apart, in stages" readable at a glance, not a fully poseable
+ * eleven-part rig. `coreFrame` (the leg/gearcase/cowling housing — nothing this slice tracks
+ * as a separately-recoverable part until Expert clears the object entirely) disappears only
+ * at Expert; `tankHandle` and `carbMagnetoProp` disappear the moment their own named parts are
+ * actually in `carriedParts`, independent of whether the frame around them still stands.
+ *
+ * DESTROYED READS AS A DIFFERENT OBJECT, not a greyed-out one: Law 226's wreckage is drawn as
+ * a scattered debris cluster, distinct from the orderly silhouette, so a survivor who axed it
+ * (or opened it far too early) SEES the honest cost rather than reading a number.
+ */
+export class OutboardView {
+    private coreFrame: Mesh;
+    private tankHandle: Mesh;
+    private carbMagnetoProp: Mesh;
+    private readonly wreckage: Mesh[] = [];
+    private shadow: Mesh;
+
+    constructor(scene: Scene) {
+        const steelMat = flat(scene, 'm_outboardSteel', PALETTE.wreckHull);
+        const paintedMat = flat(scene, 'm_outboardPainted', PALETTE.wreckHousing);
+        const tag = { outboard: true };
+
+        //  THE LEG — driveshaft down to the gearcase, mounted at a jaunty transom tilt so it
+        //  reads as a motor rather than a post. Parent of the housing above and the gearcase
+        //  and prop-shaft below, so one enabled flag carries the whole "still bolted together"
+        //  reading — cowling and gearcase are not separately recoverable until Expert clears
+        //  the object outright, so they need no independent toggle.
+        this.coreFrame = CreateCylinder('outboardLeg', { height: 1.0, diameterTop: 0.2, diameterBottom: 0.15, tessellation: 8 }, scene);
+        this.coreFrame.material = steelMat;
+        this.coreFrame.isPickable = true;
+        this.coreFrame.metadata = tag;
+        this.coreFrame.rotation.z = -0.18;
+
+        const cowling = CreateBox('outboardCowling', { width: 0.48, height: 0.46, depth: 0.4 }, scene);
+        cowling.material = paintedMat;
+        cowling.parent = this.coreFrame;
+        cowling.position.set(0, 0.5, 0);
+        cowling.isPickable = true;
+        cowling.metadata = tag;
+
+        const gearcase = CreateBox('outboardGearcase', { width: 0.24, height: 0.2, depth: 0.28 }, scene);
+        gearcase.material = steelMat;
+        gearcase.parent = this.coreFrame;
+        gearcase.position.set(0, -0.56, 0.02);
+        gearcase.isPickable = true;
+        gearcase.metadata = tag;
+
+        //  FUEL TANK + TILLER HANDLE — Competent's own yield (Law 221's first rung of real
+        //  recovery). One chunk for both; see the module header for why two parts share one
+        //  mesh in this slice.
+        this.tankHandle = CreateBox('outboardTank', { width: 0.2, height: 0.15, depth: 0.18 }, scene);
+        this.tankHandle.material = steelMat;
+        this.tankHandle.parent = this.coreFrame;
+        this.tankHandle.position.set(0.3, 0.12, 0);
+        this.tankHandle.isPickable = true;
+        this.tankHandle.metadata = tag;
+        const handle = CreateCylinder('outboardHandle', { height: 0.46, diameter: 0.045, tessellation: 6 }, scene);
+        handle.material = steelMat;
+        handle.parent = this.tankHandle;
+        handle.rotation.z = Math.PI / 2.6;
+        handle.position.set(0.26, 0, 0);
+        handle.isPickable = true;
+        handle.metadata = tag;
+
+        //  CARBURETOR + MAGNETO + PROP — Skilled's own subassembly yield (Law 221's own
+        //  "preserved complexity" made concrete: three real parts, one visible cluster).
+        this.carbMagnetoProp = CreateBox('outboardCarb', { width: 0.15, height: 0.13, depth: 0.13 }, scene);
+        this.carbMagnetoProp.material = steelMat;
+        this.carbMagnetoProp.parent = this.coreFrame;
+        this.carbMagnetoProp.position.set(-0.26, 0.28, 0);
+        this.carbMagnetoProp.isPickable = true;
+        this.carbMagnetoProp.metadata = tag;
+        for (const sign of [1, -1]) {
+            const blade = CreateBox(`outboardPropBlade${sign}`, { width: 0.28, height: 0.035, depth: 0.075 }, scene);
+            blade.material = steelMat;
+            blade.parent = this.carbMagnetoProp;
+            blade.position.set(0.15, -1.0, 0);
+            blade.rotation.y = sign * (Math.PI / 4);
+            blade.isPickable = true;
+            blade.metadata = tag;
+        }
+
+        for (let i = 0; i < OUTBOARD_WRECK_OFFSETS.length; i++) {
+            const debris = CreateBox(`outboardWreck${i}`, { width: 0.22 + (i % 2) * 0.08, height: 0.14, depth: 0.18 }, scene);
+            debris.material = i % 2 === 0 ? steelMat : paintedMat;
+            debris.rotation.y = i * 0.9;
+            debris.isPickable = true;
+            debris.metadata = tag;
+            debris.setEnabled(false);
+            this.wreckage.push(debris);
+        }
+
+        this.shadow = makeShadow(scene, 0.6);
+        setChunkEnabled(this.coreFrame, false);
+        setChunkEnabled(this.tankHandle, false);
+        setChunkEnabled(this.carbMagnetoProp, false);
+        this.shadow.setEnabled(false);
+    }
+
+    update(state: GameState, heightAt: (x: number, z: number) => number): void {
+        const pos = outboardPosition(state);
+        const y = heightAt(pos.x, pos.y);
+        const teardown = state.outboard.teardown;
+        const destroyed = teardown?.destroyed === true;
+        const reassembled = state.outboard.reassembled;
+        //  REASSEMBLY OVERRIDES THE LADDER'S OWN NO-REGRESSION RULE, for rendering. Law 223
+        //  correctly keeps `teardown.rung` at whatever peak it reached even after
+        //  `reassembleOutboard` consumes the parts — found by tracing the full journey
+        //  end to end: without this, an Expert-stripped-then-reassembled outboard stayed
+        //  invisible forever, because `rung` never regresses from 'expert' and the render
+        //  logic had no idea reassembly had put it back together. Reassembled means whole,
+        //  full stop, regardless of what the ladder remembers about how it got there.
+        const strippedBare = !destroyed && !reassembled && teardown?.rung === 'expert';
+        const parts: readonly string[] = reassembled ? [] : (teardown?.parts ?? []);
+        const wholeVisible = !destroyed && !strippedBare;
+
+        this.coreFrame.position.set(pos.x, y + 0.62, pos.y);
+        setChunkEnabled(this.coreFrame, wholeVisible);
+        setChunkEnabled(this.tankHandle, wholeVisible && !parts.includes('fuelTank'));
+        setChunkEnabled(this.carbMagnetoProp, wholeVisible && !parts.includes('carburetor'));
+
+        for (let i = 0; i < this.wreckage.length; i++) {
+            const [ox, oy, oz] = OUTBOARD_WRECK_OFFSETS[i];
+            this.wreckage[i].position.set(pos.x + ox, y + oy, pos.y + oz);
+            setChunkEnabled(this.wreckage[i], destroyed);
+        }
+
+        this.shadow.position.set(pos.x, y + 0.02, pos.y);
+        if (this.shadow.isEnabled() !== !destroyed) this.shadow.setEnabled(!destroyed);
+    }
+
+    /** What the harness and the render-witness both ask: is the object genuinely on screen
+     *  right now, in SOME visible state (whole, mid-strip, or wreckage)? */
+    isShown(): boolean {
+        return this.coreFrame.isEnabled(false) || this.wreckage.some((w) => w.isEnabled(false));
+    }
+}
+
+const SHORE_ITEM_COLOR: Record<ShoreFate, readonly number[]> = {
+    refuse: [0.34, 0.34, 0.32],
+    stock: PALETTE.driftwood,
+    part: PALETTE.wreckHousing,
+    tool: PALETTE.gradeRefined,
+};
+
+/**
+ * WAVE 1 — THE GENEROUS SHORE'S FINDS. Pooled exactly like `DroppedView`, for the same
+ * reason: the count changes every time the tide brings more or a survivor picks one up, and
+ * allocating meshes in the render loop is how a walk starts stuttering.
+ *
+ * COLOURED BY FATE, not a single generic marker — the "visual abundance" half of Laws 175-177
+ * made real: a survivor can read refuse from stock from a real part from a rare tool at a
+ * glance, before ever tapping one, which is the whole of what makes deciding what to carry a
+ * real decision instead of a blind grab.
+ */
+export class ShoreItemsView {
+    private readonly pool: Mesh[] = [];
+    private readonly shadows: Mesh[] = [];
+    private readonly scene: Scene;
+    private readonly materials: Record<ShoreFate, StandardMaterial>;
+
+    constructor(scene: Scene) {
+        this.scene = scene;
+        this.materials = {
+            refuse: flat(scene, 'm_shoreRefuse', SHORE_ITEM_COLOR.refuse),
+            stock: flat(scene, 'm_shoreStock', SHORE_ITEM_COLOR.stock),
+            part: flat(scene, 'm_shorePart', SHORE_ITEM_COLOR.part),
+            tool: flat(scene, 'm_shoreTool', SHORE_ITEM_COLOR.tool),
+        };
+    }
+
+    private grow(): void {
+        const i = this.pool.length;
+        const mesh = CreateBox(`shoreItem${i}`, { width: 0.3, height: 0.2, depth: 0.3 }, this.scene);
+        mesh.isPickable = true;
+        mesh.setEnabled(false);
+        this.pool.push(mesh);
+        const shadow = makeShadow(this.scene, 0.26);
+        shadow.setEnabled(false);
+        this.shadows.push(shadow);
+    }
+
+    update(state: GameState, heightAt: (x: number, z: number) => number): void {
+        const items = state.shore.items;
+        while (this.pool.length < items.length) this.grow();
+        for (let i = 0; i < this.pool.length; i++) {
+            const item = items[i];
+            const mesh = this.pool[i];
+            const shadow = this.shadows[i];
+            if (!item) {
+                if (mesh.isEnabled()) mesh.setEnabled(false);
+                if (shadow.isEnabled()) shadow.setEnabled(false);
+                //  Cleared so a disabled mesh can never answer a pick with a stale id — the
+                //  exact `DroppedView` precedent this class mirrors.
+                mesh.metadata = null;
+                continue;
+            }
+            const y = heightAt(item.x, item.y);
+            mesh.position.set(item.x, y + 0.11, item.y);
+            shadow.position.set(item.x, y + 0.02, item.y);
+            mesh.material = this.materials[item.fate];
+            mesh.metadata = { shoreItemId: item.id };
+            if (!mesh.isEnabled()) mesh.setEnabled(true);
+            if (!shadow.isEnabled()) shadow.setEnabled(true);
+        }
+    }
+
+    /** What the harness and the render-witness both ask: how many finds are genuinely on
+     *  screen right now? */
     shownCount(): number {
         return this.pool.filter((m) => m.isEnabled()).length;
     }

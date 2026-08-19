@@ -29,6 +29,8 @@ import { handlineBlocker, haulNetBlocker, nearestSpot, setNetBlocker, spearFishB
 import { nearestBoar } from './fauna';
 import { droppedWithinReach } from './dropped';
 import { readWrite } from './journal';
+import { canReassemble, dragOutboard } from './heavyObjects';
+import { shoreWithinReach, tooHeavyToCarry } from './shore';
 
 /** A single segment of the circle — or, when it is the only one, simply what a tap does. */
 export interface VerbOption {
@@ -45,7 +47,13 @@ export interface VerbOption {
     reason: string | null;
 }
 
-export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft' | 'fishingspot';
+export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft' | 'fishingspot'
+    //  WAVE 1 — THE WEIGHTED SHORE, FIRST SLICE. The outboard is a singular fixed(-ish, once
+    //  dragged) object, the same shape `raft`/`boat` use; a shore find is plural and
+    //  id-addressable like `dropped`, resolved to the nearest one rather than threading an id
+    //  through this signature — see `shoreItemVerbs` for why that already-established shape
+    //  fits without changing it.
+    | 'outboard' | 'shoreitem';
 
 /**
  * Does the survivor know how to fish? A capability, not an inventory item — Slice 2's
@@ -117,6 +125,8 @@ function targetVerbs(state: GameState, target: VerbTarget): VerbOption[] {
         case 'dropped': return droppedVerbs(state);
         case 'raft': return raftVerbs(state);
         case 'fishingspot': return fishingSpotVerbs(state);
+        case 'outboard': return outboardVerbs(state);
+        case 'shoreitem': return shoreItemVerbs(state);
     }
 }
 
@@ -169,6 +179,11 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  have first. The other two are deliberate acts reached by a hold, which is the same
     //  bargain the pond already strikes (tap to drink; hold for the flask and the line).
     fishingspot: 'cast-line',
+    //  WAVE 1 — the ladder IS the loop this slice proves; dragging and studying are real but
+    //  occasional, the same relationship feeding has to a fire.
+    outboard: 'strip-outboard',
+    //  A find on the tideline has exactly one thing you want from it, same as a dropped stack.
+    shoreitem: 'pick-up-shore',
 };
 
 /**
@@ -572,4 +587,110 @@ function fireVerbs(state: GameState): VerbOption[] {
                     : `You need ${TUNE.remedyFiberCost} fibre and ${TUNE.remedyBerryCost} berries.`),
         },
     ];
+}
+
+/**
+ * WAVE 1 — THE OUTBOARD'S CIRCLE. The one representative heavy object, proven end to end:
+ * DRAG (T5's one movement, Law 204), STUDY (understanding only, Law 208), STRIP (the graded
+ * ladder itself, Law 217/221/226), AXE (deliberate destruction, always an option once a
+ * survivor owns one), and REASSEMBLE/DIAGNOSE/REPAIR (Law 227's found/repaired route).
+ *
+ * ATTEMPT AND OUTCOME ARE SEPARATE (Law 217). Strip is offered whenever there is still
+ * something left to strip, regardless of competence — a bare-handed novice CAN attempt it and
+ * will simply reach Novice, or destroy it on a wide-enough miss. What `teardownAttempt`
+ * actually resolves to is computed at the moment of the tap, in the body, where the one
+ * body-only fact this loop needs — whether the ground around it is actually clear — lives;
+ * see `heavyObjects.ts`'s own header for why that fact cannot be answered from here. Showing
+ * the segment does not promise a rung; it promises the attempt is real.
+ *
+ * DRAG'S OWN AVAILABILITY IS A DRY RUN OF THE REAL FUNCTION, not a second copy of its tier
+ * gate: `dragOutboard(state, 0, hasPole)` moves nothing and costs nothing at zero metres, and
+ * its `.ok`/`.reason` are the exact verdict the real pull would give. Two copies of the same
+ * rule is how the teardown ladder's own destroy-gap bug happened this slice — read the fixed
+ * verdict instead of re-deriving it.
+ */
+function outboardVerbs(state: GameState): VerbOption[] {
+    const teardown = state.outboard.teardown;
+    const destroyed = teardown?.destroyed === true;
+    const stripped = !destroyed && teardown?.rung === 'expert';
+    //  A SPEAR STANDS IN FOR THE POLE (Law 204: the tool eases the method, never the
+    //  permission) — this game has no dedicated pole tool, and a spear is, physically, one.
+    const drag = dragOutboard(state, 0, state.tools.spear);
+    return [
+        {
+            id: 'drag-outboard',
+            label: 'Drag it',
+            available: drag.ok && !destroyed,
+            reason: destroyed ? 'There is nothing left worth dragging.' : drag.reason,
+        },
+        {
+            id: 'study-outboard',
+            label: 'Study the engine',
+            available: !destroyed,
+            reason: destroyed ? 'There is nothing left to learn from the wreckage.' : null,
+        },
+        {
+            id: 'strip-outboard',
+            label: teardown ? 'Keep stripping it down' : 'Strip it down',
+            available: !destroyed && !stripped,
+            reason: destroyed ? 'It is already destroyed.' : stripped ? 'It is already stripped bare.' : null,
+        },
+        {
+            id: 'axe-outboard',
+            label: 'Break it apart with the axe',
+            available: state.tools.axe && !destroyed,
+            reason: destroyed ? 'There is nothing left to break.'
+                : !state.tools.axe ? 'You have nothing heavy enough to break it apart.' : null,
+        },
+        ...reassemblyVerbs(state),
+    ];
+}
+
+/**
+ * REASSEMBLE, DIAGNOSE, REPAIR — shown only once each becomes a real question, the same
+ * `bindVerbs` shape: a segment nobody could ever act on yet is not a circle entry, it is a
+ * menu of refusals waiting to happen. Diagnose and repair in particular would need to explain
+ * their absence to a survivor who has never even reassembled the thing, which teaches a menu
+ * that does not exist yet rather than the state that does.
+ */
+function reassemblyVerbs(state: GameState): VerbOption[] {
+    const out: VerbOption[] = [];
+    if (!state.outboard.reassembled) {
+        const can = canReassemble(state);
+        out.push({
+            id: 'reassemble-outboard',
+            label: 'Reassemble it',
+            available: can,
+            reason: can ? null : 'You have not recovered enough of it yet.',
+        });
+        return out;
+    }
+    //  DIAGNOSIS IS ALWAYS ATTEMPTABLE ONCE THERE IS A FAULT TO FIND (Law 217's credibility
+    //  half lives in the OUTCOME — `diagnoseFault` — not in whether the verb is offered).
+    if (state.outboard.fault && !state.outboard.faultDiagnosed) {
+        out.push({ id: 'diagnose-outboard', label: 'Diagnose the fault', available: true, reason: null });
+    }
+    if (state.outboard.fault && state.outboard.faultDiagnosed) {
+        out.push({ id: 'repair-outboard', label: 'Repair it', available: true, reason: null });
+    }
+    return out;
+}
+
+/**
+ * A FIND ON THE TIDELINE. One verb — the same shape `droppedVerbs` uses for a stack on the
+ * ground: there is only one thing to want from it. Resolved against the NEAREST item rather
+ * than an id threaded through `verbsFor`'s signature, the same choice `droppedVerbs` and
+ * `boarVerbs` already made and the same reason: the survivor picks up what is in front of
+ * them, not an id they selected from a list they never saw.
+ */
+function shoreItemVerbs(state: GameState): VerbOption[] {
+    const near = shoreWithinReach(state, TUNE.interactRadiusM)[0];
+    if (!near) return [];
+    const heavy = tooHeavyToCarry(state, near);
+    return [{
+        id: 'pick-up-shore',
+        label: `Pick up ${near.label}`,
+        available: !heavy,
+        reason: heavy ? 'Too heavy to carry. It would have to be dragged.' : null,
+    }];
 }

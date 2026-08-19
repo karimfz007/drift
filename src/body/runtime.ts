@@ -96,6 +96,24 @@ export const runtime = {
     /** A rendered mesh's own transform — the cue as DRAWN, not the state behind it. */
     meshInfo: (() => null) as (meshName: string) =>
         { enabled: boolean; rotZ: number; rotY: number; scaleZ: number; y: number; twoSided: boolean | null } | null,
+    /**
+     * WAVE 1 — THE PER-SURFACE WITNESS, EXTENDED TO ID-TAGGED POOLED MESHES (item B's
+     * confirmed gap: `screenOfMesh`/`meshInfo` had been called ad hoc ~32 times and never
+     * assembled into one shared "is THIS EXACT thing genuinely drawn" check — closed here for
+     * what this slice concretely needs; item B's other two fixes stay open and named).
+     *
+     * `screenOfMesh` needs a stable mesh NAME. A pooled mesh's name is its POOL INDEX
+     * (`shoreItem3`), which drifts as finds are added and picked up — a check keyed on that
+     * name could silently witness a DIFFERENT logical item than the one it meant to the very
+     * next frame. This finds by `mesh.metadata[key] === value` instead — the survivor-facing
+     * identity (`shoreItemId`), never the render-side slot — so the witness can never become
+     * a union of "whichever mesh happens to occupy that slot right now". Reports enabled
+     * state AND screen position together, on the SAME mesh lookup, so a check can tell
+     * "genuinely drawn, right here" from "a scene-graph flag says so" in one call rather than
+     * two that could theoretically disagree about which mesh they even mean.
+     */
+    surfaceByTag: (() => null) as (key: string, value: string) =>
+        { enabled: boolean; screen: { x: number; y: number } | null } | null,
     ghostReadout: (() => ({ shown: false, valid: false })) as () => { shown: boolean; valid: boolean },
     groundAt: (() => 0) as (x: number, z: number) => number,
     playerFeetY: (() => 0) as () => number,
@@ -369,6 +387,9 @@ function installDebugHook(): void {
     //  not whether the state that should have driven it is correct. Reading the mesh rather
     //  than the state is the difference between witnessing the fix and witnessing the intent.
     meshInfo: (meshName: string) => runtime.meshInfo(meshName),
+    //  WAVE 1 — the per-surface witness for id-tagged pooled meshes; see `runtime.surfaceByTag`'s
+    //  own doc for why this exists alongside `screenOfMesh` rather than instead of it.
+    surfaceByTag: (key: string, value: string) => runtime.surfaceByTag(key, value),
     /** P0-G — the fire's distance-scaled loudness, read only. */
     fireLoudness: () => runtime.fireLoudness(),
     //  RAIN & WET ESCALATION — READ-ONLY ([[D-075]]). It answers what the sky is doing and
