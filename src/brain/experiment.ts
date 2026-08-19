@@ -437,6 +437,17 @@ export interface KnownRecipe {
     needs: Array<{ kind: MaterialKind; need: number; have: number }>;
     /** Can it be made right now? Derived, never a gate on being listed. */
     afford: boolean;
+    /**
+     * TRUE ONLY FOR KNAP. Every other entry here is a BLUEPRINT — discovered once through
+     * Combine, made repeatedly by staging its materials again. Knapping was never discovered
+     * at all: `canKnapSharpblade` is `stoneHammer && stone >= cost`, "a standing gate," with
+     * no blueprint step and no done-state (D-055). Staging two things to satisfy a system that
+     * was never asked a question would be a ritual invented for a mechanic that has no
+     * question to ask. So it is marked standalone, and the surface that reads this list acts
+     * on it directly rather than routing it through the staged-materials flow the field name
+     * `needs` otherwise implies.
+     */
+    standalone?: boolean;
 }
 
 export function knownRecipes(state: GameState, storageOpen = false): KnownRecipe[] {
@@ -460,6 +471,22 @@ export function knownRecipes(state: GameState, storageOpen = false): KnownRecipe
             name: recipeDisplayName(bp.recipeId),
             needs,
             afford: needs.every((x) => x.have >= x.need),
+        });
+    }
+    //  KNAP JOINS THE LIST IT WAS NEVER ABLE TO REACH — RULING (C1). Its own recipe has one
+    //  slot, and `canExperimentWith` wants two to four, so it could never be discovered by
+    //  Combine and never minted a blueprint to be found by the loop above. But "what this
+    //  survivor knows how to make" is exactly what owning the hammer already means for
+    //  knapping — the gate IS the knowledge, per its own doc comment — so it belongs on this
+    //  list on the same terms, gated the same way the Build panel's own row always was.
+    if (state.tools.stoneHammer) {
+        const have = reach.counts.stone ?? 0;
+        out.push({
+            recipeId: 'knap',
+            name: recipeDisplayName('knap'),
+            needs: [{ kind: 'stone', need: TUNE.knapStoneCost, have }],
+            afford: have >= TUNE.knapStoneCost,
+            standalone: true,
         });
     }
     //  Affordable first, then alphabetical — a stable order, so the list does not reshuffle

@@ -455,6 +455,9 @@ export interface KnownRecipeView {
     name: string;
     needs: Array<{ kind: string; need: number; have: number }>;
     afford: boolean;
+    /** Mirrors `KnownRecipe.standalone` — true only for knap, whose detail view offers a
+     *  direct action rather than implying "stage these materials to make it". */
+    standalone?: boolean;
 }
 
 export interface CombineSlateView {
@@ -533,42 +536,9 @@ export interface BuildCardView {
      * renders it and derives nothing.
      */
     refuge: { line: string; working: boolean; reductionPct: number; status: string };
-    /** Resting. Always offered — a tired human can lie down anywhere — but it says plainly
-     *  whether this will be a night under the roof or a night on the ground. */
-    rest: { sheltered: boolean };
 }
 
 
-
-/**
- * KNAPPING — repeatable, so never a "done" state, just a standing stone gate shown once the
- * hammer is owned.
- *
- * THE LAST MAKER IN THIS PANEL, and it is here because it cannot be anywhere else: `knap` has
- * ONE slot and staging wants two materials, so it can never reach the combine slate. Sharp
- * blades gate the axe and the spear, so losing this button would strand the tree.
- */
-export interface KnapView {
-    owned: boolean;
-    stoneHave: number;
-    stoneCost: number;
-    sharpbladeHave: number;
-}
-
-/** Knapping's own small markup — repeatable, so never a "done" state like the crafts
- *  above; just a standing gate, shown only once the stone hammer is owned. */
-function knapMarkup(view: KnapView): string {
-    if (!view.owned) return '';
-    const met = view.stoneHave >= view.stoneCost;
-    return `
-        <div class="build-item knap-item">
-            <h2>Knap a sharp blade</h2>
-            <p class="subtitle">Turn raw stone into the blade the axe needs. Repeatable.</p>
-            <div class="gates"><div class="gate ${met ? 'met' : 'unmet'}"><span>Stone</span><span>${view.stoneHave} / ${view.stoneCost}</span></div></div>
-            <p class="subtitle">Sharp blades in hand: ${view.sharpbladeHave}</p>
-            <button class="primary knap-btn" type="button" ${met ? '' : 'disabled'}>${met ? 'Knap a blade' : 'Not enough stone'}</button>
-        </div>`;
-}
 
 /**
  * The Build panel (C05, +stone hammer at Ch.1 v3/D-055): every entry independently
@@ -578,16 +548,20 @@ function knapMarkup(view: KnapView): string {
 export function showBuildCard(
     overlay: HTMLElement,
     view: BuildCardView,
-    knap: KnapView,
     //  TEN CRAFT CALLBACKS ARE GONE, and their `bind` calls with them. [[D-165]] removed the
     //  rows those buttons lived in — Combine makes everything now — and left the wiring behind:
     //  ten parameters threaded from `game.ts`, ten `bind` calls looking for selectors nothing
     //  renders. Dead wiring is worse than no wiring, because it reads as a live surface to
     //  anyone auditing this file and it is what a stale harness check attaches itself to.
-    onKnapSharpblade: () => void,
+    //
+    //  KNAP AND SLEEP FOLLOWED THEM OUT (RULING, C1). Both were here only because they had
+    //  nowhere else to be — the note below said so in as many words — and both now do:
+    //  knapping is a KNOWN-LIST entry (RULING 1's list already answers "what can this
+    //  survivor make"; knapping is one more true answer), and rest is a Vitals-tab row,
+    //  where a tired survivor actually goes to ask "how am I doing." Their callbacks and
+    //  `bind()` calls left with them; see `showLoadout` and `vitalsBody` for where they live.
     onClose: () => void,
-    onMendShelter: () => void = () => {},
-    onSleep: () => void = () => {}
+    onMendShelter: () => void = () => {}
 ): void {
     const el = panel(overlay, 'build');
     const hintMarkup = view.hints.length
@@ -609,35 +583,13 @@ export function showBuildCard(
                 </div>
                 <p class="subtitle refuge-line">${view.refuge.line}</p>
             </div>
-            <!--  Rest sits FIRST. The card grew past the 412px fold as items were added,
-                  and a device probe caught the sleep button rendering below it
-                  (inViewport:false) — reachable only by scrolling. The panel is
-                  scrollable by D-052's design so nothing was unreachable, but a
-                  primary action a tired player is hunting for should not need a
-                  scroll to be seen.  -->
-            <div class="build-item rest-item">
-                <div class="build-head"><strong>${view.rest.sheltered ? 'Sleep in the shelter' : 'Sleep on the ground'}</strong></div>
-                <p class="subtitle">${view.rest.sheltered
-                    ? 'A roof over you. You will wake properly rested.'
-                    : 'No roof, no bedding. You will rest, but not well — and the weather gets at you.'}</p>
-                <button class="primary sleep-btn" type="button">${view.rest.sheltered ? 'Sleep' : 'Sleep rough'}</button>
-            </div>
-            <!--  EVERY CRAFT ROW IS GONE, and with it the last reason this panel was called
-                  a Build panel. Combine makes things now — a known outcome is chosen on the
-                  slate and produced on the spot, hand-held straight into your hands and
-                  placed by the tap that picks its spot. Two surfaces that both spent
-                  materials and both rolled a grade was one surface too many, and this one
-                  could not say WHERE: it dropped a shelter 2.2 m ahead of wherever you
-                  happened to be standing.
+            <!--  SLEEP AND KNAP ARE GONE FROM HERE (RULING, C1) — relocated, not deleted.
+                  Sleep is now a Vitals-tab row (vitalsBody's restRow); knapping is now a
+                  standalone entry on the known-recipes list (knownRecipes, standalone: true),
+                  reachable from the same slate RULING 1 restored. What is left is here
+                  because it genuinely has nowhere else to be, checked rather than assumed
+                  before anything was deleted:
 
-                  WHAT IS LEFT IS HERE BECAUSE IT HAS NOWHERE ELSE TO BE, checked rather than
-                  assumed before anything was deleted:
-
-                    KNAP is a ONE-slot recipe and staging needs two materials, so it can never
-                      reach the slate — and sharp blades gate the axe and the spear. This
-                      button is its only entry point in the game.
-                    SLEEP ROUGH lives only here: the circle's  verb wants a shelter to
-                      aim at, so a survivor with no roof has no other way to lie down.
                     THE REFUGE LINE is a reading, not a making.
                     MEND is genuinely redundant — the shelter's own verb circle carries it —
                       and is kept only because removing a working control is not this
@@ -649,7 +601,6 @@ export function showBuildCard(
                 <p class="subtitle">Worn to ${Math.round(view.mendShelter.durability)}/${view.mendShelter.max}. One wood restores ${view.mendShelter.gain}.</p>
                 <button class="primary mend-shelter-btn" type="button">Mend  ·  +${view.mendShelter.gain}</button>
             </div>` : ''}
-            ${knapMarkup(knap)}
         </div>
         <button class="quiet close-btn" type="button">Close</button>`;
     let done = false;
@@ -658,8 +609,6 @@ export function showBuildCard(
         btn?.addEventListener('click', () => { if (done) return; done = true; fade(el, action); });
     };
     bind('.mend-shelter-btn', onMendShelter);
-    bind('.sleep-btn', onSleep);
-    bind('.knap-btn', onKnapSharpblade);
     el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
 }
 
@@ -863,6 +812,13 @@ export interface LoadoutPanelView {
     /** RULING 1 — every DEMONSTRATED recipe, with what it still wants. Knowledge gates this
      *  list; materials only inform how each entry looks. */
     known: KnownRecipeView[];
+    /**
+     * RULING (C1) — WHICH KNOWN ROW IS EXPANDED, if any. The list itself shows names only;
+     * full have/need detail (and, for a standalone entry, its action) appears for exactly the
+     * selected `recipeId`, or for none. `null` is a real, common state — nothing selected —
+     * not "not wired yet", so it is not optional the way a genuinely new field would be.
+     */
+    selectedKnown: string | null;
     /** LAW 126: the Backpack's other two tabs. Both are READ from the brain — this layer
      *  renders them and derives nothing, exactly as the Inventory tab already does. */
     vitals: BodyReportView;
@@ -949,6 +905,13 @@ export interface VitalsExtraView {
     activeHand: string | null;
     supportHand: string | null;
     equippable: string[];
+    /** RULING (C1) — RELOCATED FROM THE BUILD PANEL, same mechanism (`session().sleep()`,
+     *  unchanged — it always worked from anywhere; `canSleep` is unconditionally true and
+     *  `isShelteredSleep` only ever set the QUALITY, never the possibility). Only the surface
+     *  moved: a tired survivor comes here to ask "how am I doing", not to the construction
+     *  panel, and the old location was documented as an exception with nowhere else to be —
+     *  this is that else. */
+    rest: { sheltered: boolean };
 }
 
 function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
@@ -1032,10 +995,25 @@ function vitalsBody(view: BodyReportView, extra?: VitalsExtraView): string {
     //  this hoists an ACTION to where it can be seen, which is what the precedent did; it
     //  does not reorder a readout.
     const illnessLeads = Boolean(extra) && extra!.illness.stage !== 'well';
+
+    //  RULING (C1) — REST, RELOCATED FROM THE BUILD PANEL. Same wording as the row it
+    //  replaces, so nothing a returning player learned to read stops being true; only where
+    //  they go to read it changed. Not marked `pressing`: sleep is always available (`canSleep`
+    //  is unconditionally true), so this is an ordinary action row like Hands, not an alert
+    //  like Injuries or Sickness — there is nothing wrong here to flag.
+    const restRow = !extra ? '' : `
+        <div class="vital-line">
+            <div class="build-head"><strong>${extra.rest.sheltered ? 'Sleep in the shelter' : 'Sleep on the ground'}</strong></div>
+            <p class="subtitle">${extra.rest.sheltered
+                ? 'A roof over you. You will wake properly rested.'
+                : 'No roof, no bedding. You will rest, but not well — and the weather gets at you.'}</p>
+            <button class="primary sleep-btn" type="button">${extra.rest.sheltered ? 'Sleep' : 'Sleep rough'}</button>
+        </div>`;
+
     return `
         <h2>How you are</h2>
         <p class="subtitle vitals-summary">${view.summary}</p>
-        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}</div>`;
+        <div class="build-list">${illnessLeads ? illnessRow : ''}${rows}${injuryRows}${illnessLeads ? '' : illnessRow}${waterRow}${handRows}${restRow}</div>`;
 }
 
 export function showLoadout(
@@ -1074,7 +1052,16 @@ export function showLoadout(
     //  `() => void` slot. A long positional signature only grows safely at its tail.
     onBindWound: () => void = () => {},
     /** WAVE 0 — drink the water you treated. Appended at the tail, as `onBindWound` was. */
-    onDrinkClean: () => void = () => {}
+    onDrinkClean: () => void = () => {},
+    /** RULING (C1) — sleep, relocated from the Build panel. Appended at the tail, as every
+     *  optional handler here has been since P0-2 found the cost of doing otherwise. */
+    onSleep: () => void = () => {},
+    //  RULING (C1) — knapping, relocated from the Build panel onto the known-recipes list.
+    //  Selecting a row toggles which one shows full detail (the simplification the SAME
+    //  ruling asked for); knap's detail additionally offers this action directly, because it
+    //  has no staging step to route through — see `KnownRecipe.standalone`.
+    onKnapSharpblade: () => void = () => {},
+    onSelectKnown: (recipeId: string | null) => void = () => {}
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1136,35 +1123,54 @@ export function showLoadout(
     //    Discover commits to finding out what a grey slot is. The old flow made those a single
     //    press with a question in between, so wanting to experiment meant first being offered
     //    something you already knew and then declining it.
-    const combineRow = view.combinable.length >= 2
+    //  WIDENED, NOT JUST RULING 1's ORIGINAL CONDITION. This gated the WHOLE row — chips,
+    //  slate, AND the known-list — on holding two or more DISTINCT combinable kinds. RULING
+    //  1's own comment says the known-list is "present whenever the survivor has demonstrated
+    //  anything, whether or not they can afford it today" — which the gate quietly broke
+    //  whenever `combinable.length` was 0 or 1, hiding the list in exactly that state. It is
+    //  also the state a survivor who JUST crafted a stone hammer is commonly standing in —
+    //  holding one thing, stone — which would have made knap's new entry (below) invisible in
+    //  its own most likely arrival scenario. So the row shows whenever EITHER half has
+    //  something to offer.
+    const combineRow = view.combinable.length >= 2 || view.known.length > 0
         ? `<div class="combine-row">
+             ${view.combinable.length >= 2 ? `
              <p class="subtitle">Put two to four things together.</p>
              <div class="combine-chips">${view.combinable.map((m) =>
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
              ).join('')}</div>
-             <div class="combine-slate"></div>
+             <div class="combine-slate"></div>` : ''}
              <!--  RULING 1 — THE THINGS YOU KNOW, AND WHAT THEY STILL WANT. Present whenever the
-                   survivor has demonstrated anything, whether or not they can afford it today:
-                   the Build panel showed this and the slate did not inherit it, so a plan you
-                   were short for became invisible and knowledge appeared to switch off. Costs
-                   read "have / need", short ones are marked and say where the material comes
-                   from — which is the same "from driftwood on the sand" hint the retired rows
-                   carried, and the other half of what went missing.  -->
+                   survivor has demonstrated anything, whether or not they can afford it today.
+                   RULING (C1) — SIMPLIFIED. The list itself now shows a NAME ONLY; full
+                   have/need detail (and, for a standalone entry like knap, its action) appears
+                   for exactly the SELECTED row. A survivor scanning "what do I know" was reading
+                   a wall of gate chips for every entry at once, most of them irrelevant to
+                   whatever they actually came to check.  -->
              ${view.known.length === 0 ? '' : `<div class="known-list">
                 <p class="subtitle">You know how to make:</p>
-                ${view.known.map((k) => `<div class="known-row ${k.afford ? 'ready' : 'short'}" data-known="${k.recipeId}">
-                    <span class="known-name">${k.name}</span>
-                    <span class="known-costs">${k.needs.map((x) => `<span class="known-gate ${x.have >= x.need ? 'met' : 'unmet'}">${MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind} ${x.have}/${x.need}</span>`).join('')}</span>
-                    ${k.afford ? '' : `<span class="known-where">${k.needs.filter((x) => x.have < x.need)
-                        .map((x) => MATERIAL_SOURCE[MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind] ?? '')
-                        .filter(Boolean).join(' · ')}</span>`}
-                </div>`).join('')}
+                ${view.known.map((k) => {
+                    const selected = k.recipeId === view.selectedKnown;
+                    const detail = !selected ? '' : `
+                        <span class="known-costs">${k.needs.map((x) => `<span class="known-gate ${x.have >= x.need ? 'met' : 'unmet'}">${MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind} ${x.have}/${x.need}</span>`).join('')}</span>
+                        ${k.afford ? '' : `<span class="known-where">${k.needs.filter((x) => x.have < x.need)
+                            .map((x) => MATERIAL_SOURCE[MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind] ?? '')
+                            .filter(Boolean).join(' · ')}</span>`}
+                        <!--  KNAP HAS NO STAGING STEP (RULING, C1) — see KnownRecipe.standalone.
+                              Selecting it offers the action directly rather than implying chips
+                              need dragging in for a mechanic that was never discovery-based.  -->
+                        ${k.standalone ? `<button class="primary knap-btn" type="button" data-recipe="${k.recipeId}" ${k.afford ? '' : 'disabled'}>${k.afford ? 'Knap a blade' : 'Not enough stone'}</button>` : ''}`;
+                    return `<div class="known-row ${k.afford ? 'ready' : 'short'}${selected ? ' expanded' : ''}" data-known="${k.recipeId}">
+                        <span class="known-name">${k.name}</span>${detail}
+                    </div>`;
+                }).join('')}
              </div>`}
              <p class="subtitle evidence-line"></p>
+             ${view.combinable.length >= 2 ? `
              <div class="combine-actions">
                <button class="primary combine-btn" type="button" disabled>Combine</button>
                <button class="quiet discover-btn" type="button" disabled>Discover</button>
-             </div>
+             </div>` : ''}
            </div>`
         : '';
 
@@ -1247,6 +1253,16 @@ export function showLoadout(
     if (bindBtn) bindBtn.addEventListener('click', () => { onBindWound(); fade(el, onClose); });
     const drinkBtn = el.querySelector<HTMLButtonElement>('.drink-clean-btn');
     if (drinkBtn) drinkBtn.addEventListener('click', () => { onDrinkClean(); fade(el, onClose); });
+    //  RULING (C1) — sleep, relocated from the Build panel. NOT the medicine/bind/drink
+    //  shape (act now, fade separately): sleep opens a SECOND panel — the morning report,
+    //  through its own `beginPanel`/`endPanel` pair — and that panel's lock uses the SAME
+    //  flag this one does. Acting before the fade would run `openReport`'s `beginPanel()`
+    //  while THIS panel's lock is still held, and the fade's own deferred close would then
+    //  release the REPORT's lock out from under it 320 ms later. `fade(el, onSleep)` is the
+    //  Build panel's original shape, unchanged: the single deferred close IS the action, so
+    //  `trySleep`'s `openReport` only ever runs after this panel's own lock is truly gone.
+    const sleepBtn = el.querySelector<HTMLButtonElement>('.sleep-btn');
+    if (sleepBtn) sleepBtn.addEventListener('click', () => { fade(el, onSleep); });
     //  DROP 5 — the two radio controls, re-queried on each render for the same reason the
     //  hand chips and the medical store are: the panel re-renders in place on every tab
     //  switch, so a listener attached once at construction is stranded the first time the
@@ -1270,6 +1286,38 @@ export function showLoadout(
     el.querySelector<HTMLButtonElement>('.make-btn')?.addEventListener('click', () => {
         el.remove();
         onMake();
+    });
+
+    //  RULING (C1) — SELECTING A KNOWN ROW, the same re-render-via-reopen shape `.backpack-tab`
+    //  already uses below: the panel is a pure function of the view, so "change what is
+    //  selected" means "ask for a new view with that selection and redraw", not a partial DOM
+    //  patch that could drift from what a fresh render would produce.
+    //
+    //  BOUND BEFORE `.knap-btn`'s handler is attached below, and that ordering is deliberate,
+    //  not incidental: `.knap-btn` lives INSIDE a `.known-row` (a real nested button, since a
+    //  standalone entry's action has to be a genuine control, not a styled span pretending to
+    //  be one), so its own click bubbles here unless stopped. A row that also toggled itself
+    //  shut on the same tap that fired its action would be a confusing double-effect from one
+    //  gesture — see the `stopPropagation` on `.knap-btn` below, which is the actual fix; this
+    //  comment just explains why reading the two bindings in either order still makes sense.
+    el.querySelectorAll<HTMLButtonElement>('.known-row').forEach((row) => {
+        row.addEventListener('click', () => {
+            const id = row.dataset.known;
+            if (!id) return;
+            el.remove();
+            onSelectKnown(id === view.selectedKnown ? null : id);
+        });
+    });
+    //  KNAP HAS NO STAGING STEP, so its action lives right where it is read — see
+    //  `KnownRecipe.standalone`. `stopPropagation` keeps the parent `.known-row`'s own
+    //  click (above) from also toggling the selection on the same tap.
+    el.querySelectorAll<HTMLButtonElement>('.knap-btn').forEach((btn) => {
+        if (btn.disabled) return;
+        btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            onKnapSharpblade();
+            fade(el, onClose);
+        });
     });
 
     el.querySelectorAll<HTMLButtonElement>('.backpack-tab').forEach((b) => {

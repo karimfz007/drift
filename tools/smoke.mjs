@@ -1726,9 +1726,8 @@ async function main() {
     const emptyPanel = await page.evaluate(() => ({
         craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
         hints: document.querySelectorAll('.hint-line').length,
-        //  Rest and the refuge line must survive — the pivot removes the CATALOGUE, not the
-        //  panel. A player who can no longer sleep has been handed a different bug.
-        canSleep: Boolean(document.querySelector('.sleep-btn')),
+        //  RULING (C1) — REST NO LONGER LIVES HERE. It moved to the Vitals tab; only the
+        //  refuge READING (never an offer to build) is this panel's to keep.
         hasRefuge: Boolean(document.querySelector('.refuge-item')),
     }));
     check('SLICE 2B — THE PIVOT: a fresh castaway is offered NOTHING to build',
@@ -1736,11 +1735,24 @@ async function main() {
         `${emptyPanel.craftables.length} row(s): ${emptyPanel.craftables.join(', ') || '(none)'}`);
     check('SLICE 2B — and is not nagged either, holding nothing on a warm afternoon',
         emptyPanel.hints === 0, `${emptyPanel.hints} hint(s)`);
-    check('SLICE 2B — the pivot removed the catalogue, NOT the panel (rest and refuge survive)',
-        emptyPanel.canSleep && emptyPanel.hasRefuge,
-        `sleep ${emptyPanel.canSleep}, refuge ${emptyPanel.hasRefuge}`);
+    check('SLICE 2B — the pivot removed the catalogue, NOT the panel (the refuge reading survives)',
+        emptyPanel.hasRefuge, `refuge ${emptyPanel.hasRefuge}`);
     await realTapDom('.panel.build .close-btn');
     await sleep(300);
+    //  RULING (C1) — AND SLEEP SURVIVES TOO, on ITS surface now, still reachable with
+    //  nothing built and nothing carried — a fresh castaway can still lie down.
+    await realTapDom('.carried-button');
+    await sleep(600);
+    await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(500);
+    const freshVitals = await page.evaluate(() => Boolean(document.querySelector('.sleep-btn')));
+    check('SLICE 2B — ...and REST, relocated, is reachable from Vitals with nothing built either',
+        freshVitals, `sleep button on Vitals: ${freshVitals}`);
+    await page.evaluate(() => {
+        const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+        if (c instanceof HTMLElement) c.click();
+    });
+    await sleep(400);
 
     //  LAW 113'S SCAFFOLD, END TO END. The need arrives (cold), the makings are in hand
     //  (wood and fibre — the two commonest things on the island), and the way forward shows
@@ -4458,11 +4470,17 @@ async function main() {
     afterHammer = await live();
     check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.tools.stoneHammer === true, JSON.stringify(afterHammer.tools.stoneHammer));
 
-    await openBuild();
+    //  RULING (C1) — KNAP MOVED FROM THE BUILD PANEL TO THE KNOWN LIST. Reached the same
+    //  way any known recipe now is: open the pack, select the row, act on it. It has no
+    //  staging step — see KnownRecipe.standalone — so there is no chip to drag.
+    await openSlate();
     await sleep(300);
     const stoneBeforeKnap = (await live()).inventory.stone;
+    const knapRow = await realTapDom('.known-row[data-known="knap"]');
+    check('D-055 — knapping is a real row on the known list', knapRow.ok, knapRow.reason ?? '');
+    await sleep(400);
     const knapTap = await realTapDom('.knap-btn');
-    check('D-055 — knapping is reachable via a real tap on the Build panel', knapTap.ok, knapTap.reason ?? '');
+    check('D-055 — ...and selecting it offers a real, reachable Knap action', knapTap.ok, knapTap.reason ?? '');
     await sleep(400);
     afterKnap = await live();
     check('D-055 — knapping spends raw stone for a sharp blade', afterKnap.inventory.sharpblade >= TUNE.knapSharpbladeYield && afterKnap.inventory.stone === stoneBeforeKnap - TUNE.knapStoneCost, `sharpblade ${afterKnap.inventory.sharpblade}, stone ${stoneBeforeKnap}->${afterKnap.inventory.stone}`);
@@ -4528,7 +4546,7 @@ async function main() {
         && Math.abs(migrated.shelter.durability - prePivot.shelter.durability) < 2,
         `shelter ${prePivot.shelter.built}->${migrated.shelter.built} (${prePivot.shelter.durability.toFixed(1)}->${migrated.shelter.durability.toFixed(1)}), storage ${prePivot.storage.built}->${migrated.storage.built}`);
 
-    //  ...and the point of all of it: the panel that would have been empty is not.
+    //  ...and the point of all of it: a migrated blueprint still reveals it can be made.
     //
     //  CORRECTION, first run (the check was wrong, not the game). This originally opened the
     //  panel straight after the migration and read zero rows — because by this point in the
@@ -4538,22 +4556,32 @@ async function main() {
     //  failure. The migration was fine: schemaVersion 12, blueprints minted for every crafted
     //  type, structures untouched — all three assertions above passed.
     //
+    //  CORRECTION, SECOND FINDING, TODAY (RULING C1) — the check was STILL wrong, and had
+    //  been passing for a reason that had nothing to do with its own name. `.build-item h2` —
+    //  every craft row's tag — was retired from the Build panel entirely by [[D-165]]/[[D-166]],
+    //  weeks before this session: NO recipe, shelter included, has offered an h2 row there
+    //  since. This check kept passing anyway because `stoneHammer` is true by this point in
+    //  the run, and the Build panel's OLD knap button carried its own `<h2>Knap a sharp
+    //  blade</h2>` — an entry with NOTHING to do with the shelter, silently keeping the
+    //  count above zero. Relocating knap onto the known list ([[RULING (C1)]] elsewhere in
+    //  this file) removed that accidental h2 and finally turned the vacuity visible. The
+    //  claim itself was never wrong — a migrated blueprint DOES still reveal it can be made —
+    //  it is asserted here on the surface that has actually carried that promise since
+    //  [[RULING 1]]: the known list, not a row type nothing has rendered in a long time.
+    //
     //  So the shelter comes down first. That is safe to do HERE and nowhere earlier: the
-    //  structures-are-matter assertion has already run against the standing one. What this
-    //  now proves is the claim that actually matters — a migrated blueprint, carried across
-    //  the pivot, still reveals its row when there is something left to build.
+    //  structures-are-matter assertion has already run against the standing one.
     const shelterBeforeReveal = (await live()).shelter;
     await editSave('state.shelter = { ...state.shelter, built: false };');
-    await openBuild();
+    await openSlate();
     await sleep(400);
     await shot('slice2b-04-migrated-panel');
-    const migratedPanel = await page.evaluate(() => ({
-        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
-    }));
-    check('SLICE 2B/2d — the returning survivor is NOT told they have never heard of an axe',
-        migratedPanel.craftables.length > 0,
-        `rows: ${migratedPanel.craftables.join(', ') || '(none)'}`);
-    await realTapDom('.panel.build .close-btn');
+    const migratedKnown = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row .known-name'))
+        .map((n) => (n.textContent ?? '').trim()));
+    check('SLICE 2B/2d — the returning survivor is NOT told they have never heard of a shelter',
+        migratedKnown.some((n) => /shelter/i.test(n)),
+        `known rows: ${migratedKnown.join(', ') || '(none)'}`);
+    await closeSlate();
     await sleep(300);
     //  PUT IT BACK. The first attempt at this check took the shelter down and left it down,
     //  and the run does not end here: the Build button visibility gate then read "visible"
@@ -10227,8 +10255,12 @@ async function main() {
             //  head also reads 'Shelter' and which has no gates and no button by design — so a
             //  title match against it reported the buildable Shelter row as gate-less AND as a
             //  Law 95 leak. Recipe rows are the ones `buildItemMarkup` writes, and those are
-            //  the ones carrying an <h2>; refuge, rest, mend and hint use .build-head instead.
-            const SKIP = ['refuge-item', 'rest-item', 'mend-item', 'hint-item'];
+            //  the ones carrying an <h2>; refuge, mend and hint use .build-head instead.
+            //  RULING (C1) — 'rest-item' dropped from this list: sleep left the Build panel
+            //  entirely, so the class no longer exists here to skip. Left as documentation of
+            //  what WAS true rather than silently shrinking the list, since a future reader
+            //  hunting for why a class isn't skipped anymore should find the answer here.
+            const SKIP = ['refuge-item', 'mend-item', 'hint-item'];
             return Array.from(document.querySelectorAll('.panel.build .build-item'))
                 .filter((it) => vis(it) && it.querySelector('h2') && !SKIP.some((c) => it.classList.contains(c)))
                 .map((it) => {
@@ -10774,6 +10806,131 @@ async function main() {
     check('SLATE 6 — ...and Discover is refused, having nothing left to find',
         full.discoverDisabled === true, `discover disabled ${full.discoverDisabled}`);
     await closePack();
+
+    // ---- 7 · THE KNOWN LIST, SIMPLIFIED (RULING, C1) — name only, detail on selection ----
+    await editSave(`${WELL}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 8, sharpblade: 0 };
+        ${grantBlueprints('axe', 'spear')}`);
+    await sleep(600);
+    await openPack();
+    const collapsed = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row')).map((r) => ({
+        recipe: r.dataset.known ?? '',
+        expanded: r.classList.contains('expanded'),
+        hasDetail: Boolean(r.querySelector('.known-costs')),
+    })));
+    await shot('slate-07-known-collapsed');
+    check('SLATE 7 — every known row starts collapsed: a NAME, and no have/need detail',
+        collapsed.length >= 2 && collapsed.every((r) => !r.expanded && !r.hasDetail),
+        `rows: ${JSON.stringify(collapsed)}`);
+
+    const firstRecipe = collapsed[0]?.recipe ?? '';
+    await realTapDom(`.known-row[data-known="${firstRecipe}"]`);
+    await sleep(500);
+    const oneExpanded = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row')).map((r) => ({
+        recipe: r.dataset.known ?? '',
+        expanded: r.classList.contains('expanded'),
+        hasDetail: Boolean(r.querySelector('.known-costs')),
+    })));
+    await shot('slate-07-one-selected');
+    check('SLATE 7 — selecting ONE row expands it, and it alone, to full have/need detail',
+        oneExpanded.filter((r) => r.expanded).length === 1
+        && oneExpanded.find((r) => r.recipe === firstRecipe)?.hasDetail === true
+        && oneExpanded.filter((r) => r.recipe !== firstRecipe).every((r) => !r.hasDetail),
+        `rows: ${JSON.stringify(oneExpanded)}`);
+
+    await realTapDom(`.known-row[data-known="${firstRecipe}"]`);
+    await sleep(500);
+    const toggledOff = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row'))
+        .every((r) => !r.classList.contains('expanded')));
+    check('SLATE 7 — ...and selecting the SAME row again collapses it back — a real toggle',
+        toggledOff, `all collapsed after second tap: ${toggledOff}`);
+    await closePack();
+
+    // ---- 8 · KNAP, REACHABLE THROUGH COMBINE (RULING, C1) --------------------------------
+    //
+    //  THE GATING BUG THIS BATCH FOUND, WITNESSED FIRST. The known-list's own row was gated
+    //  behind holding TWO OR MORE distinct combinable material kinds — a survivor who just
+    //  crafted a stone hammer and is standing there holding only stone would never have seen
+    //  it. Set up exactly that: ONE combinable kind, nothing else.
+    await editSave(`${WELL}
+        state.blueprints = [];
+        state.tools = { ...state.tools, stoneHammer: true };
+        state.inventory = { wood: 0, stone: 9, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };`);
+    await sleep(600);
+    await openPack();
+    const knapAlone = await page.evaluate(() => {
+        const row = document.querySelector('.known-row[data-known="knap"]');
+        return {
+            present: Boolean(row),
+            name: (row?.querySelector('.known-name')?.textContent ?? '').trim(),
+            chipCount: document.querySelectorAll('.combine-chip').length,
+        };
+    });
+    await shot('slate-08-knap-alone');
+    check('SLATE 8 — knap is present with NO blueprint — the standing-gate claim, witnessed',
+        knapAlone.present && /blade/i.test(knapAlone.name),
+        `present ${knapAlone.present}, name "${knapAlone.name}", combinable chips ${knapAlone.chipCount} (1 — the gating case)`);
+
+    await realTapDom('.known-row[data-known="knap"]');
+    await sleep(500);
+    const knapDetail = await page.evaluate(() => {
+        const row = document.querySelector('.known-row[data-known="knap"]');
+        return {
+            hasKnapBtn: Boolean(row?.querySelector('.knap-btn')),
+            hasChipStaging: Boolean(row?.querySelector('.known-gate')),
+        };
+    });
+    check('SLATE 8 — ...selected, it offers a DIRECT action, not a staging prompt',
+        knapDetail.hasKnapBtn,
+        `knap-btn present ${knapDetail.hasKnapBtn}, gate detail present ${knapDetail.hasChipStaging}`);
+
+    //  THE NUMBER THE DIRECTOR NAMED — the hammer acts as a catalyst, never consumed.
+    const beforeKnapTap = await live();
+    const knapAction = await realTapDom('.knap-btn');
+    await sleep(500);
+    const afterKnapTap = await live();
+    check('SLATE 8 — knapping spends stone, yields a blade, and the HAMMER IS NOT CONSUMED',
+        knapAction.ok
+        && afterKnapTap.inventory.stone === beforeKnapTap.inventory.stone - TUNE.knapStoneCost
+        && afterKnapTap.inventory.sharpblade === beforeKnapTap.inventory.sharpblade + TUNE.knapSharpbladeYield
+        && afterKnapTap.tools.stoneHammer === true,
+        `stone ${beforeKnapTap.inventory.stone} -> ${afterKnapTap.inventory.stone} (want -${TUNE.knapStoneCost}),`
+        + ` blade ${beforeKnapTap.inventory.sharpblade} -> ${afterKnapTap.inventory.sharpblade} (want +${TUNE.knapSharpbladeYield}),`
+        + ` hammer owned before ${beforeKnapTap.tools.stoneHammer} -> after ${afterKnapTap.tools.stoneHammer}`);
+
+    // ---- 9 · SLEEP, RELOCATED TO VITALS (RULING, C1) — reachable with no shelter ----------
+    await editSave(`${WELL}
+        state.shelter = { ...state.shelter, built: false };
+        state.energy = 40; state.fatigue = 60;`);
+    await sleep(700);
+    //  THE TAB ONLY EXISTS INSIDE THE PANEL — the earlier version of this check tapped
+    //  `.backpack-tab` before ever opening the pack, found nothing, and read that as "no
+    //  sleep button" instead of the actual cause, "no panel open yet". Same defect class this
+    //  whole session keeps finding: a probe result of false has two causes, and only one of
+    //  them is the thing being tested.
+    await realTapDom('.carried-button');
+    await sleep(600);
+    await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(500);
+    const roughSleep = await page.evaluate(() => {
+        const btn = document.querySelector('.sleep-btn');
+        return { present: Boolean(btn), label: (btn?.textContent ?? '').trim() };
+    });
+    await shot('slate-09-sleep-rough-on-vitals');
+    check('SLATE 9 — SLEEP ROUGH is reachable from Vitals with NO shelter built',
+        roughSleep.present && /rough/i.test(roughSleep.label),
+        `present ${roughSleep.present}, label "${roughSleep.label}"`);
+
+    const beforeRoughSleep = await live();
+    const roughTap = await realTapDom('.sleep-btn');
+    await sleep(3000);
+    const roughReportTap = await realTapDom('.report button');
+    await sleep(500);
+    const afterRoughSleep = await live();
+    check('SLATE 9 — ...and tapping it actually sleeps: a real report, energy genuinely moved',
+        roughTap.ok && roughReportTap.ok && afterRoughSleep.energy > beforeRoughSleep.energy,
+        `sleep tap ${roughTap.ok}, report dismiss ${roughReportTap.ok}, energy ${beforeRoughSleep.energy.toFixed(1)} -> ${afterRoughSleep.energy.toFixed(1)}`);
     }
 
     // ======== MERGE — the slate sites what it makes, and reaches into an open box ========
@@ -11201,7 +11358,16 @@ async function main() {
     });
     await sleep(450);
 
-    // ---- 5 · WHAT THE BUILD PANEL STILL HAS, and why it could not be deleted ----------
+    // ---- 5 · WHAT THE BUILD PANEL NO LONGER HAS, and where each thing went (RULING, C1) --
+    //
+    //  THIS SECTION'S OWN CLAIM REVERSED. It used to be titled "what the Build panel still
+    //  has, and why it could not be deleted" and asserted knap and sleep BOTH survived there
+    //  because neither had anywhere else to go. Today's ruling gave both somewhere else to be
+    //  — knap onto the known-recipes list (it has no staging step, so it could never reach
+    //  Combine before now), sleep onto the Vitals tab (a tired survivor's own surface). The
+    //  claim this section makes is now the mirror image of the one it used to: the Build
+    //  panel carries NEITHER any more, and each one is verified on its NEW surface instead of
+    //  merely assumed to have followed.
     await editSave(`${WELL}
         state.tools = { ...state.tools, stoneHammer: true };
         state.inventory = { ...state.inventory, wood: 9, stone: 9, fiber: 9, sharpblade: 0 };`);
@@ -11216,11 +11382,12 @@ async function main() {
             //  it reported a craft row that is not there. Same confusion PANEL hit in [[D-160]],
             //  and the same fix: skip the blocks that were never craft rows.
             heads: Array.from(document.querySelectorAll('.panel.build .build-item'))
-                .filter((it) => !['refuge-item', 'rest-item', 'hint-item', 'mend-item', 'knap-item']
+                .filter((it) => !['refuge-item', 'hint-item', 'mend-item']
                     .some((c) => it.classList.contains(c)))
                 .map((it) => (it.querySelector('h2, .build-head strong')?.textContent ?? '').trim()),
             allHeads: Array.from(document.querySelectorAll('.panel.build .build-item h2, .panel.build .build-head strong'))
                 .map((h) => (h.textContent ?? '').trim()),
+            //  NEITHER SHOULD EXIST HERE ANY MORE — the negative half of the claim.
             knap: Boolean(document.querySelector('.knap-btn')),
             sleep: Boolean(document.querySelector('.sleep-btn')),
         }));
@@ -11230,16 +11397,38 @@ async function main() {
     })();
     await shot('makes-05-what-remains');
 
-    check('MAKES 5 — KNAP survives, and had to: one slot, so it can never reach the slate',
-        left.open && left.knap === true,
-        `knap button present: ${left.knap} · heads [${left.heads.join(' | ')}]`);
+    check('MAKES 5 — KNAP IS GONE FROM HERE: it reached the known list, so this button is retired',
+        left.open && left.knap === false,
+        `knap button present in Build: ${left.knap} (should be false) · heads [${left.heads.join(' | ')}]`);
 
-    check('MAKES 5 — ...and SLEEP ROUGH survives, having no other entry point in the game',
-        left.open && left.sleep === true, `sleep button present: ${left.sleep}`);
+    check('MAKES 5 — ...and SLEEP ROUGH IS GONE FROM HERE too, relocated to Vitals',
+        left.open && left.sleep === false, `sleep button present in Build: ${left.sleep} (should be false)`);
 
     check('MAKES 5 — ...and not one craft row is left',
         left.open && left.heads.length === 0,
         `craft rows: [${left.heads.join(' | ')}] · everything in the panel: [${left.allHeads.join(' | ')}]`);
+
+    //  THE POSITIVE HALF — each one verified on the surface it actually reached, not assumed.
+    await openSlate();
+    await sleep(400);
+    const knapOnSlate = await page.evaluate(() => {
+        const row = document.querySelector('.known-row[data-known="knap"]');
+        return { present: Boolean(row), name: (row?.querySelector('.known-name')?.textContent ?? '').trim() };
+    });
+    check('MAKES 5 — ...KNAP landed on the known list instead, named for what it makes',
+        knapOnSlate.present && /blade/i.test(knapOnSlate.name),
+        `present ${knapOnSlate.present}, name "${knapOnSlate.name}"`);
+    await closeSlate();
+    await sleep(300);
+    await realTapDom('.carried-button');
+    await sleep(600);
+    await realTapDom('.backpack-tab[data-tab="vitals"]');
+    await sleep(500);
+    const sleepOnVitals = await page.evaluate(() => Boolean(document.querySelector('.sleep-btn')));
+    check('MAKES 5 — ...and SLEEP landed on Vitals instead',
+        sleepOnVitals, `sleep button on Vitals: ${sleepOnVitals}`);
+    await closeSlate();
+    await sleep(300);
     }
 
 
@@ -11527,6 +11716,88 @@ async function main() {
             if (el instanceof HTMLElement) el.remove();
         });
         await sleep(300);
+    }
+
+    // ---- 5 · THE DIRECTOR'S EXACT CASE: a hold on a boar, UNARMED ---------------------
+    //
+    //  Same re-pin discipline as LONG-PRESS 4 above (the escalation-timer race that check's
+    //  history already found), plus – zero available verbs, so the assertion is the ABSENCE
+    //  of an act, witnessed three independent ways rather than trusted from a code trace.
+    await ensureNoPanel('before the unarmed boar');
+    await editSave(`
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.tools = { ...state.tools, spear: false };
+        state.boars = [{ id: 'lp-boar-unarmed', x: 3, y: 97, homeX: 3, homeY: 97, facing: 0,
+            stage: 'warning', stageSinceGameHours: 0, chargeBearing: null, hunger: 0.5, alive: true }];`);
+    await sleep(1100);
+
+    const unarmedPin = { x: 3, y: 97 };
+    await page.evaluate((p) => {
+        const s = window.__drift.state();
+        const b = s.boars.find((x) => x.id === 'lp-boar-unarmed');
+        if (b) { b.x = p.x; b.y = p.y; b.stage = 'warning'; b.stageSinceGameHours = s.gameHoursElapsed; b.chargeBearing = null; }
+        window.__drift.forgetCuePlays();
+    }, unarmedPin);
+    await sleep(150);
+
+    const unarmedBoarAt = await page.evaluate(() => {
+        const b = window.__drift.state().boars.find((x) => x.id === 'lp-boar-unarmed');
+        return b ? { x: b.x, y: b.y, alive: b.alive, stage: b.stage, spear: window.__drift.state().tools.spear } : null;
+    });
+    check('setup — an unarmed survivor stands by a boar, freshly pinned',
+        unarmedBoarAt !== null && unarmedBoarAt.alive && unarmedBoarAt.spear === false,
+        unarmedBoarAt ? `boar at ${unarmedBoarAt.x.toFixed(1)},${unarmedBoarAt.y.toFixed(1)}, spear ${unarmedBoarAt.spear}` : 'no boar');
+
+    if (unarmedBoarAt) {
+        const hintBeforeUnarmed = await page.evaluate(() => window.__drift.hints().last ?? '');
+        await faceNode(unarmedBoarAt.x, unarmedBoarAt.y);
+        const unarmedHold = await holdWorld(unarmedBoarAt.x, unarmedBoarAt.y);
+        await sleep(700);
+
+        const unarmedCircle = await page.evaluate(() => {
+            const el = document.querySelector('.verb-circle');
+            if (!el) return { up: false, segs: [] };
+            return {
+                up: true,
+                segs: Array.from(el.querySelectorAll('.verb-seg')).map((b) => ({
+                    verb: b.getAttribute('data-verb') ?? '', enabled: !b.disabled,
+                })),
+            };
+        });
+        const unarmedAfter = await page.evaluate(() => {
+            const b = window.__drift.state().boars.find((x) => x.id === 'lp-boar-unarmed');
+            return {
+                alive: b?.alive ?? null,
+                hint: window.__drift.hints().last ?? '',
+                cues: window.__drift.cuePlays(),
+            };
+        });
+
+        //  SIGNAL 1 — THE BOAR ITSELF. Nothing here should have moved: it is unarmed and
+        //  `thrustSpear` refuses at `canThrustAt`'s own spear check before it ever touches
+        //  the boar's health, so 'alive' staying true is the fact that matters most.
+        check('LONG-PRESS 5 — UNARMED: the boar is left completely untouched',
+            unarmedAfter.alive === true,
+            `boar alive ${unarmedAfter.alive} (false here means an unarmed hold killed it)`);
+
+        //  SIGNAL 2 — EVERY CUE REQUESTED, not the two hand-recorded ones. `doThrust` plays
+        //  CUES.fell (kill) or CUES.gather (hit, no kill) on ANY real thrust, so their absence
+        //  is what rules out a hit that happened to leave the boar alive.
+        check('LONG-PRESS 5 — ...and no COMBAT CUE fired — neither a hit nor a kill was requested',
+            !unarmedAfter.cues.includes('fell') && !unarmedAfter.cues.includes('gather'),
+            `cues requested since the hold: [${unarmedAfter.cues.join(' | ')}]`);
+
+        //  SIGNAL 3 — ZERO VERBS OPENS NOTHING, per D-171's own rule: a blocked segment must
+        //  never count toward opening the circle, and a target with NOTHING possible is the
+        //  boundary that rule exists for. The circle must stay down and the reason must be said.
+        check('LONG-PRESS 5 — ...the circle stayed DOWN (zero available verbs opens nothing, per D-171)',
+            unarmedHold.ok && !unarmedCircle.up,
+            `hold ${unarmedHold.why} · circle up ${unarmedCircle.up} with [${unarmedCircle.segs.map((s) => s.verb).join(' | ')}]`);
+
+        check('LONG-PRESS 5 — ...and the REASON was said out loud, not left silent (D-042)',
+            unarmedAfter.hint !== hintBeforeUnarmed && /nothing to fight/i.test(unarmedAfter.hint),
+            `hint before "${hintBeforeUnarmed.slice(0, 30)}" -> after "${unarmedAfter.hint.slice(0, 46)}"`);
     }
 
     }

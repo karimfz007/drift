@@ -303,6 +303,9 @@ export class Game {
      * cancelling costs nothing, which is the same promise the old card made.
      */
     private siting: { recipeId: string; materials: string[]; storageOpen: boolean } | null = null;
+    //  RULING (C1) — which known-recipe row is showing full detail, or none. See the
+    //  `selectedKnown` view field this feeds for why it lives here rather than in the brain.
+    private selectedKnownRecipe: string | null = null;
     private storage: StorageView;
     private raftView: RaftView;
     //  P0-3 — the pile you put down, finally drawn. See `DroppedView`.
@@ -900,6 +903,12 @@ export class Game {
                 //  RULING 1 — the shortfall-visible list, READ from the brain. Present whenever
                 //  anything has been demonstrated, affordable or not.
                 known: knownRecipes(s, atStorage && s.storage.built),
+                //  RULING (C1) — which row (if any) is showing full detail. Transient UI
+                //  state, the same shape `this.pending`/`this.siting` already are: it lives
+                //  on the instance because it outlives one render (selecting, then re-opening
+                //  the panel on a tab switch, must not silently collapse the selection) but
+                //  means nothing to the brain and is never persisted.
+                selectedKnown: this.selectedKnownRecipe,
                 combinable: (() => {
                     const reach = reachFor(s, atStorage && s.storage.built);
                     return ALL_MATERIAL_KINDS.filter((m) => (reach.counts[m] ?? 0) > 0);
@@ -929,6 +938,9 @@ export class Game {
                         usable: canTakeMedicine(s),
                         blocker: medicineBlocker(s),
                     },
+                    //  RULING (C1) — relocated from the Build panel; same read, same source
+                    //  (`isShelteredSleep`), only the tab changed.
+                    rest: { sheltered: isShelteredSleep(s) },
                 },
                 skills: growthReport(s, s.capacities),
                 playerSkills: s.skills
@@ -1027,7 +1039,37 @@ export class Game {
             //  `doBindWound` the shelter's circle already uses: one verb, one place, not a
             //  second implementation beside it.
             () => this.doBindWound(),
-            () => this.doDrinkClean()
+            () => this.doDrinkClean(),
+            //  RULING (C1) — SLEEP, RELOCATED FROM THE BUILD PANEL. Same shape the Build
+            //  panel's own `bind()` helper gave it: `endPanel` first, `trySleep` (which opens
+            //  the morning report through ITS OWN `beginPanel`) second, both inside the ONE
+            //  callback `fade` defers by 320 ms in hud.ts — never split across a synchronous
+            //  action plus a separately-deferred close, which would let the report's fresh
+            //  `beginPanel()` race this panel's own deferred release.
+            () => { this.endPanel(); this.trySleep(); },
+            //  RULING (C1) — KNAPPING, RELOCATED FROM THE BUILD PANEL ONTO THE KNOWN LIST.
+            //  The IDENTICAL body `showBuildCard`'s knap callback had — nothing about making
+            //  the blade changed, only where the tap that asks for one lives. Not wrapped in
+            //  `endPanel`: this button lives beside `.medicine-btn`/`.bind-btn`/`.drink-clean-
+            //  btn` in the SAME binding shape (act now, `fade(el, onClose)` separately), and
+            //  none of THOSE call `endPanel` themselves either — the panel's own `onClose`
+            //  already does, once, after the fade.
+            () => {
+                if (knapSharpblade(session().state)) {
+                    this.cues.play(CUES.craft);
+                    this.floatText('+1 sharp blade');
+                    session().persist(now());
+                }
+                this.lastActivityAt = now();
+            },
+            //  RULING (C1) — WHICH KNOWN ROW IS EXPANDED. Same shape `onTab` above already
+            //  uses for "change a piece of transient UI state, then redraw in place": no
+            //  panel-lock handling at all, because `reopening: true` skips it entirely (see
+            //  `openLoadout`'s own guard) — this is a redraw, not a close-then-open.
+            (recipeId: string | null) => {
+                this.selectedKnownRecipe = recipeId;
+                this.openLoadout(atStorage, tab, true);
+            }
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -2904,11 +2946,6 @@ export class Game {
                 //  and it displaces nothing, which the secondary-button attempt did not
                 //  manage: standing at your own shelter it replaced Build outright and made
                 //  storage unbuildable. The device harness caught that within one run.
-                //  Resting is offered from the construction surface because that is where
-                //  "what can I do here" already lives, and it must be reachable WITHOUT a
-                //  shelter — otherwise sleeping rough ships with no entry point, which is
-                //  the exact defect Try-Combining just had to be rescued from.
-                rest: { sheltered: isShelteredSleep(s) },
                 mendShelter: canRepairStructure(s, 'shelter')
                     ? { durability: s.shelter.durability, max: TUNE.structureDurabilityMax, gain: TUNE.repairDurabilityPerWood }
                     : null,
@@ -2944,23 +2981,16 @@ export class Game {
                 fishingLine: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.fishingLine, revealed: revealedInPanel(s, 'fishingline') },
                 net: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.net, revealed: revealedInPanel(s, 'net') }
             },
-            { owned: s.tools.stoneHammer, stoneHave: s.inventory.stone, stoneCost: TUNE.knapStoneCost, sharpbladeHave: s.inventory.sharpblade },
             //  TEN CRAFT CALLBACKS REMOVED WITH THEIR ROWS ([[D-165]], tidied in [[D-166]]).
             //  Every one of them still threaded a closure into a panel that no longer draws a
             //  button to call it. The craft functions themselves are untouched and live in
             //  `Game.MAKERS`, which is what Combine now uses.
-            () => {
-                this.endPanel();
-                if (knapSharpblade(session().state)) {
-                    this.cues.play(CUES.craft);
-                    this.floatText('+1 sharp blade');
-                    session().persist(now());
-                }
-                this.lastActivityAt = now();
-            },
+            //
+            //  KNAP AND SLEEP FOLLOWED THEM OUT (RULING, C1). Their callbacks moved to
+            //  `openLoadout` below — `onKnapSharpblade` and `onSleep` there are the SAME
+            //  closures this call used to pass, just threaded to the panel they now live on.
             () => this.endPanel(),
-            () => { this.endPanel(); this.tryRepair('shelter'); },
-            () => { this.endPanel(); this.trySleep(); }
+            () => { this.endPanel(); this.tryRepair('shelter'); }
         );
     }
 
