@@ -12711,6 +12711,17 @@ async function main() {
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
         state.inventory = { ...state.inventory, wood: 20, stone: 20, fiber: 20, sharpblade: 4, stonehammer: 1 };
+        //  ESTABLISH THE STATE, NEVER INHERIT IT — and this line is here because the grouped
+        //  sweep caught its absence, exactly the way [[D-177]] says a journey should.
+        //
+        //  BENCH 5 proves the axe COMES TOGETHER at the bench, which is a claim about a
+        //  transition (false -> true) and therefore meaningless if the axe is already owned.
+        //  In isolation it passed: a fresh save has no axe. In file order it went red reading
+        //  \`axe true -> true\`, because WAVE 1's outboard fixture four sections earlier sets
+        //  \`tools.axe = true\` and nothing since had cleared it. The check was passing on its
+        //  own and lying in company — the "passing because of where they sat in the file"
+        //  shape this harness has been bitten by before.
+        state.tools = { ...state.tools, axe: false };
     `;
 
     // ---- 1 · TWO HANDS HOLD TWO — the gate, and the reason SPOKEN --------------------
@@ -12742,10 +12753,27 @@ async function main() {
     const threeBare = await page.evaluate(() => ({
         picked: Array.from(document.querySelectorAll('.combine-chip.picked')).map((c) => c.dataset.mat),
         combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        discoverDisabled: document.querySelector('.discover-btn')?.disabled ?? null,
+        slateSlots: document.querySelectorAll('.slate-slot').length,
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
+    //  NOT `combineDisabled` — AND AN AUDIT HAD TO TELL ME SO, twenty lines after I wrote the
+    //  comment above explaining this exact hazard for the sibling check. `.combine-btn` is
+    //  `!enough || chosenRecipe === null`, and this flow never clicks a slate slot, so
+    //  `chosenRecipe` is null throughout and the button is disabled CONSTANTLY — independent
+    //  of the gate. Delete Law 220's third-relation block entirely and this check still went
+    //  green, on a survivor forging an axe bare-handed with no bench on the island.
+    //
+    //  Two instruments that genuinely track `enough`: Discover's own gate is `!enough ||
+    //  nothingLeftToFind`, and `redraw` only calls `onSlate` when `enough` — so a refused pile
+    //  renders ZERO `.slate-slot` elements, while an attemptable one would render the granted
+    //  axe as a known slot. Both move when the gate moves; the Combine button does not.
     check('BENCH 1 — ...but THREE loose parts is not: bare-handed, the attempt is refused',
-        threeBare.picked.length === 3 && threeBare.combineDisabled === true, JSON.stringify(threeBare));
+        threeBare.picked.length === 3
+        && threeBare.discoverDisabled === true
+        && threeBare.slateSlots === 0
+        && threeBare.combineDisabled === true,
+        JSON.stringify(threeBare));
     //  THE DEFECT THIS CHECK EXISTS FOR, found writing this section rather than on device:
     //  `redraw` BLANKED the evidence line whenever the pile could not be attempted, so the
     //  button greyed and the screen said nothing at all. A silent refusal is exactly what
@@ -12853,12 +12881,20 @@ async function main() {
 
     //  D-011 AS STRUCTURE, NOT AS A CHECK: slack accrues per COMBINE and there is no elapsed-
     //  time term anywhere in the upkeep path, so a real absence must not move it by a hair.
+    //
+    //  RE-STAGED MID-RANGE, because the first cut ran this on the RACKED fixture above and was
+    //  vacuous: 1 is simultaneously the clamp ceiling of the only writer (`Math.min(1, ...)`)
+    //  and the racked threshold, so `1 -> 1` could not have failed in the direction the claim
+    //  forbids no matter what the absence did. At 0.4 an increase is fully expressible.
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.workspace = { built: true, x: 0, y: 96, tier: 'bench', jointWear: 0.4 };`);
+    await sleep(800);
     const wearBeforeAway = (await live()).workspace.jointWear;
     await goAway(45);
-    const wearAfterAway = (await live()).workspace.jointWear;
+    const awayState = await live();
     check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
-        wearAfterAway === wearBeforeAway,
-        `jointWear ${wearBeforeAway} -> ${wearAfterAway} across a real 45-minute absence`);
+        awayState.workspace.jointWear === wearBeforeAway && awayState.workspace.tier === 'bench',
+        `jointWear ${wearBeforeAway} -> ${awayState.workspace.jointWear} across a real 45-minute absence (mid-range, so a rise was expressible)`);
     }
 
     await browser.close();

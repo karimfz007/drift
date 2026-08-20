@@ -1809,10 +1809,28 @@ function standingAtWorkspace(state: GameState): boolean {
     return w.built && Math.hypot(state.player.x - w.x, state.player.y - w.y) <= TUNE.workspaceReachM;
 }
 
-/** One mat, and only one. A second work surface would be a second answer to "where does the
- *  work happen", and nothing in the design asks for two. */
+/**
+ * One mat, and only one — EXCEPT over a frame that has racked, which is the difference
+ * between an upkeep model and a soft-lock.
+ *
+ * THE DEFECT THIS PREDICATE SHIPPED WITH, caught by an adversarial audit before landing and
+ * worth stating plainly because it is [[D-092]]'s own failure in the session built on that
+ * law: racking was WIRED (`wearBenchJoints` runs on every bench-assisted combine) and the
+ * way out of it was NOT. A racked bench could not be re-tensioned (nothing called
+ * `retensionBench`), could not be replaced (this function demanded `!built`), and could not
+ * be re-framed (`canBuildWorkbench` demands `tier === 'mat'`). Thirteen bench-assisted
+ * combines and the third relation — and therefore the axe — was gone from that save for
+ * good. A gate whose enabler does not ship is exactly what [[D-092]] forbids, and shipping
+ * one INSIDE the slice that closes Boundary 3 on that reasoning would have been the whole
+ * point missed.
+ *
+ * So a racked frame can be cleared and the surface started again: real materials, the
+ * surfaces the survivor already knows (stage, site), and no new verb needed to escape.
+ * Disrepair, never deletion — and never a dead end either.
+ */
 export function canBuildWorkmat(state: GameState): boolean {
-    return !state.workspace.built
+    const groundIsFree = !state.workspace.built || benchHasRacked(state);
+    return groundIsFree
         && state.inventory.fiber >= TUNE.workmatFiberCost
         && state.inventory.stone >= TUNE.workmatStoneCost;
 }
@@ -1868,21 +1886,17 @@ export function benchHasRacked(state: GameState): boolean {
     return state.workspace.built && state.workspace.tier === 'bench' && state.workspace.jointWear >= 1;
 }
 
-export function canRetensionBench(state: GameState): boolean {
-    return state.workspace.built
-        && state.workspace.tier === 'bench'
-        && state.workspace.jointWear > 0
-        && standingAtWorkspace(state)
-        && state.inventory.fiber >= TUNE.benchRetensionFiberCost;
-}
-
-export function retensionBench(state: GameState): boolean {
-    if (!canRetensionBench(state)) return false;
-    state.inventory.fiber -= TUNE.benchRetensionFiberCost;
-    state.workspace.jointWear = 0;
-    recordTrying(state, recipeDomain('workbench'));
-    return true;
-}
+//  `canRetensionBench`/`retensionBench` ARE DELIBERATELY NOT HERE. They were written, and
+//  unit-tested, and called by NOTHING — a cheap cord-and-hands repair that no player could
+//  ever reach, proving a mechanic that did not exist. The audit that caught the soft-lock
+//  above caught this with it: a test driving an export with zero callers is a test of the
+//  test suite.
+//
+//  Rather than ship the export and its passing test as evidence of a repair nobody can do,
+//  the escape from a racked frame is the one route that IS reachable through surfaces the
+//  survivor already uses (see `canBuildWorkmat`). A cheaper cord-based re-tension — a Mend-
+//  shaped verb on the bench's own hold circle, mirroring the shelter's — is the natural next
+//  slice, and is named in [[D-176]] as owed rather than left as dead code implying it exists.
 
 /** True while a structure's durability has lapsed to 0 — its bonus is paused, not gone. */
 export function isInDisrepair(structure: Structure): boolean {

@@ -22,11 +22,12 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildWorkbench, buildWorkmat, canBuildWorkbench, canBuildWorkmat, benchHasRacked,
-    canRetensionBench, createInitialState, retensionBench, wearBenchJoints,
+    createInitialState, wearBenchJoints,
 } from '../src/brain/state';
 import { atWorkspace, canExperimentWith, combineSlate, recipeDisplayName, relationsFor } from '../src/brain/experiment';
 import { allRecipes } from '../src/brain/recipes';
 import { migrate, serialize, deserialize } from '../src/brain/save';
+import { reconcile } from '../src/brain/reconcile';
 import { SCHEMA_VERSION, type GameState } from '../src/brain/types';
 import { TUNE } from '../src/data/tune';
 
@@ -194,15 +195,22 @@ describe('LAW 181 — maintenance follows evidence, never a repair meter', () =>
     });
 
     it('D-011 BY CONSTRUCTION — no elapsed time can rack a bench, at any length', () => {
-        //  Not a guard that could be forgotten: there is no time term in the upkeep path at
-        //  all, so this asserts the property through the real reconcile-and-return door.
+        //  THIS TEST WAS VACUOUS AND AN AUDIT CAUGHT IT. It round-tripped the state through
+        //  `serialize`/`deserialize` and compared the result — but a round-trip ADVANCES NO
+        //  TIME, so it proved only that a number survives JSON. The claim is about ELAPSED
+        //  TIME, so it has to run the thing that elapses it.
+        //
+        //  Started MID-RANGE, deliberately. At 0 an increase is detectable but a decrease is
+        //  not, and at 1 nothing can move at all — 1 is simultaneously the clamp ceiling of
+        //  the only writer (`Math.min(1, ...)`) and the racked threshold, so a fixture pinned
+        //  there cannot fail in the one direction the claim forbids. The same mistake sits in
+        //  the device section's own absence check, and was fixed there too.
         const s = benched();
-        const before = s.workspace.jointWear;
-        const away = deserialize(serialize(s, NOW));
-        expect(away).not.toBeNull();
-        expect(away!.state.workspace.jointWear, 'absence racked a bench nobody worked at')
-            .toBe(before);
-        expect(away!.state.workspace.tier).toBe('bench');
+        s.workspace.jointWear = 0.4;
+        const { state: after } = reconcile(s, 60 * 60 * 8); // eight real hours away
+        expect(after.workspace.jointWear, 'time alone moved the joints').toBe(0.4);
+        expect(after.workspace.tier).toBe('bench');
+        expect(benchHasRacked(after), 'an absence racked a bench nobody worked at').toBe(false);
     });
 
     it('a mat has no joints to slacken', () => {
@@ -212,22 +220,39 @@ describe('LAW 181 — maintenance follows evidence, never a repair meter', () =>
         expect(s.workspace.jointWear).toBe(0);
     });
 
-    it('re-tensioning costs cord and restores the third relation', () => {
+    it('A RACKED FRAME IS ESCAPABLE — the gate shipped with its own way out (D-092)', () => {
+        //  THE SOFT-LOCK THIS SLICE VERY NEARLY SHIPPED. Racking was wired and the escape was
+        //  not: a racked bench could not be re-tensioned (nothing called the function that
+        //  did it), not replaced (`canBuildWorkmat` demanded `!built`) and not re-framed
+        //  (`canBuildWorkbench` demands `tier === 'mat'`). Thirteen bench-assisted combines
+        //  and the third relation — and the axe with it — was gone from that save for good.
+        //
+        //  Driven end to end through the real builders, because the claim is REACHABILITY and
+        //  a reachability claim proved by hand-assignment proves nothing.
         const s = benched();
-        s.workspace.jointWear = 1;
+        for (let i = 0; i < 100 && !benchHasRacked(s); i += 1) wearBenchJoints(s);
+        expect(benchHasRacked(s), 'the bench never racked, so the escape is untested').toBe(true);
         expect(relationsFor(s)).toBe(TUNE.relationsAtW0);
-        const fibreBefore = s.inventory.fiber;
 
-        expect(canRetensionBench(s)).toBe(true);
-        expect(retensionBench(s)).toBe(true);
-        expect(s.inventory.fiber).toBe(fibreBefore - TUNE.benchRetensionFiberCost);
+        s.inventory.fiber = TUNE.workmatFiberCost;
+        s.inventory.stone = TUNE.workmatStoneCost;
+        expect(canBuildWorkmat(s), 'a racked frame is a dead end — no way back to a work surface').toBe(true);
+        expect(buildWorkmat(s, s.player.x, s.player.y)).toBe(true);
+        expect(s.workspace.tier).toBe('mat');
         expect(s.workspace.jointWear).toBe(0);
-        expect(relationsFor(s), 're-tensioning did not bring the third relation back')
-            .toBe(TUNE.relationsAtBench);
+
+        s.inventory.wood = TUNE.workbenchWoodCost;
+        expect(canBuildWorkbench(s)).toBe(true);
+        expect(buildWorkbench(s)).toBe(true);
+        expect(relationsFor(s), 'the third relation never came back').toBe(TUNE.relationsAtBench);
     });
 
-    it('...and a bench that is already tight is not a repair job', () => {
-        expect(canRetensionBench(benched()), 'busywork on a sound frame').toBe(false);
+    it('...and a SOUND bench still refuses a second mat — one work surface, not a field of them', () => {
+        //  The other side of the exemption above, so "escapable" cannot be over-read into
+        //  "re-layable whenever you like".
+        const s = benched();
+        s.inventory.fiber = 40; s.inventory.stone = 40;
+        expect(canBuildWorkmat(s), 'a working bench was paved over').toBe(false);
     });
 });
 
