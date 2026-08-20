@@ -375,3 +375,38 @@ describe('D-011 RE-PROVEN against permadeath — absence can never kill (item 7)
         }
     });
 });
+
+describe("THE WORKSPACE IS MATTER, AND IT STAYS (the director's own report)", () => {
+    it('a bench outlives its builder — mat, bench, position and joint slack all cross', () => {
+        //  THE REGRESSION THIS LOCKS. D-176 added `state.workspace` and did not add a line to
+        //  succession's persist block, so the mat and the bench died with their builder: the
+        //  director walked back to where his workshop had been and found bare sand. The module
+        //  is deliberately built so a forgotten field defaults to DYING — "if it was worldly,
+        //  the island forgets a detail and someone notices" — and this is that notice, made
+        //  executable so the next worldly field cannot slip through the same way.
+        const s = createInitialState(1_770_000_000_000);
+        s.workspace = { built: true, x: 12, y: -5, tier: 'bench', jointWear: 0.6 };
+        const { next } = closeSurvivor(s, 'the cold');
+        expect(next.workspace.built, 'the workspace died with the survivor').toBe(true);
+        expect(next.workspace.tier, 'the successor inherited a downgraded workspace').toBe('bench');
+        expect(next.workspace.x).toBe(12);
+        expect(next.workspace.y).toBe(-5);
+        //  The slack crosses too, on the same reasoning the shelter crosses WITH its defects:
+        //  you inherit the thing, not the knowledge of how it got that way.
+        expect(next.workspace.jointWear).toBe(0.6);
+    });
+
+    it('...but knowing how to build another one does NOT cross', () => {
+        const s = createInitialState(1_770_000_000_000);
+        s.workspace = { built: true, x: 3, y: 3, tier: 'bench', jointWear: 0 };
+        s.blueprints = [{ id: 'bp-wb', name: 'Workbench', recipeId: 'workbench', inputs: ['wood'],
+            version: 1, workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 1 }];
+        const { next } = closeSurvivor(s, 'the cold');
+        expect(next.workspace.built).toBe(true);
+        expect(next.blueprints, 'the successor inherited a plan they never earned').toEqual([]);
+    });
+
+    it('...and the persist TABLE names it, so the doc and the code cannot drift', () => {
+        expect(PERSISTS_THROUGH_DEATH.some((line) => /workspace/i.test(line))).toBe(true);
+    });
+});

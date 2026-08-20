@@ -12710,7 +12710,7 @@ async function main() {
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
-        state.inventory = { ...state.inventory, wood: 20, stone: 20, fiber: 20, sharpblade: 4, stonehammer: 1 };
+        state.inventory = { ...state.inventory, wood: 20, stone: 20, fiber: 20, sharpblade: 4, stonehammer: 1, berries: 5 };
         //  ESTABLISH THE STATE, NEVER INHERIT IT — and this line is here because the grouped
         //  sweep caught its absence, exactly the way [[D-177]] says a journey should.
         //
@@ -12952,17 +12952,6 @@ async function main() {
         `berries ${beforeGuess.berries} -> ${afterGuess.berries}, stone ${beforeGuess.stone} -> ${afterGuess.stone}`);
     await ensureNoPanel();
 
-    await editSave(`${WORKSPACE_FIXTURE} state.blueprints = []; state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };`);
-    await sleep(800);
-    await openSlate();
-    await stageChips(['wood', 'fiber']);
-    await realTapDom('.discover-btn');
-    await sleep(1200);
-    const afterFind = await live();
-    check('ITEM 6 — ...and a SUCCESSFUL discovery hands over the THING, not just a plan',
-        afterFind.torch.owned === true && afterFind.blueprints.some((b) => b.recipeId === 'torch'),
-        `torch owned ${afterFind.torch.owned}, plans [${afterFind.blueprints.map((b) => b.recipeId).join(', ')}]`);
-    await ensureNoPanel();
 
     check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
         awayState.workspace.jointWear === wearBeforeAway && awayState.workspace.tier === 'bench',

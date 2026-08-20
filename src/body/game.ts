@@ -1280,36 +1280,21 @@ export class Game {
         else this.explain(said.text);
         if (said.triumphant) this.cues.play(CUES.unlock);
 
-        //  ---- A SUCCESS CONVERTS THE MATTER; IT DOES NOT CONSUME IT FOR A PIECE OF PAPER ----
+        //  ---- A SUCCESS SHOULD CONVERT THE MATTER — ATTEMPTED, NOT SHIPPED --------------
         //
-        //  DIRECTOR'S RULING, the other half of the one `tryCombineWith`'s null branch carries:
-        //  *"a real success naturally converts materials into the crafted item, which is
-        //  different from losing them."* What shipped did the opposite — working out the torch
-        //  spent a stick and a strand and handed back a PLAN, leaving the survivor materially
-        //  poorer for having been right, and still holding no torch. Then they paid the full
-        //  price a second time to actually build it.
+        //  DIRECTOR'S RULING, the other half of the one `tryCombineWith`'s null branch now
+        //  carries: *"a real success naturally converts materials into the crafted item."*
+        //  Today it does not — working out the torch spends a stick and a strand and hands
+        //  back a PLAN, and the survivor pays the full price again to actually build it.
         //
-        //  So the moment a discovery mints a plan, the same maker `onCombine` would have run
-        //  runs here, on the same `recipeCost`/`drawIntoHands` path — one discovery, one price,
-        //  and the thing itself in your hands at the end of it. A PLACED outcome is deliberately
-        //  left to its own siting flow: a shelter cannot be handed over without asking where it
-        //  goes, and inventing a position would be worse than asking twice.
-        const invented = result.outcome === 'invented' ? result.recipeId : null;
-        if (invented && !isPlaced(invented) && Game.MAKERS[invented]) {
-            const s = session().state;
-            if (!makerBlocker(s, invented)) {
-                const affordable = recipeCost(invented)
-                    .every(({ kind, amount }) => (reachFor(s, storageOpen).counts[kind] ?? 0) >= amount);
-                if (affordable) {
-                    for (const { kind, amount } of recipeCost(invented)) drawIntoHands(s, kind, amount, storageOpen);
-                    if (Game.MAKERS[invented](s)) {
-                        this.floatText(`${recipeDisplayName(invented)} — made`);
-                        session().markFirstCraft(msSinceControl());
-                        session().persist(now());
-                    }
-                }
-            }
-        }
+        //  A WIRING FOR IT WAS WRITTEN AND IS DELIBERATELY NOT HERE. It ran the same
+        //  `recipeCost`/`drawIntoHands`/`Game.MAKERS` path `onCombine` uses, typechecked, and
+        //  shipped into the bundle — and on device the plan minted while the torch did not
+        //  appear, with no precondition on `canCraftTorch` that explains it. Rather than leave
+        //  a silent half-working conversion in the discovery path, it is removed and the
+        //  finding recorded: the failure half of the ruling IS implemented and unit-proven,
+        //  and this half is owed, with the symptom already narrowed to the maker call itself
+        //  rather than to the gate, the cost table or the blueprint.
         this.lastActivityAt = now();
     }
 
