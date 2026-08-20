@@ -47,6 +47,7 @@ import type { GameState, SurvivorRecord } from './types';
 export const PERSISTS_THROUGH_DEATH = [
     'shelter (built, position, grade, durability)',
     'storage (built, position, durability, contents)',
+    'the workspace (mat or bench, position, joint slack)',
     'fire (built, position, remaining fuel)',
     'the ground — felled, quarried and foraged nodes, and their regrowth',
     'the world clock and the island\'s own history',
@@ -129,6 +130,21 @@ export function closeSurvivor(state: GameState, cause: string): {
         //  been able to hand somebody a consequence rather than an object.
         shelter: { ...state.shelter, defects: { ...state.shelter.defects } },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
+        //  THE WORKSPACE IS MATTER, AND IT STAYS — the omission that proved this module's own
+        //  "default to death" rule works exactly as designed, by costing a director his mat.
+        //
+        //  [[D-176]] added `workspace` and did not add a line here, so the mat and the bench
+        //  died with their builder: a survivor walked back to the spot where their workshop
+        //  had been and found bare sand. That is precisely the failure the block above says
+        //  it is engineered to produce — *"if it was worldly, the island forgets a detail and
+        //  someone notices — a visible, benign, fixable failure"* — and it is worth recording
+        //  that the safety net caught a real omission rather than merely being described.
+        //
+        //  Timber pegged into the ground is as worldly as a roof or a crate: the successor
+        //  finds the bench somebody else framed, joint slack and all, on the same reasoning
+        //  the shelter crosses WITH its defects. What died with the survivor is knowing how
+        //  to build another one — the blueprints, which are not listed here and must not be.
+        workspace: { ...state.workspace },
         nodes: state.nodes.map((n) => ({ ...n })),
         //  Stacks on the ground are matter, and matter stays. A successor finds what the last
         //  survivor set down, exactly like the store box and the journal.

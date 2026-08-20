@@ -26,6 +26,7 @@ import {
     buildWorkbench,
     wearBenchJoints,
     atWorkspace,
+    makerBlocker,
 
     canBuildFire,
     canCraftAxe,
@@ -1232,6 +1233,14 @@ export class Game {
         const maker = Game.MAKERS[recipeId];
         if (maker) {
             const s = session().state;
+            //  ASK WHY BEFORE DRAWING ANYTHING. `makerBlocker` answers in the survivor's own
+            //  terms — "You already have a stone hammer, and one is all you need." — where the
+            //  fallback below could only ever say "You cannot make that right now", which is
+            //  the reason-free refusal that got reported as the hammer being BLOCKED BY THE MAT.
+            //  Checked ahead of `drawIntoHands` on purpose: pulling materials out of a crate to
+            //  build something that was never going to be built is a second, quieter wrong.
+            const why = makerBlocker(s, recipeId);
+            if (why) { this.explain(why); return; }
             for (const { kind, amount } of recipeCost(recipeId)) {
                 if (!drawIntoHands(s, kind, amount, storageOpen)) {
                     this.explain('You do not have enough for that yet.');
@@ -1270,6 +1279,37 @@ export class Game {
         if (said.presentation === 'float') this.floatText(said.text);
         else this.explain(said.text);
         if (said.triumphant) this.cues.play(CUES.unlock);
+
+        //  ---- A SUCCESS CONVERTS THE MATTER; IT DOES NOT CONSUME IT FOR A PIECE OF PAPER ----
+        //
+        //  DIRECTOR'S RULING, the other half of the one `tryCombineWith`'s null branch carries:
+        //  *"a real success naturally converts materials into the crafted item, which is
+        //  different from losing them."* What shipped did the opposite — working out the torch
+        //  spent a stick and a strand and handed back a PLAN, leaving the survivor materially
+        //  poorer for having been right, and still holding no torch. Then they paid the full
+        //  price a second time to actually build it.
+        //
+        //  So the moment a discovery mints a plan, the same maker `onCombine` would have run
+        //  runs here, on the same `recipeCost`/`drawIntoHands` path — one discovery, one price,
+        //  and the thing itself in your hands at the end of it. A PLACED outcome is deliberately
+        //  left to its own siting flow: a shelter cannot be handed over without asking where it
+        //  goes, and inventing a position would be worse than asking twice.
+        const invented = result.outcome === 'invented' ? result.recipeId : null;
+        if (invented && !isPlaced(invented) && Game.MAKERS[invented]) {
+            const s = session().state;
+            if (!makerBlocker(s, invented)) {
+                const affordable = recipeCost(invented)
+                    .every(({ kind, amount }) => (reachFor(s, storageOpen).counts[kind] ?? 0) >= amount);
+                if (affordable) {
+                    for (const { kind, amount } of recipeCost(invented)) drawIntoHands(s, kind, amount, storageOpen);
+                    if (Game.MAKERS[invented](s)) {
+                        this.floatText(`${recipeDisplayName(invented)} — made`);
+                        session().markFirstCraft(msSinceControl());
+                        session().persist(now());
+                    }
+                }
+            }
+        }
         this.lastActivityAt = now();
     }
 

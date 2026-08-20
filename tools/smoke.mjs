@@ -12892,6 +12892,78 @@ async function main() {
     const wearBeforeAway = (await live()).workspace.jointWear;
     await goAway(45);
     const awayState = await live();
+    // ---- 9 · THE DIRECTOR'S OWN NINE ITEMS, on the surfaces he used ------------------
+    //
+    //  Every check below is a reported defect driven the way it was reported, not the way it
+    //  is convenient to stage. Three of the nine turned out not to be what they sounded like
+    //  and are asserted here as what they ACTUALLY are.
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, stonehammer: 1 };
+        ${grantBlueprints('stonehammer', 'storage')}`);
+    await sleep(800);
+    await openSlate();
+    await stageChips(['wood', 'stone']);
+    const hammerOwned = await page.evaluate(() => {
+        const k = Array.from(document.querySelectorAll('.slate-slot.known'))
+            .find((x) => /hammer/i.test(x.textContent ?? ''));
+        if (k instanceof HTMLElement) k.click();
+        return { offered: Boolean(k) };
+    });
+    await sleep(300);
+    await realTapDom('.combine-btn');
+    await sleep(700);
+    const hammerSaid = await page.evaluate(() => window.__drift.hints().last);
+    //  ITEM 3, AS IT ACTUALLY IS. Reported as "the stone hammer is blocked while standing at
+    //  the mat"; the mat is irrelevant. A survivor who already OWNS one is still offered it
+    //  (the slate asks what you KNOW, which stays true forever) and the maker then refuses —
+    //  and what reached the screen was "You cannot make that right now", a refusal with no
+    //  reason, which reads as a broken button.
+    check('ITEM 3 — an already-owned hammer is refused with a REASON, not a reason-free "cannot"',
+        hammerOwned.offered && /already have a stone hammer/i.test(hammerSaid ?? ''),
+        `offered ${hammerOwned.offered}, said "${hammerSaid}"`);
+    await ensureNoPanel();
+
+    //  ITEM 1/7 — THE REACHABILITY GAP THAT MADE THE AXE UNBUILDABLE. The axe route has always
+    //  been hinted; the workspace it now REQUIRES was hinted nowhere, so a survivor was told to
+    //  want an axe and never told how to get the thing that holds it.
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        state.blueprints = [];`);
+    await sleep(800);
+    await openSlate();
+    const matHinted = await page.evaluate(() => Array.from(document.querySelectorAll('.hint-line'))
+        .map((n) => n.getAttribute('data-hint')));
+    check('ITEM 1 — the WORK MAT is hinted, so the workspace is findable at all',
+        matHinted.includes('workmat'), `hints [${matHinted.join(', ')}]`);
+    await ensureNoPanel();
+
+    //  ITEM 6 — a failed attempt costs the matter it was made of, and a success CONVERTS it.
+    await editSave(`${WORKSPACE_FIXTURE} state.blueprints = [];`);
+    await sleep(800);
+    const beforeGuess = (await live()).inventory;
+    await openSlate();
+    await stageChips(['berries', 'stone']);
+    await realTapDom('.discover-btn');
+    await sleep(900);
+    const afterGuess = (await live()).inventory;
+    check('ITEM 6 — a FAILED discovery now costs the materials it was made of',
+        afterGuess.berries === beforeGuess.berries - 1 && afterGuess.stone === beforeGuess.stone - 1,
+        `berries ${beforeGuess.berries} -> ${afterGuess.berries}, stone ${beforeGuess.stone} -> ${afterGuess.stone}`);
+    await ensureNoPanel();
+
+    await editSave(`${WORKSPACE_FIXTURE} state.blueprints = []; state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };`);
+    await sleep(800);
+    await openSlate();
+    await stageChips(['wood', 'fiber']);
+    await realTapDom('.discover-btn');
+    await sleep(1200);
+    const afterFind = await live();
+    check('ITEM 6 — ...and a SUCCESSFUL discovery hands over the THING, not just a plan',
+        afterFind.torch.owned === true && afterFind.blueprints.some((b) => b.recipeId === 'torch'),
+        `torch owned ${afterFind.torch.owned}, plans [${afterFind.blueprints.map((b) => b.recipeId).join(', ')}]`);
+    await ensureNoPanel();
+
     check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
         awayState.workspace.jointWear === wearBeforeAway && awayState.workspace.tier === 'bench',
         `jointWear ${wearBeforeAway} -> ${awayState.workspace.jointWear} across a real 45-minute absence (mid-range, so a rise was expressible)`);

@@ -1048,10 +1048,24 @@ export function tryCombineWith(
                 reflection: TUNE.nullOutcomeReflectionFactor
             });
         }
+        //  ---- THE ATTEMPT COSTS THE MATTER IT WAS MADE OF ---------------------------
+        //
+        //  DIRECTOR'S RULING: materials are LOST on a failed attempt, and a success is not a
+        //  loss at all — it CONVERTS them into the thing. Until now this branch was the exact
+        //  inverse: a pile that makes nothing cost nothing, while a pile that DID make
+        //  something spent a unit of each and handed back only a plan. Trial and error was
+        //  free and being right was the thing you paid for.
+        //
+        //  Charged at one unit of each staged kind — the same unit a successful attempt
+        //  spends, which is what "at the same amount a successful craft would have cost"
+        //  resolves to for a pile that matches no recipe and therefore has no cost table of
+        //  its own to read. `spendFromReach` carries the catalyst exception with it, so a
+        //  hammer staged as a tool is never eaten by a guess that did not come off.
+        for (const m of materials) spendFromReach(state, m, withStorage);
         return {
             ok: true,
             outcome: 'no-relationship',
-            reason: `${describeSet(materials)} do not go together — but now you know that.`,
+            reason: `${describeSet(materials)} do not go together — and that cost you the trying.`,
             blueprint: null,
             recipeId: null,
             spent

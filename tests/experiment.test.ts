@@ -154,12 +154,20 @@ describe('experiment — failures teach through D-055\'s journal, and nothing el
         expect(after.technique).toBe(before.technique);
     });
 
-    it('a failed attempt mints NO blueprint and consumes no materials', () => {
+    it('a failed attempt mints NO blueprint, and it COSTS the matter it was made of', () => {
+        //  DIRECTOR'S RULING (this batch) SUPERSEDES THE SECOND HALF OF THIS TEST'S OLD NAME.
+        //  It used to assert that a failed attempt "consumes no materials", which made trial
+        //  and error free and — with the success path spending a unit and handing back only a
+        //  plan — meant being RIGHT was the only thing a survivor ever paid for. The ruling
+        //  inverts that: materials are lost on a failure, at the unit a success would have
+        //  spent, and a success is a conversion rather than a loss.
         const s = ready();
         const wood = s.inventory.wood;
+        const berries = s.inventory.berries;
         attemptConfirmed(s, ['berries', 'wood']);
-        expect(s.blueprints).toHaveLength(0);
-        expect(s.inventory.wood).toBe(wood); // nothing was made, nothing was spent
+        expect(s.blueprints, 'a pile that makes nothing minted a plan').toHaveLength(0);
+        expect(s.inventory.wood, 'the guess cost nothing').toBe(wood - 1);
+        expect(s.inventory.berries).toBe(berries - 1);
     });
 });
 

@@ -107,6 +107,30 @@ export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
         prompt: 'One hook takes one fish. A wall of cord would take the shoal.',
     },
     {
+        //  THE WORK MAT (SESSION 1). The need is the one the axe route creates and could not
+        //  answer: a survivor holding haft, head and binding has been TOLD, by the gate's own
+        //  refusal, that two hands cannot hold three things — and until this route existed
+        //  nothing in the game ever mentioned a work surface again. D-176 shipped the gate and
+        //  its enabler together and still left the enabler unhinted, which is the same
+        //  reachability gap one layer up: buildable, and unfindable.
+        //
+        //  Felt when the survivor is carrying more than two things worth putting together.
+        recipeId: 'workmat',
+        need: (s) => !s.workspace.built && s.inventory.fiber > 0 && s.inventory.stone > 0,
+        makings: ['fiber', 'stone'],
+        prompt: 'Work on the ground and the ground takes half of it. Somewhere flat, and dry.',
+    },
+    {
+        //  THE BENCH (SESSION 1). Needs a mat under it, and a hammer to drive the pegs — so
+        //  the need reads exactly the state a survivor is in when they have laid a surface and
+        //  found it is still only two hands' worth of help.
+        recipeId: 'workbench',
+        need: (s) => s.workspace.built && s.workspace.tier === 'mat'
+            && s.inventory.stonehammer > 0 && s.inventory.wood > 0,
+        makings: ['wood', 'stonehammer'],
+        prompt: 'A surface holds nothing back. Legs, braced, and a top that will not move.',
+    },
+    {
         //  Stone that will not break by hand. Felt when you are holding stone and want an edge.
         recipeId: 'stonehammer',
         need: (s) => s.inventory.stonehammer === 0 && s.inventory.stone > 0,

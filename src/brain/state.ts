@@ -2168,3 +2168,56 @@ export function refugeReport(state: GameState): RefugeReport {
         upkeep,
     };
 }
+
+/**
+ * WHY THIS MAKER WILL REFUSE — the true reason, in the survivor's own terms.
+ *
+ * THE DEFECT THIS CLOSES, reported as "the stone hammer is blocked while standing at the
+ * mat" and investigated to something else entirely: the mat had nothing to do with it. A
+ * survivor who ALREADY OWNS a hammer is still offered "Stone hammer" on the slate — the
+ * slate asks `isRecipeKnown`, which is a question about the survivor's knowledge and stays
+ * true forever once earned — and `craftStoneHammer` then refuses, because
+ * `canCraftStoneHammer` requires `inventory.stonehammer === 0`. What reached the screen was
+ * `'You cannot make that right now.'`: a refusal with no reason, which reads as a broken
+ * button rather than as an answer. Standing near the mat was a coincidence of where the
+ * director happened to be.
+ *
+ * ONE REASON PER OUTCOME, NAMED. Law 26 wants the world to say why, and [[D-042]] forbids
+ * the silent refusal; `raftBlocker` was already the one maker with something to say, and
+ * this generalises that rather than adding a second grammar beside it. Returns null when the
+ * maker will genuinely succeed, so a caller can use it as the gate AND as the sentence.
+ */
+export function makerBlocker(state: GameState, recipeId: string): string | null {
+    switch (recipeId) {
+        case 'stonehammer':
+            return state.inventory.stonehammer > 0
+                ? 'You already have a stone hammer, and one is all you need.' : null;
+        case 'axe':
+            return state.tools.axe ? 'You already carry an axe.' : null;
+        case 'spear':
+            return state.tools.spear ? 'You already carry a spear.' : null;
+        case 'backpack':
+            return state.tools.backpack ? 'You are already wearing a pack.' : null;
+        case 'torch':
+            return state.torch.owned ? 'You already have a torch in hand.' : null;
+        case 'fishingline':
+            return state.tools.fishingLine ? 'You already have a line.' : null;
+        case 'net':
+            return state.tools.net ? 'You already have a net.' : null;
+        case 'shelter':
+            return state.shelter.built ? 'A shelter already stands here.' : null;
+        case 'storage':
+            return state.storage.built ? 'A store box already stands here.' : null;
+        case 'workmat':
+            //  A sound workspace refuses a second surface; a RACKED one does not, because
+            //  clearing the wreck and starting again is the only way out of a racked frame.
+            return state.workspace.built && !benchHasRacked(state)
+                ? 'Your work surface is already laid.' : null;
+        case 'workbench':
+            if (!state.workspace.built) return 'Lay a work mat first — a bench is framed onto one.';
+            if (state.workspace.tier === 'bench') return 'The bench is already framed.';
+            return standingAtWorkspace(state) ? null : 'You have to be at your work mat to frame it.';
+        default:
+            return null;
+    }
+}
