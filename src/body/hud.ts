@@ -961,7 +961,20 @@ export function showLoadout(
     //  real attempt — means this can never drift from what the attempt itself would allow;
     //  two copies of one rule, checked separately, is the destroy-gap bug this project keeps
     //  finding under a different name.
-    onCanAttempt: (materials: string[]) => boolean = (materials) => materials.length >= TUNE.combineMinInputs
+    onCanAttempt: (materials: string[]) => boolean = (materials) => materials.length >= TUNE.combineMinInputs,
+    /**
+     * WHY NOT — and this exists because SESSION 1 gave the gate a reason worth hearing.
+     *
+     * `onCanAttempt` answers yes/no, and `redraw` used to BLANK the evidence line whenever the
+     * answer was no. That was survivable while the only way to fail was "you have picked fewer
+     * than two things", which the panel makes obvious by looking at it. Law 220's third
+     * relation is not obvious by looking at it: a survivor stages haft, head and binding, the
+     * Combine button greys, and nothing on screen says that two hands cannot hold three
+     * things. A silently disabled button IS the refusal-without-a-reason shape [[D-042]] and
+     * Law 26 both forbid — *the world tells you first* — so the brain's own sentence is shown
+     * in the same place the evidence line already speaks from.
+     */
+    onWhyNot: (materials: string[]) => string | null = () => null
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1259,8 +1272,13 @@ export function showLoadout(
 
         //  The evidence line stays as it was: it speaks about PROPERTIES and never identity,
         //  and it is the one part of the old surface the redesign does not replace.
+        //  SPEAKS EITHER WAY NOW: the properties preview when the pile CAN be attempted, and
+        //  the brain's own refusal when it cannot. Blanking on refusal is what left Law 220's
+        //  gate silent — see `onWhyNot`'s own note. Still never names an outcome in either
+        //  branch: `onPreview` is property-only by Law 95, and `canExperimentWith`'s refusals
+        //  name the enabler ("a workbench would hold the third steady"), never the product.
         const ev = el.querySelector('.evidence-line');
-        if (ev) ev.textContent = enough ? (onPreview(picked) ?? '') : '';
+        if (ev) ev.textContent = enough ? (onPreview(picked) ?? '') : (onWhyNot(picked) ?? '');
     };
 
     el.querySelectorAll<HTMLButtonElement>('.combine-chip').forEach((chip) => {

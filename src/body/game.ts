@@ -1117,7 +1117,11 @@ export class Game {
             //  starved `enough` for any pile drawn from an open crate: two materials genuinely in
             //  reach, `canExperimentWith` checking HELD-only reach for them, refusing, and the
             //  slate rendering empty for a pile ITEM 2's own box-reach feature says should work.
-            (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage) === null
+            (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage) === null,
+            //  THE SAME CALL, ANSWERING THE OTHER HALF. Not a second opinion that could drift:
+            //  the sentence shown when the pile is refused is the sentence the refusal itself
+            //  returned, from the identical arguments the line above gates on.
+            (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage)
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may

@@ -62,10 +62,16 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  * append". Section 61 (D-175, item 5's walking-energy ruling) is two checks and two
  * `editSave` reloads — folded into the same "recent, related" reasoning as section 60
  * rather than earning a G13 of its own for that alone.
+ *
+ * Section 62 (SESSION 1, the workspace ladder) joins them for the third time on the same
+ * basis, and it is the point at which G12 should be watched: it carries four `editSave`
+ * reloads and a real `goAway`, which is the single most expensive thing a section can do.
+ * G12 is now the group most likely to outgrow the ~20 minute target, and the honest fix
+ * when it does is a G13 boundary rather than a quieter target.
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 61],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 62],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

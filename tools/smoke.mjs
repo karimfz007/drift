@@ -722,6 +722,51 @@ async function main() {
         return { ok: true, why: Math.round(p.x) + ',' + Math.round(p.y) };
     };
 
+    /**
+     * IS THIS EXACT FIXED-NAME MESH GENUINELY DRAWN — the per-surface witness, for the half of
+     * the scene `surfaceByTag` does not cover.
+     *
+     * [[D-173]] assembled `runtime.surfaceByTag` for POOLED meshes and said so plainly: it
+     * reports "enabled state AND screen position together, on the SAME mesh lookup, so a check
+     * can tell 'genuinely drawn, right here' from 'a scene-graph flag says so'." Fixed-name
+     * meshes never got the same treatment, and were left on the raw two-call path — which is
+     * how three checks in this file ended up asserting `screenOfMesh(...) !== null` and
+     * nothing else.
+     *
+     * THAT ASSERTION IS SATISFIABLE BY A HIDDEN MESH, and this file already says why 60 lines
+     * below: *"`screenOfMesh` only ever gates on the camera frustum... a disabled mesh still
+     * projects to a perfectly valid pixel — `setEnabled(false)` stops it being DRAWN, it does
+     * not stop `getBoundingInfo()` answering."* D-173 found and fixed that defect in the
+     * PRODUCT and left three call sites in the HARNESS still using the weaker question.
+     *
+     * One call, both facts, same lookup — so a caller cannot accidentally ask only the easy
+     * half. Mirrors `surfaceByTag`'s own return shape deliberately, so the two per-surface
+     * witnesses read identically at their call sites.
+     */
+    const drawnByName = async (meshName) => page.evaluate((n) => {
+        const info = window.__drift.meshInfo(n);
+        if (!info) return null;
+        return { enabled: info.enabled, screen: info.enabled ? window.__drift.screenOfMesh(n) : null };
+    }, meshName);
+    /** Genuinely drawn: it exists, its own enabled flag is true, and it projects to a pixel. */
+    const isDrawn = (w) => w !== null && w.enabled === true && w.screen !== null;
+    /**
+     * STILL IN THE WORLD — a different question from `isDrawn`, and conflating the two cost a
+     * device run to learn.
+     *
+     * `enabled` answers *"does this still exist"*; `screen` answers *"can you see it from
+     * where you are standing"*. The first is a fact about the world, the second is a fact
+     * about the CAMERA. A shore find 8 m behind the survivor reads `{enabled: true, screen:
+     * null}` — it has not been removed, it is merely out of frustum — so asking `isDrawn` of
+     * a thing that is supposed to have SURVIVED an unrelated action fails for a reason that
+     * has nothing to do with the claim.
+     *
+     * Use `isDrawn` to prove something is visible NOW; use these two to prove something did
+     * or did not leave the world. Removal must never be inferred from a camera angle.
+     */
+    const stillInWorld = (w) => w !== null && w.enabled === true;
+    const goneFromWorld = (w) => w === null || w.enabled === false;
+
     const tapWorld = async (wx, wz, hold = 55) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
     //  A HOLD on world coordinates: the same gesture as a tap, held past `tapMaxMs`. Under
     //  the Default-Verb Law a tap acts and a hold asks, and §9.6's site card is what a hold on
@@ -975,10 +1020,24 @@ async function main() {
         //  PER OUTCOME, NEVER A UNION. `shelter.built || storage.built` stopped this loop on the
         //  first tap whenever ANY structure already stood, so a crate that never went up reported
         //  itself sited. Which structure was asked for is knowable — so it is asked about.
-        const placedFlag = /crate|storage/i.test(String(namePattern)) ? 'storage' : 'shelter';
+        //  ...AND THE DISPATCH ITSELF WAS STILL A BINARY, found writing SESSION 1's own
+        //  section: `/crate|storage/ ? 'storage' : 'shelter'` makes "not the crate" MEAN the
+        //  shelter, so the work mat — the third placed outcome, and the first one added since
+        //  this helper was written — would have been sited and then checked against
+        //  `state.shelter`, reporting a mat that went up perfectly as a failure. The same
+        //  class the comment directly above warns about, one level further out. Named
+        //  outcomes, and an unknown one refuses loudly rather than guessing.
+        const placedFlag = /crate|storage/i.test(String(namePattern)) ? 'storage'
+            : /mat|bench|workspace/i.test(String(namePattern)) ? 'workspace'
+                : /shelter/i.test(String(namePattern)) ? 'shelter'
+                    : null;
+        if (!placedFlag) {
+            await ensureNoPanel();
+            return { ok: false, why: `makeViaSlate: no placed-state mapping for "${namePattern}"` };
+        }
         const standing = async () => page.evaluate((which) => {
             const st = window.__drift.state();
-            const it = which === 'storage' ? st.storage : st.shelter;
+            const it = st[which];
             return { built: it.built === true, x: it.x, y: it.y };
         }, placedFlag);
         //  WHAT WAS ALREADY THERE, so success can mean a CHANGE rather than a coincidence. A
@@ -11922,12 +11981,15 @@ async function main() {
     await sleep(900);
 
     //  REAL PIXELS, NOT STATE — the render assertion this slice owes, on the surface built
-    //  for it: a fixed-name mesh, so `screenOfMesh` (not `surfaceByTag`) is the right tool
-    //  here, the same as `screenOfMesh('raftDeck')` would be for the raft.
-    const outboardOnScreen = await page.evaluate(() => window.__drift.screenOfMesh('outboardLeg'));
+    //  for it: a fixed-name mesh, so `drawnByName` (not `surfaceByTag`) is the right tool
+    //  here, the same as it would be for the raft's `raftDeck`.
+    //
+    //  D-173 GAP, CLOSED: this read `screenOfMesh(...) !== null`, which a DISABLED mesh
+    //  satisfies — the exact defect D-173 fixed in the product and left standing here. It
+    //  would have gone green on an outboard that renders nothing at all.
+    const outboardOnScreen = await drawnByName('outboardLeg');
     check('setup — the outboard is genuinely drawn on screen, not merely present in state',
-        outboardOnScreen !== null,
-        outboardOnScreen ? `at screen ${outboardOnScreen.x.toFixed(0)},${outboardOnScreen.y.toFixed(0)}` : 'screenOfMesh returned null');
+        isDrawn(outboardOnScreen), JSON.stringify(outboardOnScreen));
 
     await approach(30, 88, 20);
     await faceNode(30, 88);
@@ -12047,13 +12109,57 @@ async function main() {
     const fullState = await page.evaluate(() => ({
         teardown: window.__drift.state().outboard.teardown, parts: window.__drift.state().carriedParts,
     }));
-    const fullLegInfo = await page.evaluate(() => window.__drift.meshInfo('outboardLeg'));
+    //  D-173 GAP, CLOSED — PER SURFACE, NEVER ONE CHUNK ANSWERING FOR THE WHOLE OBJECT.
+    //
+    //  This read `meshInfo('outboardLeg').enabled === false` and nothing else, then claimed
+    //  "nothing stands where it was — complete means complete". The frame is ONE of five
+    //  toggleable groups (`OutboardView`: frame, tank chunk, carb chunk, four wreckage
+    //  meshes, shadow), so a strip that hid the frame and left the fuel tank floating in
+    //  mid-air passed it. That is the union shape inverted — one mesh speaking for an object
+    //  it is only a fifth of — and OUTBOARD 4, thirty lines above, already does it correctly
+    //  ("RENDER-WITNESSED per chunk"). The claim in the NAME is per-surface; now the check is.
+    const fullSurfaces = await page.evaluate(() => {
+        const names = ['outboardLeg', 'outboardTank', 'outboardCarb',
+            'outboardWreck0', 'outboardWreck1', 'outboardWreck2', 'outboardWreck3'];
+        return Object.fromEntries(names.map((n) => [n, window.__drift.meshInfo(n)?.enabled ?? null]));
+    });
     check('OUTBOARD 5 — full competence reaches Expert: complete disassembly, all eleven parts',
         fullState.teardown?.destroyed === false && fullState.teardown?.rung === 'expert' && fullState.parts.length === 11,
         `rung ${fullState.teardown?.rung}, destroyed ${fullState.teardown?.destroyed}, parts carried ${fullState.parts.length}/11`);
-    check('OUTBOARD 5 — ...and the RENDER agrees: nothing stands where it was — complete means complete',
-        fullLegInfo?.enabled === false,
-        `frame still enabled ${fullLegInfo?.enabled}`);
+    //  EVERY surface, named individually, so the failure message says WHICH one is still up.
+    const stillStanding = Object.entries(fullSurfaces).filter(([, on]) => on === true).map(([n]) => n);
+    check('OUTBOARD 5 — ...and the RENDER agrees on EVERY surface: nothing stands where it was — complete means complete',
+        stillStanding.length === 0,
+        stillStanding.length ? `still drawn: [${stillStanding.join(', ')}]` : `all seven surfaces down — ${JSON.stringify(fullSurfaces)}`);
+    //  ...AND THE WRECKAGE IS NOT UP EITHER, which is the half a frame-only check could never
+    //  see: an EXPERT strip preserves the parts, so this is the one rung where the orderly
+    //  mesh and the wreckage must BOTH be absent. Destroyed and dismantled look identical to
+    //  a check that only ever reads the frame.
+    check('OUTBOARD 5 — ...and expert disassembly is not DESTRUCTION: no wreckage stands in its place',
+        [0, 1, 2, 3].every((i) => fullSurfaces[`outboardWreck${i}`] !== true),
+        `wreckage ${JSON.stringify([0, 1, 2, 3].map((i) => fullSurfaces[`outboardWreck${i}`]))}, destroyed=${fullState.teardown?.destroyed}`);
+
+    //  ---- THE INSTRUMENT ITSELF, GUARDED — why `screenOfMesh` alone may never be a
+    //  ---- drawn-ness test, demonstrated on device rather than asserted in a comment.
+    //
+    //  This is the standing evidence for the three D-173 gap fixes in this file. The frame is
+    //  GENUINELY HIDDEN right now (asserted two checks above), so this is the exact state in
+    //  which the old instrument was vacuous: `screenOfMesh` gates on the camera frustum alone
+    //  and happily returns a valid pixel for a mesh that is not drawn at all — `setEnabled
+    //  (false)` stops it being DRAWN, it does not stop `getBoundingInfo()` answering.
+    //
+    //  So a check written as `screenOfMesh('outboardLeg') !== null` PASSES here, on a
+    //  stripped-bare engine, which is precisely how OUTBOARD 6's "not left invisible forever"
+    //  check could have gone green on an outboard left invisible forever. If this ever stops
+    //  holding, the fixes above became unnecessary and someone should find out why — either
+    //  way it should be a deliberate decision rather than a silent one.
+    const strippedInstrument = await page.evaluate(() => ({
+        enabled: window.__drift.meshInfo('outboardLeg')?.enabled ?? null,
+        oldInstrumentSays: window.__drift.screenOfMesh('outboardLeg') !== null,
+    }));
+    check('OUTBOARD 5 — INSTRUMENT GUARD: a hidden mesh still projects a pixel, so `screenOfMesh` alone can never mean "drawn"',
+        strippedInstrument.enabled === false && strippedInstrument.oldInstrumentSays === true,
+        `frame enabled=${strippedInstrument.enabled}, and the retired instrument would still have reported it on screen: ${strippedInstrument.oldInstrumentSays}`);
 
     //  ---- 6 · REASSEMBLE, DIAGNOSE, REPAIR — and the mesh comes BACK once whole again ----
     await holdWorld(30, 88);
@@ -12068,12 +12174,33 @@ async function main() {
     await realTapDom('.verb-circle .verb-seg[data-verb="reassemble-outboard"]');
     await sleep(700);
     const afterReassemble = await page.evaluate(() => ({ ...window.__drift.state().outboard }));
-    const reassembledLeg = await page.evaluate(() => window.__drift.screenOfMesh('outboardLeg'));
+    //  D-173 GAP, CLOSED — AND THIS IS THE ONE THAT WAS ACTIVELY VACUOUS. It read
+    //  `screenOfMesh('outboardLeg') !== null`, which is satisfied by a mesh that is not drawn
+    //  at all: `screenOfMesh` gates on the camera frustum alone. So the check guarding "the
+    //  silhouette is back, NOT LEFT INVISIBLE FOREVER" would have passed on an outboard left
+    //  invisible forever — the precise bug it was written to catch, and the precise defect
+    //  D-173's own Witness paragraph records fixing in the product on the same day.
+    //
+    //  Per surface again, and per CHUNK: reassembly must bring back the frame AND both
+    //  chunks, and must clear the wreckage. Reading the frame alone could not tell a whole
+    //  engine from a frame standing in a field of its own debris.
+    const reassembledSurfaces = await page.evaluate(() => {
+        const read = (n) => {
+            const info = window.__drift.meshInfo(n);
+            if (!info) return null;
+            return { enabled: info.enabled, screen: info.enabled ? window.__drift.screenOfMesh(n) : null };
+        };
+        return {
+            leg: read('outboardLeg'), tank: read('outboardTank'), carb: read('outboardCarb'),
+            wreck: [0, 1, 2, 3].map((i) => window.__drift.meshInfo(`outboardWreck${i}`)?.enabled ?? null),
+        };
+    });
     check('OUTBOARD 6 — REASSEMBLE actually reassembles it, and consumes the carried parts',
         afterReassemble.reassembled === true, `outboard ${JSON.stringify(afterReassemble)}`);
-    check('OUTBOARD 6 — ...and the RENDER agrees: the whole silhouette is back, not left invisible forever',
-        reassembledLeg !== null,
-        `frame on screen after reassembly ${reassembledLeg !== null} (found by tracing the full journey: rung stays 'expert' forever per Law 223, and the render must not confuse that with still-stripped)`);
+    check('OUTBOARD 6 — ...and the RENDER agrees on EVERY surface: the whole silhouette is back, genuinely DRAWN and not merely in-frustum',
+        isDrawn(reassembledSurfaces.leg) && isDrawn(reassembledSurfaces.tank) && isDrawn(reassembledSurfaces.carb)
+        && reassembledSurfaces.wreck.every((w) => w !== true),
+        `${JSON.stringify(reassembledSurfaces)} (found by tracing the full journey: rung stays 'expert' forever per Law 223, and the render must not confuse that with still-stripped)`);
 
     //  A forced fault (deterministic, rather than hunting for a seed that rolls one) — the
     //  credibility half of Law 217, proven on the real UI: an under-understood diagnosis
@@ -12143,10 +12270,19 @@ async function main() {
     await approach(30, 90, 20);
     await faceNode(30, 90);
     await sleep(300);
-    const heavyOnScreen = await page.evaluate(() => window.__drift.surfaceByTag('shoreItemId', 'w1-heavy'));
-    check('setup — the staged finds are genuinely drawn, found by ID rather than by pool slot',
-        heavyOnScreen !== null && heavyOnScreen.enabled && heavyOnScreen.screen !== null,
-        heavyOnScreen ? JSON.stringify(heavyOnScreen) : 'surfaceByTag returned null');
+    //  D-173 GAP, CLOSED — ALL THREE FINDS, EACH BY ITS OWN IDENTITY. This witnessed
+    //  `w1-heavy` alone and called it "the staged findS", plural: two of the three objects
+    //  this section then goes on to pick up were never proven drawn at all. A pooled view
+    //  that rendered only its first slot would have passed — which is the whole failure mode
+    //  `surfaceByTag` was built to make impossible, left half-used at its only call site.
+    const staged = {};
+    for (const id of ['w1-heavy', 'w1-light', 'w1-tool']) {
+        staged[id] = await page.evaluate((v) => window.__drift.surfaceByTag('shoreItemId', v), id);
+    }
+    const undrawn = Object.entries(staged).filter(([, w]) => !isDrawn(w)).map(([id]) => id);
+    check('setup — ALL THREE staged finds are genuinely drawn, each found by its own ID rather than by pool slot',
+        undrawn.length === 0,
+        undrawn.length ? `not drawn: [${undrawn.join(', ')}] — ${JSON.stringify(staged)}` : JSON.stringify(staged));
 
     //  A TOO-HEAVY FIND IS THE SAME SHAPE AS AN UNARMED BOAR (D-171, proven for that exact
     //  case in LONG-PRESS 5): its ONE verb is blocked, so `availableVerbs` is empty and
@@ -12181,6 +12317,30 @@ async function main() {
     check('SHORE 1 — ...a carryable find actually picks up: material gained, removed from the shore',
         afterLight.wood === (beforeInv.wood ?? 0) + 2 && afterLight.items === 2,
         `wood ${beforeInv.wood ?? 0} -> ${afterLight.wood}, shore items remaining ${afterLight.items} · pending was ${JSON.stringify(lightPending)}`);
+    //  D-173 GAP, CLOSED — AND THE RENDER AGREES IT LEFT. Every pickup check in this section
+    //  read STATE only, so an item that was picked up and kept right on being drawn on the
+    //  beach would have gone green. "Removed from the shore" is a claim about the shore, and
+    //  the shore is a thing you look at.
+    //
+    //  PER SURFACE IN BOTH DIRECTIONS, which is the part a `shownCount()` could never do: the
+    //  one taken is gone AND the two untouched are still standing. A pooled view that
+    //  reshuffled slots on removal — precisely the drift `surfaceByTag` exists to survive —
+    //  would take one find and blank a different one, and only an identity-keyed check on
+    //  BOTH sides can tell those apart.
+    const afterLightSurfaces = {};
+    for (const id of ['w1-heavy', 'w1-light', 'w1-tool']) {
+        afterLightSurfaces[id] = await page.evaluate((v) => window.__drift.surfaceByTag('shoreItemId', v), id);
+    }
+    //  REMOVAL IS A FACT ABOUT THE WORLD, NOT ABOUT THE CAMERA — see `stillInWorld`'s note.
+    //  The first cut asked `isDrawn` of the two survivors and went red on `w1-heavy` reading
+    //  `{enabled: true, screen: null}`: the survivor had walked 8 m up the beach to reach the
+    //  light find, so the heavy one was simply behind them. It had not moved and had not been
+    //  taken; the check was asking a question about the viewport and calling the answer a
+    //  missing object.
+    check('SHORE 1 — ...and the RENDER agrees per surface: the one taken LEFT THE WORLD, and the two untouched did not',
+        goneFromWorld(afterLightSurfaces['w1-light'])
+        && stillInWorld(afterLightSurfaces['w1-heavy']) && stillInWorld(afterLightSurfaces['w1-tool']),
+        JSON.stringify(afterLightSurfaces));
 
     // ---- 2 · A TOOL FIND CONNECTS THE SHORE TO THE OUTBOARD'S OWN COMPETENCE ----------
     await approach(30, 106, 20);
@@ -12193,6 +12353,16 @@ async function main() {
     const afterTool = await page.evaluate(() => window.__drift.state().tools.salvageTools);
     check('SHORE 2 — a TOOL find sets salvageTools — real connective tissue to the outboard, not two parallel systems',
         afterTool === true, `salvageTools ${afterTool}`);
+    //  D-173 GAP, CLOSED — the tool find leaves the beach too, and the heavy one it could not
+    //  lift is STILL THERE. That second half is the section's own subject stated as pixels:
+    //  weight is the filter, so the thing weight filtered out must visibly remain.
+    const afterToolSurfaces = {};
+    for (const id of ['w1-heavy', 'w1-tool']) {
+        afterToolSurfaces[id] = await page.evaluate((v) => window.__drift.surfaceByTag('shoreItemId', v), id);
+    }
+    check('SHORE 2 — ...and the RENDER agrees: the tool LEFT THE WORLD, while the too-heavy find is still standing on the beach',
+        goneFromWorld(afterToolSurfaces['w1-tool']) && stillInWorld(afterToolSurfaces['w1-heavy']),
+        JSON.stringify(afterToolSurfaces));
 
     // ---- 3 · DENSITY SCALES WITH TIME AWAY, generated ONCE at return (D-011) ----------
     await editSave('state.shore = { items: [], lastGeneratedAtGameHours: state.gameHoursElapsed, spawnCount: 0 };');
@@ -12519,6 +12689,176 @@ async function main() {
     //  certified, so a real device is expected to cover real ground here.
     check('ITEM 5 — setup: the survivor genuinely covered ground during the held span (not stalled)',
         walked > 5, `moved ${walked.toFixed(1)}m in ${WALK_TEST_SPAN_S}s`);
+    }
+
+    if (section('SESSION 1 — THE WORKSPACE: two hands hold two, and the bench holds the third')) {
+
+    /**
+     * BOUNDARY 3, ON REAL PIXELS. The third staging position had been blocked since Slice 2C
+     * on a physical enabler nobody built; this drives the whole ladder through the player's
+     * own surfaces — stage, site, frame, and then make the one thing three hands can hold.
+     *
+     * WITNESSED PER SURFACE THROUGHOUT, because the mat and the bench are separate fixed-name
+     * meshes on purpose: `workMat` and `workBenchTop` are two independent answers, so every
+     * render check below can say WHICH rung is standing rather than "a workspace rendered".
+     */
+    const WORKSPACE_FIXTURE = `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 90; state.fatigue = 0;
+        state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.inventory = { ...state.inventory, wood: 20, stone: 20, fiber: 20, sharpblade: 4, stonehammer: 1 };
+    `;
+
+    // ---- 1 · TWO HANDS HOLD TWO — the gate, and the reason SPOKEN --------------------
+    await editSave(`${WORKSPACE_FIXTURE} ${grantBlueprints('axe', 'workmat', 'workbench')}`);
+    await sleep(700);
+    await openSlate();
+    await stageChips(['wood', 'sharpblade']);
+    //  READ OFF *DISCOVER*, NOT COMBINE, and the difference is the whole point of this check.
+    //  `.combine-btn` is disabled by TWO independent things — the pile not being attemptable
+    //  (`enough`), and no KNOWN outcome having been chosen — so it cannot answer "is this
+    //  pile within the body's reach" on its own. The first cut of this check read it anyway
+    //  and went red on wood+sharpblade for a reason that had nothing to do with Law 220: the
+    //  spear was simply not a plan the fixture held, so there was nothing to choose. Discover's
+    //  own gate is `!enough || nothingLeftToFind`, which with an unknown rival on the slate is
+    //  exactly `!enough` — the HUD's own read of `canExperimentWith`, and the right instrument.
+    const twoArmed = await page.evaluate(() => ({
+        discoverDisabled: document.querySelector('.discover-btn')?.disabled ?? null,
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
+    }));
+    check('BENCH 1 — two staged things is work a body can do: the pile is attemptable bare-handed',
+        twoArmed.discoverDisabled === false && !/workbench/i.test(twoArmed.said),
+        JSON.stringify(twoArmed));
+
+    //  The third chip. The picker still ACCEPTS it — Law 220 is about what the body can hold
+    //  steady, not about what a finger may tap — and the refusal arrives with a reason.
+    await realTapDom('.combine-chip[data-mat="fiber"]');
+    await sleep(320);
+    const threeBare = await page.evaluate(() => ({
+        picked: Array.from(document.querySelectorAll('.combine-chip.picked')).map((c) => c.dataset.mat),
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
+    }));
+    check('BENCH 1 — ...but THREE loose parts is not: bare-handed, the attempt is refused',
+        threeBare.picked.length === 3 && threeBare.combineDisabled === true, JSON.stringify(threeBare));
+    //  THE DEFECT THIS CHECK EXISTS FOR, found writing this section rather than on device:
+    //  `redraw` BLANKED the evidence line whenever the pile could not be attempted, so the
+    //  button greyed and the screen said nothing at all. A silent refusal is exactly what
+    //  Law 26 and [[D-042]] forbid, and it would have shipped invisible.
+    check('BENCH 1 — ...and the world SAYS WHY, rather than greying a button in silence (Law 26)',
+        /workbench/i.test(threeBare.said), `evidence line read "${threeBare.said}"`);
+    check('BENCH 1 — ...and the reason names the ENABLER, never the outcome (Law 95)',
+        threeBare.said.length > 0 && !/axe/i.test(threeBare.said), `"${threeBare.said}"`);
+    await ensureNoPanel();
+
+    // ---- 2 · THE MAT IS SITED, AND DRAWN --------------------------------------------
+    const matMade = await makeViaSlate('Work mat', ['fiber', 'stone'], { placed: true });
+    await sleep(700);
+    const matState = await live();
+    check('BENCH 2 — the mat is staged, sited and genuinely laid where the survivor chose',
+        matMade.ok && matState.workspace.built === true && matState.workspace.tier === 'mat',
+        `${matMade.why ?? ''} · workspace ${JSON.stringify(matState.workspace)}`);
+    const matSurfaces = { mat: await drawnByName('workMat'), bench: await drawnByName('workBenchTop') };
+    check('BENCH 2 — ...and the RENDER agrees PER SURFACE: the mat is drawn, and no bench is',
+        isDrawn(matSurfaces.mat) && !isDrawn(matSurfaces.bench), JSON.stringify(matSurfaces));
+
+    // ---- 3 · THE MAT ADDS NO HAND — it is W0 made real, not a rung above it ----------
+    await approach(matState.workspace.x, matState.workspace.y, 20);
+    await openSlate();
+    await stageChips(['wood', 'sharpblade', 'fiber']);
+    const atMat = await page.evaluate(() => ({
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
+    }));
+    check('BENCH 3 — standing ON the mat, three things are STILL refused: a mat is a place, not a hand',
+        atMat.combineDisabled === true && /workbench/i.test(atMat.said), JSON.stringify(atMat));
+    await ensureNoPanel();
+
+    // ---- 4 · THE BENCH: framed in place, and the silhouette CHANGES ------------------
+    const beforeFrame = (await live()).workspace;
+    const benchMade = await makeViaSlate('Workbench', ['wood', 'stonehammer']);
+    await sleep(700);
+    const benchState = await live();
+    check('BENCH 4 — the bench is framed from the mat with timber and the hammer',
+        benchMade.ok && benchState.workspace.tier === 'bench',
+        `${benchMade.why ?? ''} · workspace ${JSON.stringify(benchState.workspace)}`);
+    check('BENCH 4 — ...IN PLACE: same ground, never re-sited ([[D-165]]\'s own rule for the shelter)',
+        benchState.workspace.x === beforeFrame.x && benchState.workspace.y === beforeFrame.y,
+        `${beforeFrame.x.toFixed(2)},${beforeFrame.y.toFixed(2)} -> ${benchState.workspace.x.toFixed(2)},${benchState.workspace.y.toFixed(2)}`);
+    check('BENCH 4 — ...and the hammer that drove the pegs was NOT eaten by them',
+        benchState.inventory.stonehammer === matState.inventory.stonehammer,
+        `hammer ${matState.inventory.stonehammer} -> ${benchState.inventory.stonehammer}`);
+    const benchSurfaces = { mat: await drawnByName('workMat'), bench: await drawnByName('workBenchTop') };
+    check('BENCH 4 — ...and the RENDER agrees PER SURFACE: the bench is drawn and the mat is not — the silhouette really changed',
+        isDrawn(benchSurfaces.bench) && !isDrawn(benchSurfaces.mat), JSON.stringify(benchSurfaces));
+
+    // ---- 5 · THE THIRD RELATION, SPENT ON THE ONE THING THAT NEEDED IT ---------------
+    await approach(benchState.workspace.x, benchState.workspace.y, 20);
+    const axeBefore = (await live()).tools.axe;
+    const axeMade = await makeViaSlate('Hafted axe', ['wood', 'sharpblade', 'fiber']);
+    await sleep(700);
+    const axeState = await live();
+    check('BENCH 5 — AT THE BENCH, the axe genuinely comes together: haft, head and binding, all at once',
+        axeMade.ok && axeBefore === false && axeState.tools.axe === true,
+        `${axeMade.why ?? ''} · axe ${axeBefore} -> ${axeState.tools.axe}`);
+
+    // ---- 6 · LAW 167/219 — THE BENCH OPENED NO RECIPES -------------------------------
+    //  An AUTOMATIC-FAILURE clause in two bibles. The plans held before the bench existed and
+    //  the plans held after framing it are compared directly; the axe made above was already
+    //  known (granted in the fixture), so making it proves the STAGING opened, never the book.
+    check('BENCH 6 — building the whole ladder minted NOT ONE plan: a bench opens operations, never recipes',
+        benchState.blueprints.length === matState.blueprints.length,
+        `plans ${matState.blueprints.length} -> ${benchState.blueprints.length} · [${benchState.blueprints.map((b) => b.recipeId).join(', ')}]`);
+
+    // ---- 7 · IT HOLDS ONLY WHILE YOU ARE AT IT ---------------------------------------
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.workspace = { built: true, x: 0, y: 96, tier: 'bench', jointWear: 0 };
+        state.player = { x: 0, y: 60 };
+        ${grantBlueprints('axe')}`);
+    await sleep(800);
+    await openSlate();
+    await stageChips(['wood', 'sharpblade', 'fiber']);
+    const farFromBench = await page.evaluate(() => ({
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
+    }));
+    check('BENCH 7 — a bench 36 m away holds nothing: the third relation is where the bench is',
+        farFromBench.combineDisabled === true && /workbench/i.test(farFromBench.said),
+        JSON.stringify(farFromBench));
+    await ensureNoPanel();
+
+    // ---- 8 · UPKEEP FOLLOWS EVIDENCE (Law 181), and racking is visible ----------------
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.workspace = { built: true, x: 0, y: 96, tier: 'bench', jointWear: 1 };
+        ${grantBlueprints('axe')}`);
+    await sleep(800);
+    const rackedSurfaces = { mat: await drawnByName('workMat'), bench: await drawnByName('workBenchTop') };
+    check('BENCH 8 — a RACKED bench is still standing — disrepair, never deletion',
+        isDrawn(rackedSurfaces.bench) && !isDrawn(rackedSurfaces.mat), JSON.stringify(rackedSurfaces));
+    await approach(0, 96, 20);
+    await openSlate();
+    await stageChips(['wood', 'sharpblade', 'fiber']);
+    const onRacked = await page.evaluate(() => ({
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
+    }));
+    check('BENCH 8 — ...but it holds nothing: racked joints move under load, so the third relation lapses',
+        onRacked.combineDisabled === true && /workbench/i.test(onRacked.said), JSON.stringify(onRacked));
+    await ensureNoPanel();
+
+    //  D-011 AS STRUCTURE, NOT AS A CHECK: slack accrues per COMBINE and there is no elapsed-
+    //  time term anywhere in the upkeep path, so a real absence must not move it by a hair.
+    const wearBeforeAway = (await live()).workspace.jointWear;
+    await goAway(45);
+    const wearAfterAway = (await live()).workspace.jointWear;
+    check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
+        wearAfterAway === wearBeforeAway,
+        `jointWear ${wearBeforeAway} -> ${wearAfterAway} across a real 45-minute absence`);
     }
 
     await browser.close();
