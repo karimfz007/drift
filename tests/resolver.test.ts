@@ -204,3 +204,73 @@ describe('PURITY — the resolver reads, it never writes', () => {
         expect(JSON.stringify(s)).toBe(snapshot);
     });
 });
+
+describe('WALKING, at last — ITEM 5 (this batch): the contract `game.ts`\'s stepMovement leans on', () => {
+    //  THE REGRESSION ITEM 5 CLOSES. Investigated before assuming a fix, per the director's
+    //  own instruction: neither ordinary walking nor loaded movement ever charged anything
+    //  MOVEMENT-specific. `loadEnergyMultiplierOf` is real and shipped, but every call site —
+    //  `reconcile.ts`'s ambient drain, this file's own gather cost, `water.ts`'s swim/wade
+    //  cost — prices either the passage of time or a named act, never covering ground. A
+    //  survivor standing still in a heavy pack and one sprinting laps in it drained
+    //  identically. `game.ts`'s `stepMovement` now declares a `'walk'` activity through this
+    //  exact resolver, gated to genuine on-foot travel; what is asserted here is the contract
+    //  that wiring depends on, not the wiring itself, which lives in the body layer this
+    //  file's own purity boundary keeps out of vitest (see `tools/smoke.mjs` for that half).
+    it('costs real energy — the exact regression: walking is not free', () => {
+        const s = neutral();
+        const before = s.energy;
+        const effect = resolveActivity(s, {
+            id: 'walk', baseDemand: TUNE.walkBaseDemand, durationGameHours: 1,
+        });
+        expect(effect.channels.energy, 'a game hour of walking costs nothing — the reported bug, verbatim').toBeGreaterThan(0);
+        applyEffect(s, effect);
+        expect(s.energy).toBeLessThan(before);
+    });
+
+    it('is LINEAR in duration — a 30 fps client and a 60 fps client pay the same total', () => {
+        //  `advanceWater`'s own doc comment states this rule for the water pipeline; walking
+        //  now needs it too, because `stepMovement` calls this once per rendered frame rather
+        //  than once per fixed span. `workloadOf` is a straight product with duration as one
+        //  factor, so summing N slices must equal one call over the whole span — this is what
+        //  makes that algebraic claim a checked fact instead of an assumption.
+        const s = neutral();
+        const wholeSpan = resolveActivity(s, {
+            id: 'walk', baseDemand: TUNE.walkBaseDemand, durationGameHours: 1,
+        }).channels.energy;
+
+        const frames = 60; // a plausible 60 fps second
+        let summed = 0;
+        for (let i = 0; i < frames; i += 1) {
+            summed += resolveActivity(s, {
+                id: 'walk', baseDemand: TUNE.walkBaseDemand, durationGameHours: 1 / frames,
+            }).channels.energy;
+        }
+        expect(summed).toBeCloseTo(wholeSpan, 9);
+    });
+
+    it('a heavier pack costs more to walk in, never less — the same body term chopping pays', () => {
+        const light = neutral();
+        const heavy = neutral();
+        heavy.inventory.wood = 40; // real carried mass, not a flag
+        const decl = { id: 'walk', baseDemand: TUNE.walkBaseDemand, durationGameHours: 1 };
+        expect(resolveActivity(heavy, decl).channels.energy)
+            .toBeGreaterThan(resolveActivity(light, decl).channels.energy);
+    });
+
+    it('never touches health — walking is ordinary work, and ordinary work cannot harm', () => {
+        const s = neutral();
+        expect(resolveActivity(s, {
+            id: 'walk', baseDemand: TUNE.walkBaseDemand, durationGameHours: 1,
+        }).channels.health).toBe(0);
+    });
+
+    it('standing still costs nothing — zero duration is zero effect, not a floor or a minimum', () => {
+        const s = neutral();
+        const effect = resolveActivity(s, {
+            id: 'walk', baseDemand: TUNE.walkBaseDemand, durationGameHours: 0,
+        });
+        expect(effect.channels.energy).toBe(0);
+        expect(effect.channels.stamina).toBe(0);
+        expect(effect.channels.hydration).toBe(0);
+    });
+});

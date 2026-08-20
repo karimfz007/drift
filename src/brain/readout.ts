@@ -169,7 +169,7 @@ export function noticedOnSurfacing(state: GameState): string | null {
  * a hammer halves it, and it never runs out.
  */
 export function slowWorkNote(state: GameState): string {
-    return state.tools.stoneHammer
+    return state.inventory.stonehammer > 0
         ? 'Hard going, but the hammer earns its weight here. This face never runs out.'
         : 'Slow work by hand — it gives, just grudgingly. A stone hammer would halve it, and the face never runs out.';
 }

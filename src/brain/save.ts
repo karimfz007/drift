@@ -124,6 +124,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 30) current = migrateV30toV31(current);
     if (current.schemaVersion === 31) current = migrateV31toV32(current);
     if (current.schemaVersion === 32) current = migrateV32toV33(current);
+    if (current.schemaVersion === 33) current = migrateV33toV34(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -183,10 +184,10 @@ function migrateV1toV2(envelope: SaveEnvelope): SaveEnvelope {
             : fresh.settings,
         // Keep whatever of the old trace survives; the rest defaults.
         trace: { ...fresh.trace, ...(isObject(old.trace) ? (old.trace as Partial<GameState['trace']>) : {}) },
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 2
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 2, state };
 }
 
 /**
@@ -206,10 +207,10 @@ function migrateV2toV3(envelope: SaveEnvelope): SaveEnvelope {
         wet: fresh.wet,
         shelter: fresh.shelter,
         storage: fresh.storage,
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 3
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 3, state };
 }
 
 /**
@@ -241,10 +242,10 @@ function migrateV3toV4(envelope: SaveEnvelope): SaveEnvelope {
         nodes,
         salvageSpawnCount: fresh.salvageSpawnCount,
         nextSalvageSpawnAtGameHours: num(old.gameHoursElapsed, 0) + fresh.nextSalvageSpawnAtGameHours,
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 4
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 4, state };
 }
 
 /**
@@ -263,10 +264,10 @@ function migrateV4toV5(envelope: SaveEnvelope): SaveEnvelope {
         ...(old as unknown as GameState),
         torch: fresh.torch,
         trace: { ...fresh.trace, ...(isObject(old.trace) ? (old.trace as Partial<GameState['trace']>) : {}) },
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 5
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 5, state };
 }
 
 /**
@@ -289,10 +290,20 @@ function migrateV5toV6(envelope: SaveEnvelope): SaveEnvelope {
 
     const state: GameState = {
         ...(old as unknown as GameState),
-        inventory: { ...(oldInventory as unknown as GameState['inventory']), sharpblade: num(oldInventory.sharpblade, 0) },
+        //  `stoneHammer` WRITES TO `inventory` HERE NOW (v34, item 3), not `tools` — even
+        //  though at the real v5->v6 moment in history it lived on `tools`. Every migration
+        //  step in this file constructs a value of TODAY's `GameState`, not a snapshot of
+        //  what the type looked like when the step first shipped, so a field's CURRENT
+        //  location is what every step that touches it must target — the same reason
+        //  `migrateV33toV34` below exists at all, just applied one step earlier in the chain
+        //  than where the field's own move was made.
+        inventory: {
+            ...(oldInventory as unknown as GameState['inventory']),
+            sharpblade: num(oldInventory.sharpblade, 0),
+            stonehammer: Boolean(oldTools.stoneHammer) ? 1 : 0
+        },
         tools: {
             ...(oldTools as unknown as GameState['tools']),
-            stoneHammer: Boolean(oldTools.stoneHammer),
             axeGrade: 'serviceable'
         },
         shelter: { ...(oldShelter as unknown as GameState['shelter']), grade: 'serviceable' },
@@ -303,10 +314,10 @@ function migrateV5toV6(envelope: SaveEnvelope): SaveEnvelope {
         //  `migrateV6toV7` immediately after — TS still requires a complete `KnowledgeState`
         //  here, so a fresh set stands in for one step, replaced one migration later.
         knowledge: { nullPairs: [], events: [], domains: freshDomainScores() },
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 6
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 6, state };
 }
 
 /**
@@ -329,10 +340,10 @@ function migrateV6toV7(envelope: SaveEnvelope): SaveEnvelope {
             events: Array.isArray(oldKnowledge.events) ? (oldKnowledge.events as GameState['knowledge']['events']) : [],
             domains: freshDomainScores()
         },
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 7
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 7, state };
 }
 
 /**
@@ -353,10 +364,10 @@ function migrateV7toV8(envelope: SaveEnvelope): SaveEnvelope {
         ...(old as unknown as GameState),
         fatigue: 0,
         resting: false,
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 8
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 8, state };
 }
 
 /**
@@ -381,10 +392,10 @@ function migrateV8toV9(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...(old as unknown as GameState),
         nodes: [...oldNodes, ...added],
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 9
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 9, state };
 }
 
 /**
@@ -407,10 +418,10 @@ function migrateV9toV10(envelope: SaveEnvelope): SaveEnvelope {
         loadout: freshLoadout(),
         blueprints: [],
         experimentCount: 0,
-        schemaVersion: SCHEMA_VERSION
+        schemaVersion: 10
     };
 
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 10, state };
 }
 
 /**
@@ -424,9 +435,9 @@ function migrateV10toV11(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         tools: { ...old.tools, fishingLine: false },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 11,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 11, state };
 }
 
 /**
@@ -459,11 +470,20 @@ function migrateV11toV12(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
 
     //  Possession is proof. Each pair is (recipe, the evidence that it was once made).
+    //
+    //  `stoneHammer` READ UNTYPED HERE (v34, item 3). At this point in the chain the raw
+    //  data is still v11-shaped — `tools.stoneHammer` genuinely lived there when this step
+    //  first shipped, and stays there in the chain until `migrateV33toV34`, far below,
+    //  relocates it. Casting the READ through `Record<string, unknown>` says exactly that:
+    //  "this field may not match today's `GameState['tools']`", which after this batch it
+    //  does not — the WRITE side (this step mints a Blueprint, it does not touch `tools` or
+    //  `inventory` itself) is unaffected, so nothing here needs to know where v34 puts it.
+    const oldToolsRaw = old.tools as unknown as Record<string, unknown>;
     const evidence: Array<[string, boolean, string, MaterialKind[]]> = [
         ['shelter', old.shelter?.built === true, 'Shelter, as built', ['wood', 'stone', 'fiber']],
         ['storage', old.storage?.built === true, 'Store, as built', ['wood', 'stone']],
         ['axe', old.tools?.axe === true, 'Hafted axe, as made', ['wood', 'sharpblade', 'fiber']],
-        ['stonehammer', old.tools?.stoneHammer === true, 'Stone hammer, as made', ['wood', 'stone']],
+        ['stonehammer', oldToolsRaw?.stoneHammer === true, 'Stone hammer, as made', ['wood', 'stone']],
         ['torch', old.torch?.owned === true, 'Torch, as made', ['wood', 'fiber']],
         ['knap', (old.inventory?.sharpblade ?? 0) > 0, 'Knapped blade', ['stone']],
     ];
@@ -490,9 +510,9 @@ function migrateV11toV12(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         blueprints: [...(old.blueprints ?? []), ...minted],
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 12,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 12, state };
 }
 
 /**
@@ -525,9 +545,9 @@ function migrateV12toV13(envelope: SaveEnvelope): SaveEnvelope {
                 ...old.confidence?.lastPractisedGameHours,
             },
         },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 13,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 13, state };
 }
 
 /**
@@ -542,9 +562,9 @@ function migrateV13toV14(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         matterWear: { ...freshMatterWear(), ...old.matterWear },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 14,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 14, state };
 }
 
 /**
@@ -571,9 +591,9 @@ function migrateV14toV15(envelope: SaveEnvelope): SaveEnvelope {
         memorial: Array.isArray(old.memorial) ? old.memorial : [],
         survivorStartedAtGameHours: num((old as Partial<GameState>).survivorStartedAtGameHours, 0),
         journal: old.journal ?? freshJournal(),
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 15,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 15, state };
 }
 
 /**
@@ -596,9 +616,9 @@ function migrateV15toV16(envelope: SaveEnvelope): SaveEnvelope {
         inventory: { ...old.inventory, meat: old.inventory?.meat ?? 0 },
         //  FISHING retired this field; v26 -> v27 below carries any live meat clock into
         //  `freshUntil`. Nothing to seed here any more.
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 16,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 16, state };
 }
 
 /**
@@ -612,9 +632,9 @@ function migrateV16toV17(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         injuries: old.injuries ?? freshInjuries(),
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 17,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 17, state };
 }
 
 /**
@@ -634,9 +654,9 @@ function migrateV17toV18(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         nodes: hasBluff ? nodes : [...nodes, ...createNodes().filter((n) => n.kind === 'boulder')],
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 18,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 18, state };
 }
 
 /**
@@ -654,9 +674,9 @@ function migrateV18toV19(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         tools: { ...old.tools, backpack: old.tools?.backpack ?? true },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 19,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 19, state };
 }
 
 /** v19 → v20 (item 2, dropped stacks). A returning player has dropped nothing yet. */
@@ -666,9 +686,9 @@ function migrateV19toV20(envelope: SaveEnvelope): SaveEnvelope {
         ...old,
         dropped: Array.isArray(old.dropped) ? old.dropped : [],
         dropCount: num((old as Partial<GameState>).dropCount, 0),
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 20,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 20, state };
 }
 
 /**
@@ -684,9 +704,9 @@ function migrateV20toV21(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         illness: isObject(old.illness) ? old.illness : freshIllness(),
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 21,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 21, state };
 }
 
 /**
@@ -707,9 +727,9 @@ function migrateV21toV22(envelope: SaveEnvelope): SaveEnvelope {
         cave: isObject(old.cave)
             ? (old.cave as GameState['cave'])
             : { found: false, x: CAVE_SITE.x, y: CAVE_SITE.y, sheltering: false },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 22,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 22, state };
 }
 
 /**
@@ -743,9 +763,9 @@ function migrateV22toV23(envelope: SaveEnvelope): SaveEnvelope {
         wreck: isObject(old.wreck)
             ? (old.wreck as GameState['wreck'])
             : { reached: false, reachedAtGameHours: null, instability: 0, lastDisturbedAtGameHours: null },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 23,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 23, state };
 }
 
 /**
@@ -784,9 +804,9 @@ function migrateV23toV24(envelope: SaveEnvelope): SaveEnvelope {
             instability: num((old.wreck as unknown as Record<string, unknown>)?.instability, 0),
             lastDisturbedAtGameHours: null,
         },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 24,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 24, state };
 }
 
 /**
@@ -807,9 +827,9 @@ function migrateV24toV25(envelope: SaveEnvelope): SaveEnvelope {
     const state: GameState = {
         ...old,
         traces: Array.isArray(existing?.read) ? { read: existing.read as string[] } : { read: [] },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 25,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 25, state };
 }
 
 /**
@@ -834,9 +854,9 @@ function migrateV25toV26(envelope: SaveEnvelope): SaveEnvelope {
         dive: isObject(old.dive)
             ? (old.dive as GameState['dive'])
             : { submerged: false, air: TUNE.diveAirCapacityBase, deepestM: 0 },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 26,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 26, state };
 }
 
 /**
@@ -874,9 +894,9 @@ function migrateV26toV27(envelope: SaveEnvelope): SaveEnvelope {
         freshUntil: isObject(old.freshUntil)
             ? (old.freshUntil as GameState['freshUntil'])
             : (meatLeft !== null && (old.inventory?.meat ?? 0) > 0 ? { meat: meatLeft } : {}),
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 27,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 27, state };
 }
 
 /**
@@ -901,9 +921,9 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
                 ? shelter.defects
                 : { lashing: 0, thatch: 0, footing: 0 },
         },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 28,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 28, state };
 }
 
 /**
@@ -937,6 +957,58 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * zero: a returning survivor has not made a cup and is not carrying boiled water, because
  * neither existed to be made. Handing them one would be the migration inventing history.
  */
+/**
+ * v33 → v34 (ITEM 3, this batch). The stone hammer moves from `Tools.stoneHammer`
+ * (boolean) to `Inventory.stonehammer` (count) — a genuine combinable item, staged for
+ * knapping the same way any other material is. `true` becomes `1`, `false`/absent becomes
+ * `0`: the fact does not change, only where it is recorded — the same "possession is proof,
+ * nothing is invented" honesty every migration in this file holds to.
+ *
+ * READ UNTYPED, WRITTEN TYPED. `old.tools` is cast through `GameState`'s CURRENT shape like
+ * every step in this file, so a raw v33 save's `tools.stoneHammer` is invisible to the
+ * TYPE — genuinely still there in the JSON this function actually receives, at exactly the
+ * schema version where it was last correct. `Record<string, unknown>` reads what the type
+ * will not let `old.tools` say.
+ *
+ * A BARE `{ ...old.tools }` DOES NOT DROP IT, though — that was my own first draft of this
+ * function, and it was wrong. A spread copies every enumerable own property an object
+ * actually HAS at runtime; it does not consult the TypeScript annotation the value is
+ * flowing through. `old.tools` is cast to `GameState['tools']` for the type checker only —
+ * the real object behind that cast, for a genuine v33-and-earlier save, still carries a
+ * `stoneHammer` key, and `{ ...old.tools }` would carry it straight through as a stray,
+ * undeclared field forever, one release after this migration claims to have moved it.
+ * Destructuring it OUT by name, below, is what actually removes it — the only construct
+ * that drops a key regardless of what the type on the way in says about it.
+ */
+function migrateV33toV34(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const oldToolsRaw = old.tools as unknown as Record<string, unknown>;
+    const { stoneHammer: _droppedStoneHammer, ...restTools } = oldToolsRaw ?? {};
+    //  ONLY MOVE THE FIELD IF IT IS GENUINELY THERE TO MOVE. Found verifying this batch, by
+    //  a diagnostic that replays a real (already-current-shape) state through the ladder
+    //  under an older version label — the exact shape the harness's own "rewind a really-
+    //  played save's version and remigrate" checks use, and a legitimate way for a FUTURE
+    //  migration step to be exercised too. Unconditionally computing this from
+    //  `oldToolsRaw?.stoneHammer === true` treats "the key is absent" the same as "the key
+    //  is false", so data that has ALREADY moved past this step — a real, current
+    //  `inventory.stonehammer` count, with `tools.stoneHammer` never having existed at all —
+    //  had its genuine count silently stamped to 0. No real player reaches this: a save's
+    //  label always matches its own shape. Guarded anyway, because the field is truly absent
+    //  in exactly one case this migration should recognise as "already done", not "false".
+    const hammerWasOnTools = oldToolsRaw != null && 'stoneHammer' in oldToolsRaw;
+    return {
+        ...envelope,
+        schemaVersion: 34,
+        state: {
+            ...old,
+            inventory: hammerWasOnTools
+                ? { ...old.inventory, stonehammer: oldToolsRaw.stoneHammer === true ? 1 : 0 }
+                : old.inventory,
+            tools: { ...(restTools as unknown as GameState['tools']) },
+        },
+    };
+}
+
 /**
  * v32 → v33 (Wave 1, the weighted shore). The outboard migrates in undragged and untorn down
  * — a returning survivor has not spent time on it, because the whole tier/teardown system did
@@ -1003,9 +1075,9 @@ function migrateV28toV29(envelope: SaveEnvelope): SaveEnvelope {
             inStageGameHours: 0,
             nextAtGameHours: num(old.gameHoursElapsed, 0) + TUNE.stormIntervalGameHours,
         },
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: 29,
     };
-    return { ...envelope, schemaVersion: SCHEMA_VERSION, state };
+    return { ...envelope, schemaVersion: 29, state };
 }
 
 function num(value: unknown, fallback: number): number {

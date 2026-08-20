@@ -102,8 +102,10 @@ import {
     previewAt,
     settleOnTerrain,
     bodyReport,
-    revealedInPanel,
-    makerOffers,
+    //  ITEM 5 (this batch) — walking through the one body resolver, same as gathering.
+    resolveActivity,
+    applyEffect,
+    gameHoursFromRealSeconds,
     panelHints,
     announcementFor,
     loadSpeedMultiplierOf,
@@ -131,7 +133,6 @@ import {
     craftRaft,
     leaveRaft,
     leaveRaftIsIntoWater,
-    nearShoreForRaft,
     raftBlocker,
     steerRaft,
     swimNote,
@@ -161,7 +162,6 @@ import {
     combineSlate,
     canExperimentWith,
     isPlaced,
-    knownRecipes,
     recipeDisplayName,
     drawIntoHands,
     recipeCost,
@@ -224,7 +224,6 @@ import {
     Hud,
     levelToast,
     pickupToast,
-    showBuildCard,
     type BackpackTab,
     showColdOpen,
     showDeath,
@@ -342,9 +341,8 @@ export class Game {
      * cancelling costs nothing, which is the same promise the old card made.
      */
     private siting: { recipeId: string; materials: string[]; storageOpen: boolean } | null = null;
-    //  RULING (C1) — which known-recipe row is showing full detail, or none. See the
-    //  `selectedKnown` view field this feeds for why it lives here rather than in the brain.
-    private selectedKnownRecipe: string | null = null;
+    //  `selectedKnownRecipe` IS GONE (ITEM 3, this batch) — the known-list row it tracked no
+    //  longer exists. See the ledger entry for the full account.
     private storage: StorageView;
     private raftView: RaftView;
     //  P0-3 — the pile you put down, finally drawn. See `DroppedView`.
@@ -464,10 +462,11 @@ export class Game {
         this.lookSensitivity = readSensitivity();
         this.testSpeedEnabled = readTestSpeed();
 
+        //  `openBuildCard`'s slot here is GONE (ITEM 1, this batch) — see `Hud`'s own
+        //  constructor comment (hud.ts) for the full account.
         this.hud = new Hud(
             this.overlay,
             () => this.onBuildFire(),
-            () => this.openBuildCard(),
             (food) => this.onEatFood(food),
             () => this.onDrinkFlask()
         );
@@ -903,6 +902,13 @@ export class Game {
         //  out. `guardPanelLock` is the backstop for the cases this cannot see.
         try {
             const s = session().state;
+            //  Ch.1's null-outcome journal (D-055) — RELOCATED, ITEM 1 (this batch). Its
+            //  original trigger, "evaluate every recipe slot against every material
+            //  currently held, once per panel-open", lived in `openBuildCard`, which no
+            //  longer exists; without a new home this journaling mechanism would run in
+            //  tests and never once in real play. `!reopening` keeps the same cadence —
+            //  once per genuine open, not once per in-place tab-switch redraw.
+            if (!reopening) recordCombinationAttempts(s);
             const view = loadoutView(s);
             showLoadout(
             this.overlay,
@@ -935,24 +941,19 @@ export class Game {
                 //  in front of you its contents are reachable too, so the chips list the union
                 //  and the whole combine path downstream sees one pool. Closed, this is exactly
                 //  the carried list it replaced.
-                //  RULING 1 — the shortfall-visible list, READ from the brain. Present whenever
-                //  anything has been demonstrated, affordable or not.
-                known: knownRecipes(s, atStorage && s.storage.built),
-                //  RULING (C1) — which row (if any) is showing full detail. Transient UI
-                //  state, the same shape `this.pending`/`this.siting` already are: it lives
-                //  on the instance because it outlives one render (selecting, then re-opening
-                //  the panel on a tab switch, must not silently collapse the selection) but
-                //  means nothing to the brain and is never persisted.
-                selectedKnown: this.selectedKnownRecipe,
+                //  ITEM 3 (this batch) — a genuine combinable ITEM now includes the stone
+                //  hammer (`ALL_MATERIAL_KINDS` is derived from `MATERIAL_PROFILE`, which
+                //  `materials.ts` now lists it in) — no separate wiring needed here at all.
                 combinable: (() => {
                     const reach = reachFor(s, atStorage && s.storage.built);
                     return ALL_MATERIAL_KINDS.filter((m) => (reach.counts[m] ?? 0) > 0);
                 })(),
+                //  `known`/`selectedKnown`/`maker` ARE GONE (ITEMS 1 AND 3, this batch) — see
+                //  the ledger entry. `hints` is `panelHints`, RELOCATED from the Build panel
+                //  it used to feed (`openBuildCard`, also gone) to here, unchanged in the brain.
+                hints: panelHints(s),
                 //  LAW 126's other two tabs, both READ from the brain. The hub renders
                 //  them; nothing about their content is decided here.
-                //  LAW 126: the maker's gate, read from the HUD's own computation so the
-                //  Backpack shows exactly what the retired button would have.
-                maker: this.hud.makerEntry(),
                 vitals: bodyReport(s),
                 vitalsExtra: {
                     injuries: { bleeding: s.injuries.bleeding, limp: s.injuries.limp, pain: s.injuries.pain },
@@ -1048,7 +1049,8 @@ export class Game {
             //  through the gap, which is the leak D-063's INPUT SAFETY law exists to stop.
             tab,
             (next) => this.openLoadout(atStorage, next, true),
-            () => this.endPanel(() => this.openBuildCard()),
+            //  `onMake` IS GONE (ITEM 1, this batch) — removed here, not left as a no-op,
+            //  matching hud.ts's own signature change at the same position.
             //  DROP 5 — THE STATIC. Toggle the receiver. There is deliberately no send
             //  counterpart here or anywhere: see `radio.ts`'s header.
             () => {
@@ -1089,14 +1091,8 @@ export class Game {
             //  action plus a separately-deferred close, which would let the report's fresh
             //  `beginPanel()` race this panel's own deferred release.
             () => { this.endPanel(); this.trySleep(); },
-            //  RULING (C1) — WHICH KNOWN ROW IS EXPANDED. Same shape `onTab` above already
-            //  uses for "change a piece of transient UI state, then redraw in place": no
-            //  panel-lock handling at all, because `reopening: true` skips it entirely (see
-            //  `openLoadout`'s own guard) — this is a redraw, not a close-then-open.
-            (recipeId: string | null) => {
-                this.selectedKnownRecipe = recipeId;
-                this.openLoadout(atStorage, tab, true);
-            },
+            //  `onSelectKnown` IS GONE (ITEM 3, this batch) — removed here, not left as a
+            //  no-op, matching hud.ts's own signature change at the same position.
             //  RULING (C1), this batch — KNAPPING NOW STAGES LIKE EVERYTHING ELSE. The direct
             //  `knapSharpblade(session().state)` call that used to live here is gone with the
             //  button that called it; `knapSharpblade` itself is untouched and lives on as
@@ -2337,20 +2333,42 @@ export class Game {
     }
 
     /**
-     * RULING (C1) — "BUILD A SHELTER" FROM GROUND-HOLD: a navigation shortcut, not an
-     * instant place. This batch's own universal ruling (every recipe is built by staging in
-     * Combine, no exceptions — see `experiment.ts`'s `canExperimentWith`) means a ground-hold
-     * verb cannot commit a structure on the spot any more than the known list's own knap
-     * entry can. So this opens the pack with 'shelter' already selected in the known list —
-     * the same `selectedKnownRecipe` mechanism a tap on that row itself uses — landing the
-     * survivor straight on its have/need rather than making them hunt for it. WHERE it
-     * actually goes is still the tap that follows a real Combine success ([[D-164]]); this
-     * only shortens the walk to that decision for someone who held ground because it looked
-     * like the right spot.
+     * ITEM 2 (this batch) — "BUILD A SHELTER" FROM GROUND-HOLD MUST EXPLAIN ITSELF.
+     *
+     * WHICH CASE THE DIRECTOR'S REPORT ACTUALLY WAS, traced rather than assumed. The OLD
+     * code (`this.selectedKnownRecipe = 'shelter'; this.openLoadout(...)`) was blind to
+     * whether shelter was known at all — it redirected identically either way, silently,
+     * every time. So "materials collected, held ground, chose build shelter, got redirected
+     * with no explanation" cannot have been the known-vs-unknown bug the brief named as the
+     * alternative: there was no code path that COULD place directly regardless of knowledge
+     * — item 3's own universal ruling (every recipe stages in Combine, no exceptions, no
+     * matter how well earned) means redirecting rather than placing is CORRECT here, always,
+     * by design. The one real bug was the silence itself, and this fixes exactly that.
+     *
+     * TWO OUTCOMES, NAMED BEFORE ANYTHING OPENS (Law 26 — the world tells you first):
+     *
+     *   NOTHING TO STAGE — missing at least one of wood/stone/fibre entirely, so the pack
+     *   would open onto a chip row that cannot even NAME shelter (`combineSlate` matches by
+     *   KIND, not amount — one unit of each is enough to see it named, zero of any one is
+     *   not). Refused here, explained, and the pack never opens on an empty promise.
+     *
+     *   SOMETHING TO STAGE — holding at least one of each, whether or not the FULL cost is
+     *   met yet (that shortfall shows once staged, same as any other recipe — RULING 1's
+     *   surviving half). The pack opens, and a spoken hint says what for, so arriving there
+     *   reads as a continuation of the tap that got you here, not an unexplained bounce.
      */
     private doOpenBuildShelter(): void {
-        this.selectedKnownRecipe = 'shelter';
+        const s = session().state;
+        //  Plain, local names for exactly the three kinds a shelter ever asks for — not a
+        //  general-purpose label table, because this message is the only caller.
+        const name: Record<'wood' | 'stone' | 'fiber', string> = { wood: 'wood', stone: 'stone', fiber: 'fibre' };
+        const missing = (['wood', 'stone', 'fiber'] as const).filter((k) => s.inventory[k] <= 0);
+        if (missing.length > 0) {
+            this.explain(`You need ${missing.map((k) => name[k]).join(', ')} before you can even start a shelter — gather that first.`);
+            return;
+        }
         this.openLoadout(false, 'inventory');
+        this.showHint('Wood, stone and fibre — put them together in your pack.');
     }
 
     /**
@@ -3275,85 +3293,14 @@ export class Game {
         }
     }
 
-    /**
-     * The Build panel (C05): axe, shelter, and storage, each independently gated with its
-     * own button — never a shared priority slot. That single-button-stack pattern is what
-     * starved "Build fire" behind "Craft axe" in C03 (D-040/D-042); this cycle adds two more
-     * buildables, so a shared slot here would only invite the same bug again.
-     */
-    private openBuildCard(): void {
-        //  The same silent refusal as `openSettings`, and the same fix. Found by grepping the
-        //  guard rather than by another report: two of the four panel entry points spoke and
-        //  two did not, which is this project's recurring "a law enforced in one layer is
-        //  enforced nowhere" shape. `stepIdleHint`'s guard stays silent deliberately — an idle
-        //  hint is not a player action, and nobody is owed an explanation for a hint that
-        //  declined to interrupt them.
-        if (runtime.panelOpen) { this.explain('Something else is open. Close it first.'); return; }
-        this.beginPanel();
-        this.clearPending();
-        const s = session().state;
-        //  Ch.1's null-outcome journal (D-055): evaluate every recipe slot against every
-        //  material currently held, once per panel-open — cheap, and the only place this
-        //  needs to run, since nothing about a slot/material match depends on anything
-        //  that changes between opens.
-        recordCombinationAttempts(s);
-        session().persist(now());
-        showBuildCard(
-            this.overlay,
-            {
-                //  `revealed` is READ from the brain, never decided here — the panel is a
-                //  record of what the survivor has done, and the body does not get a vote on
-                //  what they know.
-                torch: { have: { wood: s.inventory.wood, fiber: s.inventory.fiber }, done: s.torch.owned, revealed: revealedInPanel(s, 'torch') },
-                axe: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.axe, revealed: revealedInPanel(s, 'axe') },
-                storage: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.storage.built, revealed: revealedInPanel(s, 'storage') },
-                hints: panelHints(s),
-                stoneHammer: { have: { wood: s.inventory.wood, stone: s.inventory.stone }, done: s.tools.stoneHammer, revealed: revealedInPanel(s, 'stonehammer') },
-                //  DROP 1 FIX — the spear finally has somewhere to be made. It shipped with a
-                //  recipe, a craft function, a thrust verb and a reachability test, and no
-                //  surface at all: the blueprint minted, the ladder said `demonstrated`, and
-                //  there was nowhere to turn that into an object.
-                spear: { have: { wood: s.inventory.wood, sharpblade: s.inventory.sharpblade, fiber: s.inventory.fiber }, done: s.tools.spear, revealed: revealedInPanel(s, 'spear') },
-                //  GATED like every other row. I shipped this as `revealed: true` and the device
-                //  harness caught it inside one run: SLICE 2B's pivot law is that a fresh
-                //  castaway is offered NOTHING to build, and a hardcoded reveal put a Backpack
-                //  row in front of someone four seconds off the beach. The panel starts empty;
-                //  that is the whole of the invention pivot, and it is not mine to except.
-                backpack: { have: { fiber: s.inventory.fiber, wood: s.inventory.wood }, done: s.tools.backpack, revealed: revealedInPanel(s, 'backpack') },
-                //  THE MARITIME SLICE. Gated by the same ladder reading as every row above —
-                //  the pivot law is not excepted for the biggest craft in the game — and
-                //  carrying one extra thing no other row needs: the SITE. `raftBlocker`
-                //  returns the first thing in the way in the player's own words, and the
-                //  panel shows it before the button is pressed rather than after the wood is
-                //  gone. Material shortfalls are already covered by the cost rows, so only a
-                //  genuine siting refusal is surfaced here.
-                raft: {
-                    have: { wood: s.inventory.wood, fiber: s.inventory.fiber, coconut: s.inventory.coconut },
-                    done: s.raft.built,
-                    revealed: revealedInPanel(s, 'raft'),
-                    siteBlocker: !s.raft.built && !nearShoreForRaft(s)
-                        ? 'You are too far from the water. A raft has to be built where it can float.'
-                        : null,
-                },
-                //  FISHING — gated by the same ladder reading as every row above it. A
-                //  survivor who has not worked out a line is not offered one.
-                fishingLine: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.fishingLine, revealed: revealedInPanel(s, 'fishingline') },
-                net: { have: { fiber: s.inventory.fiber, sharpblade: s.inventory.sharpblade }, done: s.tools.net, revealed: revealedInPanel(s, 'net') }
-            },
-            //  TEN CRAFT CALLBACKS REMOVED WITH THEIR ROWS ([[D-165]], tidied in [[D-166]]).
-            //  Every one of them still threaded a closure into a panel that no longer draws a
-            //  button to call it. The craft functions themselves are untouched and live in
-            //  `Game.MAKERS`, which is what Combine now uses.
-            //
-            //  KNAP AND SLEEP FOLLOWED THEM OUT (RULING, C1). Their callbacks moved to
-            //  `openLoadout` below — `onKnapSharpblade` and `onSleep` there are the SAME
-            //  closures this call used to pass, just threaded to the panel they now live on.
-            //  MEND FOLLOWED TOO, THIS BATCH — `onMendShelter` is gone; mending the shelter
-            //  is reachable only through its own verb circle now (`performVerb`'s `'mend'`
-            //  case, unchanged), which already fully covered it.
-            () => this.endPanel()
-        );
-    }
+    //  `openBuildCard` IS GONE (ITEM 1, this batch). Its own `showBuildCard` call had been
+    //  reduced, over [[D-165]]/[[D-172]]/[[D-174]], to a panel showing a hint block and a
+    //  close button — every field built here (`torch`/`axe`/`storage`/`stoneHammer`/`spear`/
+    //  `backpack`/`raft`/`fishingLine`/`net`, each with its own `revealedInPanel` read) was
+    //  computed and handed to a template that had stopped reading any of them. `panelHints`
+    //  survives — it was the one real thing left — relocated to `inventoryBody` (hud.ts) via
+    //  the `hints:` field on the `showLoadout` view above. See the ledger entry for the
+    //  full audit and every recipe's own confirmation that Combine already reaches it.
 
     // ---- Feedback --------------------------------------------------------
 
@@ -3704,6 +3651,39 @@ export class Game {
                     stick.magnitude, desiredX, desiredZ, 0, 0, null);
             }
             return;
+        }
+
+        //  ITEM 5 (this batch) — WALKING COSTS ENERGY, at last. Investigated before assuming
+        //  a fix, per the director's own instruction: neither ordinary walking NOR loaded
+        //  movement charged anything movement-specific. `loadEnergyMultiplierOf` (Ch.6,
+        //  D-058) is real and shipped, but every one of its call sites — `reconcile.ts`'s
+        //  ambient drain, `resolver.ts`'s gather cost, `water.ts`'s swim/wade cost — prices
+        //  either the PASSAGE OF TIME or a named ACT, never the act of covering ground. A
+        //  survivor standing still in a heavy pack and one sprinting laps in the same pack
+        //  drained identically. `resolver.ts`'s own header even names the old shape out
+        //  loud in passing — "walking looked at exhaustion and ignored load" — meaning
+        //  energy was read, to slow the body down, never spent. `TUNE.walkBaseDemand` was
+        //  sized for exactly this and sat unused since `workload.ts` shipped it.
+        //
+        //  THROUGH THE ONE BODY RESOLVER, same as every gather (`state.ts`'s `gatherNode`):
+        //  declare the act, let `resolveActivity` supply load, impairment and environment,
+        //  `applyEffect` spends it. `durationGameHours` is this frame's real `dt` converted,
+        //  not a fixed span — a 30 fps client and a 60 fps client walking the same real time
+        //  pay the same total, since the formula is linear in duration (D-011's own "a
+        //  stalled frame is a longer span, never a lost one" reasoning, applied per-frame
+        //  instead of per-absence).
+        //
+        //  GATED TO GENUINE ON-FOOT TRAVEL, so this can never double-charge a frame that is
+        //  already paying elsewhere: aboard the raft pays `raftEnergyDrainPerGameHour`
+        //  (`advanceWater`), wading and swimming pay through `waterCostsFor` — both keyed off
+        //  the exact same `swimStageOf` this reads, so "ashore" here is the precise
+        //  complement of what the water pipeline already prices.
+        if (!state.raft.aboard && swimStageOf(state) === 'ashore') {
+            applyEffect(state, resolveActivity(state, {
+                id: 'walk',
+                baseDemand: TUNE.walkBaseDemand,
+                durationGameHours: gameHoursFromRealSeconds(dt),
+            }));
         }
 
         let x = state.player.x + this.velX * dt;
@@ -4079,26 +4059,10 @@ export class Game {
             action = { label: 'Build fire', visible: true, ready: true };
         }
 
-        //  Build: one entry point to the Build panel (axe, shelter, storage, torch), visible
-        //  whenever anything on it is still unbuilt. Each item inside gates independently —
-        //  this button is just the door, never a priority slot itself.
-        //
-        //  FIX (real-device report): this condition was never updated when D-052 added the
-        //  torch as a fourth Build-panel item — so once a player had axe + shelter + storage
-        //  all built (exactly what a long-running save accumulates), the button vanished
-        //  entirely, even with the torch still uncrafted and reachable inside the panel. The
-        //  device harness never caught it because every harness scenario opens the Build
-        //  panel EARLY, before all three older items are built — it never exercised the
-        //  "everything but the torch" state a real long session reaches.
-        //
-        //  AND IT HAPPENED AGAIN, TWICE, because that fix APPENDED a clause instead of
-        //  removing the reason a clause was needed. The spear (Drop 1) and the backpack
-        //  (D-113) both shipped without being appended, so the director — who owns all five
-        //  of the enumerated products — opened the Backpack after the spear's zero-callers
-        //  defect was fixed and STILL found nothing: the row was revealed, the handler was
-        //  bound, and the door to the room was gone. The list is deleted rather than
-        //  extended; `makerOffers` derives the gate from what the panel actually holds, so
-        //  the eighth craftable cannot repeat this.
+        //  THE BUILD DOOR AND ITS GATE ARE GONE (ITEM 1, this batch). This whole paragraph
+        //  used to justify `makerOffers` deriving that gate from the panel's own contents,
+        //  after two real regressions from hand-maintained lists. The panel it opened is
+        //  retired outright now — see the ledger entry — so there is no gate left to derive.
         //  ---- THE UNDERWATER SLICE: the one control that must never be buried ----
         //
         //  SURFACING OUTRANKS EVERY OTHER PRIMARY ACTION, so it is assigned LAST — after the
@@ -4115,14 +4079,11 @@ export class Game {
             action = { label: 'Surface', visible: true, ready: true };
         }
 
-        const offers = makerOffers(state);
-        const secondary = { label: 'Build', visible: offers.length > 0 };
-
         this.hud.update({
             warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health, energy: state.energy,
             sheltered, inventory: state.inventory, tools: state.tools,
             carry: { kg: carriedWeightKg(state), overloaded: isOverloaded(state) },
-            gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, secondary, skills: state.skills
+            gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, skills: state.skills
         });
         paintBackpackLoad(this.overlay, carriedWeightKg(state), isOverloaded(state), state.tools.backpack);
     }
@@ -4243,7 +4204,7 @@ export class Game {
      * the idle hint and both tap-explain sites that used to hardcode the flat message.
      */
     private axeNearestReason(s: ReturnType<typeof session>['state']): string {
-        if (!s.tools.stoneHammer) return 'You need a stone hammer first — knap a blade, then put wood, blade and cord together in your pack.';
+        if (s.inventory.stonehammer === 0) return 'You need a stone hammer first — knap a blade, then put wood, blade and cord together in your pack.';
         if (s.inventory.sharpblade < TUNE.axeSharpbladeCost) return 'You need a knapped blade for the axe — knap one with your stone hammer.';
         return 'You have a blade — you need wood and fibre for the axe.';
     }

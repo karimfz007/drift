@@ -171,7 +171,7 @@ describe('the slow work says it is slow ON PURPOSE, not broken', () => {
 
     it('and says something different once the hammer is in hand', () => {
         const withHammer = fresh();
-        withHammer.tools.stoneHammer = true;
+        withHammer.inventory.stonehammer = 1;
         expect(slowWorkNote(withHammer)).not.toBe(slowWorkNote(fresh()));
         expect(slowWorkNote(withHammer)).toMatch(/never runs out/i);
     });

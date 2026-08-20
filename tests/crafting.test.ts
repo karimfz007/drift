@@ -75,7 +75,7 @@ describe('crafting — the stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 u
         s.inventory.wood = TUNE.stoneHammerWoodCost;
         s.inventory.stone = TUNE.stoneHammerStoneCost + 5;
         expect(craftStoneHammer(s)).toBe(true);
-        expect(s.tools.stoneHammer).toBe(true);
+        expect(s.inventory.stonehammer).toBe(1);
         expect(s.inventory.wood).toBe(0);
         expect(s.inventory.stone).toBe(5);
         expect(canCraftStoneHammer(s)).toBe(false);
@@ -92,7 +92,7 @@ describe('crafting — the stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 u
 
     it('knapping spends raw stone for sharp blades, and is repeatable — no "done" state', () => {
         const s = run();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         s.inventory.stone = TUNE.knapStoneCost * 2;
         expect(knapSharpblade(s)).toBe(true);
         expect(s.inventory.stone).toBe(TUNE.knapStoneCost);
@@ -106,7 +106,7 @@ describe('crafting — the stone hammer + knapping (Ch.1 v3, D-055) — Tier-0 u
 
     it('refuses to knap without enough stone', () => {
         const s = run();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         s.inventory.stone = TUNE.knapStoneCost - 1;
         expect(canKnapSharpblade(s)).toBe(false);
         expect(knapSharpblade(s)).toBe(false);

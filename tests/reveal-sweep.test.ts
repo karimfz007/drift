@@ -1,8 +1,8 @@
 /**
  * THE `reveal.ts` SWEEP — every enumeration in the file, not just the one that broke.
  *
- * WHY THIS FILE EXISTS. `reveal.ts` has now had a hardcoded list go stale in THREE separate
- * slices, each time silently, each time found by a human rather than by a test:
+ * WHY THIS FILE EXISTS. `reveal.ts` had a hardcoded list go stale in THREE separate slices,
+ * each time silently, each time found by a human rather than by a test:
  *
  *   - [[D-053]]: the body's Build-button gate listed product flags, and every clause went
  *     false on a long-running save. Fixed by APPENDING the torch.
@@ -12,9 +12,18 @@
  *     so a built raft stayed an offer forever and the raft's discovery prompt could never
  *     reach the screen at all.
  *
- * The file's own header says the rule out loud — *"a gate you have to remember to extend is a
+ * The file's own header said the rule out loud — *"a gate you have to remember to extend is a
  * defect with a delay on it"* — and then the file kept three more gates you have to remember
- * to extend. Fixing the fourth occurrence would be the fourth patch. This sweeps the CLASS.
+ * to extend. Fixing the fourth occurrence would have been the fourth patch, so this swept the
+ * CLASS instead.
+ *
+ * ONE OF THE TWO SWEPT MECHANISMS IS NOW GONE (ITEM 1, this batch). `satisfied()` and
+ * `makerOffers()` existed to gate the Build door; the door is retired outright, and both
+ * functions with it — the "enumeration 2" describe block this file used to carry, and its
+ * `NEVER_SATISFIED`/`havingEverything` fixtures, are gone too, not adapted, because there is
+ * no gate left for a hardcoded list to rot inside. `SURVIVAL_BASIC`, `revealedInPanel` and
+ * `panelHints` all survive unchanged — only relocated in SURFACE, not in mechanism — and stay
+ * swept below, alongside the file-wide "no hardcoded recipe-id array" guard.
  *
  * WHAT IT ASSERTS, and deliberately BEHAVIOURALLY rather than by reading the source. A test
  * that greps for `case 'raft'` proves a string is present; it does not prove the answer is
@@ -22,7 +31,7 @@
  * reads what a player would get.
  */
 import { describe, expect, it } from 'vitest';
-import { makerOffers, panelHints, revealedInPanel, SURVIVAL_BASIC } from '../src/brain/reveal';
+import { panelHints, revealedInPanel, SURVIVAL_BASIC } from '../src/brain/reveal';
 import { allRecipes } from '../src/brain/recipes';
 import { DISCOVERY_ROUTES, suspicionFor } from '../src/brain/discovery';
 import { createInitialState } from '../src/brain/state';
@@ -30,15 +39,6 @@ import { TUNE } from '../src/data/tune';
 import type { Blueprint, GameState } from '../src/brain/types';
 
 const RECIPE_IDS = allRecipes().map((r) => r.id);
-
-/**
- * The ONE documented exemption, named here so the sweep can be total.
- *
- * `knap` is repeatable and has no "done" state (D-055), so it is never satisfied and never
- * stops being an offer. That is a deliberate design fact, stated in `reveal.ts`'s own comment,
- * and the difference between an exemption and an oversight is that someone wrote it down.
- */
-const NEVER_SATISFIED = ['knap'];
 
 function fresh(): GameState {
     return createInitialState(1_700_000_000_000);
@@ -56,21 +56,6 @@ function knowingEverything(s: GameState): GameState {
         author: 'castaway',
         discoveredAtGameHours: 1,
     }));
-    return s;
-}
-
-/** ...and every product actually made or standing. */
-function havingEverything(s: GameState): GameState {
-    s.torch.owned = true;
-    s.tools.axe = true;
-    s.tools.spear = true;
-    s.tools.backpack = true;
-    s.tools.stoneHammer = true;
-    s.shelter.built = true;
-    s.storage.built = true;
-    s.raft.built = true;
-    s.tools.fishingLine = true;
-    s.tools.net = true;
     return s;
 }
 
@@ -124,44 +109,9 @@ describe('reveal.ts sweep — enumeration 1: SURVIVAL_BASIC', () => {
     });
 });
 
-describe('reveal.ts sweep — enumeration 2: satisfied()', () => {
-    /**
-     * THE FOURTH OCCURRENCE, made structurally impossible to reach a fifth.
-     *
-     * `satisfied()` is a switch over recipe ids with `default: false`. A craftable added
-     * without a case falls through and stays a live offer FOREVER — the maker door going on
-     * citing something already made. It cost the raft this exact bug in [[D-122]].
-     *
-     * This is total by construction: it asks the real function about EVERY recipe, in a state
-     * where every product is genuinely made. A future craftable with no case shows up by name.
-     */
-    it('every recipe is answered — a new craftable cannot silently fall to `default: false`', () => {
-        const s = havingEverything(knowingEverything(fresh()));
-        const stillOffered = makerOffers(s).filter((id) => id !== 'rest');
-        expect(stillOffered.sort(),
-            'these recipes are made and still being offered — add a `satisfied()` case, or document the exemption in NEVER_SATISFIED')
-            .toEqual([...NEVER_SATISFIED].sort());
-    });
-
-    it('WITNESS: the same state before anything is made offers all of them', () => {
-        //  Without this the assertion above passes on a state where nothing was ever offered,
-        //  which would make it vacuous — D-066 (a), applied to my own sweep.
-        const s = knowingEverything(fresh());
-        const offered = makerOffers(s).filter((id) => id !== 'rest');
-        expect(offered.sort()).toEqual([...RECIPE_IDS].sort());
-    });
-
-    it('the documented exemption is genuinely exempt, and says why in the file', async () => {
-        //  An exemption nobody wrote down is an oversight. This asserts the reasoning is
-        //  present where the next author will read it, not merely in a test.
-        const { readFileSync } = await import('node:fs');
-        const src = readFileSync('src/brain/reveal.ts', 'utf8');
-        for (const id of NEVER_SATISFIED) {
-            expect(src, `${id} is exempt from satisfied() and the file never explains why`).toContain(id);
-        }
-        expect(src).toMatch(/repeatable/i);
-    });
-});
+//  `describe('reveal.ts sweep — enumeration 2: satisfied()', ...)` IS GONE (item 1, this
+//  batch) — `satisfied()`/`makerOffers()` are retired with the Build door they gated. See
+//  this file's own top-of-file doc comment for the full account.
 
 describe('reveal.ts sweep — enumeration 3: panelHints()', () => {
     /**
@@ -174,7 +124,9 @@ describe('reveal.ts sweep — enumeration 3: panelHints()', () => {
         s.capacities.breathWaterConfidence = TUNE.capacityInnateFloor + 5;
         s.warmth = 1;
         s.storage.built = false;
-        s.tools.stoneHammer = false;
+        //  Overridden back to zero AFTER the loop above set every inventory key to 30 —
+        //  the stonehammer discovery route only fires while genuinely un-owned.
+        s.inventory.stonehammer = 0;
 
         const live = DISCOVERY_ROUTES
             .map((r) => r.recipeId)

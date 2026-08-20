@@ -430,86 +430,78 @@ describe('what the player is TOLD is only ever triumphant for a real invention (
     });
 });
 
-describe('RULING (C1) — KNAP STAGES LIKE EVERYTHING ELSE: the one narrow arity-1 exception', () => {
-    it('a single material is refused for an ORDINARY pile — the floor of two still holds', () => {
+describe('ITEM 3 (this batch) — KNAP IS A GENUINE TWO-MATERIAL RECIPE, THE ARITY-1 EXCEPTION IS GONE', () => {
+    //  [[D-174]]'s own arity-1 exception (`isKnapShape` in `canExperimentWith`) is retired,
+    //  not widened — see that ledger entry and this one. The stone hammer moved into
+    //  `Inventory` (types.ts, materials.ts), knap's recipe gained a real second slot
+    //  (recipes.ts), and "stage hammer + stone" now clears the ordinary floor of two with no
+    //  help at all. These tests replace [[D-174]]'s own arity-1 suite, which tested a
+    //  bend that no longer exists.
+    it('a single stone alone is STILL refused — no exception exists for it any more, hammer or not', () => {
         const s = ready();
-        expect(canExperimentWith(s, ['wood'])).toMatch(/pick two/i);
-    });
-
-    it('a single STONE is STILL refused without the hammer — the exception is knap-shaped, not stone-shaped', () => {
-        const s = ready();
-        s.tools.stoneHammer = false;
+        s.inventory.stonehammer = 0;
+        expect(canExperimentWith(s, ['stone'])).toMatch(/pick two/i);
+        s.inventory.stonehammer = 1;
         expect(canExperimentWith(s, ['stone'])).toMatch(/pick two/i);
     });
 
-    it('a single stone is ALLOWED once the hammer is owned — the one place the floor bends', () => {
-        const s = ready();
-        s.tools.stoneHammer = true;
-        expect(canExperimentWith(s, ['stone'])).toBeNull();
+    it('the matching machinery finds knap from its own two real slots', () => {
+        expect(matchPool(['stonehammer', 'stone']).map((r) => r.id)).toContain('knap');
     });
 
-    it('the matching machinery actually finds knap from one material — a real recipe entry, not just a gate exception', () => {
+    it('staging the hammer refuses if you do not actually own one — the reach check, not a special case', () => {
         const s = ready();
-        s.tools.stoneHammer = true;
-        expect(matchPool(['stone']).map((r) => r.id)).toContain('knap');
+        s.inventory.stonehammer = 0;
+        expect(canExperimentWith(s, ['stonehammer', 'stone'])).toMatch(/need all of those/i);
     });
 
-    it('staging just stone, with the hammer, genuinely DISCOVERS knap — mints the blueprint', () => {
-        const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
-        s.tools.stoneHammer = true;
-        s.blueprints = [];
-        const result = attemptConfirmed(s, ['stone']);
-        expect(result.ok).toBe(true);
-        expect(result.outcome).toBe('invented');
-        expect(s.blueprints.some((bp) => bp.recipeId === 'knap')).toBe(true);
+    it('staging hammer + stone, genuinely owning both, clears the ordinary floor — "same interaction as any other combine"', () => {
+        const s = ready();
+        s.inventory.stonehammer = 1;
+        expect(canExperimentWith(s, ['stonehammer', 'stone'])).toBeNull();
     });
 
-    it('the max-inputs ceiling is untouched — four is still the top, knap is the one floor exception, not a new ceiling', () => {
+    it('the max-inputs ceiling is untouched — four is still the top', () => {
         const s = ready();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         expect(canExperimentWith(s, ['wood', 'stone', 'fiber', 'berries', 'sharpblade'])).toMatch(/more than you can hold/i);
     });
 });
 
-describe('A SEVENTH DEFECT FOUND ON A REAL DEVICE — combineSlate did not know knap the way the known-list did', () => {
-    //  THE GAP THIS CLOSES. `matchPool` finding knap (proved above) is not the same claim as
-    //  the SLATE showing it: `combineSlate` used to ask `state.blueprints.some(...)` directly,
-    //  and knap never holds a blueprint — it is a standing gate (`stoneHammer` alone), per
-    //  `KnownRecipe.standalone`'s own doc. Every test above staged stone and asked the BRAIN
-    //  to attempt it directly, which never touched `combineSlate` at all, so none of them could
-    //  have caught this — only a device run staging the chip and reading the rendered slate
-    //  did. `isRecipeKnown` is the fix; these are the tests that would have caught its absence.
-    it('the slate shows knap as a KNOWN outcome from one staged stone — not an anonymous unknown slot', () => {
+describe('ITEM 3 (this batch) — isRecipeKnown/combineSlate STILL RECOGNISE THE STANDING GATE, NOW AT TWO MATERIALS', () => {
+    //  [[D-174]]'s own "SEVENTH DEFECT" suite protected this exact invariant — knap is known
+    //  the moment the hammer is owned, no blueprint required — against a real device-found
+    //  regression. The invariant survives item 3 unchanged; only the staged SHAPE (one
+    //  material -> two, since knap is no longer arity-1) and the comparison this suite made
+    //  (against a known-list that no longer exists) do not. Rewritten onto the new shape
+    //  rather than deleted, so the same regression stays caught.
+    it('the slate shows knap as a KNOWN outcome once hammer and stone are both staged — not an anonymous unknown slot', () => {
         const s = ready();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         s.blueprints = [];
-        const slate = combineSlate(s, ['stone']);
+        const slate = combineSlate(s, ['stonehammer', 'stone']);
         expect(slate.known.map((k) => k.recipeId)).toContain('knap');
         expect(slate.unknownCount).toBe(0);
     });
 
-    it('...and stays absent from the slate without the hammer — the exception is knap-shaped, not stone-shaped, here too', () => {
+    it('...and stays absent from the slate without the hammer — reach refuses staging it at all, so it never reaches the slate', () => {
         const s = ready();
-        s.tools.stoneHammer = false;
+        s.inventory.stonehammer = 0;
         s.blueprints = [];
-        //  `combineSlate` itself never refuses — `canExperimentWith`'s arity gate is what a
-        //  caller checks first (`onCanAttempt` in the body layer). Asked anyway, it must not
-        //  report a phantom "you know this" for a survivor who has never picked up the hammer.
-        const slate = combineSlate(s, ['stone']);
+        //  `combineSlate` itself never refuses — `canExperimentWith`'s reach gate is what a
+        //  caller checks first (`onCanAttempt` in the body layer). Asked anyway (as if the
+        //  chip had been staged despite not being owned), it must not report a phantom
+        //  "you know this" for a survivor who has never picked up the hammer.
+        const slate = combineSlate(s, ['stonehammer', 'stone']);
         expect(slate.known.map((k) => k.recipeId)).not.toContain('knap');
     });
 
-    it('Discover refuses a stone-alone pile once the hammer is owned — it is not a fresh unknown to stumble into', () => {
-        //  THE SIBLING BUG the same blind spot produced: before `isRecipeKnown`, `hasUnknownRival`
-        //  asked the same blueprint-only question, so the DISCOVER button (not just Combine)
-        //  treated an already-known standing-gate recipe as something to invent — which would
-        //  have minted a real Blueprint for knap, charged a real attempt cost, and spent stone
-        //  through the generic one-unit-per-chip loop rather than `TUNE.knapStoneCost`.
+    it('Discover refuses a hammer+stone pile once both are owned — it is not a fresh unknown to stumble into', () => {
         const s = ready();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         s.blueprints = [];
-        expect(hasUnknownRival(s, ['stone'])).toBe(false);
-        const result = discoverWith(s, ['stone']);
+        expect(hasUnknownRival(s, ['stonehammer', 'stone'])).toBe(false);
+        const result = discoverWith(s, ['stonehammer', 'stone']);
         expect(result.ok).toBe(false);
         expect(result.reason).toMatch(/already know/i);
         expect(s.blueprints.some((bp) => bp.recipeId === 'knap')).toBe(false);
@@ -517,7 +509,7 @@ describe('A SEVENTH DEFECT FOUND ON A REAL DEVICE — combineSlate did not know 
 
     it('...but Discover still works normally for a genuine unknown — the fix narrows, it does not disable', () => {
         const s = ready();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         s.tools.axe = false;
         s.blueprints = [];
         expect(hasUnknownRival(s, ['wood', 'sharpblade', 'fiber'])).toBe(true);

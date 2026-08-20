@@ -1968,7 +1968,14 @@ export const TUNE = {
         metal: 3.0,
         wiring: 0.6,
         glass: 0.5,
-        medicine: 0.2
+        medicine: 0.2,
+        //  ITEM 3 (this batch) — the stone hammer, migrated from `toolMassKg.stoneHammer`
+        //  (same 1.5 kg, unchanged) now that it is a real `Inventory`/`MaterialKind` entry
+        //  and this table's own compile-time guarantee ("a new material cannot be added
+        //  without deciding what it weighs") applies to it like anything else. Read through
+        //  the SAME generic per-unit loop (`carriedWeightKg`, body.ts) as every other
+        //  material — no special case left for it there any more.
+        stonehammer: 1.5
     },
     /** [TUNE] Ch.6 — fixed mass in kg of each owned tool. Charged once when owned, not per
      *  use — a carried axe weighs the same whether or not you are swinging it. The flask's
@@ -1981,7 +1988,7 @@ export const TUNE = {
         //  carry, and the reason a survivor keeps one on their back rather than at camp.
         spear: 1.2,
         flask: 0.9,
-        stoneHammer: 1.5,
+        //  `stoneHammer` LEFT (v34, item 3) — see `materialMassKg.stonehammer` above.
         torch: 0.7
     },
     /** [TUNE] Ch.6 — load-band thresholds in kg. At or below `loadWorkingAtKg` the castaway
@@ -2076,7 +2083,15 @@ export const TUNE = {
         metal: 1.5,
         wiring: 2.2,
         glass: 0.8,
-        medicine: 0.3
+        medicine: 0.3,
+        //  ITEM 3 (this batch) — the stone hammer. ZERO HERE ON PURPOSE, unlike its mass
+        //  (`materialMassKg.stonehammer`, which DID migrate the real number): `toolBulk`
+        //  below, driven by `TOOL_IDS`/`ownsTool` (loadout.ts's `carriedBulk`), is a
+        //  pre-existing, still-correct mechanism that already counts it — the same one
+        //  axe/spear/flask/torch ride on, untouched by this migration. This entry exists
+        //  only to satisfy `materialBulk`'s own compile-time "every MaterialKind has a
+        //  bulk" guarantee, not to add a second count.
+        stonehammer: 0
     },
     /** [TUNE] §9 — bulk per tool, same units. */
     //  P0-4 — the spear is the BULKIEST thing a survivor carries and among the lightest.

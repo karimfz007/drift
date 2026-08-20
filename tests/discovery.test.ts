@@ -176,7 +176,7 @@ describe('each of the five needs is a real reading of state', () => {
     it('stonehammer — stone that will not yield, and no hammer yet', () => {
         const s = atMidday(give(createInitialState(0), 'wood', 'stone'));
         expect(suspicionFor(s, 'stonehammer')!.suspected).toBe(true);
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         expect(suspicionFor(s, 'stonehammer')!.suspected).toBe(false);
     });
 

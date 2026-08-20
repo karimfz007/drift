@@ -67,8 +67,14 @@
  *      the nodes MERGE — the same split v21->v22 drew for the cave: a stock is a fact about
  *      a body and we have no record of this one, while the wreck is a fact about the world
  *      and has been in that water since before the survivor washed ashore.
+ * v34 — ITEM 3 (this batch): the stone hammer moves from `Tools.stoneHammer` (boolean) to
+ *      `Inventory.stonehammer` (count) — a genuine combinable item, staged for knapping the
+ *      same way any other material is, per the ruling that this "fully supersedes RULING 1's
+ *      original visibility promise" (see the ledger entry). Migration v33->v34 lives in
+ *      save.ts: `state.tools.stoneHammer === true` becomes `state.inventory.stonehammer = 1`,
+ *      `false` becomes `0` — the fact does not change, only where it is recorded.
  */
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -201,6 +207,23 @@ export interface Inventory {
     glass: number;
     /** A sealed medical store. The one thing out there that answers a shipped problem. */
     medicine: number;
+
+    /**
+     * THE STONE HAMMER, MIGRATED HERE FROM `Tools` (v34, item 3 of this batch). It was a
+     * `boolean` there — "made or not" — which was true and incomplete: made-or-not is a
+     * fact about EVERY tool, but the hammer is also the one tool that is another recipe's
+     * INGREDIENT (knapping). `Tools` has nowhere to stage a thing; `Inventory` already does,
+     * for exactly this reason — every combine already reads reach from here, unchanged.
+     *
+     * A COUNT THAT NEVER MOVES PAST 1 in practice (you cannot craft a second while holding
+     * one — `canCraftStoneHammer` still refuses), but a count and not a boolean, because
+     * `MaterialKind = keyof Inventory` and only a counted field can sit in that union and be
+     * staged as a real combine chip. NEVER SPENT ON COMBINE: `spendFromReach` (experiment.ts)
+     * carries the one explicit exception — a catalyst is used, not used UP, the same fact
+     * [[D-172]] already stated for the old boolean ("the hammer is the tool, and it was
+     * never consumed") and this migration must not quietly break.
+     */
+    stonehammer: number;
 }
 
 /** Every kind of carried material — the key set `Inventory` actually holds. Ch.1 v3's
@@ -237,9 +260,10 @@ export interface Tools {
     flask: boolean;
     /** Drinks currently in the flask (0..flaskCapacitySips). */
     flaskSips: number;
-    /** The stone hammer (Ch.1 v3, D-055): Tier-0 — its one live verb is knapping raw
-     *  stone into the sharp-blade intermediate the axe now needs. */
-    stoneHammer: boolean;
+    //  THE STONE HAMMER LEFT (v34, item 3) — `Inventory.stonehammer` now, a genuine
+    //  combinable count rather than a boolean here, because knapping needed it staged
+    //  alongside stone the same way any other recipe's materials are, "same interaction as
+    //  any other combine" per the ruling. See `Inventory.stonehammer`'s own doc for why.
     /** Rolled once at craft time (Ch.1 v3, D-055); scales fell speed only. */
     axeGrade: ItemGrade;
     /** A line to fish with (Slice 2). A CAPABILITY, not a consumable — it is what makes the

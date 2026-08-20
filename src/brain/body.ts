@@ -52,7 +52,11 @@ export function carriedWeightKg(state: GameState): number {
     for (const kind of MASS_KINDS) kg += state.inventory[kind] * TUNE.materialMassKg[kind];
     if (state.tools.axe) kg += TUNE.toolMassKg.axe;
     if (state.tools.flask) kg += TUNE.toolMassKg.flask;
-    if (state.tools.stoneHammer) kg += TUNE.toolMassKg.stoneHammer;
+    //  `stonehammer`'s mass IS the generic loop now (v34, item 3) — `materialMassKg` gained
+    //  an entry for it (this table's own compile-time guarantee, described just above,
+    //  required one the moment it became a `MaterialKind`), so `MASS_KINDS` picks it up
+    //  automatically and no special-cased line is needed here any more. The old
+    //  `toolMassKg.stoneHammer` line this replaced is gone with it.
     if (state.torch.owned) kg += TUNE.toolMassKg.torch;
     return kg;
 }

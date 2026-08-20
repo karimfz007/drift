@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { MATERIAL_PROFILE, materialSatisfies } from '../src/brain/materials';
+import { ALL_MATERIAL_KINDS, MATERIAL_PROFILE, materialSatisfies } from '../src/brain/materials';
 import { allRecipes, recordCombinationAttempts } from '../src/brain/recipes';
 import { createInitialState } from '../src/brain/state';
-import type { MaterialKind } from '../src/brain/types';
 
-const ALL_MATERIAL_KINDS: MaterialKind[] = ['wood', 'stone', 'fiber', 'berries', 'coconut', 'shellfish', 'sharpblade'];
+//  `ALL_MATERIAL_KINDS` USED TO BE A LOCAL, HAND-WRITTEN LITERAL HERE — seven names,
+//  copied once and never touched again. `materials.ts`'s own doc comment on the exported
+//  version tells the exact story of why that shape rots: a hardcoded copy "did not derive
+//  anything, it merely happened to match", and it took adding `meat` for the gap to show
+//  there. This file had the SAME defect, just never caught: the local list was still
+//  missing `shell`, `meat`, `fish`, `metal`, `wiring`, `glass`, `medicine` AND (this batch)
+//  `stonehammer` — which silently narrowed "every material kind has a profile" to a
+//  seven-item subset and made the disjoint-slots test below blind to `stonehammer`
+//  entirely, reading `knap-hammer`'s `{tag:'tool'}` slot as satisfied by nothing. Importing
+//  the real, `Object.keys(MATERIAL_PROFILE)`-derived list is what this file should always
+//  have done; a second source of truth is the drift, not a convenience.
 
 describe('materials — the family/tags schema (Ch.1 v3, D-055)', () => {
     it('every material kind has a profile', () => {
@@ -31,11 +40,21 @@ describe('materials — the family/tags schema (Ch.1 v3, D-055)', () => {
         expect(materialSatisfies('wood', {})).toBe(false);
     });
 
-    it("today's recipe slots stay disjoint — each is satisfied by exactly one material kind", () => {
+    it("today's recipe slots stay disjoint, except the one slot documented to want either of two", () => {
+        //  `raft-float` is a NAMED exception, not a fresh hole in the rule. `materials.ts`'s
+        //  own doc comment on `coconut`/`shell` says why out loud: a coconut husk floats and
+        //  an emptied one still does, so `{tag:'buoyant'}` is deliberately satisfied by
+        //  either — that is the whole reason `buoyant` exists as its own tag instead of
+        //  reusing `food` (which would also, wrongly, pull in berries). This is what using
+        //  the REAL `ALL_MATERIAL_KINDS` (see the import-site comment above) surfaces: the
+        //  stale seven-item local list this file used to carry never even included `shell`,
+        //  so this genuine two-material slot has been silently untested since `shell` shipped.
+        const TWO_IS_CORRECT = new Set(['raft/raft-float']);
         for (const recipe of allRecipes()) {
             for (const slot of recipe.slots) {
                 const satisfiers = ALL_MATERIAL_KINDS.filter((kind) => materialSatisfies(kind, slot.require));
-                expect(satisfiers.length).toBe(1);
+                const expected = TWO_IS_CORRECT.has(`${recipe.id}/${slot.id}`) ? 2 : 1;
+                expect(satisfiers.length, `${recipe.id}/${slot.id} (${JSON.stringify(slot.require)}) matched [${satisfiers.join(',')}]`).toBe(expected);
             }
         }
     });

@@ -37,7 +37,7 @@ function fullyEquipped(): GameState {
     //  the fixture's own name became a lie and `zoneOf` correctly returned null for a tool
     //  nobody owned; widening the list is what made that visible.
     s.tools.spear = true;
-    s.tools.stoneHammer = true;
+    s.inventory.stonehammer = 1;
     s.tools.flask = true;
     s.torch = { owned: true, lit: false, fuelGameHoursRemaining: 3, grade: 'serviceable' };
     //  ...and the two zones that are POSSESSIONS rather than body positions. The hub no longer
@@ -362,9 +362,31 @@ describe('save — a v9 save migrates to v10 with an empty loadout (D-063)', () 
         expect(zoneOf(s, 'axe')).toBe('backpack');
     });
 
-    it('grants no blueprints for things the player already knew how to make', () => {
+    it('mints a blueprint for the axe this save already owns — possession is proof, D-063 does not exempt it', () => {
+        //  THIS ASSERTED THE OPPOSITE UNTIL A REAL SAVE.TS BUG WAS FIXED ALONGSIDE ITEM 3
+        //  (this batch): most `migrateVNtoVN+1` steps stamped `schemaVersion: SCHEMA_VERSION`
+        //  — the ALWAYS-CURRENT top-level constant — instead of their own literal target
+        //  version. `migrate()`'s dispatcher is a flat run of `if (current.schemaVersion ===
+        //  N)` checks, so the very first such step a save hit jumped it straight to the
+        //  live constant and made every later check false, silently truncating the ladder.
+        //  For this fixture that meant `migrateV11toV12` — the invention-pivot step that
+        //  mints a blueprint from evidence of prior craft — never ran at all, so `axe: true`
+        //  in the raw v9 tools never got read, and `[]` merely reflected a chain that gave
+        //  up nine steps early. `migrateV11toV12`'s own doc comment states the rule this
+        //  test now actually exercises: "possession is proof... nothing is granted on a
+        //  guess" — and this fixture's whole point (see `v9Save` above) is that it DOES
+        //  possess one, on purpose, for the sibling test just above this one.
         const s = deserialize(v9Save())!.state;
-        expect(s.blueprints).toEqual([]);
+        expect(s.blueprints).toEqual([{
+            id: 'bp-migrated-axe',
+            name: 'Hafted axe, as made',
+            recipeId: 'axe',
+            inputs: ['wood', 'sharpblade', 'fiber'],
+            version: 1,
+            workmanship: 'crude',
+            author: 'castaway',
+            discoveredAtGameHours: 0,
+        }]);
         expect(s.experimentCount).toBe(0);
     });
 });

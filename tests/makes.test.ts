@@ -57,7 +57,16 @@ describe('what Combine charges is what the maker charges', () => {
             }
             //  ...and NOTHING outside the cost table moved. A maker that quietly spends a
             //  material the table does not mention would let the box top-up under-draw.
+            //
+            //  `kind === id` IS ALSO EXEMPT (item 3, this batch). The stone hammer is now a
+            //  genuine `Inventory` key, so it is both this recipe's OWN output and one of the
+            //  kinds this loop walks — `craftStoneHammer` setting `inventory.stonehammer` from
+            //  0 to 1 is the recipe's YIELD, not an unaccounted spend, and the cost table
+            //  correctly never lists an item as its own ingredient. No other maker in this
+            //  list writes an `Inventory` key that shares its own recipe id, so this exemption
+            //  changes nothing for the rest of them.
             for (const kind of Object.keys(before)) {
+                if (kind === id) continue;
                 if (cost.some((c) => c.kind === kind)) continue;
                 expect((s.inventory as unknown as Record<string, number>)[kind] ?? 0,
                     `${id} spent ${kind}, which its cost table does not list`).toBe(before[kind]);
@@ -74,9 +83,15 @@ describe('what Combine charges is what the maker charges', () => {
     });
 
     it('EVERY recipe the slate can offer has a cost table', () => {
-        //  `knap` is the one exception and is excluded by arity, not by omission: one slot,
-        //  and staging wants two materials, so it can never be a slate entry.
+        //  `knap` is a NAMED exemption now (item 3, this batch), not an arity accident. It
+        //  is a genuine two-slot recipe like everything else here — hammer plus stone — so
+        //  it can reach the slate same as any other combine. It still has no cost table,
+        //  and correctly so: `Game.MAKERS.knap` (`knapSharpblade`) is fully self-sufficient
+        //  and spends the stone itself, so a cost-table entry would be drawn into hands and
+        //  then charged AGAIN by the maker. `recipeCost`'s own doc comment (experiment.ts)
+        //  states the same rule from the production side.
         for (const r of allRecipes()) {
+            if (r.id === 'knap') { expect(recipeCost(r.id)).toEqual([]); continue; }
             if (r.slots.length < 2) { expect(recipeCost(r.id)).toEqual([]); continue; }
             expect(recipeCost(r.id).length, `${r.id} would be offered with no way to charge it`)
                 .toBeGreaterThan(0);

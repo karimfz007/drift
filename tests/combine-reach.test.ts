@@ -128,7 +128,7 @@ describe('how a tie is broken, and why in that order', () => {
     it('then the NEED decides — the discovery routes doing real work, not decorating a hint', () => {
         const s = capable();
         //  A hammer already owned kills that suspicion; arms full keeps the store's alive.
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         s.storage.built = false;
         s.inventory.wood = 5; s.inventory.stone = 5; s.inventory.fiber = 5;
         expect(resolveRecipe(s, ['wood', 'stone'])?.id).toBe('storage');

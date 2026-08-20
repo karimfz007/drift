@@ -85,6 +85,14 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     //  already treats `contaminated` as the food that can make you ill, so the fish joins
     //  that rule by HAVING the property rather than by a second branch checking its name.
     fish: 'contaminated',
+    //  ITEM 3 (this batch) — the stone hammer. Practically unreachable: `Game.MAKERS.knap`
+    //  intercepts every real knap attempt before `tryCombineWith`'s failure branch could
+    //  ever run, and `isRecipeKnown` makes Discover refuse a hammer-owning survivor's pile
+    //  outright (it is never "unknown"). Given an entry anyway, for the same reason
+    //  `Blueprint.inputs` got a real value while dormant — a type that claims total coverage
+    //  should not lie about one branch. `blunted`, matching stone's own answer: it is worked
+    //  stone, and a hammer fails the way its own material does.
+    stonehammer: 'blunted',
 };
 
 export function transformationFor(material: MaterialKind): Transformation {
@@ -195,6 +203,8 @@ const LABEL: Record<MaterialKind, string> = {
     coconut: 'The coconut', shell: 'The shell', shellfish: 'The shell', berries: 'The berries',
     meat: 'The meat', fish: 'The fish',
     metal: 'The plate', wiring: 'The cable', glass: 'The glass', medicine: 'The medicine',
+    //  ITEM 3 (this batch) — practically unreachable, same reason `TRANSFORM`'s entry above is.
+    stonehammer: 'The hammer',
 };
 
 const VERB: Record<Transformation, string> = {

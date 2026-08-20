@@ -216,7 +216,19 @@ export function allRecipes(): Recipe[] {
             id: 'knap',
             //  "Knapping" is one of the ruling's own four named Harvesting & fabrication verbs.
             domain: 'harvestingFabrication',
-            slots: [{ id: 'knap-input', require: { tag: 'masonry' }, amount: TUNE.knapStoneCost }]
+            //  TWO SLOTS NOW, ITEM 3 (this batch) — it was one, which meant `canExperimentWith`
+            //  needed its own narrow floor-of-two exception (`isKnapShape`) to ever be
+            //  reachable at all. The hammer moving into `Inventory` (see `materials.ts`) let
+            //  that exception retire outright: two REAL staged materials satisfy the ordinary
+            //  floor with no special case, "the same interaction as any other combine" per
+            //  the ruling. `knap-hammer`'s `amount: 1` is never actually charged —
+            //  `spendFromReach`'s own catalyst exception is what keeps the hammer un-consumed,
+            //  not this number; it is written as 1 because a slot with no honest amount would
+            //  be its own small lie about what "one hammer" means here.
+            slots: [
+                { id: 'knap-hammer', require: { tag: 'tool' }, amount: 1 },
+                { id: 'knap-stone', require: { tag: 'masonry' }, amount: TUNE.knapStoneCost }
+            ]
         }
     ];
 }

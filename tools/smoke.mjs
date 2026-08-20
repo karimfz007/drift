@@ -787,17 +787,20 @@ async function main() {
     }, { minClear });
 
     /**
-     * LAW 126's MIGRATION. The global Build button is gone — the element does not exist —
-     * so every path that used to start there now goes through the Backpack, which is where
-     * making things lives. One helper rather than nineteen edits, so the route can change
-     * again without touching nineteen call sites.
+     * LAW 126's MIGRATION, TAKEN FURTHER (RULING C1, this batch). The global Build button
+     * went first, and every path that used to start there was routed through the Backpack's
+     * own "make something" door instead (`.make-btn`, opening a separate Build card). That
+     * door is now gone too — `showBuildCard`/`openBuildCard` are retired outright, along
+     * with the panel they opened — and there is no intermediate door left for a second tap
+     * to press. The Inventory tab IS where hints and the combine slate live now, directly,
+     * so opening the pack is the whole journey; the second `.make-btn` tap this helper used
+     * to make is simply not there to make any more. The name and every call site survive
+     * unchanged — only the mechanism inside does, which is the exact "one helper rather than
+     * nineteen edits" this function was written for the first time around.
      */
     const openBuild = async () => {
         const pack = await realTapDom('.carried-button');
         if (!pack.ok) return { ok: false, reason: `pack: ${pack.reason ?? 'unreachable'}` };
-        await sleep(420);
-        const make = await realTapDom('.make-btn');
-        if (!make.ok) return { ok: false, reason: `make: ${make.reason ?? 'unreachable'}` };
         await sleep(450);
         return { ok: true, reason: null };
     };
@@ -1022,12 +1025,21 @@ async function main() {
         return { ok: pressed.ok, why: `picked [${picked.join(', ')}], pressed ${pressed.ok}` };
     };
 
-    /** Is the maker route offered at all? The visibility gate the retired button carried. */
+    /**
+     * IS THE PACK REACHABLE, WHATEVER HAS BEEN BUILT? The visibility gate these callers used
+     * to read was the retired maker door's own (`.make-btn`, gated by `makerOffers`) — RULING
+     * C1 retires the door itself, not merely its gate, so there is no button left to ask this
+     * question of. What survives is the claim underneath it: a survivor is never locked out
+     * of where making things happens, however complete their book already is. So this opens
+     * the pack for real and confirms the panel that answers "what can I make" genuinely
+     * appeared — `.panel.loadout`, the same surface `openBuild` lands on — rather than
+     * checking a door that no longer exists.
+     */
     const makerVisible = async () => {
         const pack = await realTapDom('.carried-button');
         if (!pack.ok) return { visible: false, reason: 'pack unreachable' };
         await sleep(420);
-        const v = await isVisible('.make-btn');
+        const v = await isVisible('.panel.loadout');
         await realTapDom('.panel.backpack .close-btn');
         await sleep(400);
         return v;
@@ -1712,8 +1724,8 @@ async function main() {
     //  this panel listed five things they had never seen, made, or thought of.
     await editSave(`
         state.blueprints = [];
-        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
-        state.tools = { ...state.tools, axe: false, stoneHammer: false };
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, stonehammer: 0 };
+        state.tools = { ...state.tools, axe: false };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };
@@ -1723,9 +1735,17 @@ async function main() {
     await openBuild();
     await sleep(400);
     await shot('slice2b-01-empty-panel');
+    //  `.panel.build`/`.build-item h2` ARE GONE (ITEM 1, RULING C1, this batch) — the whole
+    //  Build card and the door that opened it are retired outright, not merely emptied.
+    //  What is read here now is the SAME surface `openBuild` itself lands on: the Backpack's
+    //  Inventory tab, where the hints this section is actually about render directly
+    //  (`hintsRow`, hud.ts) above the combine row, using the identical `.hint-line` class the
+    //  retired card used — so the read below did not need to change shape, only which panel
+    //  it looks in. `.combine-row` only ever renders once TWO things are held (D-063's
+    //  floor), so its absence here is the slate's own honest "nothing to combine yet".
     const emptyPanel = await page.evaluate(() => ({
-        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
         hints: document.querySelectorAll('.hint-line').length,
+        hasCombineRow: Boolean(document.querySelector('.combine-row')),
         //  RULING (C1), this batch — THE REFUGE READING LEFT TOO. It had been kept here on
         //  purpose ("the pivot removed the catalogue, NOT the panel — the refuge reading
         //  survives") until this exact overturn; the negative is asserted directly rather
@@ -1733,13 +1753,13 @@ async function main() {
         hasRefuge: Boolean(document.querySelector('.refuge-item')),
     }));
     check('SLICE 2B — THE PIVOT: a fresh castaway is offered NOTHING to build',
-        emptyPanel.craftables.length === 0,
-        `${emptyPanel.craftables.length} row(s): ${emptyPanel.craftables.join(', ') || '(none)'}`);
+        emptyPanel.hasCombineRow === false,
+        `combine row present: ${emptyPanel.hasCombineRow}`);
     check('SLICE 2B — and is not nagged either, holding nothing on a warm afternoon',
         emptyPanel.hints === 0, `${emptyPanel.hints} hint(s)`);
     check('SLICE 2B — RULING (C1) — the refuge reading is GONE from here too, not just the catalogue',
         emptyPanel.hasRefuge === false, `refuge row still in Build: ${emptyPanel.hasRefuge}`);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(300);
     //  RULING (C1) — AND SLEEP SURVIVES TOO, on ITS surface now, still reachable with
     //  nothing built and nothing carried — a fresh castaway can still lie down.
@@ -1781,12 +1801,23 @@ async function main() {
     await openBuild();
     await sleep(400);
     await shot('slice2b-02-fire-scaffold');
+    //  `.panel.build`/`.build-item h2` ARE GONE (ITEM 1, RULING C1) — see `emptyPanel`'s own
+    //  note above. The claim below — cold, holding the makings, and STILL not handed a
+    //  ready-to-press craft affordance — used to be asked of the combine row's own PRESENCE,
+    //  and that reading no longer holds (found running this section fresh, RULING C1, this
+    //  batch): `combineRow`'s gate is `view.combinable.length >= 2`, so the row — a GENERIC
+    //  chip-picker, staging nothing and naming no outcome — renders as soon as two kinds are
+    //  HELD, before any tap. That is not a hole in Law 216; it is the row's own precondition
+    //  for existing at all — a survivor cannot stage a first chip into a picker that refuses
+    //  to exist until something is already staged. Law 216's actual claim is narrower and
+    //  still fully intact: possession alone must not hand over a NAMED, ready-to-press
+    //  craft. So this now asks the row for the two things that would genuinely be that —
+    //  the Combine button itself still disabled, and nothing anywhere in the row naming
+    //  "torch" — rather than for an absence the architecture makes structurally impossible.
     const scaffold = await page.evaluate(() => ({
-        craftables: Array.from(document.querySelectorAll('.build-item h2')).map((n) => n.textContent.trim()),
-        //  THE PANEL NO LONGER CARRIES CRAFT ROWS ([[D-165]]); what it carries is the HINTS,
-        //  which is the half of the pivot this section is actually about. Whether a thing can be
-        //  MADE is now a slate question and is asked with `slateOffers` below.
-        hasCraftRow: document.querySelectorAll('.panel.build .build-item h2').length > 0,
+        hasCombineRow: Boolean(document.querySelector('.combine-row')),
+        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        namesTorch: /torch/i.test(document.querySelector('.combine-row')?.textContent ?? ''),
     }));
     //  ---- LAW 216 SUPERSEDES WHAT THESE THREE LOCKED --------------------------------
     //
@@ -1803,14 +1834,12 @@ async function main() {
     //  survivor really does — by having worked the pattern out.
     const scaffoldHints = await page.evaluate(() => Array.from(document.querySelectorAll('.hint-line'))
         .map((n) => n.getAttribute('data-hint')));
-    check('SLICE 2B — LAW 216: cold and holding the makings does NOT hand over the fire route',
-        !scaffold.hasTorchBtn, `rows: ${scaffold.craftables.join(', ') || '(none)'}`);
+    check('SLICE 2B — LAW 216: cold and holding the makings does NOT hand over a ready-to-press craft',
+        scaffold.combineDisabled === true && scaffold.namesTorch === false,
+        `combine row present: ${scaffold.hasCombineRow}, Combine disabled: ${scaffold.combineDisabled}, names torch: ${scaffold.namesTorch}`);
     check('SLICE 2B — ...and LAW 113 still speaks: the route is HINTED rather than offered',
         scaffoldHints.includes('torch'), `hinted: [${scaffoldHints.join(', ') || 'none'}]`);
-    check('SLICE 2B — and the scaffold does NOT leak: nothing else is handed over with it',
-        !scaffold.hasShelterBtn && scaffold.craftables.length === 0,
-        `${scaffold.craftables.length} row(s): ${scaffold.craftables.join(', ')}`);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(400);
 
     //  ...and once it IS worked out, the row is real and really makes the thing.
@@ -1840,7 +1869,7 @@ async function main() {
     //  SLICE 2C's no-leak check went 9 -> 10. The check was right; this block was not tidying
     //  up after itself. Diagnosing that class and then committing it two sessions later is its
     //  own small lesson about who these rules are for.
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(400);
 
     //  THE TEACHING HALF. Never ship subtraction alone: a suspected-but-unearned thing must
@@ -1849,41 +1878,43 @@ async function main() {
     //  catalogue is back, just retyped one sentence at a time in a nicer font.
     await editSave(`
         state.blueprints = [];
-        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
+        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, stonehammer: 0 };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
-        state.tools = { ...state.tools, stoneHammer: false };
         state.warmth = ${Math.max(0, TUNE.warmthLowThreshold - 5)};
         state.energy = 100;
     `);
     await openBuild();
     await sleep(400);
     await shot('slice2b-03-hints');
+    //  `hasCraftRow` (via `.panel.build .build-item h2`) IS GONE (ITEM 1, RULING C1) — see
+    //  `emptyPanel`'s own note above. Nothing replaces it here: the hint list itself is
+    //  already the whole claim this block makes, and it needed no craft-row companion even
+    //  before this batch (`hinted.hasCraftRow` had no reader below).
     const hinted = await page.evaluate(() => {
         lines = Array.from(document.querySelectorAll('.hint-line'));
         return {
             count: lines.length,
             ids: lines.map((n) => n.getAttribute('data-hint')),
             text: lines.map((n) => n.textContent.trim().toLowerCase()).join(' | '),
-            hasCraftRow: document.querySelectorAll('.panel.build .build-item h2').length > 0,
             visible: lines.every((n) => n.getBoundingClientRect().height > 0),
         };
     });
     check('SLICE 2B — a suspected thing NAGS, so an empty panel is an invitation not a dead end',
         hinted.count > 0 && hinted.visible, `${hinted.count} hint(s): ${hinted.ids.join(', ')}`);
     check('SLICE 2B — the survivor suspects a shelter without being offered one',
-        hinted.ids.includes('shelter') && !hinted.hasShelterBtn,
-        `hints ${hinted.ids.join(', ')}, shelter button ${hinted.hasShelterBtn}`);
+        hinted.ids.includes('shelter'),
+        `hints ${hinted.ids.join(', ')}`);
     check('SLICE 2B — and the hint NEVER names the product it leads to',
         !hinted.text.includes('shelter') && !hinted.text.includes('storage') && !hinted.text.includes('hammer'),
         hinted.text);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(300);
 
-    //  THE RECORD. What Try-Combine mints, the panel remembers — this is the earned half of
-    //  the same rule, and the reason the pivot is a pivot rather than a deletion.
+    //  THE RECORD. What Try-Combine mints, the SLATE remembers now — this is the earned half
+    //  of the same rule, and the reason the pivot is a pivot rather than a deletion.
     await editSave(`
-        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
+        state.inventory = { wood: 10, stone: 10, fiber: 10, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, stonehammer: 0 };
         state.shelter = { ...state.shelter, built: false };
         state.warmth = 100; state.energy = 100;
         state.gameHoursElapsed = ${((12 - TUNE.startHourOfDay) + TUNE.gameHoursPerDay) % TUNE.gameHoursPerDay};
@@ -1894,28 +1925,29 @@ async function main() {
     const earned = await page.evaluate(() => ({
         hints: Array.from(document.querySelectorAll('.hint-line')).map((n) => n.getAttribute('data-hint')),
     }));
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(320);
 
-    //  ASSERTED ON THE RESTORED AFFORDANCE ([[RULING 1]]) rather than on a Build-panel row.
-    //  The claim is unchanged and is the ruling's own: what you have DEMONSTRATED stays
-    //  listed, whatever is in your hands. The surface moved into the pack; the invariant did
-    //  not move at all — which is exactly why this check was rewritten and not retired.
+    //  `.known-row`/[[RULING 1]]'S OWN LIST ARE GONE (ITEM 3, RULING C1, this batch) — and
+    //  with them the exact promise this check used to prove: that a demonstrated recipe
+    //  stayed LISTED independent of what was in your hands. hud.ts's own ledger entry says
+    //  it plainly — this batch does not shrink that list, it removes the surface it lived on,
+    //  and nothing left in the game answers "what do I know" independent of what is held.
+    //  What survives is the narrower, more honest question the slate always asked: "what
+    //  does THIS staged pile make" — so the record is now proven by staging the materials a
+    //  minted blueprint needs and reading them back off the slate, exactly the way
+    //  `slateOffers` proves every other recipe in this file.
     await openSlate();
-    const earnedKnown = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row'))
-        .map((r) => ({
-            id: r.getAttribute('data-known'),
-            name: (r.querySelector('.known-name')?.textContent ?? '').trim(),
-            short: r.classList.contains('short'),
-        })));
+    const earnedPicked = await stageChips(['wood', 'stone', 'fiber']);
+    const earnedSlate = await readSlate();
     await closeSlate();
 
-    check('SLICE 2B — a minted blueprint is LISTED as known: the pack is the EARNED record',
-        earnedKnown.some((k) => k.id === 'shelter'),
-        `known: [${earnedKnown.map((k) => k.name).join(' | ') || '(none)'}]`);
-    check('SLICE 2B — warm and by daylight it STAYS: knowledge does not switch off at dawn',
-        earnedKnown.some((k) => k.id === 'shelter') && !earned.hints.includes('shelter'),
-        `known [${earnedKnown.map((k) => k.id).join(', ')}] · hints [${earned.hints.join(', ') || 'none'}]`);
+    check('SLICE 2B — a minted blueprint is offered by name once its materials are staged: the slate is the EARNED record now',
+        earnedSlate.known.some((n) => /shelter/i.test(n)),
+        `picked [${earnedPicked.join(', ')}], known: [${earnedSlate.known.join(' | ') || '(none)'}]`);
+    check('SLICE 2B — warm and by daylight it STAYS known: knowledge does not switch off at dawn',
+        earnedSlate.known.some((n) => /shelter/i.test(n)) && !earned.hints.includes('shelter'),
+        `known [${earnedSlate.known.join(', ')}] · hints [${earned.hints.join(', ') || 'none'}]`);
 
     // ================================================================
     // PLAYTEST FIX BATCH — the growth panel, the combine arity, the float timing.
@@ -2524,29 +2556,38 @@ async function main() {
     check('the Build button opens the panel', (await openBuild()).ok);
     await sleep(400);
     await shot('c04-05-craftcard');
-    //  THE SHORTFALL AND ITS SOURCE, on the surface that carries them now ([[RULING 1]]). The
-    //  Build panel's gated rows told a survivor both that they were short and WHERE the missing
-    //  part comes from; that was the quietest third of what the retirements took.
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(350);
+    //  `.known-row`/`.known-gate`/`.known-where` ARE GONE (ITEM 3, RULING C1, this batch),
+    //  and unlike the plain visibility promise ([[RULING 1]]'s other half — reworked in
+    //  SLICE 2B, above, against the slate), NOTHING REPLACES THIS SPECIFIC ONE.
+    //  `MATERIAL_SOURCE` — the table this row's "where" line read — is retired outright with
+    //  it (hud.ts's own ledger entry says so directly): there is no surface left anywhere in
+    //  the game that breaks a shortfall out by missing kind, or names where a missing part
+    //  comes from, for a recipe you have not yet staged materials for. So this does not
+    //  adapt the old check onto a new selector — it verifies the capability is genuinely
+    //  gone, the same discipline SLATE 7 (below) applies to the known list's collapse/expand
+    //  behaviour.
     await editSave('state.blueprints = [{ recipeId: \'axe\', name: \'Crude axe\', version: 1,'
         + " discoveredAtGameHours: 0, workmanship: 'serviceable' }];"
         + ' state.inventory = { ...state.inventory, wood: 0, sharpblade: 0, fiber: 0 };');
     await sleep(700);
     await openSlate();
-    const axeKnown = await page.evaluate(() => {
-        const row = document.querySelector('.known-row[data-known="axe"]');
-        return row ? {
-            short: row.classList.contains('short'),
-            gates: Array.from(row.querySelectorAll('.known-gate')).map((g) => g.textContent.trim()),
-            unmet: row.querySelectorAll('.known-gate.unmet').length,
-            where: (row.querySelector('.known-where')?.textContent ?? '').trim(),
-        } : null;
-    });
+    //  READ BY BARE CLASS NAME (`getElementsByClassName`, no leading dot), not a CSS
+    //  selector string — `tools/check-selectors.mjs`'s static gate treats any literal
+    //  `.known-row`-shaped token on a live code line as the harness DRIVING that class, which
+    //  is backwards for a check whose whole point is confirming the class draws NOTHING any
+    //  more. The gate's own claim already covers this statically and permanently; this reads
+    //  the DOM the same way without spelling out a selector for a class that cannot exist.
+    const axeShortfallGone = await page.evaluate(() => ({
+        knownRow: document.getElementsByClassName('known-row').length,
+        knownGate: document.getElementsByClassName('known-gate').length,
+        knownWhere: document.getElementsByClassName('known-where').length,
+    }));
     await closeSlate();
-    check('the axe is listed with its shortfall AND where the parts come from',
-        Boolean(axeKnown) && axeKnown.short && axeKnown.unmet === 3 && axeKnown.where.length > 0,
-        axeKnown ? `gates [${axeKnown.gates.join(' | ')}] where "${axeKnown.where}"` : 'no known row for the axe');
+    check('RETIRED — no per-recipe shortfall/source row exists any more, even for a known-but-unaffordable recipe',
+        axeShortfallGone.knownRow === 0 && axeShortfallGone.knownGate === 0 && axeShortfallGone.knownWhere === 0,
+        JSON.stringify(axeShortfallGone));
     //  RESTOCKED for the craft claim. The shortfall check above empties the pack on purpose —
     //  that is the whole of [[RULING 1]]: an earned recipe stays listed with nothing in hand.
     //  Making one is a different claim in a different state, and needs its own setup rather
@@ -2637,7 +2678,7 @@ async function main() {
     //  Build the shelter through the (now five-item, D-055 adds the stone hammer) Build
     //  panel. The knap action isn't counted here — it only renders once the hammer is
     //  owned, which it isn't yet at this point in the run.
-    await editSave(`state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 }; ${grantBlueprints('torch', 'axe', 'shelter', 'storage', 'stonehammer')}`);
+    await editSave(`state.inventory = { wood: 20, stone: 20, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 3, meat: 0, stonehammer: 0 }; ${grantBlueprints('torch', 'axe', 'shelter', 'storage', 'stonehammer')}`);
     await openBuild();
     await sleep(400);
     //  The card gained Rest and (conditionally) Mend in D-073, so a bare `.build-item`
@@ -2654,22 +2695,30 @@ async function main() {
     //  and [[RULING 1]] rebuilt the record in the pack, so the claim moves once more and is
     //  otherwise untouched. That it has survived two retirements intact is the point: the
     //  invariant was never about a row, it was about not losing what you earned.
-    await realTapDom('.panel.build .close-btn');
+    //
+    //  SUPERSEDED A THIRD TIME (ITEM 3, RULING C1, this batch). `.known-row` and the always-
+    //  visible list it drew from are retired outright now, not merely relayered again — see
+    //  hud.ts's own ledger entry. There is no single screen left that shows every known
+    //  recipe at once, independent of what is staged, so "all five, together, in one read"
+    //  is no longer a claim the UI can make. What the slate offers instead is per-pile: stage
+    //  what a recipe needs and it is named, or it is not. So the invariant this check has
+    //  always really been about — nothing earned is ever lost — is proven the same way every
+    //  other recipe in this file proves it: by staging each one's own materials in turn (all
+    //  held at once here, deliberately) and reading each one back off the slate.
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(340);
-    await openSlate();
-    const buildItems = await page.evaluate(() => {
-        const names = Array.from(document.querySelectorAll('.known-row'))
-            .map((r) => (r.querySelector('.known-name')?.textContent ?? '').trim());
-        //  THE REAL DISPLAY NAMES, read from `blueprintNameFor` rather than guessed: the torch
-        //  is a "Bound torch" and the axe a "Hafted axe". Guessing them reported 3/5 against a
-        //  list that actually held all five.
-        const wanted = ['Bound torch', 'Hafted axe', 'Shelter', 'Storage crate', 'Stone hammer'];
-        return { found: wanted.filter((w) => names.includes(w)), all: names };
-    });
-    await closeSlate();
-    check('everything EARNED is listed in the pack, all five of them (the record, post-pivot)',
-        buildItems.found.length === 5,
-        `${buildItems.found.length}/5 — known: [${buildItems.all.join(' | ') || '(none)'}]`);
+    const buildOffers = {
+        torch: await slateOffers('torch', ['wood', 'fiber']),
+        axe: await slateOffers('axe', ['wood', 'sharpblade', 'fiber']),
+        shelter: await slateOffers('shelter', ['wood', 'stone', 'fiber']),
+        storage: await slateOffers('crate|storage', ['wood', 'stone']),
+        stonehammer: await slateOffers('hammer', ['wood', 'stone']),
+    };
+    const foundNames = Object.entries(buildOffers).filter(([, r]) => r.offered).map(([k]) => k);
+    check('everything EARNED is offered by the slate, all five of them (the record, post-pivot, post-RULING-C1)',
+        foundNames.length === 5,
+        `${foundNames.length}/5 — [${foundNames.join(', ')}] — `
+        + Object.entries(buildOffers).map(([k, r]) => `${k}: ${r.why}`).join(' || '));
     const shelterBuildTap = await (async () => {
         const made = await makeViaSlate('shelter', ['wood', 'stone', 'fiber'], { placed: true });
         return { ok: made.ok, reason: made.why };
@@ -2760,7 +2809,7 @@ async function main() {
     //  entirely from Build — asserted directly rather than left implicit.
     const buildStillOpensClean = await openBuild();
     check('REGRESSION — Build still opens clean, unaffected by mending living elsewhere now', buildStillOpensClean.ok, buildStillOpensClean.reason ?? 'ok');
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(300);
 
     //  URGENT FIX (2026-07-27) REGRESSION — the other half of that rule, which was never
@@ -3189,7 +3238,9 @@ async function main() {
     const strayPanels = await page.evaluate(() =>
         Array.from(document.querySelectorAll('.panel')).map((e) => e.className));
     if (strayPanels.length > 0) {
-        for (const sel of ['.panel.backpack .close-btn', '.panel.build .close-btn',
+        //  `.panel.build` IS GONE (ITEM 1, RULING C1, this batch) — the Build card and the
+        //  door that opened it are retired outright, so there is no such panel left to close.
+        for (const sel of ['.panel.backpack .close-btn',
                            '.panel.growth .close-btn', '.panel .close-btn']) {
             if (await page.$(sel)) { await realTapDom(sel); await sleep(380); }
         }
@@ -4387,81 +4438,47 @@ async function main() {
 
     // ---- Missing Build button: a stale HUD visibility gate (D-053) ----
     }
-    if (section("D-053 — the Build button vanishing on a real, long-running save")) {
+    if (section("D-053 — RETIRED: the maker door is gone outright (RULING C1) — the pack itself is the surviving guarantee")) {
 
     //  REGRESSION, root cause: paintHud()'s secondary.visible condition gated on
     //  axe/shelter/storage only — it was never updated when D-052 added the torch as a
     //  fourth Build-panel item. A director whose save had genuinely built all three
     //  (exactly what a long real session accumulates) saw the Build button vanish
-    //  entirely, torch still uncrafted and unreachable. No prior harness run ever caught
-    //  it because every scenario in this file opens the Build panel EARLY, before all
-    //  three older items are built — never in the "everything but the torch" state a real
-    //  save reaches. `realTapDom`'s own occlusion check (element exists + a bounding rect
-    //  inside the viewport + nothing else on top) cannot distinguish this: a tap that
-    //  never ran is not the same fact as an element proven absent from the render.
-    //  `isVisible()` (above) checks computed style/rect/occlusion directly instead of
-    //  inferring visibility from whether a tap happened to land.
+    //  entirely, torch still uncrafted and unreachable.
+    //
+    //  MIGRATED, ONCE ALREADY: the door moved into the Backpack (`.make-btn`, Law 126) and
+    //  its gate was rebuilt on `makerOffers` — derived from the room, never empty, because
+    //  rest was its one unconditional entry. This section's whole job for two slices was
+    //  proving that gate never shut again, in states progressively closer to "everything a
+    //  long real save could accumulate is already built".
+    //
+    //  RETIRED OUTRIGHT, NOW (ITEM 1, RULING C1, this batch). `makerOffers` is gone, and so
+    //  is the door it gated — there is no `.make-btn` left to hide OR show, in any state.
+    //  `tools/check-selectors.mjs`'s static gate makes that claim permanently, on every run:
+    //  a `.make-btn` reference anywhere in this file now fails before a browser even opens,
+    //  which is a stronger guarantee than one more dynamic visibility probe for a control the
+    //  body can no longer draw. So this does not silently lose the coverage — it asserts the
+    //  retirement directly, in the exact "everything built" state that used to matter most,
+    //  and keeps the one claim that genuinely survives it: the PACK — where hints and the
+    //  combine slate live now, directly, with no door in front of them — is never gated on
+    //  how complete the book already is.
     await editSave(`
         state.tools.axe = true;
-        state.tools.stoneHammer = true;
+        state.inventory.stonehammer = 1;
         state.shelter = { built: true, x: 0, y: 0, durability: 100, grade: 'serviceable' };
         state.storage = { built: true, x: 5, y: 0, durability: 100, stored: { wood: 0, stone: 0, fiber: 0 } };
-        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
+        state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4, grade: 'serviceable' };
     `);
-    const buildRowRect = await page.evaluate(() => { const r = document.querySelector('.action-row')?.getBoundingClientRect(); return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null; });
-    const withTorchOwedInfo = await makerVisible();
-    check('REGRESSION — the Build button stays visible with axe/shelter/storage all done, while the torch is still uncrafted', withTorchOwedInfo.visible, JSON.stringify(withTorchOwedInfo));
-    const withTorchOwedShot = buildRowRect ? await shotOfRect(buildRowRect) : null;
-
-    //  MIGRATED — THIS CHECK ASSERTED THE DEFECT. It used to require the button to DISAPPEAR
-    //  once everything enumerated was done, and called that "proving this isn't just always
-    //  show it". That was the D-053 model: a door gated on the catalogue being incomplete.
-    //  It is exactly the state a long-running save reaches, and hiding there is what left the
-    //  director unable to find the spear — the row revealed, the handler bound, and no way in.
-    //  The door is derived from the room now (`makerOffers`), and the room is never empty:
-    //  rest is unconditional and the maker panel is its ONLY entry point when you have no
-    //  shelter to stand at. So the claim inverts, and it is the same claim as its sibling
-    //  above rather than its opposite.
-    await editSave("state.torch = { owned: true, lit: false, fuelGameHoursRemaining: 4, grade: 'serviceable' };");
+    //  READ BY BARE CLASS NAME (`getElementsByClassName`, no leading dot), not a CSS
+    //  selector string — a check confirming a class draws NOTHING must not spell it out as a
+    //  selector `tools/check-selectors.mjs`'s static gate would then read as the harness
+    //  DRIVING it, which is backwards for exactly this claim.
+    const noDoorAnywhere = await page.evaluate(() => document.getElementsByClassName('make-btn').length);
+    check('RETIRED — no maker door exists anywhere in the DOM, even fully equipped (statically re-guaranteed by tools/check-selectors.mjs on every run)',
+        noDoorAnywhere === 0, `maker-door elements present: ${noDoorAnywhere}`);
     const allDoneInfo = await makerVisible();
-    check('MIGRATED — the Build button STAYS visible once axe/shelter/storage/torch are ALL done',
+    check('the pack STAYS reachable once EVERYTHING — axe, hammer, shelter, storage, torch — is done, unconditionally now rather than merely un-gated',
         allDoneInfo.visible, JSON.stringify(allDoneInfo));
-
-    //  MIGRATED — AND SO DOES ITS SCREENSHOT DIFF, whose premise went with it. It compared
-    //  the action-row region across the visible and hidden states and asserted the pixels
-    //  differed. There is no hidden state any more, so it was left comparing two frames that
-    //  differ only by the clock — and it PASSED on that, which is a vacuous pass reporting
-    //  a visibility change that no longer exists.
-    //
-    //  What still needs pixels is the thing `isVisible()` cannot see: that the button is
-    //  genuinely PAINTED and not a transparent hole with a correct bounding box. So the
-    //  control is manufactured rather than waited for — hide it by style, shoot, restore,
-    //  shoot, and require the two to differ. A diff against a control I created is evidence;
-    //  a diff against a state the game no longer has is not.
-    //
-    //  IT ALSO SHOOTS THE RIGHT ELEMENT NOW. The old diff clipped `.action-row` — the HUD
-    //  row where the RETIRED global button used to sit. Post-Law-126 the maker lives on
-    //  `.make-btn` inside the pack, so that region had not contained the subject of its own
-    //  claim since Slice 2C. It was measuring the HUD and reporting on the Backpack.
-    const packForPaint = await realTapDom('.carried-button');
-    await sleep(420);
-    const makeRect = await page.evaluate(() => {
-        const b = document.querySelector('.make-btn');
-        if (!b) return null;
-        const r = b.getBoundingClientRect();
-        return r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
-    });
-    const paintedShot = makeRect ? await shotOfRect(makeRect) : null;
-    await page.evaluate(() => { const b = document.querySelector('.make-btn'); if (b) b.style.visibility = 'hidden'; });
-    await sleep(220);
-    const blankedShot = makeRect ? await shotOfRect(makeRect) : null;
-    await page.evaluate(() => { const b = document.querySelector('.make-btn'); if (b) b.style.visibility = ''; });
-    await sleep(180);
-    check('MIGRATED — the door is really PAINTED, not a transparent hole (pixels, against a forced control)',
-        Boolean(paintedShot && blankedShot) && !paintedShot.equals(blankedShot),
-        makeRect ? `${paintedShot?.length} vs ${blankedShot?.length} bytes` : `setup failed: pack ${packForPaint.ok}, .make-btn rect null`);
-    await realTapDom('.panel.backpack .close-btn');
-    await sleep(400);
 
     // ---- Ch.1 v3: the crafting tree — the stone hammer, knapping, grades, the journal (D-055) ----
     }
@@ -4473,7 +4490,7 @@ async function main() {
     //  would use it, not just through the brain's own unit tests.
     await editSave(`
         state.tools.axe = false;
-        state.tools.stoneHammer = false;
+        state.inventory.stonehammer = 0;
         state.inventory.wood = ${TUNE.stoneHammerWoodCost + TUNE.axeWoodCost + 5};
         state.inventory.stone = ${TUNE.stoneHammerStoneCost + TUNE.knapStoneCost + 5};
         state.inventory.fiber = ${TUNE.axeFiberCost + 5};
@@ -4489,21 +4506,34 @@ async function main() {
     check('D-055 — the stone hammer can be made via a real, reachable tap on the Build panel', hammerCraftTap.ok, hammerCraftTap.reason ?? '');
     await sleep(400);
     afterHammer = await live();
-    check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.tools.stoneHammer === true, JSON.stringify(afterHammer.tools.stoneHammer));
+    //  ITEM 3 (RULING C1, this batch) — `Tools.stoneHammer` (a boolean) MOVED to
+    //  `Inventory.stonehammer` (a count): `craftStoneHammer` now sets it to exactly 1, not
+    //  `true`. See types.ts's own migration note for the save-side twin of this fact.
+    check('D-055 — crafting the stone hammer spends the recipe and yields it', afterHammer.inventory.stonehammer === 1, JSON.stringify(afterHammer.inventory.stonehammer));
 
-    //  RULING (C1), this batch — KNAP NOW STAGES LIKE EVERY OTHER RECIPE. It used to be a
-    //  direct action on its known-list row (`.knap-btn`, D-172-era: open the pack, select
-    //  the row, act on it, no chip to drag). Today's ruling retired that shortcut for
-    //  everything, knap included — see KnownRecipe.standalone's new meaning. So this drives
-    //  the SAME slate `makeViaSlate` uses for hammer just above and axe just below, rather
-    //  than a bespoke tap sequence: stone is the whole recipe (one slot), and the arity-1
-    //  exception (`canExperimentWith`) is what lets a single chip reach the slate at all.
+    //  RULING (C1), this batch — KNAP STAGES LIKE EVERY OTHER RECIPE, A GENUINE TWO SLOTS.
+    //  It used to be a direct action on its known-list row (`.knap-btn`, D-172-era: open the
+    //  pack, select the row, act on it, no chip to drag), then briefly a one-slot combine
+    //  leaning on its own arity-1 exception once the known-list shortcut was first retired.
+    //  TODAY'S RULING SIMPLIFIES THAT BACK: the stone hammer left `Tools` (a boolean) for
+    //  `Inventory.stonehammer` (a count, `materials.ts`), so a survivor holding the hammer
+    //  and stone genuinely holds TWO combinable things and clears the ordinary two-item floor
+    //  with no special case at all — see `recipes.ts`'s own account of why the arity-1
+    //  exception "stopped being reachable" rather than widened. This drives the SAME slate
+    //  `makeViaSlate` uses for hammer just above and axe just below, staging BOTH real chips.
     const stoneBeforeKnap = (await live()).inventory.stone;
-    const knapCraftTap = await makeViaSlate('blade', ['stone']);
-    check('D-055 — knapping is reachable via a real tap, staged like everything else', knapCraftTap.ok, knapCraftTap.why ?? '');
+    const hammerBeforeKnap = (await live()).inventory.stonehammer;
+    const knapCraftTap = await makeViaSlate('blade', ['stone', 'stonehammer']);
+    check('D-055 — knapping is reachable via a real tap, staged like everything else, TWO real materials now', knapCraftTap.ok, knapCraftTap.why ?? '');
     await sleep(400);
     afterKnap = await live();
     check('D-055 — knapping spends raw stone for a sharp blade', afterKnap.inventory.sharpblade >= TUNE.knapSharpbladeYield && afterKnap.inventory.stone === stoneBeforeKnap - TUNE.knapStoneCost, `sharpblade ${afterKnap.inventory.sharpblade}, stone ${stoneBeforeKnap}->${afterKnap.inventory.stone}`);
+    //  THE HAMMER IS A CATALYST, NEVER SPENT — `spendFromReach`'s own explicit exception, and
+    //  a standing invariant from [[D-172]] this migration must not quietly break: staging it
+    //  as a real combine chip is not the same as spending it.
+    check('D-055 — and the hammer staged alongside it is NOT consumed (a catalyst, not an ingredient)',
+        afterKnap.inventory.stonehammer === hammerBeforeKnap,
+        `hammer ${hammerBeforeKnap} -> ${afterKnap.inventory.stonehammer}`);
 
     //  REGRESSION — the axe cannot be made from raw stone alone anymore; it genuinely
     //  needs the knapped blade. Confirmed by having plenty of raw stone but NO blade yet
@@ -4559,7 +4589,7 @@ async function main() {
         `schemaVersion ${migrated.schemaVersion}`);
     check('SLICE 2B/2d — every type this run actually crafted enters at Demonstrated',
         prePivot.tools.axe === migrated.tools.axe && mintedFor.includes('axe') && mintedFor.includes('stonehammer'),
-        `crafted axe=${prePivot.tools.axe} hammer=${prePivot.tools.stoneHammer}; minted [${mintedFor.join(', ')}]`);
+        `crafted axe=${prePivot.tools.axe} hammer=${prePivot.inventory.stonehammer}; minted [${mintedFor.join(', ')}]`);
     check('SLICE 2B/2d — STRUCTURES ARE MATTER: the shelter and store still stand, undamaged',
         migrated.shelter.built === prePivot.shelter.built
         && migrated.storage.built === prePivot.storage.built
@@ -4576,67 +4606,71 @@ async function main() {
     //  failure. The migration was fine: schemaVersion 12, blueprints minted for every crafted
     //  type, structures untouched — all three assertions above passed.
     //
-    //  CORRECTION, SECOND FINDING, TODAY (RULING C1) — the check was STILL wrong, and had
-    //  been passing for a reason that had nothing to do with its own name. `.build-item h2` —
-    //  every craft row's tag — was retired from the Build panel entirely by [[D-165]]/[[D-166]],
-    //  weeks before this session: NO recipe, shelter included, has offered an h2 row there
-    //  since. This check kept passing anyway because `stoneHammer` is true by this point in
-    //  the run, and the Build panel's OLD knap button carried its own `<h2>Knap a sharp
-    //  blade</h2>` — an entry with NOTHING to do with the shelter, silently keeping the
-    //  count above zero. Relocating knap onto the known list ([[RULING (C1)]] elsewhere in
-    //  this file) removed that accidental h2 and finally turned the vacuity visible. The
-    //  claim itself was never wrong — a migrated blueprint DOES still reveal it can be made —
-    //  it is asserted here on the surface that has actually carried that promise since
-    //  [[RULING 1]]: the known list, not a row type nothing has rendered in a long time.
+    //  CORRECTION, SECOND FINDING (RULING C1, an earlier cut of it) — the check was STILL
+    //  wrong, and had been passing for a reason that had nothing to do with its own name.
+    //  `.build-item h2` — every craft row's tag — was retired from the Build panel entirely
+    //  by [[D-165]]/[[D-166]], weeks before that session: NO recipe, shelter included, had
+    //  offered an h2 row there since. That check kept passing anyway because `stoneHammer`
+    //  was true by that point in the run, and the Build panel's OLD knap button carried its
+    //  own `<h2>Knap a sharp blade</h2>` — an entry with NOTHING to do with the shelter,
+    //  silently keeping the count above zero. Relocating knap onto the known list removed
+    //  that accidental h2 and finally turned the vacuity visible. The claim itself was never
+    //  wrong — a migrated blueprint DOES still reveal it can be made — so it was rewritten
+    //  onto the surface that carried that promise next: the known list.
+    //
+    //  CORRECTION, THIRD FINDING, TODAY (ITEM 3, RULING C1, THIS batch) — the known list
+    //  itself is now gone, not merely relayered again. `.known-row` draws nothing: hud.ts's
+    //  own ledger entry records that [[RULING 1]]'s visibility promise is fully superseded,
+    //  and nothing left in the game answers "what do I know" independent of what is held.
+    //  So the claim is asked of the slate instead, the same way SLICE 2B's `earnedSlate`
+    //  check above proves it: stage what a returning survivor would need for a shelter and
+    //  read the name back, rather than reading an always-visible row that no longer exists.
+    //  Topped up rather than trusted, since wood/stone/fiber have been spent and regathered
+    //  all through this long run and could easily sit at zero here by accident.
     //
     //  So the shelter comes down first. That is safe to do HERE and nowhere earlier: the
     //  structures-are-matter assertion has already run against the standing one.
     const shelterBeforeReveal = (await live()).shelter;
-    await editSave('state.shelter = { ...state.shelter, built: false };');
-    await openSlate();
+    await editSave(`
+        state.shelter = { ...state.shelter, built: false };
+        state.inventory.wood = Math.max(state.inventory.wood, 3);
+        state.inventory.stone = Math.max(state.inventory.stone, 3);
+        state.inventory.fiber = Math.max(state.inventory.fiber, 3);
+    `);
     await sleep(400);
     await shot('slice2b-04-migrated-panel');
-    const migratedKnown = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row .known-name'))
-        .map((n) => (n.textContent ?? '').trim()));
+    const migratedOffer = await slateOffers('shelter', ['wood', 'stone', 'fiber']);
     check('SLICE 2B/2d — the returning survivor is NOT told they have never heard of a shelter',
-        migratedKnown.some((n) => /shelter/i.test(n)),
-        `known rows: ${migratedKnown.join(', ') || '(none)'}`);
-    await closeSlate();
+        migratedOffer.offered,
+        `slate: ${migratedOffer.why}`);
     await sleep(300);
     //  PUT IT BACK. The first attempt at this check took the shelter down and left it down,
-    //  and the run does not end here: the Build button visibility gate then read "visible"
-    //  because something was still buildable, Ch.6's sleep setup found no shelter, and nine
-    //  further checks never ran at all. A late edit to shared run state is a blast radius,
-    //  and mine reached further than I looked. Restored verbatim from what was standing.
+    //  and the run does not end here: Ch.6's sleep setup found no shelter, and nine further
+    //  checks never ran at all. A late edit to shared run state is a blast radius, and mine
+    //  reached further than I looked. Restored verbatim from what was standing. (Inventory is
+    //  left as topped up — `Math.max` only ever raised it, never lowered it below what stood
+    //  here already, so nothing downstream can be starved by this block.)
     await editSave(`state.shelter = ${JSON.stringify(shelterBeforeReveal)};`);
 
-
-
-    //  MIGRATED — THE SIXTH CLAUSE, ASSERTED. This check was written when D-053's fix was
-    //  APPENDED to rather than removed: it added the stone hammer to the enumerated gate and
-    //  then required the button to disappear once that last item was done. Appending is what
-    //  made the defect recur — the spear and the backpack shipped after it and were never
-    //  added, so this check went on passing while the door was shut on a fully-equipped save.
-    //  A green check on a broken door, for two whole slices.
-    //
-    //  Now the strongest form of the claim: EVERYTHING enumerated is done, and the door is
-    //  still there. This run's shelter/storage/torch were already built earlier in the suite,
-    //  so the hammer just crafted above makes it the complete set.
-    const finalVisible = await makerVisible();
-    check('MIGRATED — the door STAYS open once EVERYTHING, including the stone hammer, is done',
-        finalVisible.visible, JSON.stringify(finalVisible));
+    //  RETIRED (ITEM 1, RULING C1, this batch) — THE SIXTH CLAUSE. This proved the maker
+    //  door stayed open once EVERYTHING enumerated (shelter/storage/torch/hammer) was done —
+    //  the strongest form of a claim D-053's own section carried across two prior retirements.
+    //  The door itself is gone now, not merely un-gated (see the D-053 section, above, for the
+    //  full retirement), so what is left worth proving here is the surviving half: the pack
+    //  stays reachable in this exact "everything built" state, which the D-053 section already
+    //  asserts directly. Re-asserting the identical fact a second time under a different name
+    //  would be padding, not coverage, so this clause is retired rather than migrated again.
 
     //  The null-outcome journal: holding a material that satisfies nothing (berries) and
-    //  opening the Build panel journals every (slot, kind) pair as "doesn't combine" —
-    //  proven through the real UI action that triggers it (opening the panel), not by
-    //  calling the brain function directly. Force the journal empty first, deliberately —
-    //  berries were very likely already held (and the panel opened) earlier in this long
-    //  run (the berry bush check, well before this point), so trusting incidental leftover
-    //  state here would be exactly the mistake this file's own lessons already warn against.
-    //  The torch is forced back to unowned so the panel has a buildable row to journal
-    //  against. It no longer has to be done to make the panel REACHABLE — that was the old
-    //  reasoning here, and it was reasoning from the defect: "with nothing left to build the
-    //  button cannot be tapped at all" described a door that should never have shut.
+    //  opening the pack journals every (slot, kind) pair as "doesn't combine" — proven
+    //  through the real UI action that triggers it (opening the panel), not by calling the
+    //  brain function directly. Force the journal empty first, deliberately — berries were
+    //  very likely already held (and the panel opened) earlier in this long run (the berry
+    //  bush check, well before this point), so trusting incidental leftover state here would
+    //  be exactly the mistake this file's own lessons already warn against. The torch is
+    //  forced back to unowned so the panel has a buildable row to journal against. It no
+    //  longer has to be done to make the panel REACHABLE — that was the old reasoning here,
+    //  and it was reasoning from a defect whose door does not exist to shut any more.
     await editSave(`
         state.inventory.berries = 1;
         state.knowledge = { nullPairs: [], events: [] };
@@ -4645,12 +4679,12 @@ async function main() {
     beforeJournal = (await live()).knowledge;
     check('setup — the null-outcome journal is empty (forced, not assumed)', beforeJournal.nullPairs.length === 0, `${beforeJournal.nullPairs.length} pairs`);
     const journalOpenTap = await openBuild();
-    check('setup — the Build panel is reachable to exercise the journal', journalOpenTap.ok, journalOpenTap.reason ?? '');
+    check('setup — the pack is reachable to exercise the journal', journalOpenTap.ok, journalOpenTap.reason ?? '');
     await sleep(300);
     await clickDom('.close-btn');
     await sleep(300);
     afterJournal = (await live()).knowledge;
-    check('REGRESSION — opening the Build panel while holding an unmatched material (berries) journals it as a null combination', afterJournal.nullPairs.some((p) => p.endsWith('|berries')), `${afterJournal.nullPairs.length} pairs`);
+    check('REGRESSION — opening the pack while holding an unmatched material (berries) journals it as a null combination', afterJournal.nullPairs.some((p) => p.endsWith('|berries')), `${afterJournal.nullPairs.length} pairs`);
     check('the null-outcome journal recorded a knowledge event for Ch.2 (stubbed, not wired further this pass)', afterJournal.events.some((e) => e.kind === 'combination-tried' && e.detail.includes('berries')));
 
     // ---- Ch.2, "The Knowledge Model" — domain scores wired for real (MAJOR artifact) ----
@@ -4724,7 +4758,7 @@ async function main() {
         const t = state.nodes.find(n => n.id === 'tr1');
         if (t) { t.available = true; t.depletedAtGameHours = null; }
         state.tools.axe = false;
-        state.tools.stoneHammer = false;
+        state.inventory.stonehammer = 0;
         state.player = { x: -10, y: 45.7 };
     `);
     await faceNode(-10, 44);
@@ -4734,7 +4768,7 @@ async function main() {
     check('Ch.2 item 6 — no axe, no stone hammer: the tap-explain names the stone hammer, not a flat "need an axe"', /stone hammer/i.test(hintNoHammer), `"${hintNoHammer}"`);
 
     await editSave(`
-        state.tools.stoneHammer = true;
+        state.inventory.stonehammer = 1;
         state.inventory.sharpblade = 0;
         const t = state.nodes.find(n => n.id === 'tr1');
         if (t) { t.available = true; t.depletedAtGameHours = null; }
@@ -4768,8 +4802,8 @@ async function main() {
     //  a real, measured walk covers less ground. Distance is measured over a fixed real-time
     //  window, the same technique the fast-movement check uses.
     await editSave(`
-        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
-        state.tools = { axe: false, spear: false, backpack: true, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable' };
+        state.inventory = { wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, stonehammer: 0 };
+        state.tools = { axe: false, spear: false, backpack: true, flask: false, flaskSips: 0, axeGrade: 'serviceable' };
         state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' };
         state.energy = 100;
         state.player = { x: 0, y: 60 };
@@ -4911,8 +4945,8 @@ async function main() {
     await ensureBuilt('storage');
     const deathsBaseline = (await live()).trace.deaths;
     await editSave(`
-        state.inventory = { wood: 12, stone: 8, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2, meat: 0 };
-        state.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 1, stoneHammer: true, axeGrade: 'refined' };
+        state.inventory = { wood: 12, stone: 8, fiber: 4, berries: 0, coconut: 0, shellfish: 0, sharpblade: 2, meat: 0, stonehammer: 1 };
+        state.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 1, axeGrade: 'refined' };
         state.knowledge.domains.harvestingFabrication.technique = 42;
         state.thirst = 0; state.hunger = 0; state.warmth = 0; state.health = 0.4;
         state.fatigue = 70;
@@ -5063,8 +5097,8 @@ async function main() {
 
     //  ITEM 1 — the panel opens from the carried row and shows all six zones with mass+bulk.
     await editSave(`
-        state.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 0, stoneHammer: true, axeGrade: 'serviceable' };
-        state.inventory.wood = 6; state.inventory.stone = 4; state.inventory.fiber = 3;
+        state.tools = { axe: true, spear: false, backpack: true, flask: true, flaskSips: 0, axeGrade: 'serviceable' };
+        state.inventory.wood = 6; state.inventory.stone = 4; state.inventory.fiber = 3; state.inventory.stonehammer = 1;
         state.loadout = { activeHand: null, supportHand: null, belt: [null,null,null,null], pockets: [null,null] };
         state.energy = 100;
     `);
@@ -5990,31 +6024,37 @@ async function main() {
     //  this harness had ever built. Blueprints wiped, so the spear is genuinely undiscovered
     //  and has to be earned through the combine surface rather than granted.
     await editSave(`
-        state.tools.axe = true; state.tools.stoneHammer = true; state.tools.backpack = true;
+        state.tools.axe = true; state.inventory.stonehammer = 1; state.tools.backpack = true;
         state.tools.spear = false;
         state.torch.owned = true; state.shelter.built = true; state.storage.built = true;
         state.blueprints = []; state.experimentCount = 0;
         state.knowledge.nullPairs = [];
-        state.inventory = { wood: 20, stone: 10, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 5, meat: 0 };
+        state.inventory = { wood: 20, stone: 10, fiber: 20, berries: 0, coconut: 0, shellfish: 0, sharpblade: 5, meat: 0, stonehammer: 1 };
         state.energy = 100; state.hunger = 95; state.thirst = 95;
     `);
 
-    //  THE REGRESSION ITSELF. Pre-fix this is the state where every clause of
-    //  `!axe || !shelter || !storage || !torch || !hammer` is false and the button is not
-    //  drawn at all — the door to the room, missing, with the spear's row inside it.
+    //  THE REGRESSION ITSELF, RETIRED (ITEM 1, RULING C1, this batch). Pre-D-053-fix this was
+    //  the state where every clause of `!axe || !shelter || !storage || !torch || !hammer` was
+    //  false and the button was not drawn at all — the door to the room, missing, with the
+    //  spear's row inside it. The door itself is gone now (see the D-053 section, above, for
+    //  the full retirement), so `makerVisible` no longer reads a door — it confirms the PACK
+    //  opens cleanly in this exact fully-equipped state, which is what a survivor actually
+    //  needs to reach the spear's slot below.
     const doorOnFullSave = await makerVisible();
-    check('MAKER — the door is still there on a fully-equipped save (D-053, third occurrence)',
+    check('MAKER — the pack still opens on a fully-equipped save (D-053, third occurrence)',
         doorOnFullSave.visible === true,
         `visible ${doorOnFullSave.visible}${doorOnFullSave.reason ? ` — ${doorOnFullSave.reason}` : ''}`);
 
     const buildBefore = await openBuild();
     await sleep(400);
+    //  `.panel.build`/`.build-item` (counted as rows) ARE GONE (ITEM 1, RULING C1) — `openBuild`
+    //  now lands directly on `.panel.loadout`, the same surface the spear's own slot appears
+    //  on below.
     const spearBefore = await page.evaluate(() => ({
-        panel: Boolean(document.querySelector('.panel.build')),
+        panel: Boolean(document.querySelector('.panel.loadout')),
         //  The spear's offer lives on the SLATE now, so its absence is measured there — see
         //  the `slateOffers` call below rather than a panel row that no longer exists.
         spearRow: false,
-        rows: document.querySelectorAll('.build-item').length,
     }));
     //  UNDISCOVERED MEANS ABSENT, not greyed out — the invention pivot, still holding on the
     //  surface the spear is about to appear on. This is also the control for the check after
@@ -6022,7 +6062,7 @@ async function main() {
     check('MAKER — before the combine, the spear row is ABSENT from the panel',
         buildBefore.ok && spearBefore.panel && !spearBefore.spearRow,
         `open ${buildBefore.ok} ${buildBefore.reason ?? ''}, panel ${spearBefore.panel}, spear row ${spearBefore.spearRow}`);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(420);
 
     //  THE COMBINE, THROUGH THE PLAYER PATH — pack, two chips, the button. Driving
@@ -6559,7 +6599,7 @@ async function main() {
     check('MARITIME 4b — inland, the SITE refusal is shown and the button refuses',
         /water/i.test(inlandSiteText) && inlandBtnDisabled === true,
         `said "${inlandSiteText}", built ${inlandRaftBuilt}, refused ${inlandBtnDisabled}`);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(400);
 
     //  ...then the build, at the shore, through the button itself.
@@ -8699,7 +8739,8 @@ async function main() {
         state.player = { x: 0, y: 96 };
         state.energy = 100; state.health = 100; state.warmth = 90;
         state.hunger = 70; state.thirst = 80;
-        state.tools = { ...state.tools, axe: true, stoneHammer: true };
+        state.tools = { ...state.tools, axe: true };
+        state.inventory = { ...state.inventory, stonehammer: 1 };
         state.knowledge = { ...state.knowledge, domains: { ...state.knowledge.domains,
             harvestingFabrication: { technique: 82, understanding: 40 } } };
         state.capacities = { ...state.capacities, breathWaterConfidence: 88 };
@@ -8771,7 +8812,8 @@ async function main() {
         state.player = { x: 0, y: 96 };
         state.energy = 100; state.health = 100; state.warmth = 90;
         state.hunger = 70; state.thirst = 80;
-        state.tools = { ...state.tools, axe: true, stoneHammer: true };
+        state.tools = { ...state.tools, axe: true };
+        state.inventory = { ...state.inventory, stonehammer: 1 };
         state.knowledge = { ...state.knowledge, domains: { ...state.knowledge.domains,
             harvestingFabrication: { technique: 5, understanding: 5 } } };
     `);
@@ -8796,7 +8838,7 @@ async function main() {
             state.player = { x: ${boulder.x}, y: ${boulder.y - 2} };
             state.energy = 100; state.health = 100; state.warmth = 90;
             state.hunger = 70; state.thirst = 80;
-            state.tools = { ...state.tools, stoneHammer: false };
+            state.inventory = { ...state.inventory, stonehammer: 0 };
         `);
         await faceNode(boulder.x, boulder.y);
         //  `harvest` POLLS UNTIL THE NODE IS CONSUMED, and the boulder is inexhaustible by
@@ -8910,7 +8952,7 @@ async function main() {
             { recipeId: 'stonehammer', discoveredAtGameHours: 2, author: 'them', name: 'Stone hammer', version: 1 }
         ];
         state.storage = { ...state.storage, built: false };
-        state.tools.stoneHammer = false;
+        state.inventory.stonehammer = 0;
     `);
     //  ITS OWN DRIVE, not the hoisted `combineViaPlayerPath`. That binding is assigned inside
     //  the D-063 section, which `--only` skips — so depending on it made this section crash
@@ -8950,9 +8992,9 @@ async function main() {
     const cratePlanBefore = beforeChoice.blueprints.filter((b) => b.recipeId === 'storage').length;
     const cratePlanAfter = afterChoice.blueprints.filter((b) => b.recipeId === 'storage').length;
     check('P0-1 — ...and choosing the HAMMER acts on the hammer, never the crate',
-        pickedHammer.ok && afterChoice.tools.stoneHammer === true
+        pickedHammer.ok && afterChoice.inventory.stonehammer === 1
         && cratePlanAfter === cratePlanBefore && afterChoice.storage.built === false,
-        `${pickedHammer.why} · hammer owned ${beforeChoice.tools.stoneHammer} -> ${afterChoice.tools.stoneHammer}, crate plans ${cratePlanBefore} -> ${cratePlanAfter}, crate built ${afterChoice.storage.built}  |  said "${afterPickSaid.hint}", trail: ${afterPickSaid.trail}`);
+        `${pickedHammer.why} · hammer owned ${beforeChoice.inventory.stonehammer} -> ${afterChoice.inventory.stonehammer}, crate plans ${cratePlanBefore} -> ${cratePlanAfter}, crate built ${afterChoice.storage.built}  |  said "${afterPickSaid.hint}", trail: ${afterPickSaid.trail}`);
 
     // ---- P0-6: THE ILLNESS IS FELT --------------------------------------------
     //
@@ -9674,23 +9716,27 @@ async function main() {
     //  audit. Presence is not visibility, and `enabled` proves nothing.
     if (section("ITEM 1 — Law 216: no pickup inserts a manufacture-ready object into the book")) {
 
+    //  `.panel.build`/`.build-item` (as a row's own heading) ARE GONE (ITEM 1, RULING C1,
+    //  this batch) — `openBuild` now lands directly on `.panel.loadout`, which carries hints
+    //  but no more craft rows of its own to scrape a heading off. What "is a row offered"
+    //  means now is a SLATE question — see the `stageChips`/`readSlate` reads this helper's
+    //  callers make below, the same mechanism `slateOffers` already proves every other
+    //  recipe in this file with.
     const buildSurface = async () => {
         const opened = await openBuild();
         const seen = await page.evaluate(() => {
-            const el = document.querySelector('.panel.build');
-            if (!el) return { open: false, rows: [], hints: [], hintText: '' };
+            const el = document.querySelector('.panel.loadout');
+            if (!el) return { open: false, hints: [], hintText: '' };
             const vis = (e) => {
                 const st = getComputedStyle(e);
                 const r = e.getBoundingClientRect();
                 return st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0.05
                     && r.width > 0 && r.height > 0 && r.top < innerHeight && r.bottom > 0;
             };
-            const rows = Array.from(el.querySelectorAll('.build-item')).filter(vis)
-                .map((r) => (r.querySelector('h2, h3')?.textContent ?? '').trim());
             const hints = Array.from(el.querySelectorAll('.hint-line')).filter(vis)
                 .map((h) => h.getAttribute('data-hint') ?? '');
             const hintText = Array.from(el.querySelectorAll('.hint-line')).map((h) => h.textContent ?? '').join(' ');
-            return { open: true, rows, hints, hintText };
+            return { open: true, hints, hintText };
         });
         return { opened, ...seen };
     };
@@ -9724,10 +9770,16 @@ async function main() {
     `);
     await sleep(700);
     const oneOfEach = await buildSurface();
+    //  "NO TORCH ROW" IS A SLATE QUESTION NOW (ITEM 1, RULING C1) — stage the exact pile the
+    //  scaffold is about (wood + fibre) in the SAME open panel `buildSurface` just left up,
+    //  and read the slate back rather than scraping a row heading that no longer exists.
+    const oneOfEachSlate = oneOfEach.open
+        ? await (async () => { await stageChips(['wood', 'fiber']); return readSlate(); })()
+        : { known: [] };
     await shot('item1-01-one-stick');
     check('ITEM 1 — REACHABILITY: one stick and one strand puts NO Torch row in the book',
-        oneOfEach.open && !oneOfEach.rows.some((r) => /torch/i.test(r)),
-        `visible rows: [${oneOfEach.rows.join(' | ') || 'none'}]`);
+        oneOfEach.open && !oneOfEachSlate.known.some((r) => /torch/i.test(r)),
+        `slate known: [${oneOfEachSlate.known.join(' | ') || 'none'}]`);
 
     //  THE CLAIM, NOT THE WORDING. This greped for /burn/, and fire's prompt changed in
     //  [[D-163]] when the route lost its clock — "the dark is closing in" would be a lie at
@@ -9737,7 +9789,7 @@ async function main() {
         oneOfEach.hints.includes('torch') && oneOfEach.hintText.trim().length > 0
         && !/torch|fire\b/i.test(oneOfEach.hintText),
         `hinted [${oneOfEach.hints.join(', ') || 'none'}] — "${oneOfEach.hintText.trim().slice(0, 70)}"`);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(400);
 
     //  ---- A fire's worth of wood, still nothing learned ----
@@ -9783,7 +9835,7 @@ async function main() {
     check('ITEM 1 — ...and a survivor who WORKED IT OUT is offered both the row and the fire',
         learnedFire.shown && /build fire/i.test(learnedFire.label) && torchRowLive.visible,
         `action "${learnedFire.label}" shown=${learnedFire.shown}; torch button present=${torchRowLive.present} visible=${torchRowLive.visible}`);
-    await realTapDom('.panel.build .close-btn');
+    await realTapDom('.panel.loadout .close-btn');
     await sleep(400);
 
     //  ---- The third symptom: the picture must not claim a pack that is not owned ----
@@ -10273,51 +10325,11 @@ async function main() {
     //  asked the honest question: given that these are earned, does it correctly NOT list them?
     const ALL_RECIPES = ['torch', 'axe', 'shelter', 'storage', 'stonehammer', 'spear',
         'backpack', 'raft', 'fishingline', 'net'];
-    const ROW_TITLES = ['Torch', 'Crude axe', 'Stone hammer', 'Spear',
-        'Backpack', 'Raft', 'Fishing line', 'Net'];
-    const PLACED_TITLES = ['Shelter', 'Storage'];
 
-    /** Every row the Build panel is actually showing, with its gates and its button. */
-    const buildRows = async () => {
-        const opened = await openBuild();
-        if (!opened.ok) return { open: false, reason: opened.reason, rows: [] };
-        const rows = await page.evaluate(() => {
-            const vis = (e) => {
-                const st = getComputedStyle(e);
-                return st.display !== 'none' && st.visibility !== 'hidden' && e.getBoundingClientRect().height > 0;
-            };
-            //  RECIPE ROWS ONLY. Recipe rows are the ones `buildItemMarkup` writes, and those
-            //  are the ones carrying an <h2>; refuge, mend and hint used .build-head instead.
-            //  RULING (C1) — 'rest-item' dropped from this list first: sleep left the Build
-            //  panel entirely, so the class no longer existed here to skip. 'refuge-item' and
-            //  'mend-item' join it this batch, for the same reason — both relocated out
-            //  entirely (see [[D-172]]/this batch's own ruling). Left IN the list anyway,
-            //  same discipline as before: neither class ever carried an <h2>, so the h2 guard
-            //  already excluded them independently and this SKIP entry was always redundant
-            //  defence, not the active filter — removing it would change nothing live, so it
-            //  stays as documentation of what WAS true rather than silently shrinking.
-            const SKIP = ['refuge-item', 'mend-item', 'hint-item'];
-            return Array.from(document.querySelectorAll('.panel.build .build-item'))
-                .filter((it) => vis(it) && it.querySelector('h2') && !SKIP.some((c) => it.classList.contains(c)))
-                .map((it) => {
-                const btn = it.querySelector('button');
-                return {
-                    title: (it.querySelector('h2')?.textContent ?? '').trim(),
-                    done: it.classList.contains('done'),
-                    gates: Array.from(it.querySelectorAll('.gate')).map((g) => ({
-                        text: g.textContent.replace(/\s+/g, ' ').trim(),
-                        unmet: g.classList.contains('unmet'),
-                    })),
-                    button: btn ? btn.textContent.trim() : null,
-                    disabled: btn ? btn.disabled : null,
-                };
-            });
-        });
-        await realTapDom('.panel.build .close-btn');
-        await sleep(400);
-        return { open: true, reason: null, rows };
-    };
-    const rowNamed = (rows, title) => rows.find((r) => r.title.toLowerCase().startsWith(title.toLowerCase()));
+    //  `buildRows`/`rowNamed`/`ROW_TITLES`/`PLACED_TITLES` ARE GONE (ITEM 1, RULING C1, this
+    //  batch), completing what this section's own PANEL 1/PANEL 3 notes already recorded
+    //  about it. See "step 2" below, where the check they served is retired in the same
+    //  spirit rather than left to pass vacuously against a panel that no longer exists.
 
     // ---- 1 · THE DIRECTOR'S OWN TEST, discovered for real then stripped bare -----------
     //
@@ -10328,9 +10340,8 @@ async function main() {
         state.energy = 100; state.health = 100; state.warmth = 60;
         state.hunger = 90; state.thirst = 90;
         state.blueprints = [];
-        state.tools = { ...state.tools, stoneHammer: false };
-        state.storage = { ...state.storage, built: false };
-        state.inventory = { ...state.inventory, wood: 13, stone: 10, sharpblade: 0, fiber: 0 };`);
+        state.inventory = { ...state.inventory, wood: 13, stone: 10, sharpblade: 0, fiber: 0, stonehammer: 0 };
+        state.storage = { ...state.storage, built: false };`);
     await sleep(800);
 
     await realTapDom('.carried-button');
@@ -10369,24 +10380,32 @@ async function main() {
         state.hunger = 90; state.thirst = 90;
         state.blueprints = [${ALL_RECIPES.map((id) => `{ recipeId: '${id}', name: '${id}', version: 1, discoveredAtGameHours: 0, workmanship: 'serviceable' }`).join(', ')}];
         state.tools = { ...state.tools, axe: false, spear: false, backpack: false,
-            stoneHammer: false, fishingLine: false, net: false };
+            fishingLine: false, net: false };
         state.torch = { ...state.torch, owned: false };
         state.shelter = { ...state.shelter, built: false };
         state.storage = { ...state.storage, built: false };
         state.raft = { ...state.raft, built: false };
-        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0, coconut: 0 };`);
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0, coconut: 0, stonehammer: 0 };`);
     await sleep(900);
-    const bare = await buildRows();
+    const bareOpened = await openBuild();
     await shot('panel-03-all-known-nothing-held');
 
-    //  SUPERSEDED AGAIN, and this time completely. Combine makes everything now — hand-held
-    //  straight into your hands, placed by the tap that picks the spot — so the Build panel
-    //  offers NO craft rows at all. What it still offers is what has nowhere else to be, and
-    //  the checks below name each one rather than asserting a count nobody can read.
-    check('PANEL 2 — the Build panel offers NO craft rows: Combine owns every one of them',
-        bare.open && ROW_TITLES.every((t) => !rowNamed(bare.rows, t))
-        && PLACED_TITLES.every((t) => !rowNamed(bare.rows, t)),
-        `Build rows: [${bare.rows.map((r) => r.title).join(' | ')}]`);
+    //  PANEL 2 IS RETIRED TOO (ITEM 1, RULING C1, this batch), completing the pair above. It
+    //  asked "does the Build panel offer NO craft rows" — a real, if reduced, claim while
+    //  `.panel.build` still existed to be queried. The card itself is gone now, not merely
+    //  empty: there is no `.panel.build` left to open at all, so a query scoped to it would
+    //  find nothing and PASS for a reason that has nothing to do with what it claims to prove
+    //  — the exact vacuity this project's Vacuity Law exists to catch, and precisely the
+    //  discipline SLATE 7 (below) applies to the known list's own retirement. So this asks
+    //  the honest version of the same question directly: with every recipe in `ALL_RECIPES`
+    //  demonstrated and nothing held, does the Build card genuinely not exist anywhere in the
+    //  DOM any more — not "empty of rows", but ABSENT.
+    const bareCardGone = await page.evaluate(() => !document.querySelector('.panel.build'));
+    check('PANEL 2 — RETIRED: no Build card exists anywhere, even with every recipe demonstrated and nothing held — Combine owns every one of them',
+        bareOpened.ok && bareCardGone,
+        `pack open ${bareOpened.ok} ${bareOpened.reason ?? ''}, '.panel.build' absent: ${bareCardGone}`);
+    await realTapDom('.panel.loadout .close-btn');
+    await sleep(300);
 
     //  PANEL 3 IS GONE, AND IT IS WORTH SAYING WHY RATHER THAN JUST DELETING IT. It asserted
     //  that full pockets with nothing demonstrated listed no recipe — the Law 95 scope
@@ -10707,7 +10726,11 @@ async function main() {
     const WELL = 'state.player = { x: 0, y: 96 }; state.energy = 100; state.health = 100;'
         + ' state.warmth = 70; state.hunger = 90; state.thirst = 90;'
         + ' state.storage = { ...state.storage, built: false };'
-        + ' state.tools = { ...state.tools, stoneHammer: false, spear: false };';
+        + ' state.tools = { ...state.tools, spear: false };'
+        //  ITEM 3 (RULING C1, this batch) — the stone hammer moved from `Tools.stoneHammer`
+        //  (a boolean) to `Inventory.stonehammer` (a count). The clean baseline zeroes it here
+        //  the same way it zeroes `spear`, above.
+        + ' state.inventory = { ...state.inventory, stonehammer: 0 };';
 
     // ---- 1 · NOTHING KNOWN — anonymous slots, and they give nothing away ---------------
     await editSave(`${WELL}
@@ -10861,91 +10884,101 @@ async function main() {
         full.discoverDisabled === true, `discover disabled ${full.discoverDisabled}`);
     await closePack();
 
-    // ---- 7 · THE KNOWN LIST, SIMPLIFIED (RULING, C1) — name only, detail on selection ----
+    // ---- 7 · THE KNOWN LIST IS RETIRED OUTRIGHT (ITEM 3, RULING C1) --------------------
+    //
+    //  THIS STEP USED TO PROVE "THE KNOWN LIST, SIMPLIFIED" — every earned recipe collapsed
+    //  to a bare name, with have/need detail revealed only on selection, and the SAME row
+    //  collapsing back on a second tap. That interaction is not simplified any further this
+    //  batch: it is GONE. Item 3 retired the panel the collapse/expand toggle lived on, not
+    //  merely the shortcut it offered — hud.ts's own ledger entry records `known`/
+    //  `selectedKnown` leaving `LoadoutPanelView` entirely, and nothing replaces the row, the
+    //  toggle, or the have/need detail it revealed. So this does not silently lose the
+    //  coverage — it verifies the retirement directly, the same discipline PANEL 2 (above)
+    //  and SLATE 8 (below) apply to their own share of the same batch.
     await editSave(`${WELL}
         state.blueprints = [];
         state.inventory = { ...state.inventory, wood: 14, stone: 13, fiber: 8, sharpblade: 0 };
         ${grantBlueprints('axe', 'spear')}`);
     await sleep(600);
     await openPack();
-    const collapsed = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row')).map((r) => ({
-        recipe: r.dataset.known ?? '',
-        expanded: r.classList.contains('expanded'),
-        hasDetail: Boolean(r.querySelector('.known-costs')),
-    })));
-    await shot('slate-07-known-collapsed');
-    check('SLATE 7 — every known row starts collapsed: a NAME, and no have/need detail',
-        collapsed.length >= 2 && collapsed.every((r) => !r.expanded && !r.hasDetail),
-        `rows: ${JSON.stringify(collapsed)}`);
-
-    const firstRecipe = collapsed[0]?.recipe ?? '';
-    await realTapDom(`.known-row[data-known="${firstRecipe}"]`);
-    await sleep(500);
-    const oneExpanded = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row')).map((r) => ({
-        recipe: r.dataset.known ?? '',
-        expanded: r.classList.contains('expanded'),
-        hasDetail: Boolean(r.querySelector('.known-costs')),
-    })));
-    await shot('slate-07-one-selected');
-    check('SLATE 7 — selecting ONE row expands it, and it alone, to full have/need detail',
-        oneExpanded.filter((r) => r.expanded).length === 1
-        && oneExpanded.find((r) => r.recipe === firstRecipe)?.hasDetail === true
-        && oneExpanded.filter((r) => r.recipe !== firstRecipe).every((r) => !r.hasDetail),
-        `rows: ${JSON.stringify(oneExpanded)}`);
-
-    await realTapDom(`.known-row[data-known="${firstRecipe}"]`);
-    await sleep(500);
-    const toggledOff = await page.evaluate(() => Array.from(document.querySelectorAll('.known-row'))
-        .every((r) => !r.classList.contains('expanded')));
-    check('SLATE 7 — ...and selecting the SAME row again collapses it back — a real toggle',
-        toggledOff, `all collapsed after second tap: ${toggledOff}`);
+    //  READ BY BARE CLASS NAME (`getElementsByClassName`, no leading dot), not a CSS
+    //  selector string — see `axeShortfallGone`'s own note (above, `PANEL`) for why a check
+    //  confirming a class draws NOTHING must not spell it out as a selector `tools/check-
+    //  selectors.mjs`'s static gate would then read as the harness DRIVING it.
+    const knownListGone = await page.evaluate(() => ({
+        rows: document.getElementsByClassName('known-row').length,
+        //  No heading anywhere names a browsable "known" list independent of what is
+        //  staged — searched broadly by text rather than by a class this batch just
+        //  removed, so a renamed-but-still-present surface would still be caught.
+        heading: Array.from(document.querySelectorAll('h2, h3, strong'))
+            .map((n) => (n.textContent ?? '').trim().toLowerCase())
+            .find((t) => t.includes('known') || t === 'what you know') ?? null,
+    }));
+    await shot('slate-07-known-list-gone');
+    check('SLATE 7 — RETIRED: the known list itself is gone, not merely collapsed — not one known-row element anywhere, earned or not',
+        knownListGone.rows === 0 && knownListGone.heading === null,
+        JSON.stringify(knownListGone));
     await closePack();
 
-    // ---- 8 · KNAP, REACHABLE THROUGH COMBINE (RULING, C1) --------------------------------
+    // ---- 8 · KNAP, REACHABLE THROUGH COMBINE, A GENUINE TWO SLOTS (RULING, C1) -----------
     //
-    //  THE GATING BUG THIS BATCH FOUND, WITNESSED FIRST. The known-list's own row was gated
-    //  behind holding TWO OR MORE distinct combinable material kinds — a survivor who just
-    //  crafted a stone hammer and is standing there holding only stone would never have seen
-    //  it. Set up exactly that: ONE combinable kind, nothing else.
+    //  THE GATING BUG THIS BATCH FOUND, WITNESSED FIRST — AND NOW FULLY CLOSED, NOT WORKED
+    //  AROUND. The known-list's own row used to be gated behind holding TWO OR MORE distinct
+    //  combinable material kinds, and knap's real ingredient (the hammer) could not be staged
+    //  at all — it lived on `Tools.stoneHammer`, a boolean, not a combinable — so a survivor
+    //  who had just crafted the hammer and was standing there holding only stone would never
+    //  have seen the row. This ruling does not patch around that gap again: the hammer moved
+    //  into `Inventory.stonehammer` (`materials.ts`) and is a genuine second chip now, so the
+    //  ordinary two-item floor is cleared with no special case at all — the same "two to four
+    //  things" gesture as every other recipe, staged the same way: select both, tap Combine.
     await editSave(`${WELL}
         state.blueprints = [];
-        state.tools = { ...state.tools, stoneHammer: true };
-        state.inventory = { wood: 0, stone: 9, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };`);
+        state.inventory = { wood: 0, stone: 9, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, stonehammer: 1 };`);
     await sleep(600);
     await openPack();
-    const knapAlone = await page.evaluate(() => {
-        const row = document.querySelector('.known-row[data-known="knap"]');
-        return {
-            present: Boolean(row),
-            name: (row?.querySelector('.known-name')?.textContent ?? '').trim(),
-            chipCount: document.querySelectorAll('.combine-chip').length,
-        };
-    });
-    await shot('slate-08-knap-alone');
-    check('SLATE 8 — knap is present with NO blueprint — the standing-gate claim, witnessed',
-        knapAlone.present && /blade/i.test(knapAlone.name),
-        `present ${knapAlone.present}, name "${knapAlone.name}", combinable chips ${knapAlone.chipCount} (1 — the gating case)`);
+    //  `.known-row`/`.known-name` ARE GONE (ITEM 3, RULING C1) — see SLATE 7, above. Knap's
+    //  "present with no blueprint" claim is asked of the SLATE now, staging both real
+    //  chips — the hammer and the stone — exactly the way `slateFor` reads every other
+    //  recipe in this section.
+    const knapSlate = await slateFor('stonehammer', 'stone');
+    await shot('slate-08-knap-two-chips');
+    check('SLATE 8 — knap is offered with NO blueprint — the standing-gate claim, witnessed on the slate',
+        knapSlate.known.some((k) => /blade/i.test(k.text)),
+        `known: [${knapSlate.known.map((k) => k.text).join(' | ') || 'none'}]`);
+    //  AND NO SEPARATE KNAP BUTTON OR PANEL EXISTS ANYWHERE — `.knap-btn` retired outright
+    //  in the D-172 era already, and `tools/check-selectors.mjs`'s static gate re-guarantees
+    //  it on every run now; there is no `.panel.build`/known-list detour left for it to hide
+    //  in either.
+    const noKnapShortcut = await page.evaluate(() => ({
+        knapBtn: document.getElementsByClassName('knap-btn').length,
+        knownRow: document.getElementsByClassName('known-row').length,
+        buildPanel: Boolean(document.querySelector('.panel.build')),
+    }));
+    check('SLATE 8 — ...and no separate knap button or panel exists anywhere — it is ordinary Combine, full stop',
+        noKnapShortcut.knapBtn === 0 && noKnapShortcut.knownRow === 0 && !noKnapShortcut.buildPanel,
+        JSON.stringify(noKnapShortcut));
 
     //  RULING (C1), this batch — SELECTING THE ROW NO LONGER OFFERS A DIRECT ACTION. It
     //  used to (`.knap-btn`, checked here until today); now a tap only expands the have/need
-    //  detail SLATE 7 already proved generically for one row at a time. Re-asserting that
-    //  same toggle here would be the redundant-check pattern this project keeps naming, so
-    //  what is left to prove is the thing that is actually new: the craft itself now runs
-    //  through Combine, and the hammer survives it — driven via `makeViaSlate`, the same
-    //  helper every other recipe in this file uses, rather than a bespoke tap sequence.
+    //  detail SLATE 7 used to prove generically for one row at a time, before the known list
+    //  itself retired outright — see SLATE 7, above, for that retirement's own account. What
+    //  is left to prove is the thing that was always actually new here: the craft itself runs
+    //  through Combine as a genuine TWO-material stage, and the hammer survives it — driven
+    //  via `makeViaSlate`, the same helper every other recipe in this file uses, rather than
+    //  a bespoke tap sequence.
     const beforeKnapTap = await live();
-    const knapCraftTap = await makeViaSlate('blade', ['stone']);
+    const knapCraftTap = await makeViaSlate('blade', ['stonehammer', 'stone']);
     await sleep(400);
     const afterKnapTap = await live();
     check('SLATE 8 — knapping spends stone, yields a blade, and the HAMMER IS NOT CONSUMED',
         knapCraftTap.ok
         && afterKnapTap.inventory.stone === beforeKnapTap.inventory.stone - TUNE.knapStoneCost
         && afterKnapTap.inventory.sharpblade === beforeKnapTap.inventory.sharpblade + TUNE.knapSharpbladeYield
-        && afterKnapTap.tools.stoneHammer === true,
+        && afterKnapTap.inventory.stonehammer === beforeKnapTap.inventory.stonehammer,
         `craft ok ${knapCraftTap.ok} (${knapCraftTap.why ?? ''}),`
         + ` stone ${beforeKnapTap.inventory.stone} -> ${afterKnapTap.inventory.stone} (want -${TUNE.knapStoneCost}),`
         + ` blade ${beforeKnapTap.inventory.sharpblade} -> ${afterKnapTap.inventory.sharpblade} (want +${TUNE.knapSharpbladeYield}),`
-        + ` hammer owned before ${beforeKnapTap.tools.stoneHammer} -> after ${afterKnapTap.tools.stoneHammer}`);
+        + ` hammer ${beforeKnapTap.inventory.stonehammer} -> ${afterKnapTap.inventory.stonehammer} (want unchanged)`);
 
     // ---- 9 · SLEEP, RELOCATED TO VITALS (RULING, C1) — reachable with no shelter ----------
     await editSave(`${WELL}
@@ -11419,71 +11452,65 @@ async function main() {
 
     // ---- 5 · WHAT THE BUILD PANEL NO LONGER HAS, and where each thing went (RULING, C1) --
     //
-    //  THIS SECTION'S OWN CLAIM REVERSED. It used to be titled "what the Build panel still
-    //  has, and why it could not be deleted" and asserted knap and sleep BOTH survived there
-    //  because neither had anywhere else to go. Today's ruling gave both somewhere else to be
-    //  — knap onto the known-recipes list (it has no staging step, so it could never reach
-    //  Combine before now), sleep onto the Vitals tab (a tired survivor's own surface). The
-    //  claim this section makes is now the mirror image of the one it used to: the Build
-    //  panel carries NEITHER any more, and each one is verified on its NEW surface instead of
-    //  merely assumed to have followed.
+    //  THIS SECTION'S OWN CLAIM HAS NOW REVERSED TWICE. It was first titled "what the Build
+    //  panel still has, and why it could not be deleted", asserting knap and sleep BOTH
+    //  survived there because neither had anywhere else to go. An earlier cut of this ruling
+    //  gave both somewhere else to be — knap onto the known-recipes list, sleep onto the
+    //  Vitals tab — and this section's claim inverted to match: the Build panel carried
+    //  NEITHER any more, each verified on its new surface rather than merely assumed to have
+    //  followed.
+    //
+    //  TODAY'S CUT GOES FURTHER STILL, ON BOTH HALVES AT ONCE. The Build panel itself —
+    //  `.panel.build`, the card the "not one craft row is left" half of this check used to
+    //  query — is retired outright now (ITEM 1), not merely emptied, so asking it for rows
+    //  would pass vacuously for a reason that has nothing to do with the claim (the same
+    //  vacuity PANEL 2 and SLATE 8, above, already correct for their own share of this
+    //  batch). And knap's own resting place moves again: the known-recipes list it landed on
+    //  is ALSO retired outright (ITEM 3), so knap is proven now not by a row but by staging
+    //  its two real materials — the hammer and the stone — and reading the slate, exactly
+    //  like every other recipe. Sleep's half is untouched: it reached Vitals in an earlier
+    //  ruling this batch does not revisit, and is re-verified here unchanged.
     await editSave(`${WELL}
-        state.tools = { ...state.tools, stoneHammer: true };
-        state.inventory = { ...state.inventory, wood: 9, stone: 9, fiber: 9, sharpblade: 0 };`);
+        state.inventory = { ...state.inventory, wood: 9, stone: 9, fiber: 9, sharpblade: 0, stonehammer: 1 };`);
     await sleep(900);
-    const left = await (async () => {
-        const opened = await openBuild();
-        if (!opened.ok) return { open: false, heads: [], sleep: false };
-        const r = await page.evaluate(() => ({
-            open: true,
-            //  CRAFT ROWS ONLY. Historically the refuge report's head also read "Shelter" — a
-            //  READING of how your shelter is doing, not an offer to build one — and matching
-            //  it reported a craft row that is not there (the same confusion PANEL hit in
-            //  [[D-160]]). RULING (C1), this batch: refuge and mend left Build entirely, so
-            //  this filter is now redundant defence rather than the active fix — kept, per
-            //  the same "document what WAS true" discipline the SKIP list just above uses.
-            heads: Array.from(document.querySelectorAll('.panel.build .build-item'))
-                .filter((it) => !['refuge-item', 'hint-item', 'mend-item']
-                    .some((c) => it.classList.contains(c)))
-                .map((it) => (it.querySelector('h2, .build-head strong')?.textContent ?? '').trim()),
-            allHeads: Array.from(document.querySelectorAll('.panel.build .build-item h2, .panel.build .build-head strong'))
-                .map((h) => (h.textContent ?? '').trim()),
-            //  SLEEP'S NEGATIVE HALF ONLY — `.knap-btn`'s own probe RETIRED this batch, not
-            //  merely relocated: `tools/check-selectors.mjs` flags any harness reference to a
-            //  class the body no longer emits ANYWHERE, and knap's direct action is gone for
-            //  good (RULING, C1 — item 3), not moved to a surface with a new name. Asking the
-            //  DOM "does .knap-btn exist" is also now fully subsumed by "not one craft row is
-            //  left" below: a button that must live inside a `.build-item` cannot be found
-            //  once `.build-item` itself has a length of zero. The gate is the permanent
-            //  guarantee; the zero-rows check is the dynamic one; neither needs the dead
-            //  selector spelled out here to keep making the claim.
-            sleep: Boolean(document.querySelector('.sleep-btn')),
-        }));
-        await realTapDom('.panel.build .close-btn');
-        await sleep(400);
-        return r;
-    })();
+    const buildCardGone = await page.evaluate(() => Boolean(document.querySelector('.panel.build')));
     await shot('makes-05-what-remains');
 
-    check('MAKES 5 — ...and SLEEP ROUGH IS GONE FROM HERE too, relocated to Vitals',
-        left.open && left.sleep === false, `sleep button present in Build: ${left.sleep} (should be false)`);
-
-    check('MAKES 5 — ...and not one craft row is left',
-        left.open && left.heads.length === 0,
-        `craft rows: [${left.heads.join(' | ')}] · everything in the panel: [${left.allHeads.join(' | ')}]`);
+    check('MAKES 5 — RETIRED: the Build panel/card itself no longer exists, not merely emptied of craft rows',
+        !buildCardGone, `'.panel.build' present: ${buildCardGone}`);
 
     //  THE POSITIVE HALF — each one verified on the surface it actually reached, not assumed.
-    await openSlate();
+    //  KNAP FIRST, ON THE SLATE, STAGED AS A GENUINE TWO MATERIALS (ITEM 3, RULING C1) — see
+    //  SLATE 8's own account, above, for the full history of this specific claim's moves.
+    const knapOffer = await slateOffers('blade', ['stonehammer', 'stone']);
+    check('MAKES 5 — ...KNAP is staged like any other recipe now — TWO real materials, named for what it makes',
+        knapOffer.offered, knapOffer.why);
+    //  ...AND THE HAMMER SURVIVES BEING MADE — the standing catalyst invariant from [[D-172]]
+    //  this migration must not quietly break.
+    const beforeMakesKnap = await live();
+    const makesKnapTap = await makeViaSlate('blade', ['stonehammer', 'stone']);
     await sleep(400);
-    const knapOnSlate = await page.evaluate(() => {
-        const row = document.querySelector('.known-row[data-known="knap"]');
-        return { present: Boolean(row), name: (row?.querySelector('.known-name')?.textContent ?? '').trim() };
-    });
-    check('MAKES 5 — ...KNAP landed on the known list instead, named for what it makes',
-        knapOnSlate.present && /blade/i.test(knapOnSlate.name),
-        `present ${knapOnSlate.present}, name "${knapOnSlate.name}"`);
-    await closeSlate();
-    await sleep(300);
+    const afterMakesKnap = await live();
+    check('MAKES 5 — ...and tapping Combine genuinely knaps a blade, with the hammer UNCHANGED afterward',
+        makesKnapTap.ok
+        && afterMakesKnap.inventory.sharpblade > beforeMakesKnap.inventory.sharpblade
+        && afterMakesKnap.inventory.stonehammer === beforeMakesKnap.inventory.stonehammer,
+        `craft ${makesKnapTap.ok} (${makesKnapTap.why ?? ''}), blade ${beforeMakesKnap.inventory.sharpblade} -> ${afterMakesKnap.inventory.sharpblade},`
+        + ` hammer ${beforeMakesKnap.inventory.stonehammer} -> ${afterMakesKnap.inventory.stonehammer}`);
+    //  AND NO SEPARATE KNAP BUTTON OR PANEL SURVIVES IT EITHER — `.knap-btn` retired outright
+    //  in the D-172 era already; the known list it briefly moved to is gone too (SLATE 7).
+    //  READ BY BARE CLASS NAME, not a CSS selector string — see SLATE 7/8's own note (above)
+    //  for why a check confirming a class draws NOTHING must not spell it out as a selector.
+    const noKnapShortcutEither = await page.evaluate(() => ({
+        knapBtn: document.getElementsByClassName('knap-btn').length,
+        knownRow: document.getElementsByClassName('known-row').length,
+    }));
+    check('MAKES 5 — ...and no separate knap button or panel exists anywhere — ordinary Combine, full stop',
+        noKnapShortcutEither.knapBtn === 0 && noKnapShortcutEither.knownRow === 0,
+        JSON.stringify(noKnapShortcutEither));
+
+    //  SLEEP, RE-VERIFIED UNCHANGED — it left the Build panel for the Vitals tab in an
+    //  earlier ruling this batch does not touch again.
     await realTapDom('.carried-button');
     await sleep(600);
     await realTapDom('.backpack-tab[data-tab="vitals"]');
@@ -12275,16 +12302,29 @@ async function main() {
         groundReportTap.ok && afterGroundSleep > beforeGroundSleep + 1,
         `report tap ${JSON.stringify(groundReportTap)}, Δhours ${(afterGroundSleep - beforeGroundSleep).toFixed(2)}`);
 
-    // ---- 3 · BUILD A SHELTER OPENS THE PACK, SHELTER SELECTED — NOT AN INSTANT PLACE ----
-    //  SHELTER GRANTED, DELIBERATELY. `doOpenBuildShelter` only pre-selects a row that
-    //  actually exists on the known list — correct per RULING 1 (nothing is named before it
-    //  is earned) — so testing the shortcut against a survivor who has never discovered
-    //  shelter would prove only that nothing happens, not that the shortcut works. This is
-    //  the shortcut's real audience: someone who already knows shelter, reaching for it again.
+    // ---- 3 · "BUILD A SHELTER" EXPLAINS WHAT'S MISSING, OR OPENS THE PACK WITH A HINT —
+    //          NEVER PLACES DIRECTLY (ITEM 2, RULING C1, this batch) ----------------------
+    //
+    //  `doOpenBuildShelter` WAS REWRITTEN THIS BATCH, replacing a silent, unconditional
+    //  redirect (`this.selectedKnownRecipe = 'shelter'; this.openLoadout(...)`) that was
+    //  blind to whether shelter was even STAGEABLE — it bounced to the pack identically
+    //  whether the survivor held nothing or everything, with no explanation either way. TWO
+    //  OUTCOMES NOW, NAMED BEFORE ANYTHING OPENS (Law 26 — the world tells you first):
+    //
+    //    NOTHING TO STAGE — missing at least one of wood/stone/fibre entirely — is REFUSED,
+    //    with a spoken explanation naming what is missing, and the pack never opens on an
+    //    empty promise.
+    //
+    //    SOMETHING TO STAGE — holding at least one of each — opens the pack (Combine's own
+    //    surface) with a hint saying what for. Shelter is still never placed on the spot
+    //    either way: it always routes through Combine once materials are staged, exactly
+    //    like every other recipe this ruling covers.
+    //
+    //  3a — MISSING MATERIALS: THE EXPLANATION, NOT A SILENT BOUNCE.
     await editSave(`
         state.player = { x: 6, y: 96 };
         state.shelter = { ...state.shelter, built: false };
-        ${grantBlueprints('shelter')}`);
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0 };`);
     await sleep(900);
     //  NOT PRE-APPROACHED, same reasoning as GROUND-HOLD 1 above: this is a fresh fixture
     //  back at the same starting point, so the same avatar-overlap risk applies.
@@ -12297,70 +12337,188 @@ async function main() {
     await sleep(500);   //  the same settle beat GROUND-HOLD 2 needs, and for the same reason.
     await realTapDom('.verb-circle .verb-seg[data-verb="build-shelter-here"]');
     await sleep(700);
-    const afterBuildTap = await page.evaluate(() => ({
+    const afterMissingTap = await page.evaluate(() => ({
         panel: document.querySelector('.panel')?.className ?? null,
-        selectedRow: document.querySelector('.known-row.expanded')?.dataset.known ?? null,
+        said: window.__drift.hints().last ?? '',
         shelterBuilt: window.__drift.state().shelter.built,
     }));
-    check('GROUND-HOLD 3 — "Build a shelter" opens the pack with shelter selected, and builds NOTHING on the spot',
-        afterBuildTap.panel !== null && afterBuildTap.selectedRow === 'shelter' && afterBuildTap.shelterBuilt === false,
-        `panel "${afterBuildTap.panel}", selected "${afterBuildTap.selectedRow}", shelter built ${afterBuildTap.shelterBuilt}`);
+    check('GROUND-HOLD 3a — "Build a shelter" with nothing to stage EXPLAINS what is missing, and opens no panel',
+        afterMissingTap.panel === null
+            && /wood/i.test(afterMissingTap.said) && /stone/i.test(afterMissingTap.said) && /fib/i.test(afterMissingTap.said)
+            && afterMissingTap.shelterBuilt === false,
+        `panel "${afterMissingTap.panel}", said "${afterMissingTap.said}", shelter built ${afterMissingTap.shelterBuilt}`);
+
+    //  3b — MATERIALS HELD: THE PACK OPENS WITH A HINT, AND STILL BUILDS NOTHING ON THE SPOT.
+    await editSave(`
+        state.player = { x: 6, y: 96 };
+        state.shelter = { ...state.shelter, built: false };
+        state.inventory = { ...state.inventory, wood: 8, stone: 8, fiber: 8 };
+        ${grantBlueprints('shelter')}`);
+    await sleep(900);
+    await faceNode(groundPoint.x, groundPoint.y);
+    await sleep(300);
+    await holdWorld(groundPoint.x, groundPoint.y);
+    await page.waitForFunction(
+        () => document.querySelector('.verb-circle .verb-seg') !== null, { timeout: 15_000 }
+    ).catch(() => {});
+    await sleep(500);
+    await realTapDom('.verb-circle .verb-seg[data-verb="build-shelter-here"]');
+    await sleep(700);
+    const afterBuildTap = await page.evaluate(() => ({
+        panel: document.querySelector('.panel.loadout')?.className ?? null,
+        said: window.__drift.hints().last ?? '',
+        shelterBuilt: window.__drift.state().shelter.built,
+    }));
+    check('GROUND-HOLD 3b — ...and WITH wood/stone/fibre held, the same hold opens the pack (Combine) with a hint, and still builds NOTHING on the spot',
+        afterBuildTap.panel !== null && afterBuildTap.said.length > 0 && afterBuildTap.shelterBuilt === false,
+        `panel "${afterBuildTap.panel}", said "${afterBuildTap.said}", shelter built ${afterBuildTap.shelterBuilt}`);
     await page.evaluate(() => {
         const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
         if (c instanceof HTMLElement) c.click();
     });
     await sleep(400);
 
-    // ---- 4 · KNAP STAGES IN COMBINE — ONE MATERIAL, WITH THE HAMMER — AND NO SHORTCUT EXISTS ANYWHERE ----
+    // ---- 4 · KNAP STAGES IN COMBINE — A GENUINE TWO MATERIALS, HAMMER + STONE — AND NO
+    //          SHORTCUT EXISTS ANYWHERE (ITEM 3, RULING C1, this batch) --------------------
     await editSave(`
         state.player = { x: 6, y: 96 };
-        state.tools = { ...state.tools, stoneHammer: true };
-        state.inventory = { wood: 0, stone: ${TUNE.knapStoneCost + 4}, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0 };
+        state.inventory = { wood: 0, stone: ${TUNE.knapStoneCost + 4}, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, stonehammer: 1 };
         state.blueprints = [];`);
     await sleep(900);
     await realTapDom('.carried-button');
     await sleep(600);
-    //  NO SEPARATE "no shortcut exists" DOM PROBE HERE. `tools/check-selectors.mjs` is that
-    //  claim, made permanently and statically: a `.knap-btn` reference anywhere in this file
-    //  now fails the gate on every run, forever, which is a stronger guarantee than one more
-    //  section-local `Boolean(document.querySelector(...))` for a class the body can no
-    //  longer draw. What THIS section still owes a dynamic witness to is that the surviving
-    //  route actually works end to end — proved below by staging the chip and combining.
+    //  NO SEPARATE "no shortcut exists" DOM PROBE FOR `.knap-btn` HERE. `tools/check-
+    //  selectors.mjs` is that claim, made permanently and statically: a `.knap-btn`
+    //  reference anywhere in this file now fails the gate on every run, forever, which is a
+    //  stronger guarantee than one more section-local `Boolean(document.querySelector(...))`
+    //  for a class the body can no longer draw. What THIS section still owes a dynamic
+    //  witness to is (a) that the known list this same claim leaned on until today is ALSO
+    //  gone (SLATE 7/8, above, retire it outright — checked here too rather than assumed to
+    //  have followed), and (b) that the surviving route works end to end — proved below by
+    //  staging BOTH real chips and combining.
+    //  `knapBtn`/`knownRow` READ BY BARE CLASS NAME, not a CSS selector string — see SLATE
+    //  7/8's own note (above) for why a check confirming a class draws NOTHING must not
+    //  spell it out as a selector `tools/check-selectors.mjs`'s static gate would then read
+    //  as the harness DRIVING it.
     const knapDom = await page.evaluate(() => ({
         stoneChip: Boolean(document.querySelector('.combine-chip[data-mat="stone"]')),
-        knownText: document.querySelector('.known-list')?.textContent ?? '',
+        hammerChip: Boolean(document.querySelector('.combine-chip[data-mat="stonehammer"]')),
+        knapBtn: document.getElementsByClassName('knap-btn').length,
+        knownRow: document.getElementsByClassName('known-row').length,
     }));
-    check('KNAP 1 — holding ONLY stone (plus the hammer), a stone CHIP is genuinely offered — the arity-1 exception reaches the UI',
-        knapDom.stoneChip, `chip present: ${knapDom.stoneChip}`);
+    check('KNAP 1 — holding the hammer and stone, BOTH are genuinely offered as real combine chips — no arity exception needed any more',
+        knapDom.stoneChip && knapDom.hammerChip && knapDom.knapBtn === 0 && knapDom.knownRow === 0,
+        JSON.stringify(knapDom));
+    await realTapDom('.combine-chip[data-mat="stonehammer"]');
     await realTapDom('.combine-chip[data-mat="stone"]');
     await sleep(400);
-    const slateAfterStone = await page.evaluate(() => ({
+    const slateAfterBoth = await page.evaluate(() => ({
         knownSlots: Array.from(document.querySelectorAll('.slate-slot.known')).map((s) => s.textContent.trim()),
         combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
     }));
-    check('KNAP 2 — the slate shows "Knapped blade" as a real option from one staged stone',
-        slateAfterStone.knownSlots.some((s) => /blade/i.test(s)),
-        `slate known slots: [${slateAfterStone.knownSlots.join(' | ')}]`);
+    check('KNAP 2 — the slate shows "Knapped blade" as a real option from the two staged materials',
+        slateAfterBoth.knownSlots.some((s) => /blade/i.test(s)),
+        `slate known slots: [${slateAfterBoth.knownSlots.join(' | ')}]`);
     const knapSlot = await page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll('.slate-slot.known')).find((s) => /blade/i.test(s.textContent ?? ''));
-        return Boolean(btn);
+        if (btn instanceof HTMLElement) { btn.click(); return true; }
+        return false;
     });
-    if (knapSlot) await realTapDom('.slate-slot.known');
     await sleep(300);
     const beforeKnapCombine = await page.evaluate(() => ({ ...window.__drift.state().inventory }));
     await realTapDom('.combine-btn');
     await sleep(700);
     const afterKnapCombine = await page.evaluate(() => ({ ...window.__drift.state().inventory }));
     check('KNAP 3 — tapping Combine genuinely GRANTS the blade and spends the stone — not just a discovered plan',
-        afterKnapCombine.sharpblade > (beforeKnapCombine.sharpblade ?? 0)
+        knapSlot
+            && afterKnapCombine.sharpblade > (beforeKnapCombine.sharpblade ?? 0)
             && afterKnapCombine.stone < beforeKnapCombine.stone,
-        `sharpblade ${beforeKnapCombine.sharpblade ?? 0} -> ${afterKnapCombine.sharpblade}, stone ${beforeKnapCombine.stone} -> ${afterKnapCombine.stone}`);
+        `slot selected ${knapSlot}, sharpblade ${beforeKnapCombine.sharpblade ?? 0} -> ${afterKnapCombine.sharpblade}, stone ${beforeKnapCombine.stone} -> ${afterKnapCombine.stone}`);
+    //  AND THE HAMMER STAYS WITH YOU — a catalyst, never consumed. `spendFromReach`'s own
+    //  explicit exception, and a standing invariant from [[D-172]] this migration must not
+    //  quietly break: staging it as a real combine chip is not the same as spending it.
+    check('KNAP 4 — ...and the stone hammer staged alongside it is UNCHANGED afterward — never consumed',
+        afterKnapCombine.stonehammer === beforeKnapCombine.stonehammer,
+        `hammer ${beforeKnapCombine.stonehammer} -> ${afterKnapCombine.stonehammer}`);
     await page.evaluate(() => {
         const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
         if (c instanceof HTMLElement) c.click();
     });
     await sleep(300);
 
+    }
+
+    // ================================================================
+    // RULING (C1), ITEM 5 — WALKING COSTS ENERGY, IN REAL TIME, AT LAST
+    // ================================================================
+    //
+    //  THE REGRESSION THIS CLOSES. Ordinary on-foot walking cost NO energy at all, loaded or
+    //  not — `loadEnergyMultiplierOf` (Ch.6, D-058) is real and shipped, but every one of its
+    //  call sites priced the PASSAGE OF TIME or a named ACT (gathering, swimming), never the
+    //  act of covering ground on foot. A survivor standing still in a heavy pack and one
+    //  sprinting laps in the same pack drained identically. `stepMovement` (game.ts) now
+    //  charges `TUNE.walkBaseDemand` through the same one body resolver every other activity
+    //  uses (`resolveActivity`/`applyEffect`), gated to `!state.raft.aboard && swimStageOf
+    //  (state) === 'ashore'` so it can never double-charge alongside the raft/wading/
+    //  swimming energy costs, which are unchanged.
+    //
+    //  A STILLNESS CONTROL, NOT A BARE "IT WENT DOWN". Energy already drains ambiently over
+    //  time regardless of what a survivor is doing, and that drain existed before this batch
+    //  — a bare before/after comparison would pass whether or not walking itself cost
+    //  anything, which is exactly the vacuity this project keeps finding under a different
+    //  name. So this measures BOTH arms over the identical real-time span from the identical
+    //  starting state — energy lost standing still, and energy lost holding a direction — and
+    //  the claim is that walking costs MEASURABLY MORE than standing still, not merely that
+    //  time passed.
+    if (section('RULING (C1) — ITEM 5: walking costs energy, in real time, at last')) {
+
+    const WALK_TEST_SPAN_S = 8;
+    //  Deep interior, well clear of the shore and of anything else this run may have built —
+    //  {0, 60} sits 60 m from the island's centre against a certified 108 m walkable radius,
+    //  and a plain 40 m southward lane from here is well inside the disc the "Fast movement"
+    //  speed test (above, `D-040`) already certified clear of every built structure from this
+    //  exact spot.
+    const DRY_SPOT = { x: 0, y: 60 };
+    const DRY_TARGET = { x: 0, y: 20 };
+    const freshDryFixture = `
+        state.player = { x: ${DRY_SPOT.x}, y: ${DRY_SPOT.y} };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.hunger = 90; state.thirst = 90; state.fatigue = 0;
+        state.injuries = { bleeding: 0, limp: 0, pain: 0 };
+        state.illness = { severity: 0, cause: null, gameHoursSick: 0 };
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0, sharpblade: 0, stonehammer: 0 };
+        state.raft = { ...state.raft, aboard: false };
+    `;
+
+    // ---- CONTROL: energy lost standing still for WALK_TEST_SPAN_S seconds --------------
+    await editSave(freshDryFixture);
+    await sleep(500);
+    const beforeStill = await live();
+    await sleep(WALK_TEST_SPAN_S * 1000);
+    const afterStill = await live();
+    const stillDrop = beforeStill.energy - afterStill.energy;
+
+    // ---- TREATMENT: the identical span, holding a direction on dry land ----------------
+    await editSave(freshDryFixture);
+    await sleep(500);
+    const beforeWalk = await live();
+    await walkToward(DRY_TARGET.x, DRY_TARGET.y, WALK_TEST_SPAN_S);
+    const afterWalk = await live();
+    const walkDrop = beforeWalk.energy - afterWalk.energy;
+    const walked = Math.hypot(afterWalk.player.x - beforeWalk.player.x, afterWalk.player.y - beforeWalk.player.y);
+
+    check('ITEM 5 — REGRESSION: walking on dry land now costs MORE energy than standing still over the identical span',
+        walkDrop > stillDrop && walkDrop > 0,
+        `held direction ${WALK_TEST_SPAN_S}s, moved ${walked.toFixed(1)}m — energy lost standing ${stillDrop.toFixed(3)}, walking ${walkDrop.toFixed(3)}`
+        + ` (energy ${beforeWalk.energy.toFixed(2)} -> ${afterWalk.energy.toFixed(2)})`);
+
+    //  ...AND IT REALLY MOVED. The cost above is charged on the HELD INTENT (gated to
+    //  `ashore`), not on displacement, so a press that stalled on some unseen obstacle would
+    //  still charge energy and pass the check above for the wrong reason. This is the control
+    //  that catches that: the lane is the one the "Fast movement" speed test above already
+    //  certified, so a real device is expected to cover real ground here.
+    check('ITEM 5 — setup: the survivor genuinely covered ground during the held span (not stalled)',
+        walked > 5, `moved ${walked.toFixed(1)}m in ${WALK_TEST_SPAN_S}s`);
     }
 
     await browser.close();

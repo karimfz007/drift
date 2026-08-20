@@ -69,7 +69,10 @@ export function ownsTool(state: GameState, tool: ToolId): boolean {
     switch (tool) {
         case 'axe': return state.tools.axe;
         case 'spear': return state.tools.spear;
-        case 'stoneHammer': return state.tools.stoneHammer;
+        //  `Inventory.stonehammer` now (v34, item 3) — owning it for EQUIP purposes is
+        //  unchanged; only where the fact lives moved. Staging it in Combine (a wholly
+        //  separate action from wielding it in a hand slot) does not touch this at all.
+        case 'stoneHammer': return state.inventory.stonehammer > 0;
         case 'flask': return state.tools.flask;
         //  The torch is the interesting one: it is CONSUMED, not merely put down. When it
         //  burns out `owned` goes false, and every position referencing it must empty.

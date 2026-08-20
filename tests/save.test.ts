@@ -203,7 +203,7 @@ describe('save — a v5 (D-052) save migrates to v6 (Ch.1 v3, D-055)', () => {
         const envelope = deserialize(v5Save());
         const s = envelope!.state;
         expect(s.inventory.sharpblade).toBe(0);
-        expect(s.tools.stoneHammer).toBe(false);
+        expect(s.inventory.stonehammer).toBe(0);
         expect(s.craftRollCount).toBe(0);
         //  Migrating a v5 save runs the WHOLE ladder, through v7 (Ch.2) too — domains
         //  arrive fresh at the innate floor, the same "hasn't happened yet" honesty as
@@ -278,7 +278,7 @@ describe('save — a v6 (Ch.1 v3, D-055) save migrates to v7 (Ch.2, "The Knowled
         const envelope = deserialize(v6Save());
         const s = envelope!.state;
         expect(s.tools.axeGrade).toBe('refined');
-        expect(s.tools.stoneHammer).toBe(true);
+        expect(s.inventory.stonehammer).toBe(1);
         expect(s.inventory.sharpblade).toBe(1);
         expect(s.craftRollCount).toBe(4);
     });
@@ -516,5 +516,61 @@ describe('THE BACKPACK GATE — fresh versus continued, which is the whole of fi
         const freshRun = createInitialState(1_770_000_000_000);
         expect(freshRun.tools.backpack).toBe(false);
         expect(SCHEMA_VERSION).toBeGreaterThan(19);
+    });
+});
+
+describe('save — a v33 save migrates to v34 (ITEM 3, this batch): the stone hammer, tools -> inventory', () => {
+    //  Possession is proof, and it does not change at the move: a v33 survivor who owned a
+    //  hammer keeps one, now as a count instead of a flag. `true` -> 1, `false`/absent -> 0.
+    const v33Save = (stoneHammer: boolean) => ({
+        schemaVersion: 33,
+        savedAtMs: 1_770_000_000_000,
+        state: {
+            ...createInitialState(1_770_000_000_000),
+            tools: { ...createInitialState(1_770_000_000_000).tools, stoneHammer },
+        },
+    } as unknown as Parameters<typeof migrate>[0]);
+
+    it('a hammer owned at v33 is owned at v34 — as a count, not a flag', () => {
+        const out = migrate(v33Save(true));
+        expect(out).not.toBeNull();
+        expect(out!.state.inventory.stonehammer).toBe(1);
+        expect((out!.state.tools as unknown as Record<string, unknown>).stoneHammer).toBeUndefined();
+    });
+
+    it('no hammer at v33 migrates in as zero, not merely falsy', () => {
+        const out = migrate(v33Save(false));
+        expect(out).not.toBeNull();
+        expect(out!.state.inventory.stonehammer).toBe(0);
+    });
+
+    it('is idempotent — migrating then serialising round-trips at the current schema', () => {
+        const once = migrate(v33Save(true));
+        const twice = deserialize(serialize(once!.state, once!.savedAtMs));
+        expect(twice!.state.inventory.stonehammer).toBe(1);
+        expect(twice!.state.schemaVersion).toBe(SCHEMA_VERSION);
+    });
+
+    it('a REAL, current-shape state relabeled at an older version does not lose a genuine hammer count', () => {
+        //  FOUND VERIFYING THIS BATCH, not asked for by any item: a diagnostic replaying a
+        //  real (already-current-shape) state through the ladder under a lied-about older
+        //  version label — the exact shape the device harness's own "rewind a really-played
+        //  save's version and remigrate" checks use — surfaced that `migrateV33toV34`
+        //  originally computed `stonehammer` from `oldToolsRaw?.stoneHammer === true`
+        //  unconditionally, which cannot tell "this key is false" apart from "this key was
+        //  never here because the data is already past this step". A real, current
+        //  `inventory.stonehammer` count got silently stamped to 0. No real player reaches
+        //  this — a save's own label always matches its own shape — but the harness's
+        //  replay technique does, and a migration step that breaks under it is fragile in a
+        //  way a future migration could inherit.
+        const real = { ...createInitialState(1_770_000_000_000), inventory: { ...createInitialState(1_770_000_000_000).inventory, stonehammer: 1 } };
+        const relabeled = {
+            schemaVersion: 33,
+            savedAtMs: 1_770_000_000_000,
+            state: { ...real, schemaVersion: 33 }, // tools already has no stoneHammer key at all
+        } as unknown as Parameters<typeof migrate>[0];
+        const out = migrate(relabeled);
+        expect(out).not.toBeNull();
+        expect(out!.state.inventory.stonehammer, 'a genuine hammer count was stamped to zero by its own migration').toBe(1);
     });
 });

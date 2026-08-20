@@ -109,7 +109,7 @@ export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
     {
         //  Stone that will not break by hand. Felt when you are holding stone and want an edge.
         recipeId: 'stonehammer',
-        need: (s) => !s.tools.stoneHammer && s.inventory.stone > 0,
+        need: (s) => s.inventory.stonehammer === 0 && s.inventory.stone > 0,
         makings: ['wood', 'stone'],
         prompt: 'Stone does not yield to fingers. Something heavier, swung.',
     },

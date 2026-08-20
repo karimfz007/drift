@@ -148,23 +148,24 @@ function assignable(materials: MaterialKind[], slots: RecipeSlot[], used: Set<st
 /**
  * IS THIS RECIPE SOMETHING THE SURVIVOR KNOWS — THE ONE PLACE THAT QUESTION IS ANSWERED.
  *
- * SIX CALL SITES ASKED THIS SEPARATELY, all as `state.blueprints.some((bp) => bp.recipeId ===
- * X)` — correct for every recipe except one. `knap` is deliberately blueprint-less: its own
- * doc (`KnownRecipe.standalone`) calls it "a standing gate," known the moment the survivor
- * owns the stone hammer, with no discovery step and no plan object ever minted for it. Every
- * one of those six sites was blind to that, which was harmless while knap could not reach any
- * of them — its own direct button skipped Combine's known/unknown machinery entirely. RULING
- * (C1), this batch, routed it through the SAME slate and Discover/Combine pair every other
- * recipe uses, which made the blind spot reachable: staged stone rendered a chip (the
- * known-LIST's own gate, already knap-aware) but the SLATE showed it as nothing at all
- * (`combineSlate`, not knap-aware) — a known recipe that could be seen but not selected.
+ * SEVEN CALL SITES ASKED THIS SEPARATELY (this file's own history — see [[D-174]] for the
+ * six-then-seven count), all as `state.blueprints.some((bp) => bp.recipeId === X)` — correct
+ * for every recipe except one. `knap` is deliberately blueprint-less: `canKnapSharpblade`
+ * (state.ts) is "a standing gate," known the moment the survivor owns the stone hammer, with
+ * no discovery step and no plan object ever minted for it. That did NOT change when the
+ * hammer itself moved into `Inventory` (item 3, this batch, widening knap to a real two-slot
+ * recipe) — a recipe having a REAL second slot and a recipe MINTING a blueprint are different
+ * facts, and this predicate has only ever answered the second one.
  *
- * ONE PREDICATE, not a sixth (now seventh) copy. `knownRecipes` below is refactored onto this
- * too, so there is exactly one place "known" is decided and the two can no longer drift apart.
+ * ONE PREDICATE, not an eighth copy. `combineSlate`, `hasUnknownRival`, `resolveRecipe`'s
+ * tie-break, and `makeChosen`'s guard all read this, so there is exactly one place "known" is
+ * decided and they cannot drift apart from each other or from `knownRecipes` — wait, RULING
+ * (C1), this newer batch: there is no `knownRecipes` any more, see item 3's own ledger entry.
+ * This predicate answers only what the SLATE names, never what a browsable list would have.
  */
 function isRecipeKnown(state: GameState, recipeId: string): boolean {
     if (state.blueprints.some((bp) => bp.recipeId === recipeId)) return true;
-    return recipeId === 'knap' && state.tools.stoneHammer;
+    return recipeId === 'knap' && state.inventory.stonehammer > 0;
 }
 
 /**
@@ -339,6 +340,14 @@ export function reachFor(state: GameState, storageOpen: boolean): CombineReach {
  * the reach, so that is a bug rather than a refusal, and it fails loudly by doing nothing.
  */
 export function spendFromReach(state: GameState, kind: MaterialKind, withStorage: boolean): boolean {
+    //  THE ONE CATALYST, THE ONE EXCEPTION (ITEM 3, this batch). The stone hammer is staged
+    //  and combined exactly like any other material — that is the whole point of moving it
+    //  into `Inventory` — but it is USED, not used UP: [[D-172]]'s own ruling, "the hammer is
+    //  the tool, and it was never consumed," predates this migration and does not bend for it.
+    //  Confirmed present, not merely present-and-unconsumed: this returns `true` (the slot IS
+    //  satisfied) without touching the count, so a staged pile of `[stonehammer, stone]`
+    //  charges one stone and leaves the hammer exactly as it was.
+    if (kind === 'stonehammer') return (state.inventory.stonehammer ?? 0) > 0;
     if ((state.inventory[kind] ?? 0) > 0) { state.inventory[kind] -= 1; return true; }
     if (withStorage) {
         const stored = state.storage.stored as Partial<Record<MaterialKind, number>>;
@@ -741,21 +750,15 @@ export function canExperimentWith(
     //  behaviour it had; only a caller that knows a box is open passes anything else.
     storageOpen = false
 ): string | null {
-    //  RULING (C1) — KNAP'S OWN SHAPE, THE ONE PLACE THE FLOOR OF TWO BENDS. Every other
-    //  recipe here is a blueprint discovered by combining two to four DISTINCT materials;
-    //  knapping is a standing gate (`canKnapSharpblade`'s own words: `stoneHammer && stone >=
-    //  cost`) with exactly one material and a held TOOL doing the rest of the gating, not a
-    //  second material. The universal "everything is staged in Combine, nothing skips it"
-    //  ruling names knap specifically as included — so rather than keep it as a permanent
-    //  exception to that rule, this is the one narrow, checked place the minimum admits a
-    //  single material, and only for the exact shape knapping actually is.
-    //
-    //  CHECKED, NOT ASSUMED, before this was written: `recipesMatching`/`assignable`'s own
-    //  recursion bottoms out at `materials.length === 0`, and `describeSet` already special-
-    //  cased a single material's own English — the matching and execution machinery was
-    //  already arity-1-safe throughout `tryCombineWith`; only this floor ever refused it.
-    const isKnapShape = materials.length === 1 && materials[0] === 'stone' && state.tools.stoneHammer;
-    if (!isKnapShape && materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
+    //  THE ARITY-1 KNAP EXCEPTION IS RETIRED (ITEM 3, this batch), NOT WIDENED. It stood
+    //  here — `isKnapShape`, a single narrow floor-bend for `materials.length === 1` — because
+    //  knapping needed the hammer's OWNERSHIP to satisfy a slot no staged material could fill.
+    //  Now the hammer IS a staged material (`Inventory.stonehammer`, `materials.ts`'s new
+    //  `tool` tag): "stage hammer + stone" is two DISTINCT materials, which the ordinary floor
+    //  below already admits with no bend at all. The exception did not move, it stopped being
+    //  needed — the same shape D-174's own report used for the axe's stale doc comments,
+    //  applied to code that ran rather than prose that only described it.
+    if (materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
     if (materials.length > TUNE.combineMaxInputs) return `That is more than you can hold together at once — ${TUNE.combineMaxInputs} at most.`;
     if (new Set(materials).size !== materials.length) return 'Pick two different things to try together.';
     const reach = reachFor(state, storageOpen);

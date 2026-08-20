@@ -72,7 +72,8 @@ export interface HudView {
     gameHoursElapsed: number;
     goal: string;
     action: { label: string; visible: boolean; ready: boolean };
-    secondary: { label: string; visible: boolean };
+    //  `secondary` IS GONE (ITEM 1, this batch) — the Build door it fed no longer exists.
+    //  See `Hud`'s own constructor comment and the ledger entry for the full account.
     skills: Skills;
 }
 
@@ -87,15 +88,9 @@ export class Hud {
     private hintTimer = 0;
     private lastInv = '';
 
-    /** Opens the maker surface, now reached from the Backpack rather than the world HUD. */
-    private openMaker: () => void = () => {};
-    private makerVisible = false;
-    private makerLabel = '';
-
     constructor(
         overlay: HTMLElement,
         onAction: () => void,
-        onSecondary: () => void = () => {},
         onEat: (food: Food) => void = () => {},
         onDrinkFlask: () => void = () => {}
     ) {
@@ -134,16 +129,11 @@ export class Hud {
         this.actionButton.addEventListener('click', (e) => { e.stopPropagation(); onAction(); });
         this.actionButton.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-        //  LAW 126: THE GLOBAL BUILD BUTTON IS RETIRED. It is not hidden, not disabled and
-        //  not conditional — the element no longer exists. A menu that can raise a shelter
-        //  from anywhere says the site does not matter; construction now happens where the
-        //  survivor stands (§9.6's site card), and making things happens in the Backpack,
-        //  which is the surface about what you carry and what you can do with it.
-        //
-        //  `onSecondary` survives as the Backpack's own "make something" route, so nothing
-        //  the panel could do has been lost — only the door that could be opened from
-        //  nowhere in particular.
-        this.openMaker = onSecondary;
+        //  LAW 126's GLOBAL BUILD BUTTON WAS RETIRED long before this batch — the element
+        //  never existed here even at C05's own peak. What THIS batch retires is what
+        //  replaced it: the Backpack's own "make something" door (`onSecondary`/`openMaker`/
+        //  `makerEntry`, all removed together) — construction now happens purely through
+        //  Combine, which needs no door of its own to open.
 
         //  Food chips eat directly — eating is not a world object, so it stays out of the
         //  world-tap model and off the button stack (D-042). One tap on the chip, one bite.
@@ -177,11 +167,6 @@ export class Hud {
         this.actionButton.style.display = v.action.visible ? 'block' : 'none';
         this.actionButton.textContent = v.action.label;
         this.actionButton.classList.toggle('ready', v.action.ready);
-
-        //  The maker's gate is carried on the view and read by the Backpack, not painted
-        //  onto a world-space button that no longer exists.
-        this.makerVisible = v.secondary.visible;
-        this.makerLabel = v.secondary.label;
     }
 
     private paintBar(k: 'warmth' | 'thirst' | 'hunger' | 'health' | 'energy', value: number, max: number, ok: string, low: number, trend: string): void {
@@ -243,11 +228,6 @@ export class Hud {
             }
         }
         this.invRow.innerHTML = chips.join('');
-    }
-
-    /** What the maker entry should look like right now — same gate the retired button used. */
-    makerEntry(): { visible: boolean; label: string; open: () => void } {
-        return { visible: this.makerVisible, label: this.makerLabel, open: this.openMaker };
     }
 
     showHint(message: string, seconds: number): void {
@@ -427,50 +407,24 @@ function ordinal(n: number): string {
  * no id, no name and no ordering for an unknown outcome, so this layer cannot leak an identity
  * however carelessly it renders. Do not widen it.
  */
-//  WHERE A MISSING PART COMES FROM, in the survivor's own terms — restored with [[RULING 1]].
-//
-//  This table went out with `buildItemMarkup`, and losing it was the quietest third of what the
-//  retirements took: not merely "you are short of fibre", but where fibre IS. A shortfall with no
-//  source is a locked door with no keyhole — D-040/D-043 named that once already, when fibre felt
-//  sourceless to the director.
-const MATERIAL_SOURCE: Record<string, string> = {
-    Wood: 'driftwood on the sand, deadfall by the trees',
-    Stone: 'grey rock outcrops on the beach',
-    Fibre: 'reeds at the pond, or a coconut palm',
-    //  Reworded: it used to end "below", meaning the knap row beneath it in the Build panel.
-    //  That row is no longer beneath anything — knapping keeps its own button in the maker panel.
-    'Sharp blade': 'knap raw stone with a stone hammer',
-    Coconut: 'the coconut palms in the scrub',
-};
+//  `MATERIAL_SOURCE` IS GONE (ITEM 3, this batch) — it existed to answer "where is fibre"
+//  for exactly one reader, the known-list's own shortfall line, which is retired with it.
+//  See the ledger entry for the full account.
 
-/**
- * WHAT THIS SURVIVOR KNOWS HOW TO MAKE — [[RULING 1]]. Mirrors `KnownRecipe` and derives nothing.
- *
- * Every entry is DEMONSTRATED, so naming it is not a spoiler. `afford` never decides whether an
- * entry exists — knowledge does that — it only decides how the entry LOOKS. That order is the
- * ruling: the Build panel died because a row's presence depended on what you were carrying.
- */
-export interface KnownRecipeView {
-    recipeId: string;
-    name: string;
-    needs: Array<{ kind: string; need: number; have: number }>;
-    afford: boolean;
-    /** Mirrors `KnownRecipe.standalone` — true only for knap. RULING (C1), this batch: no
-     *  longer "has its own direct action" (that shortcut is gone); now "may be attempted
-     *  from a single staged material", read by the chip-picker's own visibility gate so a
-     *  survivor holding only stone still sees a chip to tap. */
-    standalone?: boolean;
-}
+//  `KnownRecipeView` AND THE WHOLE KNOWN-LIST ARE GONE (ITEM 3, this batch — see the
+//  ledger). [[RULING 1]]'s own promise was that a demonstrated recipe stays VISIBLE, with
+//  its shortfall shown, even unaffordable — a promise about a browsable LIST. This batch
+//  removes the list itself: there is no surface left in the game that answers "what do I
+//  know" independent of what is in your hands. What replaces it is not a smaller list, it
+//  is the slate's own existing answer to a narrower, more honest question — "what does
+//  THIS staged pile make" — which is the only question RULING 1's list was ever a proxy
+//  for. See the ledger entry for the full account of what that ruling supersedes and why.
 
 export interface CombineSlateView {
     known: Array<{ recipeId: string; name: string }>;
     unknownCount: number;
 }
 
-/** A material key the Build panel can gate a recipe on (Ch.1 v3, D-055 adds sharpblade). */
-type BuildMaterial = 'wood' | 'stone' | 'fiber' | 'sharpblade' | 'coconut';
-
-/** One buildable's cost and current holdings, for the Build panel. */
 /** Mirrors `GrowthReport` from the brain. This layer renders it and derives nothing. */
 export interface GrowthReportView {
     capacities: Array<{ label: string; standing: string; where: string; how: string }>;
@@ -478,106 +432,30 @@ export interface GrowthReportView {
     summary: string;
 }
 
-export interface BuildItemView {
-    have: Partial<Record<BuildMaterial, number>>;
-    /** Already built/crafted — the item shows as done, no button. */
-    done: boolean;
-    /**
-     * May this row exist at all (Slice 2B Stage 2b)? Comes straight from `revealedInPanel`;
-     * this layer renders the answer and derives nothing. Before the pivot every row was
-     * unconditionally present and the panel was a CATALOGUE, answering "what can I build?"
-     * before the player had earned the right to ask. After it, the panel is a RECORD.
-     */
-    revealed: boolean;
-}
-
-/** A thought the survivor is having but cannot act on yet — from `panelHints`. */
+/** A thought the survivor is having but cannot act on yet — from `panelHints`. RELOCATED
+ *  (item 1, this batch) from the Build panel to the Inventory tab, alongside the combine
+ *  row it is actually a nudge toward — see `inventoryBody`. The brain-side mechanism
+ *  (`panelHints`, `reveal.ts`) is unchanged; only where it is read from moved. */
 export interface PanelHintView {
     recipeId: string;
     prompt: string;
 }
 
-export interface BuildCardView {
-    torch: BuildItemView;
-    axe: BuildItemView;
-    storage: BuildItemView;
-    /** The stone hammer (Ch.1 v3, D-055) — a fifth, one-time Build-panel entry. */
-    stoneHammer: BuildItemView;
-    /** DROP 1 FIX — the spear. It had a recipe, a craft function and a verb, and NO SURFACE. */
-    spear: BuildItemView;
-    /** Item 1 FIX — the backpack, stranded the same way one session later. */
-    backpack: BuildItemView;
-    /** THE MARITIME SLICE — the raft. Carries the one blocker a cost list cannot express:
-     *  the site. Null when there is nothing standing in the way but materials. */
-    raft: BuildItemView & { siteBlocker: string | null };
-    /** FISHING — the line and the net. Ordinary rows: their gates ARE costs, so neither
-     *  needs the raft's bespoke markup. Both revealed by discovery like every row here. */
-    fishingLine: BuildItemView;
-    net: BuildItemView;
-    /**
-     * The teaching half of the pivot, and the reason subtraction is survivable. An empty
-     * panel with no hints is a dead end and a bug report; an empty panel that says *"the dark
-     * is closing in, and you are holding something that burns"* is an invitation. Never names
-     * a product — `discovery.ts` holds that line and its tests guard it.
-     */
-    hints: PanelHintView[];
-    //  MEND AND F3 ARE GONE FROM HERE (RULING, C1) — see `showBuildCard`'s own comment for
-    //  the full account. `mendShelter`/`refuge` fields removed with them: nothing here reads
-    //  them any more, and a field a view still carries after its row is gone is exactly the
-    //  "dead wiring reads as a live surface" trap this file's own D-165 comment already names.
-}
+//  `BuildItemView`/`BuildCardView` ARE GONE (ITEM 1, this batch). `showBuildCard`'s own
+//  render had already been reduced, over several prior sessions, to a hint block and a
+//  close button — every row these two interfaces described was computed in `game.ts` and
+//  never once read by the template. See the ledger entry for the full audit.
 
 
 
-/**
- * The Build panel (C05, +stone hammer at Ch.1 v3/D-055): every entry independently
- * gated — a page each, never a shared priority slot (that is exactly the bug class
- * D-040/D-042 fixed once already; a second shared slot here would only invite it back).
- */
-export function showBuildCard(
-    overlay: HTMLElement,
-    view: BuildCardView,
-    //  TEN CRAFT CALLBACKS ARE GONE, and their `bind` calls with them. [[D-165]] removed the
-    //  rows those buttons lived in — Combine makes everything now — and left the wiring behind:
-    //  ten parameters threaded from `game.ts`, ten `bind` calls looking for selectors nothing
-    //  renders. Dead wiring is worse than no wiring, because it reads as a live surface to
-    //  anyone auditing this file and it is what a stale harness check attaches itself to.
-    //
-    //  KNAP AND SLEEP FOLLOWED THEM OUT (RULING, C1). Both were here only because they had
-    //  nowhere else to be — the note below said so in as many words — and both now do:
-    //  knapping is a KNOWN-LIST entry (RULING 1's list already answers "what can this
-    //  survivor make"; knapping is one more true answer), and rest is a Vitals-tab row,
-    //  where a tired survivor actually goes to ask "how am I doing." Their callbacks and
-    //  `bind()` calls left with them; see `showLoadout` and `vitalsBody` for where they live.
-    //
-    //  MEND AND THE F3 REFUGE READING FOLLOWED THEM (RULING, C1, this batch). The comment
-    //  this replaced argued both belonged here: MEND was "kept only because removing a
-    //  working control is not this batch's ruling to make" (that ruling has now been made —
-    //  it was always genuinely redundant, the shelter's own verb circle already carries it,
-    //  no capability is lost by removing the duplicate); the F3 reading was an EXPLICIT
-    //  earlier keep ("the pivot removed the catalogue, NOT the panel — the refuge reading
-    //  survives", SLICE 2B's own words), overturned rather than reversed by oversight — a
-    //  survivor asking "how am I doing tonight" belongs on the SAME surface sleep and knap
-    //  already proved out, not on the construction one. Both now live in `vitalsBody`.
-    //  `onMendShelter`, `mendShelter`, `refuge` and their markup left with them.
-    onClose: () => void
-): void {
-    const el = panel(overlay, 'build');
-    const hintMarkup = view.hints.length
-        ? `<div class="build-item hint-item">
-             <div class="build-head"><strong>Something is nagging at you</strong></div>
-             ${view.hints.map((h) => `<p class="subtitle hint-line" data-hint="${h.recipeId}">${h.prompt}</p>`).join('')}
-             <p class="subtitle hint-how">Open your pack and try putting things together.</p>
-           </div>`
-        : '';
-    el.innerHTML = `
-        <div class="build-list">
-            ${hintMarkup}
-        </div>
-        <button class="quiet close-btn" type="button">Close</button>`;
-    let done = false;
-    el.querySelector('.close-btn')!.addEventListener('click', () => { if (done) return; done = true; fade(el, onClose); });
-}
+//  `showBuildCard` IS GONE (ITEM 1, this batch). Its own template had been reduced, over
+//  [[D-165]]/[[D-172]]/[[D-174]], to a hint block and a close button — every craft row it
+//  once drew was retired first and its own `view` fields (`BuildCardView`, removed above)
+//  kept being computed in `game.ts` and passed in after the markup that would have used
+//  them was already gone. The hint block itself was real, not vestigial — see
+//  `inventoryBody`, where `panelHints` now renders using the same classes
+//  (`build-item hint-item`, `build-head`, `hint-line`, `hint-how`) this function used, so no
+//  test asserting on those classes needed to change shape, only which panel it looks in.
 
 /** A brief toast when a skill levels — mastery, felt (§I.9). */
 export function levelToast(overlay: HTMLElement, skill: string, level: number): void {
@@ -750,7 +628,9 @@ const MATERIAL_LABEL: Record<string, string> = {
     //  THE WRECK SLICE. Named as a survivor would name them, not as cargo manifest entries.
     metal: 'Hull plate', wiring: 'Cable', glass: 'Glass', medicine: 'Medical store', meat: 'Meat',
     //  What a drunk coconut leaves behind. Named for the object, not the recipe it might feed.
-    shell: 'Coconut shell', fish: 'Fish'
+    shell: 'Coconut shell', fish: 'Fish',
+    //  ITEM 3 (this batch) — the stone hammer, now a real combine chip like anything else.
+    stonehammer: 'Stone hammer'
 };
 
 export interface LoadoutPanelView {
@@ -776,25 +656,20 @@ export interface LoadoutPanelView {
     /** Materials the player can try putting together (Try-Combining, D-063 item 4).
      *  Empty when there is nothing to experiment with. */
     combinable: string[];
-    /** RULING 1 — every DEMONSTRATED recipe, with what it still wants. Knowledge gates this
-     *  list; materials only inform how each entry looks. */
-    known: KnownRecipeView[];
-    /**
-     * RULING (C1) — WHICH KNOWN ROW IS EXPANDED, if any. The list itself shows names only;
-     * full have/need detail (and, for a standalone entry, its action) appears for exactly the
-     * selected `recipeId`, or for none. `null` is a real, common state — nothing selected —
-     * not "not wired yet", so it is not optional the way a genuinely new field would be.
-     */
-    selectedKnown: string | null;
+    //  `known`/`selectedKnown` ARE GONE (ITEM 3, this batch). [[RULING 1]]'s list is
+    //  retired outright, not merely hidden — see the ledger entry and the comment above
+    //  `CombineSlateView` for what answers "what do I know" now instead.
+    /** RELOCATED from the Build panel (item 1, this batch) — the discovery-nudge hints
+     *  `panelHints` (reveal.ts) produces, rendered in `inventoryBody` now. */
+    hints: PanelHintView[];
     /** LAW 126: the Backpack's other two tabs. Both are READ from the brain — this layer
      *  renders them and derives nothing, exactly as the Inventory tab already does. */
     vitals: BodyReportView;
     vitalsExtra?: VitalsExtraView;
     /** Item 4 — the two shipped skills, which this panel never showed. */
     playerSkills?: Skills;
-    /** LAW 126: the maker route, now living in the Backpack. Same gate the retired global
-     *  button used — the door moved, the lock did not change. */
-    maker: { visible: boolean; label: string };
+    //  `maker` IS GONE (ITEM 1, this batch) — the Build door it opened no longer exists;
+    //  see the ledger entry for the full account of `makerOffers`'s own retirement.
     skills: GrowthReportView;
 }
 
@@ -1048,7 +923,11 @@ export function showLoadout(
     //  leaving it inert — a hook nothing calls is the next reader's false lead.
     tab: BackpackTab = 'inventory',
     onTab: (next: BackpackTab) => void = () => {},
-    onMake: () => void = () => {},
+    //  `onMake` IS GONE (ITEM 1, this batch) — the Build panel it opened no longer exists.
+    //  A genuinely removed MIDDLE parameter, not an appended one — every positional
+    //  argument after it shifts, and the call site (game.ts) was rewritten in the same
+    //  edit rather than left to drift, per this file's own "grows safely at its tail" rule
+    //  for what removal does NOT get to skip.
     //  DROP 5 — appended at the END, like every optional handler here, so no existing
     //  positional call site shifts. Inserting them mid-list broke two of them at once.
     /** Toggle the receiver. There is no send counterpart, by design. */
@@ -1064,7 +943,9 @@ export function showLoadout(
     /** RULING (C1) — sleep, relocated from the Build panel. Appended at the tail, as every
      *  optional handler here has been since P0-2 found the cost of doing otherwise. */
     onSleep: () => void = () => {},
-    onSelectKnown: (recipeId: string | null) => void = () => {},
+    //  `onSelectKnown` IS GONE (ITEM 3, this batch) — the known-list row it expanded no
+    //  longer exists. See the ledger entry; the call site shift is the same "rewritten, not
+    //  drifted" discipline `onMake`'s own removal note above states.
     //  RULING (C1), this batch — EVERY RECIPE IS BUILT BY STAGING IN COMBINE, KNAP INCLUDED.
     //  `onKnapSharpblade` (a direct-tap action bypassing staging entirely, the ONE remaining
     //  violation of that rule — every other known-list entry already staged its materials)
@@ -1142,62 +1023,30 @@ export function showLoadout(
     //    Discover commits to finding out what a grey slot is. The old flow made those a single
     //    press with a question in between, so wanting to experiment meant first being offered
     //    something you already knew and then declining it.
-    //  WIDENED, NOT JUST RULING 1's ORIGINAL CONDITION. This gated the WHOLE row — chips,
-    //  slate, AND the known-list — on holding two or more DISTINCT combinable kinds. RULING
-    //  1's own comment says the known-list is "present whenever the survivor has demonstrated
-    //  anything, whether or not they can afford it today" — which the gate quietly broke
-    //  whenever `combinable.length` was 0 or 1, hiding the list in exactly that state. It is
-    //  also the state a survivor who JUST crafted a stone hammer is commonly standing in —
-    //  holding one thing, stone — which would have made knap's new entry (below) invisible in
-    //  its own most likely arrival scenario. So the row shows whenever EITHER half has
-    //  something to offer.
+    //  SIMPLIFIED BACK, ITEM 3 (this batch). This gate carried a standing exception —
+    //  `hasStandaloneKnown` — for the one recipe (knap) whose real ingredient could not be
+    //  staged as a chip, only owned. Now the stone hammer IS a chip (`Inventory.stonehammer`,
+    //  `materials.ts`), so a survivor holding the hammer and stone genuinely holds TWO
+    //  combinable things and clears this floor with no help — the exception did not widen,
+    //  it stopped being reachable. `view.combinable.length >= 2` is the whole gate again, the
+    //  same shape it had before knap ever needed a floor-bend.
     //
-    //  RULING (C1), this batch — THE CHIP-PICKER ITSELF NEEDS THE SAME WIDENING, ONE LEVEL
-    //  DEEPER. Knap is now a STAGED recipe like every other — its direct button is gone — but
-    //  its own recipe has exactly one slot, so a survivor holding only stone would never see
-    //  a "Put two to four things together" section at all under the old `>= 2` floor, and
-    //  never get a stone CHIP to tap in the first place. `standalone` (kept, repurposed: it
-    //  no longer marks "has its own button", it marks "may be attempted from one material")
-    //  is the same flag `canExperimentWith`'s own arity exception reads on the brain side —
-    //  checked there, trusted here, not re-derived.
-    const hasStandaloneKnown = view.known.some((k) => k.standalone);
-    const combineRow = view.combinable.length >= 2 || view.known.length > 0
+    //  THE KNOWN-LIST'S OWN HALF OF THIS ROW IS GONE (item 3) — see the ledger entry. What
+    //  is left below is exactly what the pre-[[RULING 1]] row already was: chips, a slate,
+    //  Combine and Discover. Nothing here answers "what do I know" any more; the slate
+    //  answers "what does THIS pile make", named if you know it, "?" if you do not.
+    const combineRow = view.combinable.length >= 2
         ? `<div class="combine-row">
-             ${view.combinable.length >= 2 || hasStandaloneKnown ? `
              <p class="subtitle">Put two to four things together.</p>
              <div class="combine-chips">${view.combinable.map((m) =>
                 `<button class="quiet combine-chip" data-mat="${m}" type="button">${MATERIAL_LABEL[m] ?? m}</button>`
              ).join('')}</div>
-             <div class="combine-slate"></div>` : ''}
-             <!--  RULING 1 — THE THINGS YOU KNOW, AND WHAT THEY STILL WANT. Present whenever the
-                   survivor has demonstrated anything, whether or not they can afford it today.
-                   RULING (C1) — SIMPLIFIED. The list itself now shows a NAME ONLY; full
-                   have/need detail appears for exactly the SELECTED row. A survivor scanning
-                   "what do I know" was reading a wall of gate chips for every entry at once,
-                   most of them irrelevant to whatever they actually came to check.
-                   RULING (C1), this batch — AND NO ENTRY OFFERS A SHORTCUT ANY MORE. Knap's
-                   own action button is gone; every recipe, known or not, is built the same
-                   way now — staged in Combine, above, never tapped directly from here. This
-                   list still answers "what do I know", it just never answers "make it" too.  -->
-             ${view.known.length === 0 ? '' : `<div class="known-list">
-                ${view.known.map((k) => {
-                    const selected = k.recipeId === view.selectedKnown;
-                    const detail = !selected ? '' : `
-                        <span class="known-costs">${k.needs.map((x) => `<span class="known-gate ${x.have >= x.need ? 'met' : 'unmet'}">${MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind} ${x.have}/${x.need}</span>`).join('')}</span>
-                        ${k.afford ? '' : `<span class="known-where">${k.needs.filter((x) => x.have < x.need)
-                            .map((x) => MATERIAL_SOURCE[MATERIAL_LABEL[x.kind as BuildMaterial] ?? x.kind] ?? '')
-                            .filter(Boolean).join(' · ')}</span>`}`;
-                    return `<div class="known-row ${k.afford ? 'ready' : 'short'}${selected ? ' expanded' : ''}" data-known="${k.recipeId}">
-                        <span class="known-name">${k.name}</span>${detail}
-                    </div>`;
-                }).join('')}
-             </div>`}
+             <div class="combine-slate"></div>
              <p class="subtitle evidence-line"></p>
-             ${view.combinable.length >= 2 || hasStandaloneKnown ? `
              <div class="combine-actions">
                <button class="primary combine-btn" type="button" disabled>Combine</button>
                <button class="quiet discover-btn" type="button" disabled>Discover</button>
-             </div>` : ''}
+             </div>
            </div>`
         : '';
 
@@ -1235,14 +1084,26 @@ export function showLoadout(
             ${view.radio.writeBlocker ? `<p class="subtitle radio-writeblock">${view.radio.writeBlocker}</p>` : ''}</div>`}
         </div>`;
 
+    //  RELOCATED FROM THE BUILD PANEL (ITEM 1, this batch), same classes `showBuildCard`
+    //  used (`build-item hint-item` / `build-head` / `hint-line` / `hint-how`) so nothing
+    //  that asserted on them needed to change shape, only which panel to look in. Placed
+    //  above the combine row it is a nudge TOWARD — Law 113's scaffold pointing at the exact
+    //  gesture below it, not a separate destination the way the Build panel's door was.
+    const hintsRow = !view.hints.length ? '' : `
+        <div class="build-item hint-item">
+             <div class="build-head"><strong>Something is nagging at you</strong></div>
+             ${view.hints.map((h) => `<p class="subtitle hint-line" data-hint="${h.recipeId}">${h.prompt}</p>`).join('')}
+             <p class="subtitle hint-how">Try putting things together.</p>
+        </div>`;
+
     const inventoryBody = `
         <h2>${view.atStorage ? 'The store box' : 'Carried'}</h2>
         <p class="subtitle load-line">${view.massKg.toFixed(1)} kg · bulk ${view.bulk.toFixed(1)}</p>
         ${storageRow}
         ${equipRow}
-        ${view.maker.visible ? `<button class="primary make-btn" type="button">${view.maker.label}</button>` : ''}
         ${radioRow}
         <button class="quiet growth-btn" type="button">What the island has done to you</button>
+        ${hintsRow}
         ${combineRow}
         ${dropRow}
         <div class="zones">${zoneRows}</div>`;
@@ -1310,28 +1171,9 @@ export function showLoadout(
             if (mat) { onDrop(mat); fade(el, onClose); }
         });
     }
-    el.querySelector<HTMLButtonElement>('.make-btn')?.addEventListener('click', () => {
-        el.remove();
-        onMake();
-    });
-
-    //  RULING (C1) — SELECTING A KNOWN ROW, the same re-render-via-reopen shape `.backpack-tab`
-    //  already uses below: the panel is a pure function of the view, so "change what is
-    //  selected" means "ask for a new view with that selection and redraw", not a partial DOM
-    //  patch that could drift from what a fresh render would produce.
-    //
-    //  `.knap-btn` AND ITS stopPropagation GUARD ARE GONE (RULING, C1, this batch). No known
-    //  row carries its own nested action button any more — every recipe is built by staging
-    //  in Combine, above — so a row's own click can never again need to be told apart from a
-    //  child control's.
-    el.querySelectorAll<HTMLButtonElement>('.known-row').forEach((row) => {
-        row.addEventListener('click', () => {
-            const id = row.dataset.known;
-            if (!id) return;
-            el.remove();
-            onSelectKnown(id === view.selectedKnown ? null : id);
-        });
-    });
+    //  `.make-btn`/`onMake` AND `.known-row`/`onSelectKnown` ARE GONE (ITEMS 1 AND 3, this
+    //  batch) — the Build panel they opened, and the known-list row they expanded, no
+    //  longer exist. See the ledger entry for the full account.
 
     el.querySelectorAll<HTMLButtonElement>('.backpack-tab').forEach((b) => {
         b.addEventListener('click', () => {

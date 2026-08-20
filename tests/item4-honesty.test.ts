@@ -124,7 +124,7 @@ describe('ITEM 4 — every MANUFACTURE verb charges exactly what its recipe decl
         { recipeId: 'axe', run: (s) => craftAxe(s), made: (s) => s.tools.axe },
         { recipeId: 'spear', run: (s) => craftSpear(s), made: (s) => s.tools.spear },
         { recipeId: 'backpack', run: (s) => makeBackpack(s), made: (s) => s.tools.backpack },
-        { recipeId: 'stonehammer', run: (s) => craftStoneHammer(s), made: (s) => s.tools.stoneHammer },
+        { recipeId: 'stonehammer', run: (s) => craftStoneHammer(s), made: (s) => s.inventory.stonehammer > 0 },
         {
             recipeId: 'shelter',
             run: (s) => buildShelter(s, s.player.x, s.player.y),
@@ -169,9 +169,9 @@ describe('ITEM 4 — every MANUFACTURE verb charges exactly what its recipe decl
         woodwork: 'wood', masonry: 'stone', textile: 'fiber', blade: 'sharpblade', buoyant: 'coconut',
     };
 
-    it('knapping — the one-slot recipe is charged too', () => {
+    it('knapping — the standing-gate recipe is charged too', () => {
         const s = stocked();
-        s.tools.stoneHammer = true;
+        s.inventory.stonehammer = 1;
         const before = s.inventory.stone;
         knapSharpblade(s);
         expect(before - s.inventory.stone, 'knapping was free').toBe(TUNE.knapStoneCost);

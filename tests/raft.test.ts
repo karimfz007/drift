@@ -23,7 +23,7 @@ import { resolveRecipe } from '../src/brain/experiment';
 import { materialSatisfies } from '../src/brain/materials';
 import { closeSurvivor } from '../src/brain/succession';
 import { verbsFor, availableVerbs, defaultVerb, holdOpensCircle } from '../src/brain/verbs';
-import { makerOffers, panelHints, revealedInPanel } from '../src/brain/reveal';
+import { panelHints, revealedInPanel } from '../src/brain/reveal';
 import { Session } from '../src/brain/session';
 import { deserialize, serialize, type SaveRepository } from '../src/brain/save';
 import { realSecondsPerGameHour } from '../src/brain/clock';
@@ -479,29 +479,17 @@ describe('matter, memory, and the save', () => {
 });
 
 // ---------------------------------------------------------------------------
-describe('the raft reaches the SURFACE — two hardcoded lists found by reading', () => {
+describe('the raft reaches the SURFACE — a hardcoded list found by reading', () => {
     /**
-     * Neither of these came from a bug report. Both were found by reading `reveal.ts` while
-     * the device harness was mid-run, and both are the same class the file's own comments
-     * warn about twice: **a gate you have to remember to extend is a defect with a delay on
-     * it.** They are regression-locked here rather than merely fixed, because that is the
-     * third and fourth time a hardcoded list in that one file has gone stale.
+     * Found by reading `reveal.ts` while the device harness was mid-run, the same class the
+     * file's own comments warn about: **a gate you have to remember to extend is a defect
+     * with a delay on it.** Regression-locked here rather than merely fixed.
+     *
+     * ITS SIBLING — "a built raft stops being an offer" (`satisfied()`'s own missing raft
+     * case, inside the retired `makerOffers`) — IS GONE (item 1, this batch). `makerOffers`
+     * and `satisfied` no longer exist; there is no door left that could stay open on a moored
+     * raft, so the regression it guarded against cannot recur in any form. See the ledger.
      */
-    it('REGRESSION — a built raft stops being an offer (it fell to `default: false`)', () => {
-        const s = stocked(atShore(fresh()));
-        s.blueprints = [{
-            id: 'bp-raft', name: 'raft', recipeId: 'raft', inputs: ['wood'], version: 1,
-            workmanship: 'crude', author: 'castaway', discoveredAtGameHours: 1,
-        }] as never;
-        //  WITNESS: before it is built the raft IS genuinely on offer, or the assertion below
-        //  passes for the wrong reason — an offer that was never there cannot go away.
-        expect(makerOffers(s)).toContain('raft');
-        expect(craftRaft(s)).toBe(true);
-        //  Pre-fix this still contained 'raft': `satisfied()` had no case for it, so the maker
-        //  door went on citing a raft that was already moored at the shore.
-        expect(makerOffers(s)).not.toContain('raft');
-    });
-
     it('REGRESSION — the raft\'s suspicion can actually REACH the panel as a hint', () => {
         const s = stocked(atShore(fresh()));
         s.capacities.breathWaterConfidence = TUNE.capacityInnateFloor + 5;

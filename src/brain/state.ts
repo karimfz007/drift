@@ -62,7 +62,8 @@ export function createInitialState(nowMs: number): GameState {
         fatigue: 0,
         resting: false,
         inventory: emptyInventory(),
-        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, stoneHammer: false, axeGrade: 'serviceable', fishingLine: false, net: false, salvageTools: false },
+        //  `stoneHammer` LEFT (v34, item 3) — see `emptyInventory`'s own `stonehammer: 0`.
+        tools: { axe: false, spear: false, backpack: false, flask: false, flaskSips: 0, axeGrade: 'serviceable', fishingLine: false, net: false, salvageTools: false },
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
@@ -169,7 +170,10 @@ export function emptyInventory(): Inventory {
         shell: 0,
         //  THE WRECK SLICE. Zero, and a fresh castaway can never gain one on the island —
         //  every gram of these exists 115 m offshore.
-        metal: 0, wiring: 0, glass: 0, medicine: 0
+        metal: 0, wiring: 0, glass: 0, medicine: 0,
+        //  ITEM 3 (this batch) — the stone hammer, migrated from `Tools.stoneHammer`. See
+        //  `Inventory.stonehammer`'s own doc (types.ts) for why it lives here now.
+        stonehammer: 0
     };
 }
 
@@ -382,7 +386,10 @@ export function nodeHoldSeconds(state: GameState, node: WoodNode): number {
     //  through `mastery` below, but the bluff trains no skill, so an inexhaustible face can
     //  never become an XP faucet however long you stand at it.
     if (node.kind === 'boulder') {
-        const base = state.tools.stoneHammer
+        //  `Inventory.stonehammer` now (v34, item 3) — owning it is still all this asks;
+        //  wielding it at the bluff was never gated on it being IN HAND (`loadout.ts`'s
+        //  equip system is a separate question from possession), and that is unchanged.
+        const base = state.inventory.stonehammer > 0
             ? TUNE.boulderHoldSecondsWithHammer
             : TUNE.boulderHoldSecondsByHand;
         return base * exhaustion * mastery;
@@ -1553,7 +1560,7 @@ export function meatIsSpoiled(state: GameState): boolean {
 
 export function canCraftStoneHammer(state: GameState): boolean {
     return (
-        !state.tools.stoneHammer &&
+        state.inventory.stonehammer === 0 &&
         state.inventory.wood >= TUNE.stoneHammerWoodCost &&
         state.inventory.stone >= TUNE.stoneHammerStoneCost
     );
@@ -1571,15 +1578,17 @@ export function craftStoneHammer(state: GameState): boolean {
     if (!canCraftStoneHammer(state)) return false;
     state.inventory.wood -= TUNE.stoneHammerWoodCost;
     state.inventory.stone -= TUNE.stoneHammerStoneCost;
-    state.tools.stoneHammer = true;
+    state.inventory.stonehammer = 1;
     recordTrying(state, recipeDomain('stonehammer'));
     return true;
 }
 
 /** Knapping: repeatable, not a one-time build — no "done" state, just a standing gate on
- *  owning the hammer and holding enough raw stone. */
+ *  owning the hammer and holding enough raw stone. UNCHANGED IN SHAPE BY ITEM 3: this is
+ *  still the direct, self-sufficient gate `Game.MAKERS.knap` calls (see its own doc for why
+ *  it never reaches the generic blueprint path) — only WHERE ownership is read moved. */
 export function canKnapSharpblade(state: GameState): boolean {
-    return state.tools.stoneHammer && state.inventory.stone >= TUNE.knapStoneCost;
+    return state.inventory.stonehammer > 0 && state.inventory.stone >= TUNE.knapStoneCost;
 }
 
 /** Spend raw stone, gain a sharp blade. Returns false if it can't be paid for. */

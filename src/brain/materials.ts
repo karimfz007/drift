@@ -20,7 +20,16 @@ export type MaterialTag =
     | 'salvaged'
     /** A sealed medical store. Deliberately its own tag: medicine is not food, and the one
      *  thing that must never happen is a survivor eating it by accident through a shared tag. */
-    | 'remedy';
+    | 'remedy'
+    /**
+     * ITEM 3 (this batch) — A MADE TOOL STAGED AS A RECIPE INGREDIENT, never consumed by
+     * being staged. Currently one member (`stonehammer`), deliberately: this is not a
+     * general "tools are materials" mechanism, it is the one recipe that genuinely needs a
+     * catalyst input, named the same narrow, explicit way `SURVIVAL_BASIC` names its own
+     * short list rather than deriving from a wider category. A future tool that needs the
+     * same shape gets the same tag; nothing about this schema requires a second one.
+     */
+    | 'tool';
 
 export interface MaterialProfile {
     primary: MaterialFamily;
@@ -87,7 +96,13 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     glass: { primary: 'mineral', tags: ['salvaged'] },
     //  NOT `food`. A shared tag is how a survivor ends up eating the medical supplies by
     //  accident, and `remedy` exists so that can never resolve.
-    medicine: { primary: 'organic', tags: ['salvaged', 'remedy'] }
+    medicine: { primary: 'organic', tags: ['salvaged', 'remedy'] },
+    //  ITEM 3 (this batch) — THE STONE HAMMER, MIGRATED FROM `Tools.stoneHammer`. `mineral`
+    //  because a knapping stone is what it is, structurally — but that primary is decorative
+    //  here on purpose: nothing asks a slot for `family: 'mineral'` and means "any mineral
+    //  OR the hammer", the way `masonry` genuinely is shared. `tool` is the tag every recipe
+    //  that wants this specific catalyst asks for, and today only knap's does.
+    stonehammer: { primary: 'mineral', tags: ['tool'] }
 };
 
 /** What a recipe slot requires: a family, a tag, or both (either one satisfies it). */
