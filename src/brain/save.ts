@@ -125,6 +125,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 31) current = migrateV31toV32(current);
     if (current.schemaVersion === 32) current = migrateV32toV33(current);
     if (current.schemaVersion === 33) current = migrateV33toV34(current);
+    if (current.schemaVersion === 34) current = migrateV34toV35(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -957,6 +958,35 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * zero: a returning survivor has not made a cup and is not carrying boiled water, because
  * neither existed to be made. Handing them one would be the migration inventing history.
  */
+/**
+ * v34 → v35 (SESSION 1, BOUNDARY 3). The workspace ladder arrives; a returning survivor
+ * arrives WITHOUT one, and both halves of that are deliberate.
+ *
+ * `built: false` is the same "you have not made this yet" default every tool migration in
+ * this file has used — nobody can have pegged a bench together, because until this version
+ * there was nothing to peg. But it carries more weight here than for a tool, because the
+ * bench grants Law 220's THIRD CONTROLLED RELATION: handing one to a save that never built
+ * it would be the migration inventing capability, which is a longer step than inventing a
+ * possession and lands on the wrong side of the same honesty rule.
+ *
+ * IT ALSO COSTS A RETURNING SURVIVOR NOTHING THEY HAD. The gate this slice installs is new,
+ * so a v34 save's owner never had a third relation to lose — they arrive exactly as able as
+ * they were, with one more thing they can now go and build.
+ */
+function migrateV34toV35(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return {
+        ...envelope,
+        schemaVersion: 35,
+        state: {
+            ...old,
+            workspace: isObject(old.workspace)
+                ? (old.workspace as GameState['workspace'])
+                : { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 },
+        },
+    };
+}
+
 /**
  * v33 → v34 (ITEM 3, this batch). The stone hammer moves from `Tools.stoneHammer`
  * (boolean) to `Inventory.stonehammer` (count) — a genuine combinable item, staged for

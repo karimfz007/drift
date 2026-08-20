@@ -182,6 +182,44 @@ export const TUNE = {
     combineMinInputs: 2,
     combineMaxInputs: 4,
 
+    //  ---- SESSION 1, BOUNDARY 3: the workspace ladder (§6.1, Law 220) -------------------
+    //
+    //  LAW 220 IS THE WHOLE OF THIS BLOCK: *"W0 begins with two active relations because the
+    //  body can stabilize only so much. Added surfaces, clamps, pegs, jigs, and fixtures
+    //  expand controlled relations. Experience alone does not create extra invisible hands."*
+    //  `combineMaxInputs` above is the CEILING the ladder climbs toward (W2's "four to six"),
+    //  never the number a bare-handed survivor gets — which it silently was until this slice,
+    //  because the gate the law describes had never been built.
+    /** [TUNE] §6.1 W0 — what two hands can hold steady with no work surface at all. */
+    relationsAtW0: 2,
+    /** [TUNE] §6.1 W1 — "three relations; controlled cutting/striking", bought by exactly one
+     *  module in the v2.8 build table (`base/legs/braces`, `Relations added = 1`). This is the
+     *  third staging position, and the bench is the only thing in the game that grants it. */
+    relationsAtBench: 3,
+    /** [TUNE] The mat is W0 made real. It adds NO relation — the v2.8 module table is explicit
+     *  (`woven work mat`, `Relations added = 0`) and §6.1 lists `mat` inside the two-relation
+     *  W0 row. It buys a dry, clean, stable place, and it is what the bench is built ON. */
+    relationsAtMat: 2,
+    /** [TUNE] The mat: fibre woven over flat stone (§6.1's own W0 forms, `mat` + `flat stone`). */
+    workmatFiberCost: 3,
+    workmatStoneCost: 2,
+    /** [TUNE] The bench: timber, pegged. Canon's own input list is `R-WOOD + P-CORD + T-AXE +
+     *  T-HAMMER`, and the AXE is deliberately dropped from it here — the axe is a three-slot
+     *  recipe, so requiring one to build the thing that grants the third slot is a genuine
+     *  cycle (canon has it too: `W-BENCH -> P-PLANK -> T-SAW -> W-BENCH`, which the graph
+     *  audit does not catch). v2.8 §9.2's own escape hatch is "split log/slab **or lashed
+     *  poles**", so the bench is built from timber driven together with the hammer. */
+    workbenchWoodCost: 6,
+    /** [TUNE] How much joint slack ONE bench-assisted combine puts into the frame. Per USE,
+     *  never per hour — Law 181 forbids a universal repair meter, and a use-driven number is
+     *  also what makes this D-011-safe by construction rather than by a check. */
+    benchJointWearPerUse: 0.08,
+    /** [TUNE] Re-tensioning the joints: cord, and the survivor's own hands. */
+    benchRetensionFiberCost: 1,
+    /** [TUNE] How close the survivor must stand for the bench to be holding their work. */
+    workspaceReachM: 3,
+    workspaceCollisionRadius: 0.8,
+
     //  ---- Slice 2B Stage B (§12, §15) --------------------------------------------------
     /** [TUNE] Where the eight long-term capacities start. Never zero: a castaway who has
      *  survived a plane crash and swum ashore is not a person with no body. */

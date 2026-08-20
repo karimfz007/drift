@@ -98,8 +98,11 @@ describe('recipes — the null-outcome combination journal (Ch.1 v3, D-055)', ()
         expect(s.knowledge.events.length).toBe(eventsAfterFirst);
     });
 
-    it('every recipe this pass knows about is walked — axe, torch, shelter, storage, stone hammer, raft, knap', () => {
+    it('every recipe this pass knows about is walked — axe, torch, shelter, storage, stone hammer, the workspace ladder, raft, knap', () => {
         const ids = allRecipes().map((r) => r.id);
-        expect(ids).toEqual(['torch', 'backpack', 'axe', 'spear', 'shelter', 'storage', 'stonehammer', 'raft', 'fishingline', 'net', 'knap']);
+        expect(ids).toEqual(['torch', 'backpack', 'axe', 'spear', 'shelter', 'storage', 'stonehammer',
+            //  SESSION 1 — the two rungs of §6.1's ladder that are built.
+            'workmat', 'workbench',
+            'raft', 'fishingline', 'net', 'knap']);
     });
 });

@@ -279,7 +279,34 @@ export interface CombineSlate {
  * next construction recipe into a placement flow nobody wired. If something belongs here,
  * someone types it here — the same rule `SURVIVAL_BASIC` follows and for the same reason.
  */
-export const PLACED_OUTCOMES: ReadonlySet<string> = new Set(['shelter', 'storage']);
+//  `workmat` JOINS THESE TWO; `workbench` DELIBERATELY DOES NOT. The mat is sited — it is the
+//  moment the survivor decides where the work happens. The bench then upgrades that mat IN
+//  PLACE and is never sited separately, because asking "where does the bench go" when a mat
+//  is already lying there would be asking a question whose answer is already on the ground.
+//  Same shape [[D-165]] ruled for the shelter: improvements make THIS one better.
+export const PLACED_OUTCOMES: ReadonlySet<string> = new Set(['shelter', 'storage', 'workmat']);
+
+/**
+ * WORK THAT RESTS ON THE GROUND RATHER THAN IN TWO HANDS — the exemption that keeps Law 220
+ * from taking the first night away.
+ *
+ * Law 220 caps a bare-handed survivor at two controlled relations, and three of this game's
+ * recipes want three materials: `axe`, `shelter` and `raft`. Applied without an exemption
+ * that would gate a night-one SHELTER behind a workbench nobody could yet build — which is
+ * not what §6.1 says at all. Its W0 row is titled *"Ground relation"* and lists `flat stone`
+ * and `stump` among its own forms: a structure you build ON THE GROUND is already resting on
+ * a work surface, and the ground holds it while your hands work. The raft is the same case
+ * (it is lashed together on the beach, and `raftBlocker` already refuses it anywhere else).
+ *
+ * The AXE is the one genuine two-hand job in that list — haft, head and binding, held
+ * together at once — and it is exactly the example the amendment sheet reaches for: *"the
+ * workbench is the thing that holds what your second hand cannot."* So the axe is what the
+ * third relation buys, and it is the only thing this slice takes away from bare hands.
+ *
+ * Typed here rather than derived, the same rule `SURVIVAL_BASIC` and `PLACED_OUTCOMES` follow:
+ * if something belongs here, someone types it here and says why.
+ */
+export const GROUND_WORK: ReadonlySet<string> = new Set(['shelter', 'storage', 'workmat', 'raft']);
 
 /** Does committing to this outcome need somewhere to put it? */
 export function isPlaced(recipeId: string): boolean {
@@ -417,6 +444,15 @@ export function recipeCost(recipeId: string): Array<{ kind: MaterialKind; amount
         case 'stonehammer': return [
             { kind: 'wood', amount: TUNE.stoneHammerWoodCost },
             { kind: 'stone', amount: TUNE.stoneHammerStoneCost }];
+        //  SESSION 1 — the workspace ladder. The bench lists its TIMBER and not its hammer:
+        //  the hammer is a catalyst that `spendFromReach` never decrements, so drawing it
+        //  into hands here would top up a material nothing then spends — the same reasoning
+        //  that keeps `knap` out of this table entirely.
+        case 'workmat': return [
+            { kind: 'fiber', amount: TUNE.workmatFiberCost },
+            { kind: 'stone', amount: TUNE.workmatStoneCost }];
+        case 'workbench': return [
+            { kind: 'wood', amount: TUNE.workbenchWoodCost }];
         case 'raft': return [
             { kind: 'wood', amount: TUNE.raftWoodCost },
             { kind: 'fiber', amount: TUNE.raftFiberCost },
@@ -738,6 +774,40 @@ export function canExperiment(state: GameState, a: MaterialKind, b: MaterialKind
     return canExperimentWith(state, [a, b]);
 }
 
+/** Is the survivor standing close enough for the work surface to be holding their work? */
+export function atWorkspace(state: GameState): boolean {
+    const w = state.workspace;
+    if (!w.built) return false;
+    return Math.hypot(state.player.x - w.x, state.player.y - w.y) <= TUNE.workspaceReachM;
+}
+
+/**
+ * HOW MANY THINGS THIS SURVIVOR CAN HOLD STEADY, HERE, RIGHT NOW — Law 220 made a number.
+ *
+ * *"W0 begins with two active relations because the body can stabilize only so much. Added
+ * surfaces, clamps, pegs, jigs, and fixtures expand controlled relations. **Experience alone
+ * does not create extra invisible hands.**"*
+ *
+ * That last sentence is why this function reads the WORLD and never the survivor's knowledge,
+ * technique or capacities. There is deliberately no term here that practice can move: the
+ * third relation is bought with timber and a hammer, or it is not had at all.
+ *
+ * IT IS ALSO POSITIONAL, and that is the honest reading rather than a convenience. A bench
+ * holds what your second hand cannot only while you are standing AT it; a bench across the
+ * island is a fact about the island, not about the work in your hands. Walk away and you are
+ * back to two, which is what a player would expect of a vice they left behind.
+ *
+ * RACKED JOINTS COUNT AS NO BENCH. W1's own named failure mode is `rack / overturn`, and a
+ * frame that racks under load is not holding anything — so the third relation lapses until
+ * the joints are re-tensioned. The bench itself is never destroyed: disrepair, never deletion.
+ */
+export function relationsFor(state: GameState): number {
+    const w = state.workspace;
+    if (w.tier === 'bench' && w.jointWear < 1 && atWorkspace(state)) return TUNE.relationsAtBench;
+    //  The mat is W0 made real and adds nothing here — see `TUNE.relationsAtMat`'s own note.
+    return TUNE.relationsAtW0;
+}
+
 /**
  * The N-material gate. Two to four, matching the crafting spec's own stated range — the old
  * hard pair was never the spec, it was the discovery probe's arity, and it turned out to make
@@ -761,6 +831,35 @@ export function canExperimentWith(
     if (materials.length < TUNE.combineMinInputs) return 'Pick two different things to try together.';
     if (materials.length > TUNE.combineMaxInputs) return `That is more than you can hold together at once — ${TUNE.combineMaxInputs} at most.`;
     if (new Set(materials).size !== materials.length) return 'Pick two different things to try together.';
+    //  ---- LAW 220's THIRD RELATION, THE GATE BOUNDARY 3 WAS ALWAYS WAITING ON ------------
+    //
+    //  `combineMaxInputs` above is the LADDER'S CEILING (§6.1's W2 "four to six"), and it has
+    //  been the only limit in the game since staging shipped — so a bare-handed survivor could
+    //  hold four loose parts steady, which is precisely what Law 220 says a body cannot do.
+    //  The gate below is the law, finally built; the enabler that lifts it is built in the
+    //  same slice, because [[D-092]] settled that "the gate and its enabler are one piece of
+    //  work and must ship together" — a gate without a bench makes position 3 unreachable and
+    //  fails the reachability-proof law at the first harness check.
+    //
+    //  GROUND WORK IS EXEMPT, and `GROUND_WORK`'s own doc says why at length: a shelter is
+    //  built ON the ground, and §6.1 titles W0 "Ground relation" for exactly that reason.
+    //  Asked of the POOL rather than of one resolved recipe, because the survivor has not
+    //  chosen yet — if everything this pile could become rests on the ground, the ground can
+    //  hold it.
+    //
+    //  THE REFUSAL NAMES THE ENABLER AND NEVER THE OUTCOME (Law 95, and Law 26's "the world
+    //  tells you first"): it says a work surface would hold the rest, which is a fact about
+    //  the survivor's hands, and it does not hint at what the pile would have made.
+    const relations = relationsFor(state);
+    if (materials.length > relations) {
+        const pool = matchPool(materials);
+        const restsOnTheGround = pool.length > 0 && pool.every((r) => GROUND_WORK.has(r.id));
+        if (!restsOnTheGround) {
+            return relations >= TUNE.relationsAtBench
+                ? `You cannot hold ${materials.length} things steady at once, even braced.`
+                : `Two hands, two things. A workbench would hold the third steady while you work.`;
+        }
+    }
     const reach = reachFor(state, storageOpen);
     for (const m of materials) {
         if ((reach.counts[m] ?? 0) <= 0) {
@@ -1119,6 +1218,14 @@ function blueprintNameFor(recipeId: string): string {
         case 'storage': return 'Storage crate';
         case 'stonehammer': return 'Stone hammer';
         case 'knap': return 'Knapped blade';
+        //  SESSION 1 — the two rungs of the workspace ladder that are built. Named for what
+        //  they physically ARE, never for the capability they carry: "Workbench", never
+        //  "Workbench (3 slots)". Law 219/167 is explicit that a bench opens operations and
+        //  never recipes, and v2.8's forbidden-UI list names `recipe unlocked by Workbench
+        //  Level 2` as an automatic failure — a name that advertised a slot count would be
+        //  the same promise wearing a product name's clothes.
+        case 'workmat': return 'Work mat';
+        case 'workbench': return 'Workbench';
         //  THE FIVE THAT FELL THROUGH TO THE RAW ID. Every recipe added after this table was
         //  written kept its `default` — so the staging circle offered a survivor a position
         //  labelled "spear", lowercase, an internal id showing through as a product name. The

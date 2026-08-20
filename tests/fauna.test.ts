@@ -430,6 +430,11 @@ describe('THE SPEAR IS DISCOVERABLE — the duplicate-signature defect (Drop 1 c
         const {} = await import('../src/brain/experiment');
         const s = createInitialState(0);
         s.inventory.wood = 10; s.inventory.sharpblade = 3; s.inventory.fiber = 10;
+        //  SESSION 1 — the axe is three loose parts, so after Law 220 it wants a bench to hold
+        //  them. Granted here rather than fought: this test is about the axe's SIGNATURE
+        //  staying distinct from the spear's, and the workspace is a precondition of staging
+        //  three of anything, not part of the claim under test.
+        s.workspace = { built: true, x: s.player.x, y: s.player.y, tier: 'bench', jointWear: 0 };
         expect(attemptConfirmed(s, ['wood', 'sharpblade', 'fiber'] as never).recipeId).toBe('axe');
     });
 

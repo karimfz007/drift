@@ -42,6 +42,12 @@ function stocked(): GameState {
     const s = createInitialState(NOW);
     s.energy = 100; s.hunger = 100; s.thirst = 100;
     for (const k of ['wood', 'stone', 'fiber', 'sharpblade', 'coconut'] as const) s.inventory[k] = 60;
+    //  SESSION 1 — "able to attempt it" now includes HAVING SOMEWHERE TO WORK. Law 220 caps
+    //  bare hands at two controlled relations, and this file's whole subject is what a success
+    //  costs at every arity the gate accepts — three and four included. A survivor staging
+    //  four materials is, by construction, a survivor who built a bench; withholding one here
+    //  would narrow the file to arity two and quietly stop testing the thing it is named for.
+    s.workspace = { built: true, x: s.player.x, y: s.player.y, tier: 'bench', jointWear: 0 };
     return s;
 }
 

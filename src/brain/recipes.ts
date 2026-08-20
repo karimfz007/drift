@@ -136,6 +136,39 @@ export function allRecipes(): Recipe[] {
             ]
         },
         {
+            //  THE MAT (W0, SESSION 1). Fibre woven over flat stone — §6.1's own two named W0
+            //  forms in one object. It adds NO controlled relation (the v2.8 module table is
+            //  explicit: `woven work mat`, `Relations added = 0`); what it buys is a dry,
+            //  clean, stable PLACE, and it is the thing the bench is then built on.
+            //
+            //  `textile + masonry` IS A UNIQUE SIGNATURE and that was checked rather than
+            //  assumed — the game already carries three deliberate duplicate pairs
+            //  (torch/backpack, storage/stonehammer, fishingline/net) which the slate resolves
+            //  by ASKING, so a collision here would have been survivable but noisy. It is not
+            //  one: nothing else in the game is fibre-and-stone.
+            id: 'workmat',
+            domain: 'construction',
+            slots: [
+                { id: 'workmat-weave', require: { tag: 'textile' }, amount: TUNE.workmatFiberCost },
+                { id: 'workmat-bed', require: { tag: 'masonry' }, amount: TUNE.workmatStoneCost }
+            ]
+        },
+        {
+            //  THE BENCH (W1, SESSION 1) — THE THIRD RELATION, and the whole of Boundary 3.
+            //
+            //  TWO SLOTS, BUILDING THE THING THAT GRANTS THE THIRD, and that is not an
+            //  oversight: a bench that needed three staged materials could never be built by
+            //  the two-handed survivor who needs it, which is [[D-090]]'s reachability law
+            //  failing at the first check. The `tool` slot takes the stone hammer and never
+            //  spends it — `spendFromReach`'s catalyst exception, the same one knapping uses.
+            id: 'workbench',
+            domain: 'construction',
+            slots: [
+                { id: 'workbench-frame', require: { tag: 'woodwork' }, amount: TUNE.workbenchWoodCost },
+                { id: 'workbench-driver', require: { tag: 'tool' }, amount: 1 }
+            ]
+        },
+        {
             //  THE RAFT (the Maritime Slice). Three positions, and the third one is the
             //  reason there are three.
             //

@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { attemptConfirmed } from './helpers/confirmed';
 import { EXPERIMENT_CHOICE, canExperimentWith, hasUnknownRival, makeChosen, recipesMatching, resolveRecipe, tryCombineWith } from '../src/brain/experiment';
 import { DISCOVERY_ROUTES } from '../src/brain/discovery';
+import { allRecipes } from '../src/brain/recipes';
 import { ALL_MATERIAL_KINDS } from '../src/brain/materials';
 import { createInitialState } from '../src/brain/state';
 import { TUNE } from '../src/data/tune';
@@ -81,8 +82,35 @@ function keepTrying(s: GameState, set: MaterialKind[]): void {
 }
 
 describe('REACHABILITY — everything with a discovery route can actually be arrived at', () => {
+    it('THE ENABLER IS REACHABLE IN BARE HANDS — the gate and its enabler ship together', () => {
+        //  [[D-092]] settled this shape years of sessions ago, and it is the reason Boundary 3
+        //  sat open rather than being half-built: *"Building the gate without the enabler would
+        //  make position 3 unreachable and would fail the REACHABILITY-PROOF law ([[D-090]]) at
+        //  the first harness check. The gate and its enabler are one piece of work and must
+        //  ship together."*
+        //
+        //  So this is the load-bearing assertion of the whole slice: BOTH rungs of the ladder
+        //  must be buildable with the two relations a body already has, or the third relation
+        //  is a door locked from the inside. A future rung that wanted three materials would
+        //  turn this red, which is exactly when someone should have to think about it.
+        for (const id of ['workmat', 'workbench']) {
+            const recipe = allRecipes().find((r) => r.id === id);
+            expect(recipe, `${id} is not a recipe at all`).toBeTruthy();
+            expect(recipe!.slots.length, `${id} needs more hands than W0 has`)
+                .toBeLessThanOrEqual(TUNE.relationsAtW0);
+        }
+    });
+
+
     it('a run that keeps trying reaches EVERY routed recipe, stone hammer included', () => {
         const s = capable();
+        //  SESSION 1, BOUNDARY 3 — THE SURVIVOR HAS CLIMBED THE FIRST RUNG BEFORE THIS LOOP
+        //  RUNS, because after Law 220 they have to: the axe is three loose parts, and three
+        //  parts need a work surface. Both rungs that get them here are two-material recipes
+        //  reachable in bare hands (asserted on its own, below), so this is the ladder in its
+        //  proper order rather than a fixture handing over capability — which is precisely
+        //  what [[D-092]] meant by "the gate and its enabler are one piece of work."
+        s.workspace = { built: true, x: s.player.x, y: s.player.y, tier: 'bench', jointWear: 0 };
         for (let i = 0; i < 400; i++) {
             restock(s);
             for (const set of SETS) keepTrying(s, set);
@@ -95,6 +123,13 @@ describe('REACHABILITY — everything with a discovery route can actually be arr
 
     it('and the spine specifically: the hammer is arrivable, so the blade is, so the axe is', () => {
         const s = capable();
+        //  SESSION 1, BOUNDARY 3 — THE SURVIVOR HAS CLIMBED THE FIRST RUNG BEFORE THIS LOOP
+        //  RUNS, because after Law 220 they have to: the axe is three loose parts, and three
+        //  parts need a work surface. Both rungs that get them here are two-material recipes
+        //  reachable in bare hands (asserted on its own, below), so this is the ladder in its
+        //  proper order rather than a fixture handing over capability — which is precisely
+        //  what [[D-092]] meant by "the gate and its enabler are one piece of work."
+        s.workspace = { built: true, x: s.player.x, y: s.player.y, tier: 'bench', jointWear: 0 };
         for (let i = 0; i < 400; i++) {
             restock(s);
             for (const set of SETS) keepTrying(s, set);
@@ -177,11 +212,48 @@ describe('matching: each material fills a DISTINCT slot', () => {
 describe('the gate, at two to four', () => {
     const stocked = () => { const s = capable(); restock(s); return s; };
 
-    it('accepts two, three and four', () => {
-        for (const n of [2, 3, 4]) {
-            const set = (['wood', 'stone', 'fiber', 'sharpblade'] as MaterialKind[]).slice(0, n);
-            expect(canExperimentWith(stocked(), set), `${n}`).toBeNull();
-        }
+    it('LAW 220 — two in bare hands, and the THIRD relation only at a bench', () => {
+        //  SESSION 1, BOUNDARY 3. This read "accepts two, three and four" with no workspace at
+        //  all, which was the ENGINE's behaviour and never the design's. Law 220: *"W0 begins
+        //  with two active relations because the body can stabilize only so much... Experience
+        //  alone does not create extra invisible hands."* `combineMaxInputs` (4) is the
+        //  LADDER'S CEILING (§6.1's W2, "four to six"), not a bare-handed allowance — the gate
+        //  that made it mean that had simply never been built.
+        const bare = stocked();
+        expect(canExperimentWith(bare, ['wood', 'sharpblade']), 'two is what a body holds').toBeNull();
+        //  Haft, head and binding, all at once — the axe, and the one hand-held thing this
+        //  slice takes away from bare hands. The refusal names the ENABLER, never the outcome.
+        const refused = canExperimentWith(bare, ['wood', 'sharpblade', 'fiber']);
+        expect(refused).toMatch(/workbench/i);
+        expect(refused, 'the refusal leaks what the pile would have made').not.toMatch(/axe/i);
+
+        const benched = stocked();
+        benched.workspace = { built: true, x: benched.player.x, y: benched.player.y, tier: 'bench', jointWear: 0 };
+        expect(canExperimentWith(benched, ['wood', 'sharpblade', 'fiber']), 'the bench holds the third').toBeNull();
+    });
+
+    it('...and the bench only holds while you are STANDING at it', () => {
+        //  Positional on purpose: a vice across the island is a fact about the island, not
+        //  about the work in your hands.
+        const away = stocked();
+        away.workspace = { built: true, x: away.player.x + 40, y: away.player.y + 40, tier: 'bench', jointWear: 0 };
+        expect(canExperimentWith(away, ['wood', 'sharpblade', 'fiber'])).toMatch(/workbench/i);
+    });
+
+    it('...and RACKED joints hold nothing — disrepair, never deletion', () => {
+        const racked = stocked();
+        racked.workspace = { built: true, x: racked.player.x, y: racked.player.y, tier: 'bench', jointWear: 1 };
+        expect(canExperimentWith(racked, ['wood', 'sharpblade', 'fiber'])).toMatch(/workbench/i);
+        expect(racked.workspace.built, 'a racked bench was deleted rather than left standing').toBe(true);
+    });
+
+    it('...and GROUND WORK never asked the hands: a shelter still goes up bare-handed', () => {
+        //  §6.1 titles W0 "Ground relation" and lists `flat stone`/`stump` among its forms. A
+        //  shelter is built ON the ground, so the ground holds it — which is exactly what
+        //  keeps Law 220 from taking the first night away. THE most important assertion in
+        //  this block: without it, a night-one shelter would need a workbench nobody can build
+        //  yet, and the survival floor would stop being reachable through active play alone.
+        expect(canExperimentWith(stocked(), ['wood', 'stone', 'fiber'])).toBeNull();
     });
 
     it('refuses one, and says so plainly', () => {

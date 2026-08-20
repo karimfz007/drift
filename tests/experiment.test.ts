@@ -524,6 +524,10 @@ describe('A SIXTH DEFECT FOUND WHILE VERIFYING THE ABOVE — Blueprint.inputs si
         //  is written and read nowhere else in `src/`, so this was inert, not live-broken.
         const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
         s.blueprints = [];
+        //  SESSION 1 — three staged materials need a third controlled relation (Law 220), and
+        //  the bench is what grants it. A precondition of staging three, not part of the
+        //  `Blueprint.inputs` claim this test exists for.
+        s.workspace = { built: true, x: s.player.x, y: s.player.y, tier: 'bench', jointWear: 0 };
         //  No recipeId: axe is not held yet, so this is a genuine first-time discovery, and
         //  `attemptConfirmed`'s own fallback (nothing held -> `EXPERIMENT_CHOICE`) is the
         //  correct way to let it resolve — passing 'axe' explicitly here would hit

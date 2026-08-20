@@ -22,6 +22,11 @@ import {
     buildFire,
     buildShelter,
     buildStorage,
+    buildWorkmat,
+    buildWorkbench,
+    wearBenchJoints,
+    atWorkspace,
+
     canBuildFire,
     canCraftAxe,
     canCraftTorch,
@@ -216,7 +221,7 @@ import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, surfaceHeightAt } from '../da
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { CaveView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, type NodeView } from './entities';
+import { CaveView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, WorkspaceView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -344,6 +349,7 @@ export class Game {
     //  `selectedKnownRecipe` IS GONE (ITEM 3, this batch) — the known-list row it tracked no
     //  longer exists. See the ledger entry for the full account.
     private storage: StorageView;
+    private workspace: WorkspaceView;
     private raftView: RaftView;
     //  P0-3 — the pile you put down, finally drawn. See `DroppedView`.
     private droppedView: DroppedView;
@@ -451,6 +457,7 @@ export class Game {
         this.ghost = new GhostView(this.scene);
         runtime.ghostReadout = () => this.ghost.debugState();
         this.storage = new StorageView(this.scene);
+        this.workspace = new WorkspaceView(this.scene);
         this.droppedView = new DroppedView(this.scene);
         this.raftView = new RaftView(this.scene);
         this.outboardView = new OutboardView(this.scene);
@@ -1168,6 +1175,12 @@ export class Game {
         //  the blade; without it the slate would show "Knapped blade" as attemptable and
         //  tapping Combine would silently do nothing.
         knap: knapSharpblade,
+        //  SESSION 1 — THE BENCH IS A MAKER, NOT A SITING, and that is the whole of [[D-165]]'s
+        //  "upgrade in place" applied to the workspace ladder. `workmat` is absent from this
+        //  map on purpose: it is sited (it is where the work will happen, so the survivor
+        //  picks the spot) and goes through `placeAtSite` with the crate and the shelter.
+        //  The bench never asks where, because the mat already answered.
+        workbench: buildWorkbench,
     };
 
     /**
@@ -1230,6 +1243,13 @@ export class Game {
                     : 'You cannot make that right now.');
                 return;
             }
+            //  THE BENCH TOOK THE LOAD, SO THE BENCH TAKES THE WEAR (Law 181, "maintenance
+            //  follows evidence"). Charged ONLY when the third relation was genuinely used:
+            //  a two-material combine standing at a bench is work two hands could have held
+            //  anywhere, and wearing the joints for it would be a use-counter behaving like
+            //  the timer Law 181 forbids. `wearBenchJoints` guards the tier itself, so a mat
+            //  is never worn — there are no joints in a mat to slacken.
+            if (materials.length > TUNE.relationsAtW0 && atWorkspace(s)) wearBenchJoints(s);
             this.recordTap(0, 0, `combine:${recipeId}:made`);
             this.cues.play(CUES.craft);
             this.floatText(`${recipeDisplayName(recipeId)} — made`);
@@ -1724,24 +1744,58 @@ export class Game {
         this.placeAtSite(recipeId, clear.x, clear.z);
     }
 
-    /** Place the anchor and build. Refuses loudly if the world's own geometry says no. */
+    /**
+     * Place the anchor and build. Refuses loudly if the world's own geometry says no.
+     *
+     * PER OUTCOME, NEVER A BINARY. This was `outcome === 'storage' ? crate : shelter` in three
+     * separate places — a shape that silently made "not the crate" mean "the shelter", so the
+     * first placed outcome added after it would have been built as a shelter, floated the
+     * shelter's own text and told the survivor to sleep in it. `workmat` is that third
+     * outcome. Written as a lookup keyed by the outcome itself so a fourth cannot inherit a
+     * third's behaviour by falling off the end of a ternary — the same "which one is knowable,
+     * so it is asked about" rule the harness states for its own per-outcome checks.
+     */
     private placeAtSite(outcome: string, x: number, z: number): void {
         const s = session().state;
+        const sited: Record<string, {
+            radius: number;
+            build: (x: number, z: number) => boolean;
+            float: string;
+            hint: string;
+        }> = {
+            storage: {
+                radius: TUNE.storageCollisionRadius,
+                build: (cx, cz) => buildStorage(s, cx, cz),
+                float: 'the crate is set',
+                hint: 'Tap the crate to store what you are carrying.',
+            },
+            shelter: {
+                radius: TUNE.shelterCollisionRadius,
+                build: (cx, cz) => buildShelter(s, cx, cz),
+                float: 'the shelter stands',
+                hint: 'Tap the shelter to sleep — it is home now.',
+            },
+            workmat: {
+                radius: TUNE.workspaceCollisionRadius,
+                build: (cx, cz) => buildWorkmat(s, cx, cz),
+                float: 'the mat is laid',
+                //  NAMES THE NEXT PHYSICAL STEP, never the capability it will carry. Law 219:
+                //  a bench opens operations, never recipes — so the hint points at timber and
+                //  a hammer, not at "this will let you make an axe".
+                hint: 'A dry, flat place to work. Frame it with timber and a hammer to make a bench of it.',
+            },
+        };
+        const plan = sited[outcome];
+        if (!plan) { this.explain('That will not go up here.'); return; }
         //  The world gets its own veto, separate from the brain's spacing rule: the brain
         //  knows what stands where, the body knows what the mesh is actually on top of.
-        const radius = outcome === 'storage' ? TUNE.storageCollisionRadius : TUNE.shelterCollisionRadius;
-        const clear = this.island.resolveCollision(x, z, radius, this.dynamicObstacles());
-        const built = outcome === 'storage'
-            ? buildStorage(s, clear.x, clear.z)
-            : buildShelter(s, clear.x, clear.z);
-        if (!built) { this.explain('That will not go up here.'); return; }
+        const clear = this.island.resolveCollision(x, z, plan.radius, this.dynamicObstacles());
+        if (!plan.build(clear.x, clear.z)) { this.explain('That will not go up here.'); return; }
         this.cues.play(CUES.craft);
-        this.floatText(outcome === 'storage' ? 'the crate is set' : 'the shelter stands');
+        this.floatText(plan.float);
         session().persist(now());
         this.lastActivityAt = now();
-        this.showHint(outcome === 'storage'
-            ? 'Tap the crate to store what you are carrying.'
-            : 'Tap the shelter to sleep — it is home now.');
+        this.showHint(plan.hint);
     }
 
     private onTap(screenX: number, screenY: number): void {
@@ -2588,6 +2642,11 @@ export class Game {
         out.push(...this.cave.obstacles(state));
         const storageObstacle = this.storage.obstacle(state);
         if (storageObstacle) out.push(storageObstacle);
+        //  SESSION 1 — the BENCH is furniture and blocks; a mat lies flat and is walked over.
+        //  `WorkspaceView.obstacle` draws that line, so the tier decides solidity rather than
+        //  a second copy of the rule living out here.
+        const workspaceObstacle = this.workspace.obstacle(state);
+        if (workspaceObstacle) out.push(workspaceObstacle);
         //  DROP 1 FIX — the boar is SOLID. It shipped as a ghost: the player walked straight
         //  through the one thing on the island that is supposed to be frightening, which
         //  undoes the threat more thoroughly than any tuning could. Push-out only, joining
@@ -3498,6 +3557,7 @@ export class Game {
         this.shelter.update(state, this.island.heightAt(state.shelter.x, state.shelter.y));
         this.cave.update(state, this.island.heightAt(state.cave.x, state.cave.y));
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
+        this.workspace.update(state, this.island.heightAt(state.workspace.x, state.workspace.y));
         this.droppedView.update(state, (x, z) => this.island.heightAt(x, z));
         this.raftView.update(state);
         this.outboardView.update(state, (x, z) => this.island.heightAt(x, z));

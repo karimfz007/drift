@@ -106,9 +106,14 @@ describe('what Combine charges is what the maker charges', () => {
 });
 
 describe('placed and hand-held stay distinguishable', () => {
-    it('exactly two outcomes ask WHERE', () => {
+    it('exactly three outcomes ask WHERE — and the BENCH is deliberately not one of them', () => {
+        //  SESSION 1: `workmat` joins the crate and the shelter because laying it IS choosing
+        //  where the work happens. `workbench` stays out: it upgrades that mat in place, so
+        //  asking "where does the bench go" would re-ask a question the ground already
+        //  answers — [[D-165]]'s "improvements make THIS one better", applied to the ladder.
         const placed = allRecipes().map((r) => r.id).filter(isPlaced);
-        expect(placed.sort()).toEqual(['shelter', 'storage']);
+        expect(placed.sort()).toEqual(['shelter', 'storage', 'workmat']);
+        expect(isPlaced('workbench')).toBe(false);
     });
 
     it('...and every other maker puts the thing in your hands or on your back', () => {

@@ -73,8 +73,15 @@
  *      original visibility promise" (see the ledger entry). Migration v33->v34 lives in
  *      save.ts: `state.tools.stoneHammer === true` becomes `state.inventory.stonehammer = 1`,
  *      `false` becomes `0` — the fact does not change, only where it is recorded.
+ * v35 — SESSION 1, BOUNDARY 3: `workspace`, the W0 mat upgraded in place to the W1 bench.
+ *      Migrates in ABSENT — a returning survivor has not built one, because there was
+ *      nothing to build. That is the same "you have not found this yet" default every tool
+ *      migration in save.ts has used, and it is the honest one here for a second reason:
+ *      the bench is what grants Law 220's third relation, and handing over a controlled
+ *      relation nobody pegged together would be the migration inventing capability rather
+ *      than declining to invent history.
  */
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -318,6 +325,44 @@ export interface Structure {
     y: number;
     /** 0–100. At 0 the structure's bonus pauses until repaired; never deleted. */
     durability: number;
+}
+
+/**
+ * THE WORKSPACE LADDER (SESSION 1, closing BOUNDARY 3) — §6.1's W0-W6 states, of which two
+ * are built: the mat (W0) and the bench (W1).
+ *
+ * ONE STRUCTURE WITH A TIER, not two structures, and the distinction is load-bearing. §6.1
+ * puts `mat` and `bench` in the same W0-W6 table as rungs of one ladder, and v2.6's own
+ * capability chain reads `field work mat/support -> bench with clamps/vice` as one line. So
+ * the bench is the mat, improved IN PLACE — the same shape [[D-165]] ruled for the shelter
+ * ("improvements make THIS shelter better rather than replacing it with a differently-named
+ * tier"). Siting happens once, at the mat; the bench never asks where it goes, because it
+ * goes where the work already is.
+ */
+export type WorkspaceTier = 'mat' | 'bench';
+
+export interface WorkspaceState {
+    built: boolean;
+    x: number;
+    y: number;
+    tier: WorkspaceTier;
+    /**
+     * 0..1. Joint slack, and it is NOT a durability meter — this is the one field in this
+     * file that deliberately does not follow `Structure`'s shape, because Law 181
+     * ("Maintenance follows evidence") forbids exactly that: *"Inspection, cleaning,
+     * tightening... respond to causal condition — **not a universal repair meter**."*
+     *
+     * So slack accrues per BENCH-ASSISTED COMBINE — evidence of work actually done — and
+     * never per game-hour. A bench nobody has worked at is as tight as the day it was
+     * pegged, however long the survivor has been away, which also makes this [[D-011]]-safe
+     * BY CONSTRUCTION rather than by a check: absence performs no combines, so there is no
+     * code path by which time alone can rack a bench.
+     *
+     * At 1 the joints have racked (W1's own named failure mode, `rack / overturn`) and the
+     * third relation is gone until the joints are re-tensioned. The bench is never deleted —
+     * disrepair, never deletion, the same honest-systems law every other structure holds to.
+     */
+    jointWear: number;
 }
 
 /** The shelter specifically — the one structure with a grade (Ch.1 v3, D-055): its
@@ -595,6 +640,9 @@ export interface GameState {
     shelter: ShelterState;
     /** The storage crate (Cycle 05): a second pool for raw materials only. */
     storage: StorageState;
+    /** The work surface (SESSION 1): W0's mat, upgraded in place to W1's bench. The bench is
+     *  what holds what a second hand cannot — Law 220's third controlled relation. */
+    workspace: WorkspaceState;
     /** The carried torch (Living Island Track A, FIX 5). */
     torch: TorchState;
     player: PlayerState;

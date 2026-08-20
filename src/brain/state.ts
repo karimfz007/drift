@@ -68,6 +68,11 @@ export function createInitialState(nowMs: number): GameState {
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
+        //  SESSION 1 — `tier: 'mat'` on an UNBUILT workspace is the ladder's floor, not a
+        //  claim that a mat exists: `built` is the only field that says whether anything is
+        //  there. Naming the floor rather than leaving the tier nullable keeps every reader
+        //  of `workspace.tier` from having to handle a null that means "the ground".
+        workspace: { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 },
         torch: { owned: false, lit: false, fuelGameHoursRemaining: 0, grade: 'serviceable' },
         player: { x: SPAWN.x, y: SPAWN.y },
         nodes: createNodes(),
@@ -196,6 +201,7 @@ export function cloneState(state: GameState): GameState {
         shelter: { ...state.shelter, defects: { ...state.shelter.defects } },
         cave: { ...state.cave },
         storage: { ...state.storage, stored: { ...state.storage.stored } },
+        workspace: { ...state.workspace },
         torch: { ...state.torch },
         raft: { ...state.raft },
         wreck: { ...state.wreck },
@@ -1789,6 +1795,92 @@ export function buildStorage(state: GameState, x: number, y: number): boolean {
     state.inventory.stone -= TUNE.storageStoneCost;
     state.storage = { built: true, x, y, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } };
     recordTrying(state, recipeDomain('storage'));
+    return true;
+}
+
+// ---- SESSION 1: THE WORKSPACE LADDER (W0 mat -> W1 bench) ---------------------------------
+//
+//  The distance check is inlined rather than imported from `experiment.ts`'s `atWorkspace`,
+//  which asks the identical question — `state.ts` is imported BY `experiment.ts`, so reaching
+//  back the other way would close a module cycle for two lines of arithmetic.
+
+function standingAtWorkspace(state: GameState): boolean {
+    const w = state.workspace;
+    return w.built && Math.hypot(state.player.x - w.x, state.player.y - w.y) <= TUNE.workspaceReachM;
+}
+
+/** One mat, and only one. A second work surface would be a second answer to "where does the
+ *  work happen", and nothing in the design asks for two. */
+export function canBuildWorkmat(state: GameState): boolean {
+    return !state.workspace.built
+        && state.inventory.fiber >= TUNE.workmatFiberCost
+        && state.inventory.stone >= TUNE.workmatStoneCost;
+}
+
+export function buildWorkmat(state: GameState, x: number, y: number): boolean {
+    if (!canBuildWorkmat(state)) return false;
+    state.inventory.fiber -= TUNE.workmatFiberCost;
+    state.inventory.stone -= TUNE.workmatStoneCost;
+    state.workspace = { built: true, x, y, tier: 'mat', jointWear: 0 };
+    recordTrying(state, recipeDomain('workmat'));
+    return true;
+}
+
+/**
+ * THE BENCH IS AN UPGRADE, NOT A BUILDING — so it asks no siting question and takes no
+ * position of its own. It requires a mat already laid, and the survivor standing at it,
+ * because framing legs onto a work surface is work done AT that surface.
+ *
+ * The hammer is checked for OWNERSHIP and never spent — `spendFromReach`'s catalyst rule,
+ * the same one knapping uses. It is the thing driving the pegs, not a thing consumed by them.
+ */
+export function canBuildWorkbench(state: GameState): boolean {
+    return state.workspace.built
+        && state.workspace.tier === 'mat'
+        && standingAtWorkspace(state)
+        && state.inventory.stonehammer > 0
+        && state.inventory.wood >= TUNE.workbenchWoodCost;
+}
+
+export function buildWorkbench(state: GameState): boolean {
+    if (!canBuildWorkbench(state)) return false;
+    state.inventory.wood -= TUNE.workbenchWoodCost;
+    //  IN PLACE: x and y are carried across untouched. The bench is this mat, framed.
+    state.workspace = { ...state.workspace, tier: 'bench', jointWear: 0 };
+    recordTrying(state, recipeDomain('workbench'));
+    return true;
+}
+
+/**
+ * MAINTENANCE FOLLOWS EVIDENCE (Law 181) — called once per combine the bench actually held.
+ *
+ * Never called on a clock, and there is no elapsed-time term anywhere near it. That is what
+ * makes the whole upkeep loop [[D-011]]-safe by construction rather than by a guard: an
+ * absence performs no combines, so no length of absence can rack a bench.
+ */
+export function wearBenchJoints(state: GameState): void {
+    if (state.workspace.tier !== 'bench' || !state.workspace.built) return;
+    state.workspace.jointWear = Math.min(1, state.workspace.jointWear + TUNE.benchJointWearPerUse);
+}
+
+/** Racked joints: the frame moves under load, so it holds nothing. Never deleted. */
+export function benchHasRacked(state: GameState): boolean {
+    return state.workspace.built && state.workspace.tier === 'bench' && state.workspace.jointWear >= 1;
+}
+
+export function canRetensionBench(state: GameState): boolean {
+    return state.workspace.built
+        && state.workspace.tier === 'bench'
+        && state.workspace.jointWear > 0
+        && standingAtWorkspace(state)
+        && state.inventory.fiber >= TUNE.benchRetensionFiberCost;
+}
+
+export function retensionBench(state: GameState): boolean {
+    if (!canRetensionBench(state)) return false;
+    state.inventory.fiber -= TUNE.benchRetensionFiberCost;
+    state.workspace.jointWear = 0;
+    recordTrying(state, recipeDomain('workbench'));
     return true;
 }
 

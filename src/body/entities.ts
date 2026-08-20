@@ -1210,6 +1210,87 @@ export class StorageView {
 }
 
 /**
+ * THE WORKSPACE (SESSION 1) — §6.1's ladder, drawn as two mutually exclusive silhouettes.
+ *
+ * WITNESSED PER SURFACE FROM THE FIRST LINE, not patched into witnessability later. The mat
+ * and the bench are SEPARATE FIXED-NAME MESHES (`workMat`, `workBenchTop`) rather than one
+ * mesh that changes shape, and that is a testability decision as much as a visual one: it
+ * means `meshInfo('workMat').enabled` and `meshInfo('workBenchTop').enabled` are two
+ * independent answers, so a check can say WHICH rung is standing rather than "a workspace
+ * rendered". A single morphing mesh would only ever have supported a union answer — the
+ * exact shape `runtime.surfaceByTag`'s own doc was written to forbid, and the shape three
+ * WAVE 1 checks still carry.
+ *
+ * The two are strictly exclusive: upgrading to a bench hides the mat, because the mat is
+ * underneath it now. Both being enabled at once is a state no code path should produce, and
+ * a per-surface check is what would catch it if one ever did.
+ */
+export class WorkspaceView {
+    private mat: Mesh;
+    private benchTop: Mesh;
+    private benchMaterial: StandardMaterial;
+    private shadow: Mesh;
+    private shown = false;
+
+    constructor(scene: Scene) {
+        this.mat = CreateBox('workMat', { width: 1.5, height: 0.06, depth: 1.1 }, scene);
+        this.mat.material = flat(scene, 'workMatMat', PALETTE.thatch);
+        this.mat.isPickable = true;
+        this.mat.metadata = { workspace: true, workspaceTier: 'mat' };
+
+        this.benchTop = CreateBox('workBenchTop', { width: 1.6, height: 0.14, depth: 0.8 }, scene);
+        this.benchMaterial = flat(scene, 'workBenchMat', PALETTE.crateWood);
+        this.benchTop.material = this.benchMaterial;
+        this.benchTop.isPickable = true;
+        this.benchTop.metadata = { workspace: true, workspaceTier: 'bench' };
+        //  Four legs, parented so the whole frame enables and moves as one.
+        for (const [i, [dx, dz]] of ([[-0.65, -0.28], [0.65, -0.28], [-0.65, 0.28], [0.65, 0.28]] as const).entries()) {
+            const leg = CreateBox(`workBenchLeg${i}`, { width: 0.12, height: 0.62, depth: 0.12 }, scene);
+            leg.material = this.benchMaterial;
+            leg.parent = this.benchTop;
+            leg.position.set(dx, -0.38, dz);
+            leg.isPickable = true;
+            leg.metadata = { workspace: true, workspaceTier: 'bench' };
+        }
+
+        this.shadow = makeShadow(scene, 1.0);
+        this.mat.setEnabled(false);
+        this.benchTop.setEnabled(false);
+        this.shadow.setEnabled(false);
+    }
+
+    /** The bench is furniture and blocks; a mat lies flat and is walked over. */
+    obstacle(state: GameState): Obstacle | null {
+        const w = state.workspace;
+        return w.built && w.tier === 'bench'
+            ? { x: w.x, z: w.y, radius: TUNE.workspaceCollisionRadius }
+            : null;
+    }
+
+    update(state: GameState, groundY: number): void {
+        const w = state.workspace;
+        if (w.built !== this.shown) {
+            this.shown = w.built;
+            this.shadow.setEnabled(w.built);
+        }
+        //  Set every frame rather than only on transition: the tier changes underneath a
+        //  `built` that does not, so a transition-only guard would leave the mat drawn over
+        //  the bench that replaced it — the shape `OutboardView` missed with `reassembled`.
+        this.mat.setEnabled(w.built && w.tier === 'mat');
+        this.benchTop.setEnabled(w.built && w.tier === 'bench');
+        if (!w.built) return;
+
+        this.mat.position.set(w.x, groundY + 0.03, w.y);
+        this.benchTop.position.set(w.x, groundY + 0.76, w.y);
+        this.shadow.position.set(w.x, groundY + 0.02, w.y);
+        //  RACKED JOINTS ARE VISIBLE, because a survivor should be able to SEE that the bench
+        //  has stopped holding before they stage three things and are told so. Law 229: the
+        //  first benefits of equipment are control and clearer feedback.
+        this.benchMaterial.diffuseColor = colour(w.jointWear >= 1 ? PALETTE.disrepair : PALETTE.crateWood);
+    }
+}
+
+/**
  * THE RAFT (the Maritime Slice) — the first built thing in this game whose position moves.
  *
  * Everything else `update`s from a fixed site: the shelter, the crate, the fire and the cave
