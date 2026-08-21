@@ -1301,67 +1301,15 @@ export class Game {
         else this.explain(said.text);
         if (said.triumphant) this.cues.play(CUES.unlock);
 
-        //  ---- A SUCCESS CRAFTS THE THING, HERE, NOW (DIRECTOR'S RULING, item 7) ----------
-        //
-        //  *"Upon successful discovery it will deduct the resources and craft the item; upon
-        //  failure it only deducts the materials."* `tryCombineWith` no longer charges the
-        //  staged unit on a discovery (see its own note), so the maker below is the ONLY thing
-        //  that spends — the survivor pays the recipe's price once and walks away holding it.
-        //
-        //  THIS SHIPPED BROKEN ONCE AND WAS WITHDRAWN RATHER THAN LEFT HALF-WORKING. The
-        //  attempt before this one ran the same path and the item never appeared, with no
-        //  precondition that explained it. So the outcome is TRACED rather than assumed:
-        //  `discover:craft:*` records what actually happened at every branch, which is what
-        //  turns "it did not work" into a fact a check can read instead of a guess.
-        const invented = result.outcome === 'invented' ? result.recipeId : null;
-        if (invented) {
-            const s = session().state;
-            const placed = isPlaced(invented);
-            const blocked = makerBlocker(s, invented);
-            const maker = Game.MAKERS[invented];
-            if (placed) {
-                //  ---- ITEM 3: A PLACED DISCOVERY GOES STRAIGHT TO SITING ------------------
-                //
-                //  REPORTED as "discovering the shelter and choosing to place it redirects
-                //  back to Combine". It did: last batch taught discovery to CRAFT a hand-held
-                //  outcome and left the placed half exactly where it was, so working out a
-                //  shelter minted a plan and dropped the survivor back at the staging surface
-                //  to assemble the identical pile a second time before anything could be put
-                //  anywhere. The hand-held half of that ruling shipped and the placed half did
-                //  not; this is the missing half, not a new idea.
-                //
-                //  Arms the SAME siting flow `onCombine` arms — ghost, cue and prompt — so a
-                //  discovery ends where a combine ends: with the thing in your hand and the
-                //  world asking where it goes. Nothing is spent here; the builder charges at
-                //  the siting tap exactly as it always has.
-                this.siting = { recipeId: invented, materials: materials as MaterialKind[], storageOpen };
-                this.showSitingGhost(invented);
-                this.cues.play(CUES.target);
-                this.showHint(`Tap where the ${recipeDisplayName(invented).toLowerCase()} should go.`);
-                this.recordTap(0, 0, `discover:craft:siting:${invented}`);
-                this.lastActivityAt = now();
-                return;
-            }
-            if (blocked || !maker) {
-                //  A PLACED outcome keeps its siting step, and a blocked one says why — both
-                //  are correct outcomes, not failures, and both are recorded as themselves.
-                this.recordTap(0, 0, `discover:craft:skipped:${invented}:${placed ? 'placed' : blocked ? 'blocked' : 'no-maker'}`);
-                if (blocked && !placed) this.explain(blocked);
-            } else {
-                const drew = recipeCost(invented)
-                    .every(({ kind, amount }) => drawIntoHands(s, kind, amount, storageOpen));
-                const made = drew && maker(s);
-                this.recordTap(0, 0, `discover:craft:${made ? 'made' : drew ? 'refused' : 'short'}:${invented}`);
-                if (made) {
-                    this.cues.play(CUES.craft);
-                    this.floatText(`${recipeDisplayName(invented)} — made`);
-                    session().markFirstCraft(msSinceControl());
-                } else if (!drew) {
-                    this.explain('You worked it out, but you are short of what it takes to make one.');
-                }
-                session().persist(now());
-            }
-        }
+        //  `onCombine` DOES NOT CRAFT-ON-DISCOVER, and the block that used to sit here is
+        //  the whole explanation for D-179's "the edit never landed" finding — which was
+        //  itself wrong. It landed; it landed in the WRONG METHOD. Item 7's discovery-crafts
+        //  logic was written into `onCombine`, where `result` comes from `makeChosen` and the
+        //  outcome is never a discovery, so it could not fire on the path it was written for
+        //  and sat here reading a variable that means something else. Worse, it was live: a
+        //  `makeChosen` outcome of 'invented' would have run a maker over an item this method
+        //  had already made. Removed outright; the real one is in `onDiscover` below.
+
         this.lastActivityAt = now();
     }
 
@@ -1397,7 +1345,28 @@ export class Game {
             const placed = isPlaced(invented);
             const blocked = makerBlocker(st, invented);
             const maker = Game.MAKERS[invented];
-            if (placed || blocked || !maker) {
+            if (placed) {
+                //  ---- ITEM 3: A PLACED DISCOVERY GOES STRAIGHT TO SITING ------------------
+                //
+                //  REPORTED as "discovering the shelter and choosing to place it redirects
+                //  back to Combine". It did: the previous pass taught discovery to CRAFT a
+                //  hand-held outcome and left the placed half exactly where it was, so working
+                //  out a shelter minted a plan and dropped the survivor back at the staging
+                //  surface to assemble the identical pile again before anything could be put
+                //  anywhere. The hand-held half of that ruling shipped; this is the other half.
+                //
+                //  Arms the SAME siting flow `onCombine` arms — ghost, cue and prompt — so a
+                //  discovery ends where a combine ends: with the world asking where it goes.
+                //  Nothing is spent here; the builder charges at the siting tap as it always has.
+                this.siting = { recipeId: invented, materials: materials as MaterialKind[], storageOpen };
+                this.showSitingGhost(invented);
+                this.cues.play(CUES.target);
+                this.showHint(`Tap where the ${recipeDisplayName(invented).toLowerCase()} should go.`);
+                this.recordTap(0, 0, `discover:craft:siting:${invented}`);
+                this.lastActivityAt = now();
+                return;
+            }
+            if (blocked || !maker) {
                 //  A PLACED outcome keeps its siting step and a blocked one says why — both
                 //  are correct outcomes rather than failures, and both are recorded as
                 //  themselves so a silent skip is impossible to mistake for a silent break.

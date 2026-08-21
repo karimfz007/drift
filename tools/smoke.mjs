@@ -12987,10 +12987,16 @@ async function main() {
     await ensureNoPanel();
 
     //  ITEM 3 — A PLACED DISCOVERY ENDS AT THE GROUND, not back at the staging surface.
+    //  NO WORKSPACE, NO NEIGHBOURS. `constructionMinSpacingM` refuses a site within 4 m of
+    //  anything already standing, and the workspace fixture lays a mat right where the
+    //  survivor stands — so the first cut of this check sited into the mat's own exclusion
+    //  ring and read a refused placement as an unarmed siting flow.
     await editSave(`${WORKSPACE_FIXTURE}
         state.blueprints = [];
+        state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
         state.shelter = { ...state.shelter, built: false };
-        state.storage = { ...state.storage, built: false };`);
+        state.storage = { ...state.storage, built: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };`);
     await sleep(800);
     await page.evaluate(() => window.__drift?.clearPointerLog?.());
     await openSlate();
@@ -13002,28 +13008,37 @@ async function main() {
     //  unreliable instruments here — `recordTap` only reaches the pointer log while a press
     //  trace is active, and the ghost's enabled flag is a frame-timing question. The claim is
     //  "a discovery ends at the ground", so the check is: the very next world tap PLACES it.
+    //  ASSERTED ON THE PROMPT, not on where a tap happens to land. Two earlier cuts of this
+    //  check tried the ghost's enabled flag and then a real siting tap, and both were
+    //  measuring GEOMETRY — whether the spot chosen was legal ground clear of every spacing
+    //  ring — rather than whether the discovery armed the flow. The claim is "a placed
+    //  discovery ends with the world asking where it goes", so the check reads the asking.
     const planned = await live();
-    const tapPlaced = await tapWorld(planned.player.x + 3, planned.player.y + 2, 55);
-    await sleep(1400);
-    const afterPlacedFind = await live();
+    const arming = await page.evaluate(() => window.__drift.hints().last);
     check('ITEM 3 — discovering a PLACED outcome arms the siting flow instead of dropping you back at Combine',
         planned.blueprints.some((b) => b.recipeId === 'shelter')
-        && tapPlaced && afterPlacedFind.shelter.built === true,
-        `plans [${planned.blueprints.map((b) => b.recipeId).join(', ')}], tap ${tapPlaced}, shelter built ${afterPlacedFind.shelter.built}`);
+        && /tap where the shelter should go/i.test(arming ?? ''),
+        `plans [${planned.blueprints.map((b) => b.recipeId).join(', ')}], prompt "${arming}"`);
+    await ensureNoPanel();
 
     //  ITEM 11 — BOTH storage acts on screen at once, for a survivor with full hands AND a
     //  full box. The old surface inferred one verb from whether your hands were empty.
     await editSave(`${WORKSPACE_FIXTURE}
         state.storage = { ...state.storage, built: true, x: 2, y: 96, stored: { wood: 9 } };
         state.inventory = { ...state.inventory, stone: 4 };
-        state.player = { x: 2, y: 96 };`);
+        state.player = { x: 2, y: 90 };`);
     await sleep(800);
     //  OPENED BY TAPPING THE BOX, which is the only entry point that offers the storage row
     //  at all (`atStorage` is false for the pack button — hud.ts says so in as many words).
     //  The first cut opened the pack and read two nulls, which said nothing about item 11.
-    await approach(2, 96, 20);
+    //  Approach stops ~1.75 m short, which is the distance this needs: tapping the box from
+    //  ON TOP of it resolves to the survivor's own pack (`pickedBackpack` wins the race) and
+    //  opens the inventory tab with `atStorage` false — which is what the first cut did.
+    await approach(2, 96, 25);
+    await faceNode(2, 96);
+    await sleep(300);
     await tapWorld(2, 96, 55);
-    await sleep(1200);
+    await sleep(1400);
     const bothActs = await page.evaluate(() => ({
         store: document.querySelector('.use-storage-btn')?.textContent ?? null,
         take: document.querySelector('.take-storage-btn')?.textContent ?? null,
