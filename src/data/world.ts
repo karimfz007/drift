@@ -605,9 +605,17 @@ export function createNodes(): WoodNode[] {
 
         // Reeds — tap, fibre. The OBVIOUS fibre source (D-043): clustered at the pond's edge
         // where the ground is wet, and a few scattered along the way inland.
-        node('rd1', 'reed', POND.x + 8, POND.y + 4),
-        node('rd2', 'reed', POND.x - 6, POND.y + 7),
-        node('rd3', 'reed', POND.x + 3, POND.y - 8),
+        //  ON THE BANK, NOT IN THE WATER (item 5). `rd1` sat 8.94 m from the pond centre and
+        //  `rd3` 8.54 m, against a drawn radius of 9 — so two of the three pondside reeds were
+        //  literally inside the water, and gathering them meant standing in the drink zone by
+        //  construction. Reeds grow at the water's EDGE, so moving them out is the truthful
+        //  placement as well as the one that stops the two verbs fighting.
+        //  NOTE: `hydrate` preserves a save's own nodes, so an existing run keeps the old
+        //  positions and only new lives get the bank — the radius fix above is what helps a
+        //  save already in progress.
+        node('rd1', 'reed', POND.x + 9.5, POND.y + 4.5),
+        node('rd2', 'reed', POND.x - 7, POND.y + 8),
+        node('rd3', 'reed', POND.x + 3.5, POND.y - 10),
         node('rd4', 'reed', -18, 62),
         node('rd5', 'reed', 16, 58),
 

@@ -1115,7 +1115,15 @@ export function isSheltered(state: GameState): boolean {
 
 /** The player is close enough to the pond to drink from it. */
 export function isAtPond(state: GameState): boolean {
-    return distance(state.player.x, state.player.y, POND.x, POND.y) <= POND.radius + TUNE.interactRadius;
+    //  ---- THE DRINK ZONE IS THE WATER YOU CAN SEE (item 5, this batch) ------------------
+    //
+    //  This was `POND.radius + interactRadius` — a 2.6 m ring of drinkable ground OUTSIDE the
+    //  drawn water, invisible by construction, which is what made gathering near the bank
+    //  resolve to a drink the survivor never asked for. The rule is now the director's own:
+    //  the reach matches what is actually there. Standing anywhere on the drawn disc still
+    //  drinks (the basin is shallow and walkable — every existing fixture reaches the centre
+    //  on foot), so the legitimate verb is not stranded; only the invisible apron is gone.
+    return distance(state.player.x, state.player.y, POND.x, POND.y) <= POND.radius;
 }
 
 export function canDrinkAtPond(state: GameState): boolean {
@@ -1987,35 +1995,85 @@ export interface StorageActionResult {
  * deposits all of it; carrying none, with the crate holding any, withdraws a fixed batch
  * per resource. The two conditions cannot both be true, so neither can starve the other.
  */
-export function useStorage(state: GameState): StorageActionResult {
+/**
+ * THE BOX TAKES AND GIVES AS TWO SEPARATE ACTS (items 11 and 12, this batch).
+ *
+ * WHAT WAS WRONG, reported twice and unaddressed both times because the previous pass fixed
+ * WHAT the box may hold rather than HOW it is used: `useStorage` INFERRED its mode. Carrying
+ * anything at all took the deposit branch; only a survivor with completely empty hands could
+ * reach the withdraw branch. So taking one thing out required first surrendering everything
+ * you were carrying — and then getting at most `storageWithdrawBatch` of it back. The old
+ * doc comment called that "the disjoint-state rule... never a priority conflict, since the
+ * two states cannot both be true", which is exactly the assumption that made it unusable:
+ * they are not two states of the WORLD, they are two things a person might want to do.
+ *
+ * AND WIDENING THE BOX MADE IT WORSE, which is worth recording against my own last pass:
+ * while `STORABLE_KEYS` was wood/stone/fibre only, three kinds forced the deposit branch;
+ * once it became every carried kind, a single berry did. The fix for item 9 amplified the
+ * bug in item 11.
+ *
+ * So the mode is the CALLER's now, never inferred. `storageActionsFor` reports which of the
+ * two are possible and the surface offers exactly those, so a survivor with full hands and a
+ * full box is offered both and picks.
+ */
+export function depositToStorage(state: GameState): StorageActionResult {
     if (!state.storage.built) return { ok: false, action: null, moved: {} };
-
-    const carrying = STORABLE_KEYS.some((key) => state.inventory[key] > 0);
-    if (carrying) {
-        const moved: Partial<StorageInventory> = {};
-        for (const key of STORABLE_KEYS) {
-            if (state.inventory[key] > 0) {
-                moved[key] = state.inventory[key];
-                state.storage.stored[key] = (state.storage.stored[key] ?? 0) + state.inventory[key];
-                state.inventory[key] = 0;
-            }
+    const moved: Partial<StorageInventory> = {};
+    for (const key of STORABLE_KEYS) {
+        const held = state.inventory[key] ?? 0;
+        if (held > 0) {
+            moved[key] = held;
+            state.storage.stored[key] = (state.storage.stored[key] ?? 0) + held;
+            state.inventory[key] = 0;
         }
-        return { ok: true, action: 'deposit', moved };
     }
+    return Object.keys(moved).length > 0
+        ? { ok: true, action: 'deposit', moved }
+        : { ok: false, action: null, moved: {} };
+}
 
-    const holding = STORABLE_KEYS.some((key) => (state.storage.stored[key] ?? 0) > 0);
-    if (!holding) return { ok: false, action: null, moved: {} };
-
+/**
+ * THE BATCH IS REAL AND DELIBERATE (item 12), and it is not a cap on what the box will hold.
+ * `storageWithdrawBatch` limits what one reach into the crate brings out per kind, so a
+ * survivor cannot empty a season of stone into their arms with one tap and discover the
+ * weight only once they try to walk. It read as a bug because item 11 forced them to dump
+ * everything first — pay the whole inventory in, get five back — and that asymmetry, not the
+ * number, is what made it feel like a cap. Named here so the surface can say it out loud.
+ */
+export function withdrawFromStorage(state: GameState): StorageActionResult {
+    if (!state.storage.built) return { ok: false, action: null, moved: {} };
     const moved: Partial<StorageInventory> = {};
     for (const key of STORABLE_KEYS) {
         const take = Math.min(state.storage.stored[key] ?? 0, TUNE.storageWithdrawBatch);
         if (take > 0) {
             moved[key] = take;
             state.storage.stored[key] = (state.storage.stored[key] ?? 0) - take;
-            state.inventory[key] += take;
+            state.inventory[key] = (state.inventory[key] ?? 0) + take;
         }
     }
-    return { ok: true, action: 'withdraw', moved };
+    return Object.keys(moved).length > 0
+        ? { ok: true, action: 'withdraw', moved }
+        : { ok: false, action: null, moved: {} };
+}
+
+/** Which of the two acts are possible right now — the surface offers exactly these. */
+export function storageActionsFor(state: GameState): { canDeposit: boolean; canWithdraw: boolean } {
+    if (!state.storage.built) return { canDeposit: false, canWithdraw: false };
+    return {
+        canDeposit: STORABLE_KEYS.some((k) => (state.inventory[k] ?? 0) > 0),
+        canWithdraw: STORABLE_KEYS.some((k) => (state.storage.stored[k] ?? 0) > 0),
+    };
+}
+
+/**
+ * KEPT AS THE ONE-TAP SHORTHAND the world tap still uses, and now explicitly a CONVENIENCE
+ * over the two real verbs rather than the only way to reach them. Deposit-first is retained
+ * for the bare tap because a survivor who taps a box with full hands almost always means
+ * "put this down" — but the panel offers both, so that guess is never the only option.
+ */
+export function useStorage(state: GameState): StorageActionResult {
+    const { canDeposit } = storageActionsFor(state);
+    return canDeposit ? depositToStorage(state) : withdrawFromStorage(state);
 }
 
 // ---- Energy and sleep (Cycle 05) ------------------------------------------

@@ -622,7 +622,7 @@ const TOOL_LABEL: Record<string, string> = {
     flask: 'Flask'
 };
 
-const MATERIAL_LABEL: Record<string, string> = {
+export const MATERIAL_LABEL: Record<string, string> = {
     wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
     coconut: 'Coconut', shellfish: 'Shellfish', sharpblade: 'Sharp blade',
     //  THE WRECK SLICE. Named as a survivor would name them, not as cargo manifest entries.
@@ -651,6 +651,9 @@ export interface LoadoutPanelView {
     atStorage: boolean;
     /** What the bulk move will do, named up front, or null when there is nothing to move. */
     storageAction: string | null;
+    /** item 11 — the OTHER act, offered beside it rather than instead of it. A survivor with
+     *  full hands and a full box wants both on screen and has only ever been shown one. */
+    storageTakeAction: string | null;
     /** Mend button label, or null when the box does not need (or cannot take) wood. */
     repairLabel: string | null;
     /** Materials the player can try putting together (Try-Combining, D-063 item 4).
@@ -974,7 +977,11 @@ export function showLoadout(
      * Law 26 both forbid — *the world tells you first* — so the brain's own sentence is shown
      * in the same place the evidence line already speaks from.
      */
-    onWhyNot: (materials: string[]) => string | null = () => null
+    onWhyNot: (materials: string[]) => string | null = () => null,
+    /** item 11 — taking, as its own act. Appended LAST so every existing positional call site
+     *  keeps exactly the behaviour it had; a caller that does not pass it simply has no take
+     *  button, which is the pre-item-11 world. */
+    onTakeStorage: () => void = () => {}
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1000,10 +1007,15 @@ export function showLoadout(
     const storageRow = view.atStorage
         ? `<div class="storage-row">${
             view.storageAction ? `<button class="quiet use-storage-btn" type="button">${view.storageAction}</button>` : ''
+        }${
+            //  item 11 — BOTH, WHEN BOTH ARE POSSIBLE. The box used to infer which one act it
+            //  was willing to do from whether your hands were empty, so taking anything out
+            //  meant first putting everything in. Two buttons, no inference.
+            view.storageTakeAction ? `<button class="quiet take-storage-btn" type="button">${view.storageTakeAction}</button>` : ''
           }${
             view.repairLabel ? `<button class="quiet repair-btn" type="button">${view.repairLabel}</button>` : ''
           }${
-            view.storageAction || view.repairLabel ? '' : '<p class="subtitle">The box is empty, and so are your hands.</p>'
+            view.storageAction || view.storageTakeAction || view.repairLabel ? '' : '<p class="subtitle">The box is empty, and so are your hands.</p>'
           }</div>`
         : '';
 
@@ -1202,6 +1214,7 @@ export function showLoadout(
     });
     el.querySelector<HTMLButtonElement>('.stow-btn')?.addEventListener('click', () => { onStow(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.use-storage-btn')?.addEventListener('click', () => { onUseStorage(); fade(el, onClose); });
+    el.querySelector<HTMLButtonElement>('.take-storage-btn')?.addEventListener('click', () => { onTakeStorage(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.repair-btn')?.addEventListener('click', () => { onRepairStorage(); fade(el, onClose); });
     //  Selection: tap a chip to pick it, tap again to drop it. Two to four, per the crafting
     //  spec's own range — the old hard pair was the discovery probe's arity, not the spec's,

@@ -124,7 +124,7 @@ describe('ITEM 1 — the refusal names what THIS survivor must do next', () => {
         s.inventory.sharpblade = 2;
         buildWorkmat(s, 0, 0);
         s.player = { x: 80, y: 80 };
-        expect(canExperimentWith(s, [...AXE]) ?? '').toMatch(/not at it/i);
+        expect(canExperimentWith(s, [...AXE]) ?? '').toMatch(/not standing at it/i);
     });
 
     it('every one of them still names the ENABLER and never the outcome (Law 95)', () => {

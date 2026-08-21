@@ -359,7 +359,12 @@ function pondVerbs(state: GameState): VerbOption[] {
             //  in the catalogue — inventing one would drag the invention pivot's rules into a
             //  rung the model describes as a plain operation (open/clean/stabilize).
             id: 'make-cup',
-            label: 'Open a coconut',
+            //  ITEM 7 — THE LABEL FOLLOWS THE ROUTE. "Open a coconut" is right for the whole
+            //  nut and simply wrong for the emptied husk this batch made usable: a survivor
+            //  holding a shell was offered an action naming a fruit they did not have, did it,
+            //  and then found the shell gone — which read as the husk being eaten by a mislabel
+            //  rather than becoming the cup it now is.
+            label: state.inventory.shell >= TUNE.shellCupShellCost ? 'Make a cup from the shell' : 'Open a coconut',
             available: canMakeShellCup(state),
             reason: shellCupBlocker(state),
         },

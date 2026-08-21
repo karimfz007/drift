@@ -542,7 +542,12 @@ export const TUNE = {
      *  65 health, so a full connect costs about a quarter of a fresh castaway and three of
      *  them kill — a predator that is lethal by accumulation, never a one-shot. HARM ONLY;
      *  the injury profile (bleed/limp/pain) is Drop 2's and is deliberately not here. */
-    boarChargeDamage: 16,
+    //  RAISED 16 -> 28 (item 6, this batch). The comment above still holds — lethal by
+    //  ACCUMULATION, never a one-shot — and 28 keeps that: a survivor at full health survives
+    //  three connects and dies on the fourth, where 16 took SEVEN and read as a scratch. The
+    //  director's report was that a charge cost a minor tick rather than a real portion of
+    //  health; 28% of `healthMax` is a portion you feel and can still walk away from once.
+    boarChargeDamage: 28,
     /** [TUNE] Drop 1 — how far a connect throws you. Enough to be a real interruption and to
      *  read as impact, not enough to fling a survivor into the sea. */
     boarKnockbackM: 3,

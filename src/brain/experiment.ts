@@ -872,9 +872,15 @@ export function canExperimentWith(
             //  a mat under you that needs framing, and a mat you have walked away from.
             const w = state.workspace;
             if (w.built && w.tier === 'mat') {
+                //  NAMES THE MATERIALS, not just the missing thing (item 1, THIRD report).
+                //  The previous pass made this sentence state-aware and it still only said
+                //  WHAT was absent. A survivor standing on their own mat holding a hammer was
+                //  told a frame would help and never told that timber and that hammer, put
+                //  together right here, are the frame. The nearest true reason is only useful
+                //  if it is also the next move.
                 return atWorkspace(state)
-                    ? 'A mat is a surface, not a grip. Framed up on legs it would hold the third piece for you.'
-                    : 'Two hands, two things. Your work mat would take a frame — but you are not at it.';
+                    ? 'A mat is a surface, not a grip. Timber and a hammer, put together here, would frame it into a bench.'
+                    : 'Two hands, two things. Your work mat would take a frame — but you are not standing at it.';
             }
             if (w.built && w.tier === 'bench') {
                 //  Standing away from a sound bench, or at a racked one — `relationsFor` has

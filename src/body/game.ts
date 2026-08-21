@@ -126,7 +126,9 @@ import {
     defectCue,
     defectPlace,
     timeOfDay,
-    useStorage,
+    depositToStorage,
+    withdrawFromStorage,
+    storageActionsFor,
     type Food,
     type GatherResult,
     type MorningReport,
@@ -236,7 +238,8 @@ import {
     showLoadout,
     showMorningReport,
     showSettings,
-    showVerbCircle
+    showVerbCircle,
+    MATERIAL_LABEL,
 } from './hud';
 import { Island, type Obstacle } from './island';
 import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFrame, session, type PressFrame } from './runtime';
@@ -933,6 +936,7 @@ export class Game {
                 activeHand: s.loadout.activeHand,
                 atStorage: atStorage && s.storage.built,
                 storageAction: atStorage ? this.storageActionLabelFor(s) : null,
+                storageTakeAction: atStorage ? this.storageTakeLabelFor(s) : null,
                 repairLabel: atStorage && canRepairStructure(s, 'storage')
                     ? `Mend  ·  +${TUNE.repairDurabilityPerWood} durability`
                     : null,
@@ -1122,7 +1126,10 @@ export class Game {
             //  THE SAME CALL, ANSWERING THE OTHER HALF. Not a second opinion that could drift:
             //  the sentence shown when the pile is refused is the sentence the refusal itself
             //  returned, from the identical arguments the line above gates on.
-            (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage)
+            (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage),
+            //  item 11 — taking, as its own act. Appended LAST so every positional argument
+            //  above keeps the position it already had.
+            () => this.tryTakeStorage()
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -1312,7 +1319,30 @@ export class Game {
             const placed = isPlaced(invented);
             const blocked = makerBlocker(s, invented);
             const maker = Game.MAKERS[invented];
-            if (placed || blocked || !maker) {
+            if (placed) {
+                //  ---- ITEM 3: A PLACED DISCOVERY GOES STRAIGHT TO SITING ------------------
+                //
+                //  REPORTED as "discovering the shelter and choosing to place it redirects
+                //  back to Combine". It did: last batch taught discovery to CRAFT a hand-held
+                //  outcome and left the placed half exactly where it was, so working out a
+                //  shelter minted a plan and dropped the survivor back at the staging surface
+                //  to assemble the identical pile a second time before anything could be put
+                //  anywhere. The hand-held half of that ruling shipped and the placed half did
+                //  not; this is the missing half, not a new idea.
+                //
+                //  Arms the SAME siting flow `onCombine` arms — ghost, cue and prompt — so a
+                //  discovery ends where a combine ends: with the thing in your hand and the
+                //  world asking where it goes. Nothing is spent here; the builder charges at
+                //  the siting tap exactly as it always has.
+                this.siting = { recipeId: invented, materials: materials as MaterialKind[], storageOpen };
+                this.showSitingGhost(invented);
+                this.cues.play(CUES.target);
+                this.showHint(`Tap where the ${recipeDisplayName(invented).toLowerCase()} should go.`);
+                this.recordTap(0, 0, `discover:craft:siting:${invented}`);
+                this.lastActivityAt = now();
+                return;
+            }
+            if (blocked || !maker) {
                 //  A PLACED outcome keeps its siting step, and a blocked one says why — both
                 //  are correct outcomes, not failures, and both are recorded as themselves.
                 this.recordTap(0, 0, `discover:craft:skipped:${invented}:${placed ? 'placed' : blocked ? 'blocked' : 'no-maker'}`);
@@ -2580,8 +2610,19 @@ export class Game {
 
     /** The disjoint-state rule (D-042 audit): carrying raw materials stores them; empty-handed
      *  withdraws a batch. Never a priority conflict, since the two states cannot both be true. */
+    /** item 11 — TAKING, as its own act rather than the thing that happens when your hands
+     *  are empty. The other half of the pair. */
+    private tryTakeStorage(): void {
+        const result = withdrawFromStorage(session().state);
+        if (!result.ok) { this.explain('There is nothing in the box to take.'); return; }
+        this.cues.play(CUES.pickup);
+        this.floatText(this.storageMovedLabel(result.action, result.moved));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     private tryUseStorage(): void {
-        const result = useStorage(session().state);
+        const result = depositToStorage(session().state);
         if (!result.ok) { this.explain('Nothing to store, and nothing to take.'); return; }
         this.cues.play(result.action === 'deposit' ? CUES.collected : CUES.pickup);
         this.floatText(this.storageMovedLabel(result.action, result.moved));
@@ -2595,17 +2636,27 @@ export class Game {
      * none — the player could not previously tell which, because the verb was invisible.
      */
     private storageActionLabelFor(s: ReturnType<typeof session>['state']): string | null {
-        const keys = ['wood', 'stone', 'fiber'] as const;
-        if (keys.some((k) => s.inventory[k] > 0)) return 'Store what you carry';
-        if (keys.some((k) => (s.storage.stored[k] ?? 0) > 0)) return 'Take from the box';
-        return null;
+        //  DERIVED, NOT A HARDCODED TRIPLE — and this line is why item 9's widening only
+        //  half-shipped. `STORABLE_KEYS` became every carried kind last batch while these
+        //  helpers kept their own `['wood','stone','fiber']`, so a survivor carrying only food
+        //  was offered NO storage button at all, and a deposited berry floated an empty
+        //  message. The brain's own answer is the only one consulted now.
+        return storageActionsFor(s).canDeposit ? 'Store what you carry' : null;
     }
 
-    private storageMovedLabel(action: 'deposit' | 'withdraw' | null, moved: Partial<Record<'wood' | 'stone' | 'fiber', number>>): string {
+    /** item 12 — the batch, SAID OUT LOUD. It is deliberate (one reach into a crate, never a
+     *  cap on the crate) and it read as a bug partly because nothing ever named it. */
+    private storageTakeLabelFor(s: ReturnType<typeof session>['state']): string | null {
+        return storageActionsFor(s).canWithdraw ? `Take up to ${TUNE.storageWithdrawBatch} of each` : null;
+    }
+
+    private storageMovedLabel(action: 'deposit' | 'withdraw' | null, moved: Partial<Record<string, number>>): string {
+        //  EVERY KIND, from the same map the panel labels its chips with. The hardcoded
+        //  three here are why storing berries floated "stored" with nothing after it.
         const parts: string[] = [];
-        if (moved.wood) parts.push(`${moved.wood} wood`);
-        if (moved.stone) parts.push(`${moved.stone} stone`);
-        if (moved.fiber) parts.push(`${moved.fiber} fibre`);
+        for (const [kind, count] of Object.entries(moved)) {
+            if (count) parts.push(`${count} ${(MATERIAL_LABEL[kind] ?? kind).toLowerCase()}`);
+        }
         const verb = action === 'deposit' ? 'stored' : 'took';
         return parts.length ? `${verb} ${parts.join(', ')}` : '';
     }
