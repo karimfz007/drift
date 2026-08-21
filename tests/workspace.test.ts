@@ -97,13 +97,13 @@ describe('LAW 220 — slot count represents controlled relations', () => {
         //  The amendment sheet's own example: "the workbench is the thing that holds what your
         //  second hand cannot." Haft, head and binding is the one genuine two-hand job.
         const bare = ready();
-        expect(canExperimentWith(bare, ['wood', 'sharpblade', 'fiber'])).toMatch(/workbench/i);
+        expect(canExperimentWith(bare, ['wood', 'sharpblade', 'fiber'])).toMatch(/bench/i);
         expect(canExperimentWith(benched(), ['wood', 'sharpblade', 'fiber'])).toBeNull();
     });
 
     it('...and the refusal names the ENABLER, never the outcome (Law 95)', () => {
         const said = canExperimentWith(ready(), ['wood', 'sharpblade', 'fiber']) ?? '';
-        expect(said).toMatch(/workbench/i);
+        expect(said).toMatch(/bench/i);
         for (const leak of [/axe/i, /haft/i, /blade/i]) {
             expect(said, `the refusal leaked the outcome: "${said}"`).not.toMatch(leak);
         }

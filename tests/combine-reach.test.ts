@@ -224,7 +224,7 @@ describe('the gate, at two to four', () => {
         //  Haft, head and binding, all at once — the axe, and the one hand-held thing this
         //  slice takes away from bare hands. The refusal names the ENABLER, never the outcome.
         const refused = canExperimentWith(bare, ['wood', 'sharpblade', 'fiber']);
-        expect(refused).toMatch(/workbench/i);
+        expect(refused).toMatch(/bench/i);
         expect(refused, 'the refusal leaks what the pile would have made').not.toMatch(/axe/i);
 
         const benched = stocked();
@@ -237,13 +237,13 @@ describe('the gate, at two to four', () => {
         //  about the work in your hands.
         const away = stocked();
         away.workspace = { built: true, x: away.player.x + 40, y: away.player.y + 40, tier: 'bench', jointWear: 0 };
-        expect(canExperimentWith(away, ['wood', 'sharpblade', 'fiber'])).toMatch(/workbench/i);
+        expect(canExperimentWith(away, ['wood', 'sharpblade', 'fiber'])).toMatch(/bench/i);
     });
 
     it('...and RACKED joints hold nothing — disrepair, never deletion', () => {
         const racked = stocked();
         racked.workspace = { built: true, x: racked.player.x, y: racked.player.y, tier: 'bench', jointWear: 1 };
-        expect(canExperimentWith(racked, ['wood', 'sharpblade', 'fiber'])).toMatch(/workbench/i);
+        expect(canExperimentWith(racked, ['wood', 'sharpblade', 'fiber'])).toMatch(/bench/i);
         expect(racked.workspace.built, 'a racked bench was deleted rather than left standing').toBe(true);
     });
 

@@ -7,6 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, useStorage, buildStorage, eat } from '../src/brain/state';
 import { canMakeShellCup, makeShellCup, shellCupBlocker } from '../src/brain/vessel';
+import { canExperimentWith, recipeDisplayName, PLACED_OUTCOMES } from '../src/brain/experiment';
+import { buildWorkmat } from '../src/brain/state';
 import type { GameState } from '../src/brain/types';
 
 const NOW = 1_770_000_000_000;
@@ -90,5 +92,80 @@ describe('ITEM 3 — the husk you already opened is a cup', () => {
         s.inventory.shell = 3;
         makeShellCup(s);
         expect(canMakeShellCup(s), 'a second cup was offered').toBe(false);
+    });
+});
+
+describe('ITEM 1 — the refusal names what THIS survivor must do next', () => {
+    //  REPORTED TWICE as "the axe still does not work at the mat". The gate was right both
+    //  times — a mat is W0 and W0 is two relations — but the sentence never read the
+    //  workspace, so a castaway standing on a WORK MAT was told "a workbench would hold the
+    //  third steady". A work mat is, to any reasonable reader, a workbench. The game named
+    //  the missing thing in the exact words the survivor believed described the thing under
+    //  their feet, and the truest reason read as a broken button.
+    const AXE = ['wood', 'sharpblade', 'fiber'] as const;
+
+    it('with NOTHING laid, it names the workbench', () => {
+        const s = ready();
+        s.inventory.sharpblade = 2;
+        expect(canExperimentWith(s, [...AXE])).toMatch(/workbench/i);
+    });
+
+    it('standing ON a mat, it says the mat needs FRAMING — not that a workbench is missing', () => {
+        const s = ready();
+        s.inventory.sharpblade = 2;
+        buildWorkmat(s, 0, 0);
+        const said = canExperimentWith(s, [...AXE]) ?? '';
+        expect(said, 'still told to find the thing they are standing on').toMatch(/frame|legs/i);
+        expect(said).not.toMatch(/a workbench would hold/i);
+    });
+
+    it('...and away from your own mat, it says where the problem is', () => {
+        const s = ready();
+        s.inventory.sharpblade = 2;
+        buildWorkmat(s, 0, 0);
+        s.player = { x: 80, y: 80 };
+        expect(canExperimentWith(s, [...AXE]) ?? '').toMatch(/not at it/i);
+    });
+
+    it('every one of them still names the ENABLER and never the outcome (Law 95)', () => {
+        const states: GameState[] = [];
+        const bare = ready(); bare.inventory.sharpblade = 2; states.push(bare);
+        const matted = ready(); matted.inventory.sharpblade = 2; buildWorkmat(matted, 0, 0); states.push(matted);
+        const away = ready(); away.inventory.sharpblade = 2; buildWorkmat(away, 0, 0);
+        away.player = { x: 80, y: 80 }; states.push(away);
+        for (const s of states) {
+            const said = canExperimentWith(s, [...AXE]) ?? '';
+            expect(said.length, 'a refusal went silent').toBeGreaterThan(0);
+            for (const leak of [/axe/i, /haft/i]) {
+                expect(said, `leaked the outcome: "${said}"`).not.toMatch(leak);
+            }
+        }
+    });
+});
+
+describe('ITEM 2 — every placed outcome can name itself', () => {
+    it('the siting prompt is DERIVED, so a fourth placed outcome cannot inherit a third’s words', () => {
+        //  REPORTED as "re-staging stone + fibre says PLACE THE SHELTER but places a mat", and
+        //  diagnosed as stale cached text. It was a two-way ternary: `recipeId === 'storage' ?
+        //  crate : shelter`, so "not the crate" MEANT the shelter and `workmat` — the third
+        //  placed outcome, and the first added since that line was written — fell off the end
+        //  into the shelter's sentence. Nothing was cached; the label was never asked.
+        //
+        //  The prompt now reads `recipeDisplayName(recipeId)`, so this guards the property the
+        //  fix rests on: every placed outcome has a real name, distinct from the others.
+        const placed = ['shelter', 'storage', 'workmat'];
+        const names = placed.map((id) => recipeDisplayName(id));
+        for (const [i, name] of names.entries()) {
+            expect(name, `${placed[i]} has no display name to put in the prompt`).toBeTruthy();
+            expect(name).not.toBe(placed[i]);
+        }
+        expect(new Set(names).size, `two placed outcomes share a name: ${names.join(', ')}`).toBe(placed.length);
+    });
+
+    it('...and every PLACED_OUTCOME is covered, not just the three known today', () => {
+        for (const id of PLACED_OUTCOMES) {
+            const name = recipeDisplayName(id);
+            expect(name, `${id} would be sited under a raw recipe id`).not.toBe(id);
+        }
     });
 });

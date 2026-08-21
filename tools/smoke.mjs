@@ -12743,7 +12743,7 @@ async function main() {
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
     check('BENCH 1 — two staged things is work a body can do: the pile is attemptable bare-handed',
-        twoArmed.discoverDisabled === false && !/workbench/i.test(twoArmed.said),
+        twoArmed.discoverDisabled === false && !/bench/i.test(twoArmed.said),
         JSON.stringify(twoArmed));
 
     //  The third chip. The picker still ACCEPTS it — Law 220 is about what the body can hold
@@ -12779,7 +12779,7 @@ async function main() {
     //  button greyed and the screen said nothing at all. A silent refusal is exactly what
     //  Law 26 and [[D-042]] forbid, and it would have shipped invisible.
     check('BENCH 1 — ...and the world SAYS WHY, rather than greying a button in silence (Law 26)',
-        /workbench/i.test(threeBare.said), `evidence line read "${threeBare.said}"`);
+        /bench/i.test(threeBare.said), `evidence line read "${threeBare.said}"`);
     check('BENCH 1 — ...and the reason names the ENABLER, never the outcome (Law 95)',
         threeBare.said.length > 0 && !/axe/i.test(threeBare.said), `"${threeBare.said}"`);
     await ensureNoPanel();
@@ -12803,8 +12803,15 @@ async function main() {
         combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
+    //  ITEM 1 (this batch) CHANGED WHAT THE RIGHT SENTENCE IS HERE. This asserted the refusal
+    //  named a "workbench" — which is exactly the wording the director read as broken, because
+    //  he was standing on a thing called a WORK MAT at the time. On a mat the truest reason is
+    //  not "you lack a workbench", it is "this surface needs framing", so the check now asks
+    //  for the move rather than for the noun, and explicitly refuses the old sentence.
     check('BENCH 3 — standing ON the mat, three things are STILL refused: a mat is a place, not a hand',
-        atMat.combineDisabled === true && /workbench/i.test(atMat.said), JSON.stringify(atMat));
+        atMat.combineDisabled === true && /frame|legs/i.test(atMat.said)
+        && !/a workbench would hold/i.test(atMat.said),
+        JSON.stringify(atMat));
     await ensureNoPanel();
 
     // ---- 4 · THE BENCH: framed in place, and the silhouette CHANGES ------------------
@@ -12856,7 +12863,7 @@ async function main() {
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
     check('BENCH 7 — a bench 36 m away holds nothing: the third relation is where the bench is',
-        farFromBench.combineDisabled === true && /workbench/i.test(farFromBench.said),
+        farFromBench.combineDisabled === true && /bench/i.test(farFromBench.said),
         JSON.stringify(farFromBench));
     await ensureNoPanel();
 
@@ -12876,7 +12883,7 @@ async function main() {
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
     check('BENCH 8 — ...but it holds nothing: racked joints move under load, so the third relation lapses',
-        onRacked.combineDisabled === true && /workbench/i.test(onRacked.said), JSON.stringify(onRacked));
+        onRacked.combineDisabled === true && /bench/i.test(onRacked.said), JSON.stringify(onRacked));
     await ensureNoPanel();
 
     //  D-011 AS STRUCTURE, NOT AS A CHECK: slack accrues per COMBINE and there is no elapsed-

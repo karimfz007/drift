@@ -1223,9 +1223,23 @@ export class Game {
             //  commits, which is property 4 intact.
             this.showSitingGhost(recipeId);
             this.cues.play(CUES.target);
-            this.showHint(recipeId === 'storage'
-                ? 'Tap where the crate should stand.'
-                : 'Tap where the shelter should stand.');
+            //  ---- PER OUTCOME, NEVER A BINARY (item 2, this batch) ------------------------
+            //
+            //  REPORTED as "re-staging stone + fibre says PLACE THE SHELTER but places a mat",
+            //  and diagnosed as stale cached recipe text bleeding in from an earlier failed
+            //  shelter attempt. It is simpler and more mechanical than that: this line was
+            //  `recipeId === 'storage' ? crate : shelter`, a two-way ternary — so "not the
+            //  crate" MEANT the shelter, and `workmat`, the third placed outcome and the first
+            //  added since this line was written, fell off the end into the shelter's sentence.
+            //  Nothing was cached and nothing bled; the label was simply never asked.
+            //
+            //  THIS IS THE THIRD TIME THIS EXACT SHAPE HAS BEEN FOUND IN THIS FLOW —
+            //  `placeAtSite`'s own dispatch and the harness's `makeViaSlate` were both the same
+            //  ternary, both fixed last batch, and this one survived because it produces only a
+            //  WRONG SENTENCE rather than a wrong object, so every state assertion stayed green
+            //  while the screen lied. Derived from the recipe's own display name now, so a
+            //  fourth placed outcome cannot inherit a third's words.
+            this.showHint(`Tap where the ${recipeDisplayName(recipeId).toLowerCase()} should go.`);
             this.lastActivityAt = now();
             return;
         }

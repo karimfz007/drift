@@ -855,9 +855,35 @@ export function canExperimentWith(
         const pool = matchPool(materials);
         const restsOnTheGround = pool.length > 0 && pool.every((r) => GROUND_WORK.has(r.id));
         if (!restsOnTheGround) {
-            return relations >= TUNE.relationsAtBench
-                ? `You cannot hold ${materials.length} things steady at once, even braced.`
-                : `Two hands, two things. A workbench would hold the third steady while you work.`;
+            if (relations >= TUNE.relationsAtBench) {
+                return `You cannot hold ${materials.length} things steady at once, even braced.`;
+            }
+            //  ---- THE REFUSAL READS THE WORKSPACE (item 1, this batch) ---------------------
+            //
+            //  REPORTED TWICE as "the axe still does not work at the mat", and the gate was
+            //  right both times — a mat is W0 and W0 is two relations. What was wrong is that
+            //  the sentence never looked at what the survivor had actually built. A castaway
+            //  who has laid a WORK MAT, standing on it, was told "a workbench would hold the
+            //  third steady" — and a work mat is, to any reasonable reader, a workbench. The
+            //  game named the missing thing in words the survivor believed described the
+            //  thing they were standing on, so the truest reason read as a broken button.
+            //
+            //  Three states, three sentences, each naming the ONE next move: nothing laid,
+            //  a mat under you that needs framing, and a mat you have walked away from.
+            const w = state.workspace;
+            if (w.built && w.tier === 'mat') {
+                return atWorkspace(state)
+                    ? 'A mat is a surface, not a grip. Framed up on legs it would hold the third piece for you.'
+                    : 'Two hands, two things. Your work mat would take a frame — but you are not at it.';
+            }
+            if (w.built && w.tier === 'bench') {
+                //  Standing away from a sound bench, or at a racked one — `relationsFor` has
+                //  already decided which, so the sentence only has to say which is true.
+                return atWorkspace(state)
+                    ? 'The bench joints have gone slack — it moves under the work. Re-lay the surface and frame it again.'
+                    : 'Two hands, two things. Your bench is not here to hold the third.';
+            }
+            return 'Two hands, two things. A workbench would hold the third steady while you work.';
         }
     }
     const reach = reachFor(state, storageOpen);
