@@ -12953,6 +12953,32 @@ async function main() {
     await ensureNoPanel();
 
 
+    //  ITEM 7 — DISCOVERY SUCCESS CRAFTS THE THING. This is the item that shipped broken,
+    //  was withdrawn rather than left half-working, and is now TRACED at every branch so a
+    //  failure names itself instead of looking like nothing happened.
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.blueprints = [];
+        state.torch = { owned: false, lit: false, fuelGameHoursRemaining: 0 };`);
+    await sleep(800);
+    const beforeFind = (await live()).inventory;
+    await page.evaluate(() => window.__drift?.clearPointerLog?.());
+    await openSlate();
+    await stageChips(['wood', 'fiber']);
+    await realTapDom('.discover-btn');
+    await sleep(1200);
+    const afterFind = await live();
+    const craftTrail = await page.evaluate(() => (window.__drift?.pointerLog?.() ?? []).join(' | '));
+    check('ITEM 7 — a successful discovery hands over the THING, immediately, with no second build step',
+        afterFind.torch.owned === true,
+        `torch owned ${afterFind.torch.owned}, plans [${afterFind.blueprints.map((b) => b.recipeId).join(', ')}], trail: ${craftTrail}`);
+    //  THE PRICE IS THE RECIPE'S, CHARGED ONCE — not the staged unit plus the recipe. The old
+    //  behaviour spent 1 wood + 1 fibre for a plan and then the full price again to build.
+    check('ITEM 7 — ...and it charged the RECIPE price exactly once, not a staged unit as well',
+        afterFind.inventory.wood === beforeFind.wood - TUNE.torchWoodCost
+        && afterFind.inventory.fiber === beforeFind.fiber - TUNE.torchFiberCost,
+        `wood ${beforeFind.wood} -> ${afterFind.inventory.wood} (want -${TUNE.torchWoodCost}), fibre ${beforeFind.fiber} -> ${afterFind.inventory.fiber} (want -${TUNE.torchFiberCost})`);
+    await ensureNoPanel();
+
     check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
         awayState.workspace.jointWear === wearBeforeAway && awayState.workspace.tier === 'bench',
         `jointWear ${wearBeforeAway} -> ${awayState.workspace.jointWear} across a real 45-minute absence (mid-range, so a rise was expressible)`);

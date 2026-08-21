@@ -1280,21 +1280,44 @@ export class Game {
         else this.explain(said.text);
         if (said.triumphant) this.cues.play(CUES.unlock);
 
-        //  ---- A SUCCESS SHOULD CONVERT THE MATTER — ATTEMPTED, NOT SHIPPED --------------
+        //  ---- A SUCCESS CRAFTS THE THING, HERE, NOW (DIRECTOR'S RULING, item 7) ----------
         //
-        //  DIRECTOR'S RULING, the other half of the one `tryCombineWith`'s null branch now
-        //  carries: *"a real success naturally converts materials into the crafted item."*
-        //  Today it does not — working out the torch spends a stick and a strand and hands
-        //  back a PLAN, and the survivor pays the full price again to actually build it.
+        //  *"Upon successful discovery it will deduct the resources and craft the item; upon
+        //  failure it only deducts the materials."* `tryCombineWith` no longer charges the
+        //  staged unit on a discovery (see its own note), so the maker below is the ONLY thing
+        //  that spends — the survivor pays the recipe's price once and walks away holding it.
         //
-        //  A WIRING FOR IT WAS WRITTEN AND IS DELIBERATELY NOT HERE. It ran the same
-        //  `recipeCost`/`drawIntoHands`/`Game.MAKERS` path `onCombine` uses, typechecked, and
-        //  shipped into the bundle — and on device the plan minted while the torch did not
-        //  appear, with no precondition on `canCraftTorch` that explains it. Rather than leave
-        //  a silent half-working conversion in the discovery path, it is removed and the
-        //  finding recorded: the failure half of the ruling IS implemented and unit-proven,
-        //  and this half is owed, with the symptom already narrowed to the maker call itself
-        //  rather than to the gate, the cost table or the blueprint.
+        //  THIS SHIPPED BROKEN ONCE AND WAS WITHDRAWN RATHER THAN LEFT HALF-WORKING. The
+        //  attempt before this one ran the same path and the item never appeared, with no
+        //  precondition that explained it. So the outcome is TRACED rather than assumed:
+        //  `discover:craft:*` records what actually happened at every branch, which is what
+        //  turns "it did not work" into a fact a check can read instead of a guess.
+        const invented = result.outcome === 'invented' ? result.recipeId : null;
+        if (invented) {
+            const s = session().state;
+            const placed = isPlaced(invented);
+            const blocked = makerBlocker(s, invented);
+            const maker = Game.MAKERS[invented];
+            if (placed || blocked || !maker) {
+                //  A PLACED outcome keeps its siting step, and a blocked one says why — both
+                //  are correct outcomes, not failures, and both are recorded as themselves.
+                this.recordTap(0, 0, `discover:craft:skipped:${invented}:${placed ? 'placed' : blocked ? 'blocked' : 'no-maker'}`);
+                if (blocked && !placed) this.explain(blocked);
+            } else {
+                const drew = recipeCost(invented)
+                    .every(({ kind, amount }) => drawIntoHands(s, kind, amount, storageOpen));
+                const made = drew && maker(s);
+                this.recordTap(0, 0, `discover:craft:${made ? 'made' : drew ? 'refused' : 'short'}:${invented}`);
+                if (made) {
+                    this.cues.play(CUES.craft);
+                    this.floatText(`${recipeDisplayName(invented)} — made`);
+                    session().markFirstCraft(msSinceControl());
+                } else if (!drew) {
+                    this.explain('You worked it out, but you are short of what it takes to make one.');
+                }
+                session().persist(now());
+            }
+        }
         this.lastActivityAt = now();
     }
 
@@ -1313,6 +1336,44 @@ export class Game {
         if (said.presentation === 'float') this.floatText(said.text);
         else this.explain(said.text);
         if (said.triumphant) this.cues.play(CUES.unlock);
+
+        //  ---- A SUCCESS CRAFTS THE THING, HERE, NOW (DIRECTOR'S RULING, item 7) ----------
+        //
+        //  *"Upon successful discovery it will deduct the resources and craft the item; upon
+        //  failure it only deducts the materials."* `tryCombineWith` no longer charges the
+        //  staged unit on a discovery (see its own note), so the maker below is the ONLY thing
+        //  that spends: the survivor pays the recipe's price once and walks away holding it.
+        //
+        //  THIS SHIPPED BROKEN ONCE AND WAS WITHDRAWN RATHER THAN LEFT HALF-WORKING, so the
+        //  outcome is TRACED at every branch. `discover:craft:*` records what actually
+        //  happened, which is what turned "it did not work" into a fact a check could read.
+        const invented = result.outcome === 'invented' ? result.recipeId : null;
+        if (invented) {
+            const st = session().state;
+            const placed = isPlaced(invented);
+            const blocked = makerBlocker(st, invented);
+            const maker = Game.MAKERS[invented];
+            if (placed || blocked || !maker) {
+                //  A PLACED outcome keeps its siting step and a blocked one says why — both
+                //  are correct outcomes rather than failures, and both are recorded as
+                //  themselves so a silent skip is impossible to mistake for a silent break.
+                this.recordTap(0, 0, `discover:craft:skipped:${invented}`);
+                if (blocked && !placed) this.explain(blocked);
+            } else {
+                const drew = recipeCost(invented)
+                    .every(({ kind, amount }) => drawIntoHands(st, kind, amount, storageOpen));
+                const made = drew && maker(st);
+                this.recordTap(0, 0, `discover:craft:${made ? 'made' : drew ? 'refused' : 'short'}:${invented}`);
+                if (made) {
+                    this.cues.play(CUES.craft);
+                    this.floatText(`${recipeDisplayName(invented)} — made`);
+                    session().markFirstCraft(msSinceControl());
+                } else if (!drew) {
+                    this.explain('You worked it out, but you are short of what it takes to make one.');
+                }
+                session().persist(now());
+            }
+        }
         this.lastActivityAt = now();
     }
 
@@ -2522,7 +2583,7 @@ export class Game {
     private storageActionLabelFor(s: ReturnType<typeof session>['state']): string | null {
         const keys = ['wood', 'stone', 'fiber'] as const;
         if (keys.some((k) => s.inventory[k] > 0)) return 'Store what you carry';
-        if (keys.some((k) => s.storage.stored[k] > 0)) return 'Take from the box';
+        if (keys.some((k) => (s.storage.stored[k] ?? 0) > 0)) return 'Take from the box';
         return null;
     }
 

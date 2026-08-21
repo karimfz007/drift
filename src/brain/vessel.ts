@@ -53,23 +53,45 @@ export function vesselName(kind: VesselKind): string {
 // W1 — the coconut shell cup. Coconut + a cutting edge.
 // ---------------------------------------------------------------------------
 
+/**
+ * THE HUSK YOU ALREADY OPENED COUNTS (item 3, this batch).
+ *
+ * REPORTED AS "I have a coconut shell but Fill cup is not offered", and the pond circle was
+ * telling the truth: a `shell` is not a vessel, and the only route to one demanded a WHOLE
+ * coconut plus a blade. But `eat()` has handed back a `shell` on every coconut eaten since
+ * the vessel shipped — "the emptied husk", `materials.ts`'s own words — and that husk is the
+ * exact object this operation produces. A survivor holding one was told to go and find an
+ * unopened coconut and cut it open to obtain the thing already in their pack.
+ *
+ * So an emptied shell is the cheaper route to the same cup, and it needs NO blade: the
+ * cutting is what made it a shell in the first place. The whole-coconut route is untouched.
+ */
 export function canMakeShellCup(state: GameState): boolean {
-    return state.water.vessel === null
-        && state.inventory.coconut >= TUNE.shellCupCoconutCost
+    if (state.water.vessel !== null) return false;
+    if (state.inventory.shell >= TUNE.shellCupShellCost) return true;
+    return state.inventory.coconut >= TUNE.shellCupCoconutCost
         && state.inventory.sharpblade >= TUNE.shellCupBladeCost;
 }
 
 /** One sentence naming the single thing in the way. Never "requirements not met". */
 export function shellCupBlocker(state: GameState): string | null {
     if (state.water.vessel !== null) return `You already have ${vesselName(state.water.vessel)}.`;
-    if (state.inventory.coconut < TUNE.shellCupCoconutCost) return 'You would need a coconut.';
+    //  An emptied husk is the shortest route and needs nothing else, so it is checked first
+    //  and never produces a blocker of its own.
+    if (state.inventory.shell >= TUNE.shellCupShellCost) return null;
+    if (state.inventory.coconut < TUNE.shellCupCoconutCost) return 'You would need a coconut, or an emptied shell.';
     if (state.inventory.sharpblade < TUNE.shellCupBladeCost) return 'You would need something with an edge to open it.';
     return null;
 }
 
 export function makeShellCup(state: GameState): boolean {
     if (!canMakeShellCup(state)) return false;
-    state.inventory.coconut -= TUNE.shellCupCoconutCost;
+    //  SPEND WHAT WAS ACTUALLY USED. The husk route consumes the husk and nothing else; the
+    //  whole-coconut route consumes the nut. Charging the coconut unconditionally, as this
+    //  did, would have driven the stack negative for a survivor who had none — which is the
+    //  shape a `-1 coconut` bug takes before anybody notices it.
+    if (state.inventory.shell >= TUNE.shellCupShellCost) state.inventory.shell -= TUNE.shellCupShellCost;
+    else state.inventory.coconut -= TUNE.shellCupCoconutCost;
     //  The blade is a TOOL used, not a material spent — opening a shell does not consume an
     //  edge. The model's operation list is open/clean/stabilize; none of those eats the knife.
     state.water = { ...state.water, vessel: 'shell-cup' };

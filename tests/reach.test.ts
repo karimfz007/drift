@@ -95,7 +95,7 @@ describe('the reach: held, plus an OPEN box', () => {
         const before = s.storage.stored.wood;
         const r = makeChosen(s, ['wood', 'stone'], 'storage', true);
         expect(r.outcome, r.reason ?? '').toBe('invented');
-        expect(s.storage.stored.wood, 'the box was not charged').toBe(before - 1);
+        expect(s.storage.stored.wood, 'the box was not charged').toBe((before ?? 0) - 1);
         expect(s.inventory.wood, 'empty hands went negative').toBe(0);
     });
 

@@ -400,12 +400,21 @@ export interface ShelterState extends Structure {
     grade: ItemGrade;
 }
 
-/** The storage crate's contents — raw materials only, a second pool from personal carry. */
-export interface StorageInventory {
-    wood: number;
-    stone: number;
-    fiber: number;
-}
+/**
+ * The storage crate's contents — ANY carried kind, a second pool from personal carry.
+ *
+ * WIDENED FROM THREE KINDS (item 9, this batch). It was `{wood, stone, fiber}`, so a survivor
+ * could not put food, a knapped blade, salvaged metal or a spare hammer in the box they had
+ * built specifically to stop carrying things — and nothing said why, because the crate simply
+ * did not offer them. `experiment.ts` had already been reading this as a partial material map
+ * for combine-reach, so the box could FEED a recipe from a kind it could not itself accept.
+ *
+ * PARTIAL ON PURPOSE, which is what keeps this off the migration ladder: an old save's crate
+ * carries exactly the three keys it always had, every other kind reads `undefined`, and every
+ * consumer already coalesces. A crate that has never held fish is not a crate holding zero
+ * fish, and there is no schema version in which it needed to become one.
+ */
+export type StorageInventory = Partial<Record<MaterialKind, number>>;
 
 export interface StorageState extends Structure {
     stored: StorageInventory;

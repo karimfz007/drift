@@ -4,6 +4,7 @@
  */
 
 import { gameHoursFromRealSeconds } from './clock';
+import { ALL_MATERIAL_KINDS } from './materials';
 import { arrivalProfile } from './arrival';
 import { createBoars } from './fauna';
 import { disturb, harmFromWorking } from './wreck';
@@ -1969,7 +1970,10 @@ export function repairStructure(state: GameState, which: RepairTarget): boolean 
 
 
 /** The raw-material keys storage can hold — personal inventory carries food too; storage never does. */
-const STORABLE_KEYS: Array<keyof StorageInventory> = ['wood', 'stone', 'fiber'];
+//  EVERY CARRIED KIND (item 9). Derived from `ALL_MATERIAL_KINDS` rather than typed out, so a
+//  material added later is storable the day it exists — the hand-written three are exactly how
+//  this got stuck: the crate was built before half the game's matter existed and never widened.
+const STORABLE_KEYS: MaterialKind[] = ALL_MATERIAL_KINDS;
 
 export interface StorageActionResult {
     ok: boolean;
@@ -1992,22 +1996,22 @@ export function useStorage(state: GameState): StorageActionResult {
         for (const key of STORABLE_KEYS) {
             if (state.inventory[key] > 0) {
                 moved[key] = state.inventory[key];
-                state.storage.stored[key] += state.inventory[key];
+                state.storage.stored[key] = (state.storage.stored[key] ?? 0) + state.inventory[key];
                 state.inventory[key] = 0;
             }
         }
         return { ok: true, action: 'deposit', moved };
     }
 
-    const holding = STORABLE_KEYS.some((key) => state.storage.stored[key] > 0);
+    const holding = STORABLE_KEYS.some((key) => (state.storage.stored[key] ?? 0) > 0);
     if (!holding) return { ok: false, action: null, moved: {} };
 
     const moved: Partial<StorageInventory> = {};
     for (const key of STORABLE_KEYS) {
-        const take = Math.min(state.storage.stored[key], TUNE.storageWithdrawBatch);
+        const take = Math.min(state.storage.stored[key] ?? 0, TUNE.storageWithdrawBatch);
         if (take > 0) {
             moved[key] = take;
-            state.storage.stored[key] -= take;
+            state.storage.stored[key] = (state.storage.stored[key] ?? 0) - take;
             state.inventory[key] += take;
         }
     }

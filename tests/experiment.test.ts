@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    tryCombineWith,
     COMBINE_ALWAYS_SUCCEEDS,
     canExperiment,
     canExperimentWith,
@@ -212,15 +213,41 @@ describe('experiment — a success mints a named Blueprint (§10.5/§10.6)', () 
         expect(bp.recipeId).toBe('torch');
     });
 
-    it('a success consumes the two materials — the prototype is what they became', () => {
+    it('a DISCOVERY charges nothing here — the maker charges the recipe price instead (item 7)', () => {
+        //  DIRECTOR'S RULING SUPERSEDES THIS TEST'S OLD CLAIM. It asserted that working
+        //  something out consumed one of each staged kind, which is what made a successful
+        //  discovery cost matter and yield no object — the survivor then paid the recipe's
+        //  real price a second time to build the thing they had just invented.
+        //
+        //  The ruling is *"upon successful discovery it will deduct the resources and craft
+        //  the item"*, so the price is the RECIPE's, charged once, by the maker. That maker
+        //  lives in the body (`Game.MAKERS`) because `state.ts` already imports this module
+        //  and the reverse would be circular — so the honest statement of the split is: the
+        //  brain mints the plan and charges nothing, and the caller that runs the maker is
+        //  what makes the survivor pay. `tools/smoke.mjs` asserts the other half on the real
+        //  UI, including the trace marker that says which branch actually ran.
         const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
         s.inventory.wood = 20;
         s.inventory.fiber = 20;
         const before = { wood: s.inventory.wood, fiber: s.inventory.fiber };
         const r = attemptConfirmed(s, ['wood', 'fiber']);
         if (r.outcome === 'invented') {
-            expect(s.inventory.wood).toBe(before.wood - 1);
-            expect(s.inventory.fiber).toBe(before.fiber - 1);
+            expect(s.inventory.wood, 'discovery charged the staged unit as well as the recipe').toBe(before.wood);
+            expect(s.inventory.fiber).toBe(before.fiber);
+        }
+    });
+
+    it('...while an ordinary COMBINE still spends exactly what it always did', () => {
+        //  The boundary, so "discovery does not charge" cannot be over-read into "nothing
+        //  charges". A named recipe committed through the slate is untouched by the ruling.
+        const s = withTechnique(ready(), TUNE.knowledgeScoreMax);
+        s.inventory.wood = 20; s.inventory.fiber = 20;
+        s.blueprints = [];
+        attemptConfirmed(s, ['wood', 'fiber']);
+        const before = { wood: s.inventory.wood, fiber: s.inventory.fiber };
+        const again = tryCombineWith(s, ['wood', 'fiber'], 'torch');
+        if (again.outcome === 'invented' || again.ok) {
+            expect(s.inventory.wood, 'a named combine stopped spending').toBeLessThan(before.wood);
         }
     });
 

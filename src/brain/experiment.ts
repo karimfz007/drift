@@ -1137,7 +1137,26 @@ export function tryCombineWith(
     //  requires every material to be in hand, so no stack can be driven negative.
     //  ITEM 2 — spent through the reach, held first and the box second. At `storageOpen: false`
     //  this is exactly `state.inventory[staged] -= 1`, which is what it replaced.
-    for (const staged of materials) spendFromReach(state, staged, withStorage);
+    //  ---- WHO PAYS, AND WHEN (DIRECTOR'S RULING, item 7) --------------------------------
+    //
+    //  *"Upon successful discovery it will deduct the resources and craft the item; upon
+    //  failure it only deducts the materials."*
+    //
+    //  So a DISCOVERY that lands does not pay here. It used to spend one of each staged kind
+    //  and hand back a plan — which meant working something out cost matter and produced no
+    //  object, and the survivor then paid the recipe's real price a second time to build the
+    //  thing they had just worked out. The recipe's OWN cost is charged instead, by the maker
+    //  the caller runs, so the total is the price of the item and nothing more.
+    //
+    //  A PLACED outcome is the deliberate exception and pays nothing here either: a shelter
+    //  cannot be handed over without asking where it goes, so it mints the plan, charges at
+    //  siting time through its own builder, and is the one case where discovery and building
+    //  stay two steps. Ordinary combining (`chosenRecipeId` naming a real recipe) is untouched
+    //  and still spends exactly what it always did.
+    const isDiscovery = chosenRecipeId === EXPERIMENT_CHOICE;
+    if (!isDiscovery) {
+        for (const staged of materials) spendFromReach(state, staged, withStorage);
+    }
 
     //  §10.5's versioning: re-deriving a plan you already hold bumps its version rather than
     //  minting a duplicate. A plan is one object with a history, not a pile of copies.

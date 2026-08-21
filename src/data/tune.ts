@@ -1217,6 +1217,10 @@ export const TUNE = {
     /** [TUNE] W1 — a coconut for the shell cup. The sheet's matter line is "Coconut + cutting
      *  edge", and one coconut is one shell. */
     shellCupCoconutCost: 1,
+    /** [TUNE] item 3 — an ALREADY-EMPTIED husk is the cheaper route to the same cup, and needs
+     *  no blade: the cutting is what made it a shell. `eat()` has handed one back on every
+     *  coconut eaten since the vessel shipped, and until now that husk could become nothing. */
+    shellCupShellCost: 1,
     /** [TUNE] W1 — a cutting edge to open it. NOT consumed: the sheet's operations are
      *  open/clean/stabilize and none of those eats a knife, so this is a requirement rather
      *  than a cost. */
