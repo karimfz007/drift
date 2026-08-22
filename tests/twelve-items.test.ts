@@ -9,7 +9,7 @@ import { createInitialState, useStorage, buildStorage, eat } from '../src/brain/
 import { canMakeShellCup, makeShellCup, shellCupBlocker } from '../src/brain/vessel';
 import { canExperimentWith, recipeDisplayName, PLACED_OUTCOMES } from '../src/brain/experiment';
 import { buildWorkmat } from '../src/brain/state';
-import type { GameState } from '../src/brain/types';
+import type { GameState, MaterialKind } from '../src/brain/types';
 
 const NOW = 1_770_000_000_000;
 function ready(): GameState {
@@ -96,27 +96,55 @@ describe('ITEM 3 — the husk you already opened is a cup', () => {
 });
 
 describe('ITEM 1 — the refusal names what THIS survivor must do next', () => {
-    //  REPORTED TWICE as "the axe still does not work at the mat". The gate was right both
-    //  times — a mat is W0 and W0 is two relations — but the sentence never read the
-    //  workspace, so a castaway standing on a WORK MAT was told "a workbench would hold the
-    //  third steady". A work mat is, to any reasonable reader, a workbench. The game named
-    //  the missing thing in the exact words the survivor believed described the thing under
-    //  their feet, and the truest reason read as a broken button.
+    //  REPORTED FOUR TIMES as "the axe still does not work at the mat", and this block has
+    //  been rewritten three times to chase it. The first three passes all fixed the SENTENCE:
+    //  a castaway standing on a WORK MAT was told "a workbench would hold the third steady",
+    //  and a work mat is, to any reasonable reader, a workbench — so the game named the
+    //  missing thing in the exact words the survivor believed described the thing under their
+    //  feet, and the truest reason read as a broken button.
+    //
+    //  THE FOURTH READING IS THAT THE REFUSAL WAS THE BUG. Two relations at a mat left no
+    //  route to a three-part tool at all — the axe needed the bench, the bench needs six
+    //  timber, and cutting timber wants the axe — so no wording could have unblocked anyone.
+    //  Law 220's own sentence settles it against the module table that summarises it:
+    //  *"ADDED SURFACES, clamps, pegs, jigs and fixtures expand controlled relations."*
+    //  See [[D-182]]. What survives here is the property the three rewrites were reaching
+    //  for: the sentence names an enabler THIS survivor can actually reach next.
     const AXE = ['wood', 'sharpblade', 'fiber'] as const;
+    //  Four things at once — the shortfall that OUTLIVES the mat, and so the only staging that
+    //  still exercises the workspace sentence now that a mat holds three.
+    const FOUR = ['wood', 'sharpblade', 'fiber', 'stone'] as const;
 
-    it('with NOTHING laid, it names the workbench', () => {
+    it('with NOTHING laid, it names the MAT — the rung you can actually reach', () => {
+        //  It said "workbench" through three reports. A bench cannot be built from nothing
+        //  ([[D-165]]: it is a mat, framed), so that sentence named a thing two steps away and
+        //  six timber deep, while the thing that would have unblocked them is fibre and two
+        //  flat stones. Naming an enabler the survivor does not need is the same defect that
+        //  drove reports one through three, wearing a different word.
         const s = ready();
         s.inventory.sharpblade = 2;
-        expect(canExperimentWith(s, [...AXE])).toMatch(/workbench/i);
+        expect(canExperimentWith(s, [...AXE])).toMatch(/mat/i);
     });
 
-    it('standing ON a mat, it says the mat needs FRAMING — not that a workbench is missing', () => {
+    it('THE FOURTH REPORT: standing ON a mat, the axe simply goes together', () => {
+        //  The item, four times over. Every prior pass fixed the SENTENCE — and a truer
+        //  sentence is still a refusal. The survivor was never wrong about what a work mat is;
+        //  the ladder was wrong about what one holds.
         const s = ready();
         s.inventory.sharpblade = 2;
         buildWorkmat(s, 0, 0);
-        const said = canExperimentWith(s, [...AXE]) ?? '';
-        expect(said, 'still told to find the thing they are standing on').toMatch(/frame|legs/i);
-        expect(said).not.toMatch(/a workbench would hold/i);
+        expect(canExperimentWith(s, [...AXE]), 'a laid mat, stood on, still refused the axe').toBeNull();
+    });
+
+    it('...and a mat still says FRAMING for the fourth thing — the bench keeps a rung', () => {
+        const s = ready();
+        s.inventory.sharpblade = 2;
+        const said = canExperimentWith(s, [...FOUR]) ?? '';
+        buildWorkmat(s, 0, 0);
+        const onMat = canExperimentWith(s, [...FOUR]) ?? '';
+        expect(said, 'nothing laid, four staged: named the far rung').toMatch(/mat/i);
+        expect(onMat, 'a mat holding four was not told to frame').toMatch(/frame|bench/i);
+        expect(onMat).not.toMatch(/a mat of fibre/i);
     });
 
     it('...and away from your own mat, it says where the problem is', () => {
@@ -128,13 +156,14 @@ describe('ITEM 1 — the refusal names what THIS survivor must do next', () => {
     });
 
     it('every one of them still names the ENABLER and never the outcome (Law 95)', () => {
-        const states: GameState[] = [];
-        const bare = ready(); bare.inventory.sharpblade = 2; states.push(bare);
-        const matted = ready(); matted.inventory.sharpblade = 2; buildWorkmat(matted, 0, 0); states.push(matted);
+        const cases: Array<[GameState, readonly MaterialKind[]]> = [];
+        const bare = ready(); bare.inventory.sharpblade = 2; cases.push([bare, AXE]);
+        const matted = ready(); matted.inventory.sharpblade = 2; buildWorkmat(matted, 0, 0);
+        cases.push([matted, FOUR]);
         const away = ready(); away.inventory.sharpblade = 2; buildWorkmat(away, 0, 0);
-        away.player = { x: 80, y: 80 }; states.push(away);
-        for (const s of states) {
-            const said = canExperimentWith(s, [...AXE]) ?? '';
+        away.player = { x: 80, y: 80 }; cases.push([away, AXE]);
+        for (const [s, staged] of cases) {
+            const said = canExperimentWith(s, [...staged]) ?? '';
             expect(said.length, 'a refusal went silent').toBeGreaterThan(0);
             for (const leak of [/axe/i, /haft/i]) {
                 expect(said, `leaked the outcome: "${said}"`).not.toMatch(leak);

@@ -236,7 +236,9 @@ describe('the gate, at two to four', () => {
         //  Haft, head and binding, all at once — the axe, and the one hand-held thing this
         //  slice takes away from bare hands. The refusal names the ENABLER, never the outcome.
         const refused = canExperimentWith(bare, ['wood', 'sharpblade', 'fiber']);
-        expect(refused).toMatch(/bench/i);
+        //  Names the MAT, the nearest rung — a bench needs an existing mat under it, so it is
+        //  never one step from nothing. See the revised `relationsAtMat` note in `tune.ts`.
+        expect(refused).toMatch(/mat/i);
         expect(refused, 'the refusal leaks what the pile would have made').not.toMatch(/axe/i);
 
         const benched = stocked();
@@ -252,10 +254,16 @@ describe('the gate, at two to four', () => {
         expect(canExperimentWith(away, ['wood', 'sharpblade', 'fiber'])).toMatch(/bench/i);
     });
 
-    it('...and RACKED joints hold nothing — disrepair, never deletion', () => {
+    it('...and RACKED joints fall back to the SURFACE — disrepair, never deletion', () => {
+        //  A racked frame loses the bench's relation and keeps the mat's: the joints are what
+        //  moved, and the top is still a top. So the axe (three) still goes together on it and
+        //  the FOURTH relation is what lapsed — which is what this now stages to prove.
         const racked = stocked();
         racked.workspace = { built: true, x: racked.player.x, y: racked.player.y, tier: 'bench', jointWear: 1 };
-        expect(canExperimentWith(racked, ['wood', 'sharpblade', 'fiber'])).toMatch(/bench/i);
+        expect(canExperimentWith(racked, ['wood', 'sharpblade', 'fiber']),
+            'racking cost the surface as well as the frame').toBeNull();
+        expect(canExperimentWith(racked, ['wood', 'sharpblade', 'fiber', 'stone']))
+            .toMatch(/slack|frame/i);
         expect(racked.workspace.built, 'a racked bench was deleted rather than left standing').toBe(true);
     });
 

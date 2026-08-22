@@ -803,9 +803,13 @@ export function atWorkspace(state: GameState): boolean {
  */
 export function relationsFor(state: GameState): number {
     const w = state.workspace;
-    if (w.tier === 'bench' && w.jointWear < 1 && atWorkspace(state)) return TUNE.relationsAtBench;
-    //  The mat is W0 made real and adds nothing here — see `TUNE.relationsAtMat`'s own note.
-    return TUNE.relationsAtW0;
+    if (!w.built || !atWorkspace(state)) return TUNE.relationsAtW0;
+    //  A RACKED FRAME FALLS BACK TO THE SURFACE UNDER IT, not to bare hands. The joints are
+    //  what moved; the top is still a top, and it is still where the work is. Losing the
+    //  bench's extra relation is the cost of letting the frame go slack — losing the mat's
+    //  as well would be charging twice for one failure.
+    if (w.tier === 'bench' && w.jointWear < 1) return TUNE.relationsAtBench;
+    return TUNE.relationsAtMat;
 }
 
 /**
@@ -858,38 +862,46 @@ export function canExperimentWith(
             if (relations >= TUNE.relationsAtBench) {
                 return `You cannot hold ${materials.length} things steady at once, even braced.`;
             }
-            //  ---- THE REFUSAL READS THE WORKSPACE (item 1, this batch) ---------------------
+            //  ---- THE REFUSAL NAMES THE NEAREST RUNG, NOT THE TOP ONE ---------------------
             //
-            //  REPORTED TWICE as "the axe still does not work at the mat", and the gate was
-            //  right both times — a mat is W0 and W0 is two relations. What was wrong is that
-            //  the sentence never looked at what the survivor had actually built. A castaway
-            //  who has laid a WORK MAT, standing on it, was told "a workbench would hold the
-            //  third steady" — and a work mat is, to any reasonable reader, a workbench. The
-            //  game named the missing thing in words the survivor believed described the
-            //  thing they were standing on, so the truest reason read as a broken button.
+            //  REPORTED FOUR TIMES as "the axe still does not work at the mat". Three passes
+            //  treated it as a wording problem; the fourth reading is that a survivor with no
+            //  bench had NO route to a three-part tool, because the bench wants six timber and
+            //  timber wants the axe. `relationsAtMat` moved to 3 for that reason, and this
+            //  block has to move with it — a sentence that names an enabler the survivor does
+            //  not need is the same defect in a new coat.
             //
-            //  Three states, three sentences, each naming the ONE next move: nothing laid,
-            //  a mat under you that needs framing, and a mat you have walked away from.
+            //  With nothing laid, the next move is ALWAYS the mat: `canBuildWorkbench` requires
+            //  an existing mat ([[D-165]], upgrade in place), so the bench is never reachable
+            //  in one step and naming it would send a castaway after six timber they cannot
+            //  cut. Beyond that, each sentence names the ONE thing that closes THIS shortfall —
+            //  which now depends on how many things are staged, not just on what is built.
             const w = state.workspace;
-            if (w.built && w.tier === 'mat') {
+            const matWouldHold = materials.length <= TUNE.relationsAtMat;
+            if (!w.built) {
+                return 'Two hands, two things. A mat of fibre and flat stone, laid here, would hold the third.';
+            }
+            if (w.tier === 'mat') {
+                if (!atWorkspace(state)) {
+                    //  Standing away, the mat itself is the missing thing when it would be
+                    //  enough — telling someone to frame a bench they do not need yet is the
+                    //  old defect exactly.
+                    return matWouldHold
+                        ? 'Two hands, two things. Your work mat would hold the third — but you are not standing at it.'
+                        : 'Two hands, two things. Your work mat would take a frame — but you are not standing at it.';
+                }
                 //  NAMES THE MATERIALS, not just the missing thing (item 1, THIRD report).
-                //  The previous pass made this sentence state-aware and it still only said
-                //  WHAT was absent. A survivor standing on their own mat holding a hammer was
-                //  told a frame would help and never told that timber and that hammer, put
-                //  together right here, are the frame. The nearest true reason is only useful
-                //  if it is also the next move.
-                return atWorkspace(state)
-                    ? 'A mat is a surface, not a grip. Timber and a hammer, put together here, would frame it into a bench.'
-                    : 'Two hands, two things. Your work mat would take a frame — but you are not standing at it.';
+                //  A survivor standing on their own mat holding a hammer was told a frame
+                //  would help and never told that timber and that hammer, put together right
+                //  here, ARE the frame. The nearest true reason is only useful if it is also
+                //  the next move.
+                return 'A mat holds three, not four. Timber and a hammer, put together here, would frame it into a bench.';
             }
-            if (w.built && w.tier === 'bench') {
-                //  Standing away from a sound bench, or at a racked one — `relationsFor` has
-                //  already decided which, so the sentence only has to say which is true.
-                return atWorkspace(state)
-                    ? 'The bench joints have gone slack — it moves under the work. Re-lay the surface and frame it again.'
-                    : 'Two hands, two things. Your bench is not here to hold the third.';
-            }
-            return 'Two hands, two things. A workbench would hold the third steady while you work.';
+            //  Standing away from a sound bench, or at a racked one — `relationsFor` has
+            //  already decided which, so the sentence only has to say which is true.
+            return atWorkspace(state)
+                ? 'The bench joints have gone slack — it moves under the work. Re-lay the surface and frame it again.'
+                : 'Two hands, two things. Your bench is not here to hold the third.';
         }
     }
     const reach = reachFor(state, storageOpen);

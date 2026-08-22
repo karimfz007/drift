@@ -25,8 +25,8 @@ import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
 import { freshMatterWear, isSpoiled, transformationFor } from './matter';
 import {
-    CAVE_SITE, POND, SPAWN, SURF_LINE_RADIUS, WALKABLE_RADIUS, WORLD,
-    createNodes, isDryLand, isPlaceablePoint, waterDepthAt
+    CAVE_SITE, SPAWN, SURF_LINE_RADIUS, WALKABLE_RADIUS, WORLD,
+    createNodes, isDryLand, isOnPondWater, isPlaceablePoint, waterDepthAt
 } from '../data/world';
 
 import { applyEffect, demandFor, resolveActivity } from './resolver';
@@ -1115,15 +1115,12 @@ export function isSheltered(state: GameState): boolean {
 
 /** The player is close enough to the pond to drink from it. */
 export function isAtPond(state: GameState): boolean {
-    //  ---- THE DRINK ZONE IS THE WATER YOU CAN SEE (item 5, this batch) ------------------
+    //  ---- THE DRINK ZONE IS THE WATER, DERIVED (item 1, third report) -------------------
     //
-    //  This was `POND.radius + interactRadius` — a 2.6 m ring of drinkable ground OUTSIDE the
-    //  drawn water, invisible by construction, which is what made gathering near the bank
-    //  resolve to a drink the survivor never asked for. The rule is now the director's own:
-    //  the reach matches what is actually there. Standing anywhere on the drawn disc still
-    //  drinks (the basin is shallow and walkable — every existing fixture reaches the centre
-    //  on foot), so the legitimate verb is not stranded; only the invisible apron is gone.
-    return distance(state.player.x, state.player.y, POND.x, POND.y) <= POND.radius;
+    //  Was `POND.radius + interactRadius`, then `POND.radius`, and still too wide both times
+    //  because a radius cannot describe the drawn water at all — see `isOnPondWater`'s own
+    //  note. This asks the geometry instead of maintaining a number beside it.
+    return isOnPondWater(state.player.x, state.player.y);
 }
 
 export function canDrinkAtPond(state: GameState): boolean {

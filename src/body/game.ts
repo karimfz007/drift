@@ -220,7 +220,7 @@ import {
     type GameState
 } from '../brain';
 import { TUNE, fireLoudnessAt } from '../data/tune';
-import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, surfaceHeightAt } from '../data/world';
+import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
@@ -1654,20 +1654,14 @@ export class Game {
         }
         {
             const d = distance(point.x, point.z, POND.x, POND.y);
-            //  ---- ITEM 2, SECOND PASS: THE OTHER POND RADIUS ---------------------------
+            //  ---- THE TAP TARGET IS THE WATER, DERIVED (item 1, third report) ----------
             //
-            //  The previous pass shrank `isAtPond` — the DRINK GATE — to the drawn disc and
-            //  reported the item fixed. It was half of it. Targeting has its own radius, and
-            //  this line still resolved a tap to the pond out to `POND.radius + pondTapSlack
-            //  + 1.5` = 11.5 m against a drawn radius of 9, so a tap 2.5 m up the bank still
-            //  picked the water and the survivor still drank instead of gathering. Exactly
-            //  the "check which function it is actually in" lesson this project wrote down
-            //  last session, applied to the session that wrote it.
-            //
-            //  The drawn disc, and nothing beyond it. The pond is 9 m across; it does not
-            //  need a finger allowance, and every metre of one is a metre of bank where
-            //  tapping a reed drinks instead.
-            if (d <= POND.radius) candidates.push({ kind: 'pond', d });
+            //  The previous pass narrowed this to `POND.radius` and it was still too wide,
+            //  for the same reason the drink gate was: the drawn water is the disc INTERSECTED
+            //  with the ground below its surface plane, and roughly the outer half of the disc
+            //  on the island side is buried hillside. `isOnPondWater` reads the same geometry
+            //  the renderer does, so a tap can no longer pick water that is not drawn.
+            if (isOnPondWater(point.x, point.z)) candidates.push({ kind: 'pond', d });
         }
         if (s.shelter.built) {
             const d = distance(point.x, point.z, s.shelter.x, s.shelter.y);

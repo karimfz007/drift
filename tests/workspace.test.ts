@@ -9,9 +9,12 @@
  *
  * FOUR CLAIMS, each of which would rot silently:
  *
- *   1. LAW 220 IS A NUMBER NOW. Two relations in bare hands; three at a bench; and the term
- *      that lifts it reads the WORLD, never the survivor — *"experience alone does not create
- *      extra invisible hands."*
+ *   1. LAW 220 IS A NUMBER NOW. Two relations in bare hands; three on a laid mat; four at a
+ *      framed bench; and the term that lifts it reads the WORLD, never the survivor —
+ *      *"experience alone does not create extra invisible hands."* The mat's rung was a 2
+ *      until [[D-182]], on a reading of §6.1's W0 row that turned out to close the only route
+ *      to a three-part tool; Law 220's own *"added surfaces ... expand controlled relations"*
+ *      is what the revision rests on.
  *   2. THE BENCH OPENS OPERATIONS, NEVER RECIPES. Law 167/219, and an AUTOMATIC-FAILURE clause
  *      in two bibles: *"the design fails if a workbench adds recipes."* Building one must not
  *      change what the survivor knows by so much as one entry.
@@ -75,35 +78,59 @@ describe('LAW 220 — slot count represents controlled relations', () => {
         expect(relationsFor(s), 'a bench across the island held the work').toBe(TUNE.relationsAtW0);
     });
 
-    it('THE MAT ADDS NOTHING — it is W0 made real, not a rung above it', () => {
-        //  The v2.8 module table is explicit: `woven work mat`, `Relations added = 0`, and
-        //  §6.1 lists `mat` inside the two-relation W0 row. The mat buys a place, not a hand.
+    it('THE MAT IS A RUNG — a laid surface holds three, bare hands hold two', () => {
+        //  REVISED after a FOURTH report of the axe being unmakeable. The mat used to add
+        //  nothing, on the reading that §6.1 lists `mat` inside the two-relation W0 row — but
+        //  that row is what a survivor IMPROVISES with having built nothing, and Law 220's own
+        //  sentence is the authority over the table: *"ADDED SURFACES, clamps, pegs, jigs and
+        //  fixtures expand controlled relations."* A woven mat, gathered and laid, is an added
+        //  surface. The old reading also closed the only route in: a three-part tool needed the
+        //  bench, the bench needs six timber, and cutting timber wants the axe.
         const s = ready();
         buildWorkmat(s, 0, 0);
         expect(s.workspace.tier).toBe('mat');
-        expect(relationsFor(s)).toBe(TUNE.relationsAtW0);
+        expect(relationsFor(s)).toBe(TUNE.relationsAtMat);
+        expect(TUNE.relationsAtMat, 'the mat stopped being a rung above bare hands')
+            .toBeGreaterThan(TUNE.relationsAtW0);
+        expect(TUNE.relationsAtBench, 'the bench stopped being worth framing')
+            .toBeGreaterThan(TUNE.relationsAtMat);
     });
 
     it('racked joints hold nothing, and the bench is never deleted for it', () => {
         const s = benched();
         s.workspace.jointWear = 1;
         expect(benchHasRacked(s)).toBe(true);
-        expect(relationsFor(s)).toBe(TUNE.relationsAtW0);
+        //  A RACKED FRAME FALLS BACK TO THE SURFACE UNDER IT, not to bare hands. The joints
+        //  are what moved; the top is still a top, and it is still where the work is. Charging
+        //  the mat's relation as well would be billing twice for one failure.
+        expect(relationsFor(s)).toBe(TUNE.relationsAtMat);
         expect(s.workspace.built, 'disrepair became deletion').toBe(true);
         expect(s.workspace.tier, 'a racked bench forgot it was a bench').toBe('bench');
     });
 
-    it('the axe is what the third relation buys — refused bare-handed, made at the bench', () => {
+    it('the axe is what the third relation buys — refused bare-handed, made on a laid mat', () => {
         //  The amendment sheet's own example: "the workbench is the thing that holds what your
-        //  second hand cannot." Haft, head and binding is the one genuine two-hand job.
+        //  second hand cannot." Haft, head and binding is the one genuine two-hand job — and
+        //  after four reports of it being unmakeable, the surface that holds it is the MAT,
+        //  which a survivor can weave and lay on their first day. The bench still buys the
+        //  fourth relation above it.
         const bare = ready();
-        expect(canExperimentWith(bare, ['wood', 'sharpblade', 'fiber'])).toMatch(/bench/i);
+        expect(canExperimentWith(bare, ['wood', 'sharpblade', 'fiber']), 'bare hands held three')
+            .toBeTruthy();
+
+        const matted = ready();
+        expect(buildWorkmat(matted, 0, 0)).toBe(true);
+        expect(canExperimentWith(matted, ['wood', 'sharpblade', 'fiber']),
+            'THE FOUR-TIMES-REPORTED DEFECT: a laid mat, stood on, still refused the axe').toBeNull();
         expect(canExperimentWith(benched(), ['wood', 'sharpblade', 'fiber'])).toBeNull();
     });
 
     it('...and the refusal names the ENABLER, never the outcome (Law 95)', () => {
+        //  NAMES THE NEAREST RUNG, not the top one. `canBuildWorkbench` requires an existing
+        //  mat ([[D-165]], upgrade in place), so a bench is never one step away from nothing —
+        //  pointing a castaway at it would send them after six timber they cannot yet cut.
         const said = canExperimentWith(ready(), ['wood', 'sharpblade', 'fiber']) ?? '';
-        expect(said).toMatch(/bench/i);
+        expect(said, 'sent a survivor with nothing laid to the far rung').toMatch(/mat/i);
         for (const leak of [/axe/i, /haft/i, /blade/i]) {
             expect(said, `the refusal leaked the outcome: "${said}"`).not.toMatch(leak);
         }
@@ -232,7 +259,7 @@ describe('LAW 181 — maintenance follows evidence, never a repair meter', () =>
         const s = benched();
         for (let i = 0; i < 100 && !benchHasRacked(s); i += 1) wearBenchJoints(s);
         expect(benchHasRacked(s), 'the bench never racked, so the escape is untested').toBe(true);
-        expect(relationsFor(s)).toBe(TUNE.relationsAtW0);
+        expect(relationsFor(s), 'racking cost the surface as well as the frame').toBe(TUNE.relationsAtMat);
 
         s.inventory.fiber = TUNE.workmatFiberCost;
         s.inventory.stone = TUNE.workmatStoneCost;

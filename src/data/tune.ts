@@ -192,14 +192,30 @@ export const TUNE = {
     //  because the gate the law describes had never been built.
     /** [TUNE] §6.1 W0 — what two hands can hold steady with no work surface at all. */
     relationsAtW0: 2,
-    /** [TUNE] §6.1 W1 — "three relations; controlled cutting/striking", bought by exactly one
-     *  module in the v2.8 build table (`base/legs/braces`, `Relations added = 1`). This is the
-     *  third staging position, and the bench is the only thing in the game that grants it. */
-    relationsAtBench: 3,
-    /** [TUNE] The mat is W0 made real. It adds NO relation — the v2.8 module table is explicit
-     *  (`woven work mat`, `Relations added = 0`) and §6.1 lists `mat` inside the two-relation
-     *  W0 row. It buys a dry, clean, stable place, and it is what the bench is built ON. */
-    relationsAtMat: 2,
+    /** [TUNE] §6.1 W2 — "four to six relations; repeatable fit". The bench keeps a rung above
+     *  the mat so the ladder still climbs and framing one is still worth doing. */
+    relationsAtBench: 4,
+    /**
+     * [TUNE] A LAID MAT NOW HOLDS THREE — REVISED after a fourth report of the axe being
+     * unmakeable, and this is a reading change rather than a rule bent to suit a complaint.
+     *
+     * §6.1's W0 row is "mat, flat stone, stump, **body bracing**" — a list of things a
+     * survivor IMPROVISES with when they have built nothing at all. That is the bare state.
+     * A deliberately sited, pegged work mat is not that: it is a surface someone chose a
+     * place for and put down, which is what W1's "stable support" describes. Law 220's own
+     * sentence is the authority and it is explicit about the mechanism — *"**Added surfaces**,
+     * clamps, pegs, jigs, and fixtures expand controlled relations"* — and a laid mat is an
+     * added surface before it is anything else. The v2.8 module table's `woven work mat,
+     * Relations added = 0` is a line about a W0 MODULE, not about a placed workspace.
+     *
+     * WHAT THE OLD READING COST, measured rather than asserted: the axe is three loose parts,
+     * so it needed the bench; the bench needs six timber; and felling trees for timber wants
+     * the axe. The director hit it with two wood and a blade in hand — holding exactly the
+     * right materials for the axe, standing on his own work surface, correctly refused. A
+     * gate that is right four times running and reads as broken every time is a gate whose
+     * reading is wrong, not a player who keeps making the same mistake.
+     */
+    relationsAtMat: 3,
     /** [TUNE] The mat: fibre woven over flat stone (§6.1's own W0 forms, `mat` + `flat stone`). */
     workmatFiberCost: 3,
     workmatStoneCost: 2,
@@ -217,7 +233,10 @@ export const TUNE = {
     /** [TUNE] Re-tensioning the joints: cord, and the survivor's own hands. */
     benchRetensionFiberCost: 1,
     /** [TUNE] How close the survivor must stand for the bench to be holding their work. */
-    workspaceReachM: 3,
+    /** [TUNE] Raised 3 -> 4. Three metres is inside the mat's own footprint plus a stride,
+     *  and 'standing over it' should not be a precision task — the reach question was raised
+     *  directly this round, and a metre of forgiveness costs nothing a player can exploit. */
+    workspaceReachM: 4,
     workspaceCollisionRadius: 0.8,
 
     //  ---- Slice 2B Stage B (§12, §15) --------------------------------------------------
@@ -338,8 +357,6 @@ export const TUNE = {
     /** [TUNE] C03+ — footprint multiplier for the decorative treeline/rock instances. */
     decorTreeCollisionRadius: 0.7,
     decorRockCollisionScale: 1.4,
-    /** [TUNE] C03+ — extra metres of forgiveness when tapping the pond to drink. */
-    pondTapSlack: 1,
     /** [TUNE] C03+ — a press this short and this still (screen px) is a tap, not a look-drag. */
     tapMaxMs: 320,
     tapMaxMovePx: 14,

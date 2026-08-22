@@ -568,6 +568,37 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 /** Height of the pond's water surface. */
 export const POND_SURFACE_Y = groundHeight(POND.x, POND.y) + 0.9;
 
+/**
+ * IS THIS POINT ON THE POND'S ACTUAL WATER — the one boundary every pond interaction asks.
+ *
+ * THREE FIXES FAILED BEFORE THIS ONE, each shrinking a different scalar, because the drawn
+ * water is NOT a circle and no radius can describe it. It is an INTERSECTION: the disc
+ * `island.ts` draws at `POND.radius`, AND the ground beneath being lower than the water
+ * plane the disc sits on. The basin (`groundHeight`'s own smoothstep) fades out at
+ * `POND.radius + 6` — six metres WIDER than the disc and far gentler — so on the side facing
+ * the island the terrain climbs back above `POND_SURFACE_Y` at 4.30 m while the disc keeps
+ * going to 9. Those outer metres of disc are buried: the material is transparent and
+ * depth-tested, so they are neither drawn nor pickable, and the player sees hillside.
+ *
+ * MEASURED ON THE SHIPPED TERRAIN, so the numbers here are read rather than estimated: the
+ * water's true edge runs 4.30 m to 9.00 m from centre depending on bearing, 39.7% of the disc
+ * is dry, and the deepest false positive sits 4.73 m inside the rim. A gate written
+ * `distance <= POND.radius` admitted all of it — visibly not water, and exactly the "still
+ * too wide" that survived two rounds of shrinking numbers. A boundary that varies by more
+ * than a factor of two across bearings was never expressible as a scalar. The fix is to stop maintaining a number at all: this reads the SAME
+ * geometry the renderer reads, so the boundary cannot drift from what is drawn because it is
+ * derived from it.
+ *
+ * The one residual is sub-centimetre and named rather than hidden: the disc is a 28-gon, so
+ * its true rim breathes between `POND.radius * cos(pi/28)` (8.9434 m) at the flat midpoints
+ * and `POND.radius` at the vertices. This admits at most 5.7 cm beyond the flats — under a
+ * tenth of a stride, and below the resolution of any tap.
+ */
+export function isOnPondWater(x: number, z: number): boolean {
+    if (Math.hypot(x - POND.x, z - POND.y) > POND.radius) return false;
+    return groundHeight(x, z) < POND_SURFACE_Y;
+}
+
 /** True where the ground is sand rather than grass — for shading and footing. */
 export function isBeach(x: number, z: number): boolean {
     return Math.hypot(x, z) > WORLD.beachRadius;

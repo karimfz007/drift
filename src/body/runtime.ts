@@ -439,6 +439,12 @@ function installDebugHook(): void {
     //  not carry a fourth hand-written copy of a world constant: the water rungs are all
     //  driven at the pond, and a duplicated coordinate is the drift `check-tune-mirror`
     //  was built to catch in the numbers.
+    //  `radius` IS THE DRAWN DISC, NOT THE DRINKABLE WATER, and the difference has cost three
+    //  reports. Per [[D-182]] the water is the disc INTERSECTED with ground below the surface
+    //  plane, so the true edge runs 4.30–9.00 m depending on bearing. A harness check that
+    //  derives a "point in the pond" from `x + radius * k` can land on dry hillside — one did,
+    //  in WAVE 0 PART TWO, where `pondAt.x + 6` had been a pond point for months and never was.
+    //  Use the centre for driving, and put water/not-water claims on the -x side or witness them.
     pond: () => ({ x: POND.x, y: POND.y, radius: POND.radius }),
     //  ---- THE UNDERWATER SLICE — READ-ONLY, same rule ----
     //

@@ -9135,8 +9135,15 @@ async function main() {
     //  [cast-line, set-net, spear-fish] — the pond's own circle is unreachable there. Four runs
     //  read that as "no circle opened" because the earlier filtered runs never got far enough
     //  to print the segments; the full sweep printed them and named the cause in one line.
-    //  Held six metres out instead, which is still the pond (radius 9) and clear of the spot.
-    const waterX = pondAt.x + 6;
+    //  Held six metres out instead, clear of the spot.
+    //
+    //  ...AND THE SIGN MATTERS NOW, which it did not when this was written. [[D-182]] derives
+    //  the pond boundary from the drawn water instead of from `POND.radius`, and the drawn
+    //  water is not a circle: the terrain climbs back above the surface plane at ~4.3 m on the
+    //  +x side while reaching the full 9 m on -x. `pondAt.x + 6` was DRY GROUND under a buried
+    //  disc — it only ever read as pond because the old gate did not look at the ground. Same
+    //  distance, same clearance from `fp-pond`, opposite bearing, and now actually wet.
+    const waterX = pondAt.x - 6;
     const waterY = pondAt.y;
 
     // ---- W1: OPEN A COCONUT, at the water ------------------------------------
@@ -12778,8 +12785,12 @@ async function main() {
     //  `redraw` BLANKED the evidence line whenever the pile could not be attempted, so the
     //  button greyed and the screen said nothing at all. A silent refusal is exactly what
     //  Law 26 and [[D-042]] forbid, and it would have shipped invisible.
+    //  NAMES THE MAT, NOT THE BENCH, and the change is load-bearing rather than cosmetic:
+    //  `canBuildWorkbench` requires an existing mat ([[D-165]], upgrade in place), so a bench
+    //  is never one step from nothing. The old sentence pointed a castaway at six timber they
+    //  could not cut; the thing that actually unblocks them is fibre and two flat stones.
     check('BENCH 1 — ...and the world SAYS WHY, rather than greying a button in silence (Law 26)',
-        /bench/i.test(threeBare.said), `evidence line read "${threeBare.said}"`);
+        /mat/i.test(threeBare.said), `evidence line read "${threeBare.said}"`);
     check('BENCH 1 — ...and the reason names the ENABLER, never the outcome (Law 95)',
         threeBare.said.length > 0 && !/axe/i.test(threeBare.said), `"${threeBare.said}"`);
     await ensureNoPanel();
@@ -12795,23 +12806,55 @@ async function main() {
     check('BENCH 2 — ...and the RENDER agrees PER SURFACE: the mat is drawn, and no bench is',
         isDrawn(matSurfaces.mat) && !isDrawn(matSurfaces.bench), JSON.stringify(matSurfaces));
 
-    // ---- 3 · THE MAT ADDS NO HAND — it is W0 made real, not a rung above it ----------
+    // ---- 3 · THE MAT IS A RUNG — an added surface holds the third relation ----------
     await approach(matState.workspace.x, matState.workspace.y, 20);
     await openSlate();
     await stageChips(['wood', 'sharpblade', 'fiber']);
     const atMat = await page.evaluate(() => ({
+        slateSlots: document.querySelectorAll('.slate-slot').length,
+        discoverDisabled: document.querySelector('.discover-btn')?.disabled ?? null,
         combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
-    //  ITEM 1 (this batch) CHANGED WHAT THE RIGHT SENTENCE IS HERE. This asserted the refusal
-    //  named a "workbench" — which is exactly the wording the director read as broken, because
-    //  he was standing on a thing called a WORK MAT at the time. On a mat the truest reason is
-    //  not "you lack a workbench", it is "this surface needs framing", so the check now asks
-    //  for the move rather than for the noun, and explicitly refuses the old sentence.
-    check('BENCH 3 — standing ON the mat, three things are STILL refused: a mat is a place, not a hand',
-        atMat.combineDisabled === true && /frame|legs/i.test(atMat.said)
-        && !/a workbench would hold/i.test(atMat.said),
+    //  ---- THE FOUR-TIMES-REPORTED ITEM, ON REAL PIXELS -------------------------------
+    //
+    //  THIS CHECK USED TO ASSERT THE OPPOSITE, and it passed every time while the director
+    //  reported the same thing four sessions running. Three passes rewrote the SENTENCE the
+    //  refusal used and this check followed each rewrite — which is how a harness can track a
+    //  defect faithfully for three rounds without ever asking whether the refusal should exist.
+    //  The fourth reading is that it should not: a mat is an ADDED SURFACE in Law 220's own
+    //  words, and the two-relation reading left NO route to a three-part tool (the axe needed
+    //  the bench, the bench needs six timber, and cutting timber wants the axe).
+    //
+    //  READS THE SLATE, AND THE FIRST CUT READ *DISCOVER* AND WENT RED ON A GAME THAT WORKS.
+    //  Discover's gate is `!enough || nothingLeftToFind`, and this fixture GRANTS the axe — so
+    //  with the pile fully recognised there is genuinely nothing left to find and the button
+    //  greys for a reason that has nothing to do with Law 220. The evidence line said so in
+    //  words ("Probably axe, from what you remember of it"), which is the tell.
+    //
+    //  `.slate-slot` is the honest instrument: bare-handed at BENCH 1 the same three chips
+    //  produced ZERO slots — refused, nothing to choose — so a non-empty slate is exactly the
+    //  claim "this pile is within the body's reach", and it is already this section's own.
+    //
+    //  DELIBERATELY DOES NOT MAKE THE AXE: BENCH 5 claims the false -> true transition at the
+    //  bench, and crafting it here would hand that check a tool it already owns.
+    check('BENCH 3 — standing ON the mat, three loose parts ARE work a body can do (the four-times-reported item)',
+        atMat.slateSlots > 0 && !/two hands|would hold the third|frame it into a bench/i.test(atMat.said),
         JSON.stringify(atMat));
+
+    //  ...and the rung above still exists. A FOURTH thing is what the mat cannot hold, so the
+    //  bench keeps something to buy and the ladder still climbs.
+    await realTapDom('.combine-chip[data-mat="stone"]');
+    await sleep(320);
+    const fourAtMat = await page.evaluate(() => ({
+        picked: Array.from(document.querySelectorAll('.combine-chip.picked')).map((c) => c.dataset.mat),
+        discoverDisabled: document.querySelector('.discover-btn')?.disabled ?? null,
+        said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
+    }));
+    check('BENCH 3 — ...but a FOURTH is not, and the reason names the FRAME rather than a workbench you are standing on',
+        fourAtMat.picked.length === 4 && fourAtMat.discoverDisabled === true
+        && /frame/i.test(fourAtMat.said) && !/a workbench would hold/i.test(fourAtMat.said),
+        JSON.stringify(fourAtMat));
     await ensureNoPanel();
 
     // ---- 4 · THE BENCH: framed in place, and the silhouette CHANGES ------------------
@@ -12877,13 +12920,19 @@ async function main() {
         isDrawn(rackedSurfaces.bench) && !isDrawn(rackedSurfaces.mat), JSON.stringify(rackedSurfaces));
     await approach(0, 96, 20);
     await openSlate();
-    await stageChips(['wood', 'sharpblade', 'fiber']);
+    await stageChips(['wood', 'sharpblade', 'fiber', 'stone']);
     const onRacked = await page.evaluate(() => ({
-        combineDisabled: document.querySelector('.combine-btn')?.disabled ?? null,
+        picked: Array.from(document.querySelectorAll('.combine-chip.picked')).map((c) => c.dataset.mat),
+        discoverDisabled: document.querySelector('.discover-btn')?.disabled ?? null,
         said: (document.querySelector('.evidence-line')?.textContent ?? '').trim(),
     }));
-    check('BENCH 8 — ...but it holds nothing: racked joints move under load, so the third relation lapses',
-        onRacked.combineDisabled === true && /bench/i.test(onRacked.said), JSON.stringify(onRacked));
+    //  FOUR STAGED, NOT THREE — and the change is the point. A racked frame falls back to the
+    //  SURFACE under it, not to bare hands: the joints are what moved, the top is still a top,
+    //  and charging the mat's relation as well would bill twice for one failure. So it is the
+    //  FOURTH relation that lapses, and the sentence says the joints have gone slack.
+    check('BENCH 8 — ...but the FOURTH relation lapses: racked joints move under load',
+        onRacked.picked.length === 4 && onRacked.discoverDisabled === true
+        && /slack|frame/i.test(onRacked.said), JSON.stringify(onRacked));
     await ensureNoPanel();
 
     //  D-011 AS STRUCTURE, NOT AS A CHECK: slack accrues per COMBINE and there is no elapsed-
@@ -13099,6 +13148,115 @@ async function main() {
     check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
         awayState.workspace.jointWear === wearBeforeAway && awayState.workspace.tier === 'bench',
         `jointWear ${wearBeforeAway} -> ${awayState.workspace.jointWear} across a real 45-minute absence (mid-range, so a rise was expressible)`);
+    }
+
+    if (section('POND — the boundary IS the drawn water, on real pixels')) {
+
+    /**
+     * REPORTED THREE TIMES as "the pond circle is still too wide", and shrunk twice.
+     *
+     * Both shrinks were sound arithmetic on an unsound premise. The drawn water is not a
+     * circle: `island.ts` draws a disc of `POND.radius` at `POND_SURFACE_Y`, and the terrain
+     * it sits in has a much wider, much gentler basin (`groundHeight`'s smoothstep fades over
+     * `POND.radius + 6`). The ground therefore climbs back ABOVE the water plane well inside
+     * the disc's rim, and those outer metres of disc are buried under opaque hillside — not
+     * drawn, not pickable, and plainly not water to anyone looking at them.
+     *
+     * Measured on the shipped terrain: the true water's edge runs from 4.30 m to 9.00 m from
+     * centre depending on bearing, and 39.7% of the disc is dry. NO single radius could have
+     * been right, which is why two correct-looking fixes were both reported again.
+     *
+     * The unit suite proves the geometry (`tests/pond-boundary.test.ts`). This proves the two
+     * things a unit test cannot: that a REAL TAP on that dry ground does not resolve to water,
+     * and that a survivor standing there is not offered a drink. Both are read off the HUD the
+     * director actually read.
+     */
+    const PONDC = { x: -22, y: 8 };
+    //  TWO POINTS AT THE SAME RADIUS, ON OPPOSITE BEARINGS — and that symmetry IS the claim.
+    //  Six metres from centre is dry hillside on +x (the water's true edge there is 4.30 m)
+    //  and real water on -x (where it reaches the full 9.00 m). Any boundary expressible as a
+    //  radius must treat these two identically; the drawn water does not, and neither does
+    //  the shipped gate any more. Both are also clear of `fp-pond`, authored at the exact
+    //  centre, whose circle would otherwise win every hold (WAVE 0 PART TWO's own note).
+    const DRY = { x: PONDC.x + 6, y: PONDC.y };
+    const WET = { x: PONDC.x - 6, y: PONDC.y };
+
+    //  ---- PLACED, NOT WALKED, AND EVERY INSTRUMENT IS A CONTROL PAIR ------------------
+    //
+    //  THE FIRST TWO CUTS OF THIS SECTION WERE BOTH BAD, and the grouped sweep said so twice.
+    //  Cut one read `.action` for "is a drink offered" — the pond has never used the primary
+    //  action button — and `.verb-label`, a class this HUD does not have: two checks agreeing
+    //  with an empty list on the very build they were written to police. Cut two walked to the
+    //  bank, which passed alone and failed in file order (`standing 32.80 m from centre`,
+    //  having inherited WAVE 1's survivor across the island), then passed with 1 cm of margin
+    //  when pathing stopped the walk short. A claim about a BOUNDARY should not be able to
+    //  fail because of locomotion, so the survivor is now placed on the exact metre and the
+    //  gestures are the only variable.
+    const goStand = async (at, extra = '') => {
+        await editSave(`state.player = { x: ${at.x}, y: ${at.y} }; state.energy = 100; state.health = 100; ${extra}`);
+        await sleep(800);
+        const s = await live();
+        return { s, dist: Math.hypot(s.player.x - PONDC.x, s.player.y - PONDC.y) };
+    };
+    const tapAndReadThirst = async (at) => {
+        const before = (await live()).thirst;
+        await faceNode(at.x, at.y);
+        await tapWorld(at.x, at.y, 55);
+        await sleep(620);
+        const after = (await live()).thirst;
+        return { before, after, rose: after > before };
+    };
+    const holdAndReadVerbs = async (at) => {
+        await ensureNoPanel();
+        await faceNode(at.x, at.y);
+        const p = await screenOf(at.x, at.y);
+        if (p) await tapAt(p.x, p.y, TUNE.tapMaxMs + 260);
+        await sleep(520);
+        return page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (!el) return { open: false, verbs: [] };
+            return { open: true, verbs: Array.from(el.querySelectorAll('.verb-seg')).map((b) => b.dataset.verb) };
+        });
+    };
+
+    // ---- 1 · THE SURVIVOR STANDS WHERE THE REPORTS WERE FILED ------------------------
+    const dryPlace = await goStand(DRY, 'state.tools.flask = false; state.thirst = 55;');
+    check('POND 1 — the dry bearing: six metres out is INSIDE the drawn disc, and is hillside',
+        dryPlace.dist > 4.6 && dryPlace.dist < 9,
+        `standing ${dryPlace.dist.toFixed(2)} m from centre — the disc claims 9.00 here, the water ends at 4.30`);
+
+    const dryTap = await tapAndReadThirst(DRY);
+    await ensureNoPanel();
+    check('POND 2 — a REAL TAP on that ground does NOT drink',
+        !dryTap.rose,
+        `thirst ${dryTap.before.toFixed(2)} -> ${dryTap.after.toFixed(2)} (drains, never rises, on a hillside)`);
+
+    const dryHold = await holdAndReadVerbs(DRY);
+    await ensureNoPanel();
+    check('POND 3 — ...and HOLDING it offers no water verb',
+        !dryHold.verbs.some((v) => /drink|fill|fish/i.test(v ?? '')),
+        `circle ${dryHold.open} verbs [${dryHold.verbs.join(', ')}]`);
+
+    // ---- 2 · THE SAME SIX METRES, THE OTHER WAY — every claim above, controlled -------
+    //  If these go red the three negatives above are worthless, and the run says so rather
+    //  than reporting a boundary that has been tightened out of existence.
+    const wetPlace = await goStand(WET, 'state.tools.flask = true; state.tools.flaskSips = 0; state.thirst = 55;');
+    check('POND 4 — the wet bearing: the SAME six metres, and here the water really reaches',
+        wetPlace.dist > 4.6 && wetPlace.dist < 9,
+        `standing ${wetPlace.dist.toFixed(2)} m from centre — same radius as the dry point, opposite bearing`);
+
+    const wetTap = await tapAndReadThirst(WET);
+    await ensureNoPanel();
+    check('POND 4 — ...and the SAME GESTURE drinks here (the control for POND 2)',
+        wetTap.rose,
+        `thirst ${wetTap.before.toFixed(2)} -> ${wetTap.after.toFixed(2)}`);
+
+    const wetHold = await holdAndReadVerbs(WET);
+    await ensureNoPanel();
+    check('POND 4 — ...and the SAME HOLD divides into water verbs (the control for POND 3)',
+        wetHold.open && wetHold.verbs.some((v) => /drink|fill/i.test(v ?? '')),
+        `circle ${wetHold.open} verbs [${wetHold.verbs.join(', ')}]`);
+    await ensureNoPanel();
     }
 
     await browser.close();
