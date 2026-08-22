@@ -117,7 +117,19 @@ describe('REACHABILITY — everything with a discovery route can actually be arr
         }
         const reached = new Set(s.blueprints.map((b) => b.recipeId));
         for (const route of DISCOVERY_ROUTES) {
-            expect(reached.has(route.recipeId), `${route.recipeId} is unreachable`).toBe(true);
+            //  KNAP IS REACHED BY OWNING THE HAMMER, NOT BY MINTING A PLAN, and that is the
+            //  one shape this invariant has to know about. It is a STANDING GATE
+            //  (`isRecipeKnown`): the moment a survivor owns a stone hammer, staging it with
+            //  stone offers "Knapped blade" — no blueprint is ever minted for it, by design,
+            //  since D-172. It gained a discovery ROUTE this batch because it was the hinge of
+            //  the whole tool tree (hammer -> knap -> blade -> axe) and the only rung the game
+            //  never mentioned; being routed is about being TOLD, and is a different fact from
+            //  how the capability is recorded. So the law is unchanged — everything routed is
+            //  arrivable — and only the way knap's arrival is spelled differs.
+            const arrived = route.recipeId === 'knap'
+                ? s.inventory.stonehammer > 0
+                : reached.has(route.recipeId);
+            expect(arrived, `${route.recipeId} is unreachable`).toBe(true);
         }
     });
 

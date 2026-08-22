@@ -227,9 +227,18 @@ describe('a suspicion moves the ladder — up, and only up', () => {
     });
 
     it('a recipe with no route is unaffected — discovery adds, it never subtracts', () => {
+        //  KNAP USED TO BE THE EXAMPLE HERE and is no longer an unrouted recipe: it gained a
+        //  route this batch, because it is the hinge of the tool tree (hammer -> knap -> blade
+        //  -> axe) and was the only rung the game never mentioned. The CLAIM is untouched — a
+        //  recipe the routes say nothing about is left exactly where it was — so it is simply
+        //  asserted against a recipe that is still genuinely unrouted.
         const s = give(atNight(createInitialState(0)), 'wood', 'stone', 'fiber');
-        expect(hasDiscoveryRoute('knap')).toBe(false);
-        expect(ladderFor(s, 'knap')).toBe('physically-possible');
+        expect(hasDiscoveryRoute('spear'), 'the spear gained a route; pick another unrouted recipe').toBe(false);
+        expect(ladderFor(s, 'spear')).toBe('physically-possible');
+    });
+
+    it('...and knapping IS routed now, because it was the one rung nothing ever named', () => {
+        expect(hasDiscoveryRoute('knap')).toBe(true);
     });
 });
 

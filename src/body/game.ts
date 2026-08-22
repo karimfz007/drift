@@ -1654,7 +1654,20 @@ export class Game {
         }
         {
             const d = distance(point.x, point.z, POND.x, POND.y);
-            if (d <= POND.radius + TUNE.pondTapSlack + 1.5) candidates.push({ kind: 'pond', d });
+            //  ---- ITEM 2, SECOND PASS: THE OTHER POND RADIUS ---------------------------
+            //
+            //  The previous pass shrank `isAtPond` — the DRINK GATE — to the drawn disc and
+            //  reported the item fixed. It was half of it. Targeting has its own radius, and
+            //  this line still resolved a tap to the pond out to `POND.radius + pondTapSlack
+            //  + 1.5` = 11.5 m against a drawn radius of 9, so a tap 2.5 m up the bank still
+            //  picked the water and the survivor still drank instead of gathering. Exactly
+            //  the "check which function it is actually in" lesson this project wrote down
+            //  last session, applied to the session that wrote it.
+            //
+            //  The drawn disc, and nothing beyond it. The pond is 9 m across; it does not
+            //  need a finger allowance, and every metre of one is a metre of bank where
+            //  tapping a reed drinks instead.
+            if (d <= POND.radius) candidates.push({ kind: 'pond', d });
         }
         if (s.shelter.built) {
             const d = distance(point.x, point.z, s.shelter.x, s.shelter.y);

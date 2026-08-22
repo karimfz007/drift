@@ -13047,6 +13047,55 @@ async function main() {
         bothActs.store !== null && bothActs.take !== null, JSON.stringify(bothActs));
     await ensureNoPanel();
 
+    //  ---- THE THREE REPEAT REPORTS, on the surfaces they were reported from -------------
+
+    //  ITEM 1 — A GENUINELY FRESH SAVE. Not `editSave` with `blueprints: []`, which is what
+    //  the existing Law 216 check uses and what has been passing: this WIPES localStorage and
+    //  boots the game as a first-ever incognito load, which is the only way the director
+    //  tests and therefore the only state this report is about.
+    await page.goto(`${URL_UNDER_TEST}${BLANK_PATH}`, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+    await page.evaluate(({ key, look }) => { localStorage.removeItem(key); localStorage.removeItem(look); },
+        { key: SAVE_KEY, look: LOOK_KEY });
+    await page.goto(URL_UNDER_TEST, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
+    await waitForScene();
+    await sleep(1600);
+    await realTapDom('.cold-open button');
+    await sleep(500);
+    const virgin = await live();
+    const virginAction = await actionText();
+    check('ITEM 1 — a FIRST-EVER load knows nothing: no plans, no torch, no fire',
+        virgin.blueprints.length === 0 && virgin.torch.owned === false && virgin.fire.built === false,
+        `plans ${JSON.stringify(virgin.blueprints)}, torch ${virgin.torch.owned}, fire ${virgin.fire.built}, wood ${virgin.inventory.wood}`);
+    check('ITEM 1 — ...and the fire button is NOT offered on it (Law 216/130)',
+        !virginAction || !/build fire/i.test(virginAction.text) || virginAction.shown === false,
+        virginAction ? `primary action reads "${virginAction.text}" shown=${virginAction.shown}` : 'no primary action offered');
+
+    //  ITEM 3 — THE HINGE OF THE TOOL TREE, on the director's exact reported inventory.
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 6, stone: 25, fiber: 5, sharpblade: 0, stonehammer: 0 };`);
+    await sleep(800);
+    await openSlate();
+    const exactCase = await page.evaluate(() => ({
+        hints: Array.from(document.querySelectorAll('.hint-line')).map((n) => n.getAttribute('data-hint')),
+    }));
+    await ensureNoPanel();
+    check('ITEM 3 — 6 wood / 25 stone / 5 fibre: the axe is not refused, it is not what these MAKE — and the hammer is named',
+        exactCase.hints.includes('stonehammer'), `hints [${exactCase.hints.join(', ')}]`);
+
+    //  ...and one hammer later, the rung the game never mentioned finally speaks.
+    await editSave(`${WORKSPACE_FIXTURE}
+        state.blueprints = [];
+        state.inventory = { ...state.inventory, wood: 6, stone: 25, fiber: 5, sharpblade: 0, stonehammer: 1 };`);
+    await sleep(800);
+    await openSlate();
+    const withHammer = await page.evaluate(() => ({
+        hints: Array.from(document.querySelectorAll('.hint-line')).map((n) => n.getAttribute('data-hint')),
+    }));
+    await ensureNoPanel();
+    check('ITEM 3 — ...and with the hammer in hand, KNAPPING is hinted — the rung the axe hangs from',
+        withHammer.hints.includes('knap'), `hints [${withHammer.hints.join(', ')}]`);
+
     check('BENCH 8 — ...and NO LENGTH OF ABSENCE racks a bench nobody worked at (D-011, by construction)',
         awayState.workspace.jointWear === wearBeforeAway && awayState.workspace.tier === 'bench',
         `jointWear ${wearBeforeAway} -> ${awayState.workspace.jointWear} across a real 45-minute absence (mid-range, so a rise was expressible)`);

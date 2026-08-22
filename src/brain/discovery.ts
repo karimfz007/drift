@@ -107,6 +107,26 @@ export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
         prompt: 'One hook takes one fish. A wall of cord would take the shoal.',
     },
     {
+        //  KNAPPING — THE HINGE OF THE WHOLE TOOL TREE, AND THE ONE RECIPE WITH NO ROUTE.
+        //
+        //  ITEM 3's real gap, found by reproducing the director's exact inventory (6 wood, 25
+        //  stone, 5 fibre): the axe wants `{tag:'blade'}` and wood+stone+fibre resolves to a
+        //  SHELTER, so the axe was never refused by a gate — it simply was not what he was
+        //  holding the makings of. The chain is hammer -> knap -> blade -> axe, and the axe's
+        //  own route needs `sharpblade > 0`, so it cannot speak until the blade exists.
+        //
+        //  Knap sat between them saying nothing. It is deliberately blueprint-less (a standing
+        //  gate: known the moment you own a hammer, see `isRecipeKnown`), and being unroutable
+        //  was treated as following from that — but "known" and "mentioned" are different
+        //  facts, and a survivor holding a hammer and a pile of stone was told about neither
+        //  the blade nor what it was for. Every other rung of that tree has a route; this one
+        //  is the rung the axe hangs from.
+        recipeId: 'knap',
+        need: (s) => s.inventory.stonehammer > 0 && s.inventory.stone > 0 && s.inventory.sharpblade === 0,
+        makings: ['stonehammer', 'stone'],
+        prompt: 'The hammer is for more than breaking. Struck right, stone comes away with an edge.',
+    },
+    {
         //  THE WORK MAT (SESSION 1). The need is the one the axe route creates and could not
         //  answer: a survivor holding haft, head and binding has been TOLD, by the gate's own
         //  refusal, that two hands cannot hold three things — and until this route existed
