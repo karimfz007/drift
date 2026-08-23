@@ -1063,6 +1063,7 @@ export class FireView {
 export class ConstructionView {
     private root: Mesh;
     private poles: Mesh[] = [];
+    private pickVolume: Mesh;
     private shadow: Mesh;
     private shown = false;
 
@@ -1078,9 +1079,33 @@ export class ConstructionView {
             pole.material = flat(scene, 'frameTimberMat2', PALETTE.trunk);
             pole.parent = this.root;
             pole.position.set(0, -1.05, side * 1.05);
-            pole.isPickable = false;
+            //  PICKABLE, and they were not. The poles are the tallest, most visible part of a
+            //  frame and a survivor aims at what they can see.
+            pole.isPickable = true;
+            pole.metadata = { construction: true };
             this.poles.push(pole);
         }
+
+        //  ---- THE PICK VOLUME, AT PARITY WITH THE SHELTER IT BECOMES (item 2) ----------
+        //
+        //  A FRAME MUST BE AT LEAST AS EASY TO HIT AS THE FINISHED THING, and without this it
+        //  was dramatically harder: `shelterRoof` is a 3.4 x 2.4 slab presenting about eight
+        //  square metres to a tap, while the ridge beam is 3.4 x 0.18 — roughly a thirteenth of
+        //  it — and the poles were not pickable at all. The point-based resolver was already at
+        //  parity (`shelterCollisionRadius + 1.5` for both); the whole difference was mesh-side.
+        //
+        //  So the frame gets an invisible volume the size of the roof that will replace it. It
+        //  is `visibility = 0` rather than a drawn box, because the frame must still LOOK
+        //  honestly unfinished (Law 222/223) — what changes is what a finger can find, not what
+        //  the eye is told. It occludes exactly as the finished roof does, which is the parity
+        //  being asked for rather than a new advantage.
+        this.pickVolume = CreateBox('framePick', { width: 3.4, height: 2.2, depth: 2.4 }, scene);
+        this.pickVolume.parent = this.root;
+        this.pickVolume.position.set(0, -1.0, 0);
+        this.pickVolume.visibility = 0;
+        this.pickVolume.isPickable = true;
+        this.pickVolume.metadata = { construction: true };
+
         this.shadow = makeShadow(scene, 1.4);
         this.setShown(false);
     }
@@ -1117,7 +1142,14 @@ export class ConstructionView {
         });
         //  ...and the ridge itself rises as the last of it goes in, so a nearly-done frame
         //  reads as nearly done rather than flicking from "sticks" to "shelter".
-        this.root.scaling.x = 0.35 + 0.65 * progress;
+        const ridgeScale = 0.35 + 0.65 * progress;
+        this.root.scaling.x = ridgeScale;
+        //  THE PICK VOLUME DOES NOT SHRINK WITH IT. It is parented to the ridge so it follows
+        //  the site, and the ridge scales to show progress — so without this counter-scale a
+        //  barely-started frame would be a third as easy to hit as a nearly-finished one, and
+        //  the moment the survivor most needs to reach it (to add the next armful) is exactly
+        //  when it would be hardest. The site is the same size whatever is standing on it.
+        this.pickVolume.scaling.x = 1 / ridgeScale;
     }
 }
 

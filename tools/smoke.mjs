@@ -82,6 +82,7 @@ const TUNE = new Proxy({
     realSecondsPerGameHour: 150,
     interactRadiusM: 2.5,
     storageWithdrawBatch: 5,
+    shelterWoodCost: 8,
     drinkPerSip: 25,
     treeWoodYield: 8,
     reedFiberYield: 2,
@@ -13884,7 +13885,12 @@ async function main() {
     //  REAL NUMBERS, read back from the frame the game actually put down — the ground-hold
     //  picked the spot, so the harness cannot assume it.
     const placed = await live();
-    await editSave(`state.inventory = { ...state.inventory, wood: 4, stone: 4, fiber: 4 };
+    //  TWO WOOD, DELIBERATELY. The frame already holds 4/4/3 against a cost of 8/4/3, so this
+    //  visit advances it and leaves it SHORT — which is what makes it a test of incremental
+    //  adding rather than of completion. Handing it four of everything finished it in one press
+    //  and left the next check reading `contributed undefined`, because the frame had become a
+    //  shelter: correct behaviour under item 1, and a fixture that no longer tested what it said.
+    await editSave(`state.inventory = { ...state.inventory, wood: 2, stone: 0, fiber: 0 };
         state.player = { x: ${placed.construction.x}, y: ${placed.construction.y - 2} };`);
     await sleep(900);
     const atFrame = await live();
@@ -13896,35 +13902,48 @@ async function main() {
     await sleep(1000);
     await ensureNoPanel();
     const afterAdd = await live();
-    check('BUILD 3 — ...and adding genuinely moves it in, capped at what the frame still wants',
-        added.ok && (afterAdd.construction?.contributed?.wood ?? 0) > (atFrame.construction?.contributed?.wood ?? 0),
-        `${added.why ?? 'added'} · contributed ${JSON.stringify(afterAdd.construction?.contributed)}`);
+    check('BUILD 3 — ...and adding genuinely moves it in, and the frame is STILL a frame',
+        added.ok && afterAdd.construction !== null
+        && (afterAdd.construction?.contributed?.wood ?? 0) > (atFrame.construction?.contributed?.wood ?? 0)
+        && afterAdd.shelter.built === false,
+        `${added.why ?? 'added'} · contributed ${JSON.stringify(afterAdd.construction?.contributed)} · shelter ${afterAdd.shelter.built}`);
 
-    // ---- 6 · AND FINISH IT ------------------------------------------------------------
-    //  NO SECOND ADD. The first one already filled it — the frame wanted 8/4/3 and the visit
-    //  above carried enough — so a second `add-materials` is a BLOCKED verb, and pressing a
-    //  blocked verb is not a test of completion. The first cut did exactly that and then
-    //  blamed the finish step for a circle it had itself closed.
+    // ---- 6 · AND THE LAST ARMFUL FINISHES IT, with no second decision ----------------
+    //  `complete-build` IS RETIRED. Finishing used to be its own verb and its own choice, and
+    //  the hint read "That is everything it needs. Finish it when you are ready." — the game
+    //  asking a survivor to confirm the thing they had spent three visits making inevitable.
+    //  The frame's whole menu is now Add and Move, and completion is what the last Add DOES.
+    await editSave(`state.inventory = { ...state.inventory, wood: 6, stone: 2, fiber: 2 };`);
+    await sleep(800);
     const fed = await live();
     const finishCircle = await circleAt(fed.construction.x, fed.construction.y);
-    check('BUILD 4 — once fed, the frame offers FINISH IT',
-        (finishCircle.segs ?? []).some((v) => /^complete-build$/.test(v)),
+    check('BUILD 4 — the frame offers ONLY Add and Move: there is no separate Finish',
+        (finishCircle.segs ?? []).some((v) => /^add-materials$/.test(v))
+        && (finishCircle.segs ?? []).some((v) => /^move-structure$/.test(v))
+        && !(finishCircle.segs ?? []).some((v) => /complete-build/.test(v)),
         `contributed ${JSON.stringify(fed.construction.contributed)} · circle [${(finishCircle.segs ?? []).join(', ')}]`);
+
     const heldBefore = await live();
-    const finished = await pressSegment('complete-build');
+    const finished = await pressSegment('add-materials');
     await sleep(1200);
     await ensureNoPanel();
     const done = await live();
-    check('BUILD 4 — ...and finishing it puts a real shelter up, at the frame own site',
+    check('BUILD 4 — ...and pressing Add on a fed frame RAISES THE SHELTER, at the frame own site',
         finished.ok && done.shelter.built === true && done.construction === null
         && Math.hypot(done.shelter.x - fed.construction.x, done.shelter.y - fed.construction.y) < 1,
-        `${finished.why ?? 'finished'} · shelter ${Math.round(done.shelter.x)},${Math.round(done.shelter.y)} · frame was ${Math.round(fed.construction.x)},${Math.round(fed.construction.y)}`);
-    check('BUILD 4 — ...and it charged NOTHING at completion: it was all paid on the way in',
+        `${finished.why ?? 'added'} · shelter ${Math.round(done.shelter.x)},${Math.round(done.shelter.y)} · frame was ${Math.round(fed.construction.x)},${Math.round(fed.construction.y)}`);
+    //  THE INVARIANT MOVED WITH THE FLOW, and this is the honest version of it. It used to
+    //  read "charged NOTHING to finish", which was true when Finish was its own verb and every
+    //  material had already gone in. Now the finishing press IS an add, so it legitimately
+    //  takes the last of what the frame was short — and what must still hold is that it takes
+    //  EXACTLY that and not the recipe over again.
+    const shortfallWood = TUNE.shelterWoodCost - (fed.construction.contributed.wood ?? 0);
+    check('BUILD 4 — ...and it took EXACTLY what the frame was short, never the cost twice',
         done.shelter.built === true
-        && done.inventory.wood === heldBefore.inventory.wood
+        && heldBefore.inventory.wood - done.inventory.wood === shortfallWood
         && done.inventory.stone === heldBefore.inventory.stone
         && done.inventory.fiber === heldBefore.inventory.fiber,
-        `wood ${heldBefore.inventory.wood} -> ${done.inventory.wood}, stone ${heldBefore.inventory.stone} -> ${done.inventory.stone}, fibre ${heldBefore.inventory.fiber} -> ${done.inventory.fiber}`);
+        `short ${shortfallWood} wood · wood ${heldBefore.inventory.wood} -> ${done.inventory.wood}, stone ${heldBefore.inventory.stone} -> ${done.inventory.stone}, fibre ${heldBefore.inventory.fiber} -> ${done.inventory.fiber}`);
 
     // ---- 7 · NEVER A DEAD END (D-184's law, in the form that still applies) -----------
     await editSave(`${FIVE_FIXTURE}
@@ -13938,13 +13957,38 @@ async function main() {
         segs.some((v) => /^move-structure$/.test(v))
         && segs.some((v) => /add-materials:blocked/.test(v)),
         `carrying nothing · circle [${segs.join(', ')}]`);
+
     const blockedReason = await page.evaluate(() => {
         const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === 'add-materials');
         return seg ? (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') : null;
     });
+
     check('BUILD 5 — ...and the reason names what to go and FIND, not that your hands are empty',
         blockedReason !== null && /still needs/i.test(blockedReason),
         `reason "${blockedReason}"`);
+    await ensureNoPanel();
+
+    //  ---- ITEM 2: THE FRAME PRESENTS A REAL TARGET, and what I could NOT show --------
+    //
+    //  REPORTED as genuine difficulty long-pressing a frame. **I could not reproduce a
+    //  refusal.** Every aim point I tried resolved to `construction` — close and at range, on
+    //  the fixed build and on one with the fix fully reverted — because `worldCandidateAt`
+    //  answers on distance alone once the picked point is within `shelterCollisionRadius + 1.5`
+    //  of the site. Two successive sweeps read 25/25 against 25/25 for frame and shelter alike:
+    //  numbers that cannot fall, and therefore measure nothing. They were deleted rather than
+    //  kept as decoration.
+    //
+    //  WHAT IS ASSERTED INSTEAD is the fix itself, in the one form that IS falsifiable: the
+    //  frame now presents a pick volume the size of the roof that will replace it, where before
+    //  the only pickable part was a 3.4 x 0.18 ridge with unpickable poles. This check fails on
+    //  any build without that volume. It is a narrower claim than "the report is fixed", and it
+    //  is the honest one — see the report for what remains unreproduced.
+    const framePick = await page.evaluate(() => window.__drift?.meshInfo?.('framePick') ?? null);
+    const poleMesh = await page.evaluate(() => window.__drift?.meshInfo?.('framePole-1') ?? null);
+    check('BUILD 6 — the frame presents a real target: a pick volume, and poles that answer',
+        framePick !== null && poleMesh !== null,
+        `framePick ${JSON.stringify(framePick)} · pole ${JSON.stringify(poleMesh)}`);
+
     await ensureNoPanel();
     }
 

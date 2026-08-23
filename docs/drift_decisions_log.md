@@ -3,6 +3,36 @@
 
 ---
 
+**D-186 · 2026-08-23 — THE LAST ARMFUL FINISHES IT; AND A TARGETING REPORT I COULD NOT REPRODUCE, FIXED ONLY WHERE I COULD SHOW A REAL ASYMMETRY.**
+
+**1 · "FINISH IT" IS GONE, AND THE HONEST ANSWER TO THE BRIEF'S QUESTION IS *NO, COMPLETION WAS NOT AUTOMATIC*.** The brief asked which of two worlds was true, and it is the second: [[D-185]] auto-completed only on the INITIAL placement — a fully-stocked survivor got a finished shelter in one gesture. Every later path did not. `doAddToSite` contributed and stopped, and its own hint read *"That is everything it needs. Finish it when you are ready."* — the game asking a survivor to confirm the thing they had just spent three visits making inevitable. So this was the larger of the two branches, though the change itself is small.
+
+Completion is now what the last contribution DOES. The `complete-build` verb is retired, its handler deleted, and the frame's whole menu is **Add and Move**. There are three places a site can now be filled — the placing tap, the ground-hold's *Build a shelter*, and an Add — and all three end in the identical two lines (`siteIsComplete(site) && completeShelterFromSite(s)`), so a fourth entry point cannot be written that fills a frame and leaves it standing.
+
+**A COMPLETE FRAME STILL OFFERS ADD, and that is not cosmetic.** `add-materials` is available when there is something to give **or** the site is already full, because that press is what finishes it. Without the second clause a fed frame would show a blocked Add and nothing but Move — a dead end reached by doing everything right, which is the worse version of what [[D-184]]'s law forbids. The device reads the finishing press as `added · shelter 2,97 · frame was 2,97`.
+
+**AND THE CHARGING INVARIANT MOVED WITH THE FLOW.** It used to read *"charged NOTHING to finish"*, which was true when Finish was its own verb and every material had already gone in. The finishing press is now an Add, so it legitimately takes the last of what the frame was short — and what must still hold is that it takes **exactly** that and never the recipe twice. Asserted at `short 2 wood · wood 6 -> 4, stone 2 -> 2, fibre 2 -> 2`.
+
+**2 · THE TARGETING REPORT — AND I COULD NOT REPRODUCE IT. This is the part worth reading.**
+
+The director reports genuine difficulty long-pressing a frame. I found two real asymmetries against the finished shelter and fixed both. **What I could not do is demonstrate either of them failing.**
+
+**The asymmetries, which are real and are code, not conjecture.** `pickHitPoint` recognises `pond`, `fire`, `shelter`, `storage`, `dropped`, `trace`, `raft`, `outboard` and `shoreItemId`, and had no branch for `construction` — so a ray striking the frame's own timber fell through to `unexpectedMesh`, which `onHold` returns on outright. And the only pickable part of a frame was the ridge beam: `3.4 x 0.18` against the shelter roof's `3.4 x 2.4`, roughly a thirteenth of the target, with the poles — the tallest and most visible part — carrying `isPickable = false`. Worse, the ridge scales with progress, so a barely-started frame was a third the width of a nearly-finished one: hardest to reach exactly when the survivor most needs to reach it. All three are fixed — the branch added, the poles made pickable, an invisible pick volume the size of the replacing roof, and that volume counter-scaled so it never shrinks.
+
+**WHY NONE OF IT REPRODUCED AS A FAILURE.** `onTap` never consults `unexpectedMesh`; only `onHold`'s ground branch does, and `onTap` runs first. And `worldCandidateAt` answers on distance alone once the picked point is within `shelterCollisionRadius + 1.5` of the site — a radius the frame has always shared with the shelter. So in every fixture I could build, a hold near a frame resolved to it whether the mesh was hit or not. I reverted the fix three times and re-ran: `target:construction` each time. Two successive parity sweeps — close, then from twelve metres — read **25/25 against 25/25** for frame and shelter alike. Numbers that cannot fall measure nothing, and they were deleted rather than kept as decoration; what ships is a narrower check that fails on any build lacking the pick volume.
+
+**SO THE HONEST STATE IS: two genuine asymmetries closed, and the reported symptom unreproduced.** The fixes are strict improvements and cannot regress anything — but I am not claiming they are the cause, because I have not shown that they are. If the difficulty persists, the next thing to measure is the approach itself rather than the object: every fixture here stands square and level in front of a frame on flat ground, and the one variable I never controlled is what the ray does over uneven terrain or from a steep angle. That is where I would look, and I would want the director's own `holdTrace` from a failing press before touching anything else — it names the branch in one line and would settle in one attempt what three of my fixtures could not.
+
+**THE PRACTICE.** Three device checks in this batch passed on builds with the fix removed, and each time the fault was the instrument rather than the game: a sweep of world GROUND points exercising the distance resolver instead of the mesh path; a sweep aimed at the ridge, which was pickable in both builds; and a parity grid whose every offset fell inside the object. The rule this earns is the one [[D-183]] wrote for control pairs, pointed at a single check: **a measurement that reports the same number on the broken build and the fixed one is not evidence, and the right response is to delete it rather than to keep it because it is green.**
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — both mechanisms are named and shipped: `complete-build` retired with completion folded into `doAddToSite`, and the frame's pick surface brought to parity with the shelter (`pickHitPoint` branch, pickable poles, `framePick` volume, counter-scaled).
+
+*Status: standing. Revises [[D-185]]'s two-verb frame menu to one verb plus Move; no law is changed.* — C2
+
+---
+
 **D-185 · 2026-08-23 — THE FIRE THAT WAS FOUR TIMES ITS OWN SIZE, AND A STRUCTURE YOU CAN START BEFORE YOU CAN AFFORD IT.**
 
 **1 · THE FIRE'S BOUNDARY WAS THE POND'S DEFECT, ONE OBJECT OVER.** Its interaction radius was `fireTapRadius + 1.5` = **3.1 m** against a pit **drawn at 0.75 m** — and that pit is the *only* pickable part of a fire. `fireGlow` is a 7 m light disc with `isPickable = false`; the logs are parented inside the pit. So the tap boundary stood for an object four times smaller than itself, which is exactly the shape [[D-182]] retired at the water.

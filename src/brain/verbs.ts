@@ -199,11 +199,9 @@ function constructionVerbs(state: GameState): VerbOption[] {
         }];
     }
     const shortfall = siteShortfallNote(site);
-    //  The pack only. A frame in the world is not standing at an open crate — the box's reach
-    //  belongs to the placement gesture, which happens with the panel open, not to a hold on a
-    //  structure out in the world.
     const giving = contributionAvailable(state, site);
     const givingKinds = Object.keys(giving);
+    const ready = siteIsComplete(site);
     return [
         {
             id: 'add-materials',
@@ -212,18 +210,17 @@ function constructionVerbs(state: GameState): VerbOption[] {
             label: givingKinds.length > 0
                 ? `Add ${Object.entries(giving).map(([k, n]) => `${n} ${k === 'fiber' ? 'fibre' : k}`).join(', ')}`
                 : 'Add materials',
-            available: givingKinds.length > 0,
-            reason: givingKinds.length > 0
+            //  A COMPLETE FRAME IS STILL ADDABLE, and that is the whole of how it finishes now:
+            //  the last contribution raises the shelter itself. Without this an already-fed
+            //  frame would offer a blocked Add and nothing else but Move — a dead end reached
+            //  by doing everything right, which is the worse version of the thing [[D-184]]'s
+            //  law forbids.
+            available: givingKinds.length > 0 || ready,
+            reason: (givingKinds.length > 0 || ready)
                 ? null
                 //  THE NEAREST TRUE REASON is what it still wants, not "you have nothing" —
                 //  the survivor needs to know what to go and find.
-                : (shortfall ?? 'It has everything it needs. Finish it.'),
-        },
-        {
-            id: 'complete-build',
-            label: 'Finish it',
-            available: siteIsComplete(site),
-            reason: siteIsComplete(site) ? null : shortfall,
+                : shortfall,
         },
     ];
 }
@@ -365,6 +362,9 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  carrying wood because they mean to put the wood in it. Completing is rarer (it happens
     //  once) and finishing something by accident on the way past would be the worse mistake,
     //  so Complete lives on the hold and this is what a tap does.
+    //  ...and it is now the ONLY thing you do to a frame besides moving it. `complete-build`
+    //  is gone: completion happens when the last material goes in, not as a second decision
+    //  the survivor has to think of. See `constructionVerbs`.
     construction: 'add-materials',
 };
 

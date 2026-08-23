@@ -260,17 +260,33 @@ describe('D-011 — an incomplete structure is as safe across an absence as a co
 });
 
 describe('REACHABILITY (D-090) — and never a dead end', () => {
-    it('both new verbs are offered at the frame, and NOWHERE else', () => {
+    it('ADD is offered at the frame and NOWHERE else — and it is the only verb besides Move', () => {
+        //  `complete-build` is GONE. Finishing is what the last contribution does, not a second
+        //  decision the survivor has to think of, so the menu at a frame is exactly two things:
+        //  add to it, or move it.
         const s = framed();
         const ids = verbsFor(s, 'construction').map((v) => v.id);
-        expect(ids).toContain('add-materials');
-        expect(ids).toContain('complete-build');
+        expect(ids).toEqual(['add-materials', 'move-structure']);
+        expect(ids, 'the retired Finish verb came back').not.toContain('complete-build');
         expect(holdOpensCircle(s, 'construction'), 'the frame has no circle to offer them from').toBe(true);
         for (const t of ['pond', 'shelter', 'storage', 'fire', 'ground', 'workspace'] as const) {
             const other = verbsFor(s, t).map((v) => v.id);
             expect(other, `${t} offered add-materials`).not.toContain('add-materials');
-            expect(other, `${t} offered complete-build`).not.toContain('complete-build');
         }
+    });
+
+    it('...and a FULLY-FED frame still offers Add, because that press is what finishes it', () => {
+        //  Without this an already-complete frame would show a blocked Add and nothing but
+        //  Move — a dead end reached by doing everything right, which is the worse version of
+        //  the thing [[D-184]]'s law forbids.
+        const s = framed();
+        s.inventory.wood = 40; s.inventory.stone = 40; s.inventory.fiber = 40;
+        contributeToSite(s);
+        expect(siteIsComplete(s.construction!)).toBe(true);
+        for (const k of ALL_MATERIAL_KINDS) s.inventory[k] = 0;   // nothing left to give
+        const add = verbsFor(s, 'construction').find((v) => v.id === 'add-materials')!;
+        expect(add.available, 'a full frame with empty hands had nothing to press').toBe(true);
+        expect(add.reason).toBeNull();
     });
 
     it('THERE IS ALWAYS SOMETHING TO DO at a frame, even carrying nothing', () => {

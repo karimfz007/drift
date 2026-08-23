@@ -1695,6 +1695,18 @@ export class Game {
             const sh = session().state.shelter;
             return { x: sh.x, z: sh.y, unexpectedMesh: null };
         }
+        //  ---- A TAP ON THE FRAME AIMS AT THE FRAME (item 2) ---------------------------
+        //
+        //  THIS BRANCH WAS MISSING, and its absence was not "the frame is a bit small" — it was
+        //  a hard refusal on a DIRECT HIT. Any pickable mesh this function does not recognise
+        //  falls through to `unexpectedMesh`, and `onHold` returns immediately on that. So a
+        //  long-press landing squarely on the frame's own timber was declined, and the survivor
+        //  had no way to tell that from missing it. Exactly the "visible but unaimable" gap the
+        //  `dropped` branch below already carries a note about, on the newest object in the game.
+        if (hit?.hit && hit.pickedMesh?.metadata?.construction) {
+            const c = session().state.construction;
+            if (c) return { x: c.x, z: c.y, unexpectedMesh: null };
+        }
         if (hit?.hit && hit.pickedMesh?.metadata?.storage) {
             const st = session().state.storage;
             return { x: st.x, z: st.y, unexpectedMesh: null };
@@ -2322,7 +2334,6 @@ export class Game {
             case 'boil-water': this.doBoil(); break;
             case 'move-structure': this.doArmMove(); break;
             case 'add-materials': this.doAddToSite(); break;
-            case 'complete-build': this.doCompleteSite(); break;
             case 'make-cup': this.doMakeShellCup(); break;
             case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
             case 'sleep': this.trySleep(); break;
@@ -3721,6 +3732,27 @@ export class Game {
         if (!site) { this.explain('There is nothing half-built here.'); return; }
         const moved = contributeToSite(s);
         const kinds = Object.entries(moved);
+        //  ---- THE LAST MATERIAL FINISHES IT (item 1) ---------------------------------
+        //
+        //  There is no separate "Finish it" any more. It used to be its own verb and its own
+        //  decision, and the hint here read *"That is everything it needs. Finish it when you
+        //  are ready."* — a game asking a survivor to confirm the thing they had just spent
+        //  three visits making inevitable. Completion is now what the last contribution DOES.
+        //
+        //  CHECKED AFTER THE ADD, so the trip that fills it is the trip that finishes it; and
+        //  checked even when the add moved NOTHING, so a frame that was already full — reached
+        //  by any path, including one this code does not know about — still resolves on a press
+        //  rather than sitting complete and inert.
+        if (siteIsComplete(site) && completeShelterFromSite(s)) {
+            this.cues.play(CUES.craft);
+            this.floatText(kinds.length > 0
+                ? `${kinds.map(([k, n]) => `${n} ${MATERIAL_LABEL[k]?.toLowerCase() ?? k}`).join(', ')} in — it stands`
+                : 'the shelter stands');
+            this.showHint('That was the last of it. It will hold the weather off — sleep here when you need to.');
+            session().persist(now());
+            this.lastActivityAt = now();
+            return;
+        }
         if (kinds.length === 0) {
             //  NAMES WHAT IT WANTS, never a bare "you have nothing" — the survivor has to know
             //  what to go and look for, which is the whole of Law 26 at a half-built thing.
@@ -3729,25 +3761,7 @@ export class Game {
         }
         this.cues.play(CUES.craft);
         this.floatText(kinds.map(([k, n]) => `${n} ${MATERIAL_LABEL[k]?.toLowerCase() ?? k}`).join(', ') + ' in');
-        const left = siteShortfallNote(site);
-        this.showHint(left ?? 'That is everything it needs. Finish it when you are ready.');
-        session().persist(now());
-        this.lastActivityAt = now();
-    }
-
-    /**
-     * ...AND FINISH IT. Pays nothing — every material went in on the way, so this is labour
-     * rather than purchase, and charging again here would take the same wood twice.
-     */
-    private doCompleteSite(): void {
-        const s = session().state;
-        const site = s.construction;
-        if (!site) { this.explain('There is nothing half-built here.'); return; }
-        if (!siteIsComplete(site)) { this.explain(siteShortfallNote(site) ?? 'It is not ready yet.'); return; }
-        if (!completeShelterFromSite(s)) { this.explain('There is already a shelter standing.'); return; }
-        this.cues.play(CUES.craft);
-        this.floatText('the shelter stands');
-        this.showHint('It will hold the weather off. Sleep here when you need to.');
+        this.showHint(siteShortfallNote(site) ?? 'It is ready.');
         session().persist(now());
         this.lastActivityAt = now();
     }
