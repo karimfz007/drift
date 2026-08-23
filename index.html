@@ -292,6 +292,11 @@
             gap: 8px;
             justify-content: center;
         }
+        /* The slate slot for an outcome the survivor cannot yet afford: still selectable,
+           but wearing what it is short. */
+        .panel .slate-slot.short { border-style: dashed; opacity: 0.85; }
+        .panel .slate-slot.short .slate-short { display: block; font-size: 10px; color: var(--dim); margin-top: 2px; }
+
         /* item 1 — the AIMED reach: one row per kind, each side's count in view. Full-width
            inside the flex row above so the per-kind list stacks and the two blanket buttons
            sit below it. */

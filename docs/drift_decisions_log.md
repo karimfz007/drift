@@ -3,6 +3,34 @@
 
 ---
 
+**D-184 · 2026-08-23 — THE ARMED SITING THAT ATE THE WORLD: A REFUSAL WRITTEN FOR ONE FAILURE, APPLIED TO ANOTHER IT COULD NOT FIX.**
+
+**THE REPORT, AND IT IS EXACT.** Choose to build a shelter, lack the materials to place it, and every tap in the world afterwards shows the placement ghost instead of resolving to anything — including the tap on the tree that would have produced the missing wood. Reproduced on the device before a line was changed: with 2 wood / 2 stone / 2 fibre against a shelter costing 8 / 4 / 3, the harness's own gather loop ran its full walk-face-tap budget at a driftwood node and the node was **never consumed** — `wood 2 -> 2`. That measurement is the report, and it is what a blocking defect looks like in a number.
+
+**IT TOOK TWO INDEPENDENT MISTAKES, and neither is the one the brief guessed at.**
+
+**1 · NOTHING CHECKED AFFORDABILITY BEFORE ARMING — the guard was missing entirely.** A placed outcome is deliberately not committed when it is chosen: `onCombine` arms a siting, spends nothing, and the tap that picks the spot does the building ([[D-164]]/[[D-165]]). That design is right, and it left a hole nobody closed. `combineSlate` offers any outcome the survivor has demonstrated, `canExperimentWith` answers only about the pile in their hands, and neither has ever had an opinion about what the BUILD costs. So the shelter was offered, chosen and armed by someone who could not put it up, and the first thing that knew better was the placing tap.
+
+**2 · THE REFUSAL RE-ARMED, and that is what turned an honest no into a lock.** `placeFromSlate` re-arms on a bad SPOT, with its own note explaining why: the survivor still means to build it, they just aimed badly, and taking the ghost away on the one tap that needed it would punish them for aiming. The materials branch beside it was written the same way. **The reasoning does not carry: no amount of re-aiming produces wood.** And `onTap`'s siting branch outranks every world target and returns before any of them are considered — so once armed, every tap re-entered the refusal, re-armed, and returned. The single act that could have resolved it was the one act it made impossible. That line dates to [[D-164]], where placed outcomes joined the slate; it is long-standing rather than a regression from [[D-183]].
+
+**WHAT THE FIX IS, IN THREE PLACES, ONE PER FAILURE MODE.** `placementShortfall`/`placementBlocker` read the SAME `recipeCost` and `reachFor` the placement itself draws from, so the guard cannot refuse something that would in fact have gone up — asserted directly, by driving guard and spend across a range of held wood and requiring them to agree. `onCombine` refuses before arming and names the amounts. `placeFromSlate`'s materials branch now **cancels** — clears the siting, hides the ghost, says what is short — while the bad-spot branch keeps re-arming, because there the original reasoning still holds. And the slate slot wears its own shortfall, so the answer arrives **before** the choice rather than from the tap after it: *"You need 6 more wood and 2 more stone and 1 more fibre."*
+
+**THE SLOT IS STILL OFFERED AND STILL SELECTABLE, deliberately.** Hiding it until the wood is in hand would teach nothing, and [[D-156]] already settled that naming what a survivor has demonstrated is not a spoiler. A greyed slot with no words is the silent refusal this project keeps paying for; a slot that says what it is short is the Law 26 answer.
+
+**THE CANCEL PATH WAS NEVER BROKEN, and that is worth stating plainly because the brief asked first whether it was.** Driven on the device rather than reasoned about: with a siting armed, a real tap on the pack button lands (`packTap ok`), the ghost goes, and the game says *"Never mind that, then."* — in the fixed build and in a build with both defects restored. So the design promise held the whole time. What was missing is that a survivor has no reason to know it: they were not trying to cancel, they were trying to gather, and gathering is exactly what the armed siting consumed. **A cancel that works is not an escape hatch if nothing tells you it exists and the thing you are actually attempting is what gets eaten.**
+
+**NO MATERIAL WAS AT RISK, checked because the loop looked like it might be.** `drawIntoHands` is called per kind and could fail partway, but it only ever MOVES stock from an open crate into the hands — it never spends. A partial draw relocates wood; it does not destroy any. The spend happens once, in `buildShelter`/`buildStorage`, after every kind has been secured.
+
+**THE PRACTICE THIS EARNS.** [[D-183]] recorded that a correct fix can read state something upstream already cleared. This is the mirror image: **a refusal is only as good as the action it leaves available.** Every one of the three code paths here was individually defensible — arm without spending, re-arm rather than punish aiming, refuse when short — and the defect lived entirely in what they left the player able to do next. The durable form is narrow enough to apply: *when a refusal fires, ask what the player must now do to satisfy it, and confirm that the refusal has not just made that thing impossible.* The device check is written to that shape — every negative is paired with the gathering tap that was actually blocked, because "no ghost" on its own would pass just as happily on a game that had stopped responding altogether.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — all three mechanisms are named and shipped in this batch: `placementShortfall`/`placementBlocker` in the brain, the pre-arm guard in `onCombine`, and the cancel-not-re-arm in `placeFromSlate`, with the shortfall rendered on the slate slot.
+
+*Status: standing. Supersedes nothing; closes a hole [[D-164]] opened when placed outcomes joined the slate and the site card's own affordability answer retired with it.* — C2
+
+---
+
 **D-183 · 2026-08-22 — THREE ITEMS: THE BOX CAN BE AIMED AT, WHAT YOU BUILT CAN BE MOVED, AND THE SHELL THAT WAS REPORTED LOST WAS NEVER LOST.**
 
 **1 · THE CRATE HAD NO PER-ITEM PATH AT ALL — the report was exact, and understated in one direction.** `withdrawFromStorage` takes `storageWithdrawBatch` of EVERY stored kind; `depositToStorage` is worse, dumping every carried kind **in full** rather than a batch. Neither has ever had a per-kind route, so wanting five stone meant taking five of everything and carrying the rest home. `moveOneKind(state, kind, direction)` is the aimed reach — one kind, one direction, one batch — and both directions share one function because deposit and withdraw are the same act with the sign flipped; two near-identical copies is how the two ends up disagreeing about what a kind is. `storageContents` derives the rows from `STORABLE_KEYS`, closing the drift that once left a survivor carrying only food with no storage button at all.

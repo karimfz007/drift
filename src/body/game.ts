@@ -179,6 +179,7 @@ import {
     combineSlate,
     canExperimentWith,
     isPlaced,
+    placementBlocker,
     recipeDisplayName,
     drawIntoHands,
     recipeCost,
@@ -1111,7 +1112,9 @@ export class Game {
             () => this.tryUseStorage(),
             () => this.tryRepair('storage'),
             //  THE REDESIGN'S THREE. A pure read, then one commit per intention.
-            (materials: string[]) => combineSlate(session().state, materials as 'wood'[]),
+            //  `atStorage` PASSED THROUGH, so an open crate counts toward what a placed
+            //  outcome can afford — the same reach `placeFromSlate` will draw from.
+            (materials: string[]) => combineSlate(session().state, materials as 'wood'[], atStorage),
             (materials: string[], recipeId: string) => this.onCombine(materials, recipeId, atStorage),
             (materials: string[]) => this.onDiscover(materials, atStorage),
             (material: string) => {
@@ -1321,6 +1324,23 @@ export class Game {
         //  that picks the spot, through the SAME `placeAtSite` the site card always used.
         //  Duplicating that would mean two paths that spend materials and decide a grade.
         if (isPlaced(recipeId)) {
+            //  ---- NEVER ARM WHAT CANNOT BE BUILT (the guard that was never here) ----------
+            //
+            //  THE BLOCKING DEFECT. Arming spends nothing and the PLACING tap builds, so
+            //  nothing on this path ever asked whether the survivor could afford the thing.
+            //  A shelter costs 8 wood, 4 stone and 3 fibre; a survivor carrying two of each
+            //  could arm it, and then every world tap in the game fell into the armed siting,
+            //  was refused for materials, and RE-ARMED — so going to gather the missing wood,
+            //  the one act that would have fixed it, was itself impossible.
+            //
+            //  Refused here, before anything is armed, and the refusal names the amounts.
+            //  `placementBlocker` reads the same `recipeCost` the builder charges, so this
+            //  cannot drift into refusing something that would in fact have gone up.
+            const short = placementBlocker(session().state, recipeId, storageOpen);
+            if (short) {
+                this.explain(short);
+                return;
+            }
             this.siting = { recipeId, materials, storageOpen };
             //  THE GHOST, BEFORE ANYTHING IS SPENT (LDOE bar properties 1 and 2). It stands where
             //  a tap on "here" would put the thing — in front of the survivor, on the ground —
@@ -1950,10 +1970,25 @@ export class Game {
         //  read `state.inventory` and nothing else. Teaching them a second source would mean
         //  teaching every future builder the same thing; moving the material is one line here
         //  and is what a person does anyway.
+        //  ---- A MATERIALS REFUSAL CANCELS. ONLY A BAD SPOT RE-ARMS. --------------------
+        //
+        //  THE DISTINCTION IS THE WHOLE BUG. The branch above re-arms because the survivor
+        //  picked a bad SPOT and is about to aim again — losing the ghost on the one tap that
+        //  needed it would punish them for aiming. This one was written the same way and the
+        //  reasoning does not carry: no amount of re-aiming produces wood. Re-arming here
+        //  turned a single honest refusal into a permanent lock on every world tap, because
+        //  `onTap`'s siting branch outranks every target and returns before any of them are
+        //  considered — including the tree the survivor was walking to for the missing wood.
+        //
+        //  `onCombine` now refuses before arming, so reaching this at all means the reach
+        //  shrank AFTER arming (an open crate that closed, most plainly). Either way the
+        //  answer is the same: let go of the siting, hide the ghost, say what is short, and
+        //  give the player their world back.
         for (const { kind, amount } of recipeCost(recipeId)) {
             if (!drawIntoHands(s, kind, amount, storageOpen)) {
-                this.siting = { recipeId, materials, storageOpen };
-                this.explain('You do not have enough for that yet.');
+                this.siting = null;
+                this.ghost.hide();
+                this.explain(placementBlocker(s, recipeId, storageOpen) ?? 'You do not have enough for that yet.');
                 return;
             }
         }

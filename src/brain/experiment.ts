@@ -259,6 +259,21 @@ export interface KnownOutcome {
     recipeId: string;
     /** The player-facing name. Safe: they have demonstrated this one. */
     name: string;
+    /**
+     * CAN IT ACTUALLY BE BUILT RIGHT NOW — and this field exists because of a blocking defect.
+     *
+     * A PLACED outcome does not spend when it is chosen; it arms a siting and the tap that
+     * picks the spot does the building. So the slate could offer a shelter to a survivor
+     * carrying two wood against a cost of eight, they would choose it, and only the placing
+     * tap — the one AFTER they have committed to aiming — would refuse. Naming the shortfall
+     * on the slot moves that answer to before the choice, which is where Law 26 wants it.
+     *
+     * True for every hand-held outcome the pile already satisfies, so this only ever narrows
+     * the placed ones.
+     */
+    affordable: boolean;
+    /** "You need 6 more wood and 2 more stone." Null when affordable. */
+    shortfall: string | null;
 }
 
 export interface CombineSlate {
@@ -313,18 +328,67 @@ export function isPlaced(recipeId: string): boolean {
     return PLACED_OUTCOMES.has(recipeId);
 }
 
-export function combineSlate(state: GameState, materials: MaterialKind[]): CombineSlate {
+export function combineSlate(state: GameState, materials: MaterialKind[], storageOpen = false): CombineSlate {
     const pool = matchPool(materials);
     const known: KnownOutcome[] = [];
     let unknownCount = 0;
     for (const recipe of pool) {
         if (isRecipeKnown(state, recipe.id)) {
-            known.push({ recipeId: recipe.id, name: recipeDisplayName(recipe.id) });
+            const shortfall = placementBlocker(state, recipe.id, storageOpen);
+            known.push({
+                recipeId: recipe.id,
+                name: recipeDisplayName(recipe.id),
+                affordable: shortfall === null,
+                shortfall,
+            });
         } else {
             unknownCount += 1;
         }
     }
     return { known, unknownCount };
+}
+
+/**
+ * WHAT IS STILL MISSING TO BUILD A PLACED OUTCOME — the guard that was never there.
+ *
+ * THE DEFECT IT CLOSES, and it blocked all play. Choosing a placed outcome ARMS A SITING and
+ * spends nothing; the tap that picks the spot is what builds. Nothing anywhere checked whether
+ * the survivor could afford it first, so a shelter (8 wood, 4 stone, 3 fibre) could be armed by
+ * someone carrying two of each. The placing tap then refused — and, worse, RE-ARMED, because
+ * that refusal path was written for a bad SPOT, where re-arming is right and the survivor is
+ * about to aim again. For a materials shortfall it is exactly wrong: no amount of re-aiming
+ * produces wood, so every subsequent world tap fell into the armed siting, refused, re-armed,
+ * and returned before any other target could resolve. Gathering more wood became impossible,
+ * which is the one thing that could have fixed it.
+ *
+ * Reads `recipeCost` and `reachFor` — the same two the placement itself uses — so this cannot
+ * disagree with what the builder will actually charge.
+ *
+ * Returns null for anything that is not placed: a hand-held outcome is charged at the moment
+ * it is made, and `canExperimentWith` already answers for those.
+ */
+export function placementShortfall(
+    state: GameState,
+    recipeId: string,
+    storageOpen: boolean,
+): Partial<Record<MaterialKind, number>> {
+    if (!isPlaced(recipeId)) return {};
+    const reach = reachFor(state, storageOpen);
+    const missing: Partial<Record<MaterialKind, number>> = {};
+    for (const { kind, amount } of recipeCost(recipeId)) {
+        const short = amount - (reach.counts[kind] ?? 0);
+        if (short > 0) missing[kind] = short;
+    }
+    return missing;
+}
+
+/** One sentence naming the amounts, in the player's own words. Null when it can be built. */
+export function placementBlocker(state: GameState, recipeId: string, storageOpen: boolean): string | null {
+    const missing = placementShortfall(state, recipeId, storageOpen);
+    const parts = Object.entries(missing)
+        .filter(([, n]) => (n ?? 0) > 0)
+        .map(([kind, n]) => `${n} more ${kind === 'fiber' ? 'fibre' : kind}`);
+    return parts.length === 0 ? null : `You need ${parts.join(' and ')}.`;
 }
 
 /**

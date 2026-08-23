@@ -13556,6 +13556,149 @@ async function main() {
     await ensureNoPanel();
     }
 
+
+    if (section('SITING LOCK — an unaffordable placement may never eat the world')) {
+
+    /**
+     * THE BLOCKING DEFECT, on the surface it was reported from.
+     *
+     * REPORTED as: chose to build a shelter, did not have the materials, and then every tap in
+     * the world showed the placement ghost instead of gathering. Two independent mistakes had
+     * to meet for that:
+     *
+     *   1. NOTHING CHECKED AFFORDABILITY BEFORE ARMING. A placed outcome spends nothing when
+     *      chosen — it arms a siting, and the placing tap builds — so the slate offered a
+     *      shelter (8 wood, 4 stone, 3 fibre) to a survivor carrying two of each.
+     *   2. THE REFUSAL RE-ARMED. That path is right for a bad SPOT and wrong for materials:
+     *      no amount of re-aiming produces wood, so every world tap fell into the armed
+     *      siting, was refused, re-armed, and returned before any other target was considered.
+     *
+     * The unit suite guards (1). This section exists for the part a unit test cannot reach:
+     * that the WORLD IS STILL USABLE afterwards. Every negative here is paired with the
+     * gathering tap that was actually blocked, because "no ghost" on its own would pass just
+     * as happily on a game that had stopped responding altogether.
+     */
+    const LOCK_FIXTURE = `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+    `;
+
+    const ghostNow = async () => page.evaluate(() => (window.__drift?.ghost?.() ?? null));
+    //  LOCAL, because the identical pair lives inside another section's block scope and is
+    //  invisible here — the run crashed on exactly that, for the second batch running. Driven
+    //  as a REAL tap on the pack button rather than a scripted click, because "can the survivor
+    //  still reach the pack while a siting is armed" is precisely the question being asked.
+    const openTheirPack = async () => { const r = await realTapDom('.carried-button'); await sleep(700); return r; };
+    const closeTheirPack = async () => {
+        await page.evaluate(() => {
+            const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
+            if (c instanceof HTMLElement) c.click();
+        });
+        await sleep(500);
+    };
+
+    // ---- 1 · THE DIRECTOR'S OWN STATE: the shelter is known, and unaffordable -----------
+    await editSave(`${LOCK_FIXTURE}
+        state.inventory = { ...state.inventory, wood: 2, stone: 2, fiber: 2 };
+        ${grantBlueprints('shelter')}`);
+    await sleep(900);
+    await openSlate();
+    await stageChips(['wood', 'stone', 'fiber']);
+    const slate = await page.evaluate(() => ({
+        known: Array.from(document.querySelectorAll('.slate-slot.known')).map((k) => (k.textContent ?? '').trim()),
+        short: Array.from(document.querySelectorAll('.slate-slot.known.short')).map((k) => (k.textContent ?? '').trim()),
+    }));
+    //  STILL OFFERED, and now wearing what it is short — the answer arrives BEFORE the choice
+    //  rather than from the placing tap, which is one commitment too late.
+    check('LOCK 1 — the slate still names the shelter, and says what it is short',
+        slate.known.some((t) => /shelter/i.test(t)) && slate.short.some((t) => /more wood/i.test(t)),
+        JSON.stringify(slate));
+
+    // ---- 2 · CHOOSING IT MUST NOT ARM ANYTHING -----------------------------------------
+    const chose = await page.evaluate(() => {
+        const k = Array.from(document.querySelectorAll('.slate-slot.known')).find((x) => /shelter/i.test(x.textContent ?? ''));
+        if (!(k instanceof HTMLElement)) return false;
+        k.click();
+        return true;
+    });
+    await sleep(300);
+    await realTapDom('.combine-btn');
+    await sleep(1200);
+    await ensureNoPanel();
+    const afterChoose = await ghostNow();
+    const saidAfter = await page.evaluate(() => document.querySelector('.hint')?.textContent?.trim() ?? '');
+    check('LOCK 2 — choosing an unaffordable shelter arms NO siting: there is no ghost',
+        chose && (afterChoose === null || afterChoose.shown === false),
+        `chose ${chose} · ghost ${JSON.stringify(afterChoose)} · said "${saidAfter}"`);
+    check('LOCK 2 — ...and it says WHICH amounts are missing, not "not enough"',
+        /more wood/i.test(saidAfter) && /more stone|more fibre/i.test(saidAfter),
+        `said "${saidAfter}"`);
+
+    // ---- 3 · THE CONTROL, AND THE WHOLE POINT: the world still works --------------------
+    //  THE SYMPTOM WAS NEVER "a ghost appeared", it was "I could not go and get more wood".
+    //  So the check that matters is a real gather, driven through a real tap, right after the
+    //  refusal. Without this the two above would pass on a game that had frozen completely.
+    const beforeGather = await live();
+    //  `harvest` is the harness's own gather loop — walk, face, tap, wait — so this is the
+    //  real journey the director could not complete, not a predicate standing in for it.
+    const drift = await harvest('driftwood');
+    const afterGather = await live();
+    check('LOCK 3 — THE REPORTED SYMPTOM: a world tap still gathers, so the world is not eaten',
+        drift.ok && afterGather.inventory.wood > beforeGather.inventory.wood,
+        `${drift.reason ?? 'gathered'} · wood ${beforeGather.inventory.wood} -> ${afterGather.inventory.wood}`);
+    check('LOCK 3 — ...and no ghost is standing over it afterwards',
+        (await ghostNow())?.shown !== true, JSON.stringify(await ghostNow()));
+
+    // ---- 4 · THE NORMAL PATH IS UNTOUCHED ----------------------------------------------
+    //  A guard that also refuses a shelter the survivor CAN afford would be a worse bug than
+    //  the one it closes, so the affordable case is driven end to end on the same surface.
+    await editSave(`${LOCK_FIXTURE}
+        state.inventory = { ...state.inventory, wood: 30, stone: 30, fiber: 30 };
+        ${grantBlueprints('shelter')}`);
+    await sleep(900);
+    const built = await makeViaSlate('Shelter', ['wood', 'stone', 'fiber'], { placed: true });
+    await sleep(800);
+    const afterBuild = await live();
+    check('LOCK 4 — an AFFORDABLE shelter still arms, sites and goes up exactly as before',
+        built.ok && afterBuild.shelter.built === true,
+        `${built.why ?? ''} · shelter ${JSON.stringify({ built: afterBuild.shelter.built, x: Math.round(afterBuild.shelter.x), y: Math.round(afterBuild.shelter.y) })}`);
+
+    // ---- 5 · AND THE CANCEL PATH THE DESIGN ALREADY PROMISED ---------------------------
+    //  The director's own first question: opening the pack is supposed to cancel an armed
+    //  siting. Driven rather than reasoned about — an armed siting, then the pack, then the
+    //  ghost must be gone and a world tap must resolve to something else again.
+    await editSave(`${LOCK_FIXTURE}
+        state.inventory = { ...state.inventory, wood: 30, stone: 30, fiber: 30 };
+        ${grantBlueprints('storage')}`);
+    await sleep(900);
+    await openSlate();
+    await stageChips(['wood', 'stone']);
+    await page.evaluate(() => {
+        const k = Array.from(document.querySelectorAll('.slate-slot.known')).find((x) => /crate|storage/i.test(x.textContent ?? ''));
+        if (k instanceof HTMLElement) k.click();
+    });
+    await sleep(300);
+    await realTapDom('.combine-btn');
+    await sleep(1200);
+    const armedGhost = await ghostNow();
+    check('LOCK 5 — an affordable placed outcome DOES arm, ghost and all (the control)',
+        armedGhost?.shown === true, JSON.stringify(armedGhost));
+
+    const reachedPack = await openTheirPack();
+    await closeTheirPack();
+    const afterCancel = await ghostNow();
+    const cancelSaid = await page.evaluate(() => document.querySelector('.hint')?.textContent?.trim() ?? '');
+    check('LOCK 5 — ...and opening the pack CANCELS it: the ghost is gone and it says so',
+        reachedPack.ok && afterCancel?.shown !== true && /never mind/i.test(cancelSaid),
+        `packTap ${JSON.stringify(reachedPack)} · ghost ${JSON.stringify(afterCancel)} · said "${cancelSaid}"`);
+    await ensureNoPanel();
+    }
+
     await browser.close();
     const openCount = results.filter((r) => r.knownOpen).length;
     const graded = results.length - openCount;
