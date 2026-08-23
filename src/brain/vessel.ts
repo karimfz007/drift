@@ -198,6 +198,28 @@ export function drinkClean(state: GameState): boolean {
     return true;
 }
 
+/**
+ * THE VESSEL AS AN INVENTORY CHIP — the same truth `waterNote` tells, shaped for the strip.
+ *
+ * REPORTED AS ITEM LOSS (item 3): a survivor made a cup, watched `shell` go 2 -> 1, and found
+ * nothing new in their pack. Nothing was lost — the husk IS the cup, and it survives a save —
+ * but the only place the cup was ever rendered is the Vitals tab, and the pack is where a
+ * person looks for a thing they just made. The found flask has had a chip the whole time.
+ *
+ * Lives HERE rather than in `hud.ts` so there is one answer to "what am I carrying water in",
+ * shared with `waterNote`. Two derivations of that is how a readout ends up disagreeing with
+ * the verb that reads the same state.
+ */
+export function vesselChip(state: GameState): { label: string; state: 'empty' | 'raw' | 'clean' | 'both'; sips: number } | null {
+    const { vessel, rawSips, cleanSips } = state.water;
+    if (vessel === null) return null;
+    const label = vessel === 'found-pan' ? 'Pan' : 'Cup';
+    if (cleanSips > 0 && rawSips > 0) return { label, state: 'both', sips: cleanSips + rawSips };
+    if (cleanSips > 0) return { label, state: 'clean', sips: cleanSips };
+    if (rawSips > 0) return { label, state: 'raw', sips: rawSips };
+    return { label, state: 'empty', sips: 0 };
+}
+
 /** What the survivor is carrying, for the readout. Never a bare number on its own. */
 export function waterNote(state: GameState): string | null {
     const { vessel, rawSips, cleanSips } = state.water;

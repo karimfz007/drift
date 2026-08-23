@@ -114,7 +114,7 @@
 | `storageWoodCost` / `storageStoneCost` | 5 / 3 | C05 | The storage crate's build recipe — wood and stone only, no fibre gate |
 | `storageBuildOffsetM` | 2.2 | C05 | How far ahead of the player storage is placed |
 | `storageCollisionRadius` | 0.9 | C05 | Collision footprint of a built storage crate |
-| `storageWithdrawBatch` | 5 | C05 | Per-resource amount withdrawn per tap when the crate holds any and the player carries none |
+| `storageWithdrawBatch` | 5 | C05, **aimed D-183** | How much of ONE kind a single reach into the crate moves. The value is unchanged; what changed is that the reach can now be aimed — `moveOneKind` moves this many of the kind you tapped, in either direction, instead of the two blanket sweeps being the only route. Also the batch the per-kind buttons name out loud (`Take 5` / `Put 5`), so it is never a surprise |
 | `structureDurabilityMax` | 100 | C05 | Full durability, for any structure (shelter or storage) |
 | `structureDurabilityDecayPerGameHour` | 1 | C05 | Durability lost per game hour — ~4 days from full to 0, long enough that neglect, not attentiveness, triggers it |
 | `repairDurabilityPerWood` | 15 | C05 | Durability restored per wood spent repairing |

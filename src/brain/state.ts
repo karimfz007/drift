@@ -15,6 +15,7 @@ import { freshRadio, salvageReceiver } from './radio';
 import { freshCrash } from './crash';
 import { freshWater } from './vessel';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
+import { siteIsViable, type MovableKind } from './construction';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
 import { freshTraces } from './traces';
@@ -2053,6 +2054,66 @@ export function withdrawFromStorage(state: GameState): StorageActionResult {
         : { ok: false, action: null, moved: {} };
 }
 
+/**
+ * MOVE ONE KIND, BOTH WAYS — the per-item reach the box never had (item 1, this batch).
+ *
+ * REPORTED AS "deposit/withdraw is 5 of everything". It was worse than that in one direction
+ * and exactly that in the other: `depositToStorage` dumps EVERY carried kind in full, and
+ * `withdrawFromStorage` takes `storageWithdrawBatch` of every stored kind. Neither has ever
+ * had a per-kind path, so a survivor who wanted five stone had to take five of everything and
+ * carry it, and a survivor who wanted to store a surplus of wood had to empty their pack.
+ *
+ * The batch itself was never the complaint and is unchanged: one reach into a crate brings
+ * out `storageWithdrawBatch` of a kind. What changes is that the reach can now be AIMED.
+ *
+ * Both directions share this one function because they are the same act with the sign
+ * flipped, and two near-identical copies is how the deposit path and the withdraw path end
+ * up disagreeing about what a kind is — which is exactly the shape of the bug that made
+ * `STORABLE_KEYS` and the surface's own hardcoded triple drift apart last time.
+ */
+export function moveOneKind(
+    state: GameState,
+    kind: MaterialKind,
+    direction: 'deposit' | 'withdraw',
+    amount: number = TUNE.storageWithdrawBatch,
+): StorageActionResult {
+    const none: StorageActionResult = { ok: false, action: null, moved: {} };
+    if (!state.storage.built) return none;
+    //  NOT A SILENT NO-OP ON AN UNKNOWN KIND. `STORABLE_KEYS` is derived from the material
+    //  table, so a kind outside it is a programming error rather than a player state, and
+    //  swallowing it would hide the exact drift this function's own note describes.
+    if (!STORABLE_KEYS.includes(kind)) return none;
+    if (!Number.isFinite(amount) || amount <= 0) return none;
+
+    const from = direction === 'deposit' ? state.inventory : state.storage.stored;
+    const have = from[kind] ?? 0;
+    const n = Math.min(have, Math.floor(amount));
+    if (n <= 0) return none;
+
+    if (direction === 'deposit') {
+        state.inventory[kind] = have - n;
+        state.storage.stored[kind] = (state.storage.stored[kind] ?? 0) + n;
+    } else {
+        state.storage.stored[kind] = have - n;
+        state.inventory[kind] = (state.inventory[kind] ?? 0) + n;
+    }
+    return { ok: true, action: direction, moved: { [kind]: n } };
+}
+
+/**
+ * WHAT THE BOX AND THE PACK EACH HOLD, as one list the surface can render per kind.
+ *
+ * Derived from `STORABLE_KEYS` for the same reason everything else here is: the surface used
+ * to keep its own hardcoded `['wood','stone','fiber']`, which is why storing a berry once
+ * floated an empty message and a survivor carrying only food was offered no button at all.
+ */
+export function storageContents(state: GameState): Array<{ kind: MaterialKind; carried: number; stored: number }> {
+    if (!state.storage.built) return [];
+    return STORABLE_KEYS
+        .map((kind) => ({ kind, carried: state.inventory[kind] ?? 0, stored: state.storage.stored[kind] ?? 0 }))
+        .filter((r) => r.carried > 0 || r.stored > 0);
+}
+
 /** Which of the two acts are possible right now — the surface offers exactly these. */
 export function storageActionsFor(state: GameState): { canDeposit: boolean; canWithdraw: boolean } {
     if (!state.storage.built) return { canDeposit: false, canWithdraw: false };
@@ -2071,6 +2132,68 @@ export function storageActionsFor(state: GameState): { canDeposit: boolean; canW
 export function useStorage(state: GameState): StorageActionResult {
     const { canDeposit } = storageActionsFor(state);
     return canDeposit ? depositToStorage(state) : withdrawFromStorage(state);
+}
+
+// ---- Moving what you have already built (item 2) --------------------------
+
+/**
+ * RELOCATE A STANDING STRUCTURE — the shelter, the crate, the fire pit, the work surface.
+ *
+ * WHY THIS IS ONE ASSIGNMENT AND NOT A JOURNEY. [[D-011]] asks what an absence can do to a
+ * structure caught mid-move, and the honest answer has to be *nothing*, so there is no such
+ * state to be caught in: a move is a single write of x and y, and everything else about the
+ * object — what it holds, how worn it is, whether it is lit — is carried across UNTOUCHED by
+ * construction rather than by a checklist. The survivor either taps a new spot or does not.
+ * The armed "where?" step lives in the body and is never persisted, so closing the game with
+ * a move armed loses the aim, not the building.
+ *
+ * That is also why nothing is charged. Dragging a crate a few metres is not a rebuild, and
+ * making it cost materials would push survivors back to the thing this replaces — building a
+ * second one and abandoning the first, which leaves litter the world can never reclaim.
+ *
+ * WHAT IT REFUSES: a structure that does not exist, and a site the world rejects. The site
+ * test EXCLUDES the mover, since a thing is always within spacing distance of itself.
+ */
+export function canMoveStructure(state: GameState, kind: MovableKind): boolean {
+    return moveStructureBlocker(state, kind) === null;
+}
+
+/** One sentence naming the single thing in the way. Never "requirements not met". */
+export function moveStructureBlocker(state: GameState, kind: MovableKind): string | null {
+    switch (kind) {
+        case 'shelter': return state.shelter.built ? null : 'There is no shelter here to move.';
+        case 'storage': return state.storage.built ? null : 'There is no crate here to move.';
+        case 'fire': return state.fire.built ? null : 'There is no fire pit here to move.';
+        case 'workspace': return state.workspace.built ? null : 'There is no work surface here to move.';
+    }
+}
+
+/** Where the named structure currently stands, or null if it does not. */
+export function structureSite(state: GameState, kind: MovableKind): { x: number; y: number } | null {
+    switch (kind) {
+        case 'shelter': return state.shelter.built ? { x: state.shelter.x, y: state.shelter.y } : null;
+        case 'storage': return state.storage.built ? { x: state.storage.x, y: state.storage.y } : null;
+        case 'fire': return state.fire.built ? { x: state.fire.x, y: state.fire.y } : null;
+        case 'workspace': return state.workspace.built ? { x: state.workspace.x, y: state.workspace.y } : null;
+    }
+}
+
+export function moveStructure(state: GameState, kind: MovableKind, x: number, y: number): boolean {
+    if (!canMoveStructure(state, kind)) return false;
+    //  THE WORLD STILL GETS A VETO. Same rule the original siting obeyed, minus the mover
+    //  itself — see `siteIsViable`. The body checks the mesh separately, as it always has.
+    if (!siteIsViable(state, x, y, kind)) return false;
+    if (!isPlaceablePoint(x, y)) return false;
+    //  SPREAD, NEVER REASSIGNED FIELD BY FIELD. `{ ...state.storage, x, y }` is what makes the
+    //  contents, the durability and the fire's own fuel survive a move by construction: there
+    //  is no line here that could forget one of them, which is the failure a hand-written
+    //  copy invites and the reason this reads as it does.
+    switch (kind) {
+        case 'shelter': state.shelter = { ...state.shelter, x, y }; return true;
+        case 'storage': state.storage = { ...state.storage, x, y }; return true;
+        case 'fire': state.fire = { ...state.fire, x, y }; return true;
+        case 'workspace': state.workspace = { ...state.workspace, x, y }; return true;
+    }
 }
 
 // ---- Energy and sleep (Cycle 05) ------------------------------------------

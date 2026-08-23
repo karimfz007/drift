@@ -67,6 +67,7 @@ import {
     stepMovement,
     tapOpensCircle,
     holdOpensCircle,
+    type VerbTarget,
     defaultVerb,
     verbsFor,
     readWrite,
@@ -93,6 +94,7 @@ import {
     makeShellCup,
     shellCupBlocker,
     waterNote,
+    vesselChip,
     bindBlocker,
     canBindWound,
     bindWound,
@@ -106,6 +108,8 @@ import {
     ALL_MATERIAL_KINDS,
     growthReport,
     previewAt,
+    siteIsViable,
+    type MovableKind,
     settleOnTerrain,
     bodyReport,
     //  ITEM 5 (this batch) — walking through the one body resolver, same as gathering.
@@ -127,6 +131,11 @@ import {
     defectPlace,
     timeOfDay,
     depositToStorage,
+    moveOneKind,
+    storageContents,
+    moveStructure,
+    moveStructureBlocker,
+    structureSite,
     withdrawFromStorage,
     storageActionsFor,
     type Food,
@@ -220,7 +229,7 @@ import {
     type GameState
 } from '../brain';
 import { TUNE, fireLoudnessAt } from '../data/tune';
-import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, surfaceHeightAt } from '../data/world';
+import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, isPlaceablePoint, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
@@ -246,6 +255,27 @@ import { grantControl, msSinceControl, now, recordBodyTrace, runtime, sampleFram
 import { RENDER } from './theme';
 
 /** What the player has tapped and wants to reach, if anything. */
+/**
+ * item 2 — WHICH PENDING TARGET IS WHICH MOVABLE THING, and what to call it out loud.
+ *
+ * Two small tables rather than a switch inside the handler, so adding a fifth movable
+ * structure is one line in each and cannot be half-done: a kind present in one and missing
+ * from the other is a compile error, not a verb that arms and then cannot name itself.
+ */
+const MOVABLE_FOR_PENDING: Record<string, MovableKind | undefined> = {
+    shelter: 'shelter',
+    storage: 'storage',
+    fire: 'fire',
+    workspace: 'workspace',
+};
+
+const MOVE_LABEL: Record<MovableKind, string> = {
+    shelter: 'The shelter',
+    storage: 'The crate',
+    fire: 'The fire pit',
+    workspace: 'The work surface',
+};
+
 type Pending =
     | { kind: 'node'; id: string }
     | { kind: 'fire' }
@@ -253,6 +283,11 @@ type Pending =
     | { kind: 'shelter' }
     | { kind: 'boar'; id: string }
     | { kind: 'storage' }
+    //  item 2 — THE WORK SURFACE, which has been standing and untouchable since SESSION 1.
+    //  It is drawn (`workMat`/`workBenchTop`), it collides, and it was the only built thing
+    //  in the game with no tap candidate and no verbs — so a finger could never address it.
+    //  Moving one is what finally needed it, but the gap predates the request.
+    | { kind: 'workspace' }
     //  P0-3 — A STACK ON THE GROUND, and the second half of why dropped items 'vanished'.
     //  `verbs.ts` has had a `dropped` target with a `pick-up` verb since the drop shipped,
     //  and NOTHING in the body ever produced that target: `worldCandidateAt` had no such
@@ -350,6 +385,34 @@ export class Game {
      * cancelling costs nothing, which is the same promise the old card made.
      */
     private siting: { recipeId: string; materials: string[]; storageOpen: boolean } | null = null;
+    /**
+     * item 2 — A MOVE, ARMED. Deliberately the same shape as `siting` above, and deliberately
+     * BODY-ONLY.
+     *
+     * [[D-011]] asks what an absence does to a structure caught mid-move. The answer is
+     * nothing, and it is structural rather than guarded: this field is never serialized, so
+     * closing the game with a move armed loses the AIM, never the building. The structure is
+     * at its old site until a tap lands it at a new one, and `moveStructure` is a single
+     * write — there is no in-between state for an absence to catch.
+     */
+    private moving: { kind: MovableKind } | null = null;
+    /**
+     * WHICH TARGET THE OPEN CIRCLE BELONGS TO — and this field exists because of a real bug
+     * the device caught, not as a convenience.
+     *
+     * `actOnArrival` sets `this.pending = null` BEFORE calling `showVerbCircle`, deliberately:
+     * the intention has been consumed the moment the wheel appears. Every verb that shipped
+     * before this batch acts on the survivor or on a structure it can look up by name, so
+     * none of them ever needed to know what was under the finger. `move-structure` is the
+     * first that does — it is universal across four targets — and reading `this.pending` in
+     * its handler got `null` every time, so pressing Move answered "there is nothing here to
+     * move" while standing on the crate.
+     *
+     * That is the same shape as [[D-180]]: code that is correct in itself, reading state that
+     * something upstream had already cleared. Captured at the moment the circle opens, which
+     * is the only moment the answer is still known.
+     */
+    private circleTarget: VerbTarget | null = null;
     //  `selectedKnownRecipe` IS GONE (ITEM 3, this batch) — the known-list row it tracked no
     //  longer exists. See the ledger entry for the full account.
     private storage: StorageView;
@@ -479,7 +542,8 @@ export class Game {
             this.overlay,
             () => this.onBuildFire(),
             (food) => this.onEatFood(food),
-            () => this.onDrinkFlask()
+            () => this.onDrinkFlask(),
+            () => this.doDrinkClean()
         );
         addSettingsButton(this.overlay, () => this.openSettings());
         addCarriedButton(this.overlay, () => this.openLoadout());
@@ -889,8 +953,12 @@ export class Game {
         //  had no way out but to put it somewhere: the site card had an explicit cancel and the
         //  slate flow shipped without one. Reaching for the pack IS "let me choose something else",
         //  so it needs no control of its own.
-        if (this.siting && !reopening) {
+        if ((this.siting || this.moving) && !reopening) {
             this.siting = null;
+            //  item 2 — an armed MOVE dies with an armed siting, for the same reason: the
+            //  ghost goes with the panel, and leaving one aimed at nothing is how a survivor
+            //  ends up relocating a shelter they had stopped thinking about.
+            this.moving = null;
             this.ghost.hide();
             this.showHint('Never mind that, then.');
         }
@@ -907,6 +975,24 @@ export class Game {
             return;
         }
         if (!reopening) this.beginPanel();
+        //  ---- A RE-RENDER REPLACES THE PANEL, IT DOES NOT STACK ANOTHER ON TOP ----------
+        //
+        //  `panel()` only ever appends, so every in-place redraw — a tab switch, and now a
+        //  per-kind storage move — left the previous `.panel.loadout` in the overlay beneath
+        //  the new one. A `.panel` is `inset: 0`, so that is a full-screen sheet: the topmost
+        //  wins the pointer and the game LOOKS fine, while `fade(el, onClose)` on close
+        //  removes only the one element it was given and every buried copy stays behind,
+        //  swallowing world taps. That is the input-freeze shape `showLoadout`'s own reveal
+        //  bug already cost this project once.
+        //
+        //  FOUND BY THE DEVICE, and only because the harness reads the DOM the way the DOM
+        //  actually is: `document.querySelector` returns the FIRST match, so a per-kind tap
+        //  resolved to the buried panel's button and came back "occluded" — the occluder
+        //  being another copy of the same button. The tab-switch path has taken this route
+        //  since it shipped; the fix is one line and belongs here rather than in the item.
+        if (reopening) {
+            for (const stale of this.overlay.querySelectorAll('.panel.loadout')) stale.remove();
+        }
         //  The open path runs INSIDE the control transfer, so if any of it throws the game
         //  would be left holding control with nothing on screen to give it back. Hand it
         //  back immediately and let the error surface (D-049) rather than lock the player
@@ -937,6 +1023,18 @@ export class Game {
                 atStorage: atStorage && s.storage.built,
                 storageAction: atStorage ? this.storageActionLabelFor(s) : null,
                 storageTakeAction: atStorage ? this.storageTakeLabelFor(s) : null,
+                //  item 1 — READ FROM THE BRAIN, derived from `STORABLE_KEYS`. The surface
+                //  keeping its own list of kinds is exactly the drift that once offered a
+                //  survivor carrying only food no storage button at all.
+                storageRows: atStorage
+                    ? storageContents(s).map((r) => ({
+                        kind: r.kind,
+                        label: MATERIAL_LABEL[r.kind] ?? r.kind,
+                        carried: r.carried,
+                        stored: r.stored,
+                        batch: TUNE.storageWithdrawBatch,
+                    }))
+                    : [],
                 repairLabel: atStorage && canRepairStructure(s, 'storage')
                     ? `Mend  ·  +${TUNE.repairDurabilityPerWood} durability`
                     : null,
@@ -1129,7 +1227,9 @@ export class Game {
             (materials: string[]) => canExperimentWith(session().state, materials as MaterialKind[], atStorage),
             //  item 11 — taking, as its own act. Appended LAST so every positional argument
             //  above keeps the position it already had.
-            () => this.tryTakeStorage()
+            () => this.tryTakeStorage(),
+            //  item 1 — the aimed reach. Appended LAST, same discipline as `onTakeStorage`.
+            (kind: string, direction: 'deposit' | 'withdraw') => this.tryMoveKind(kind, direction)
         );
         } catch (error) {
             //  C3 finding C3 on D-065: releasing control is not enough — `showLoadout` may
@@ -1623,9 +1723,9 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | 'workspace' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | 'workspace'; d: number };
         const candidates: Candidate[] = [];
         {
             //  DROP 3B(i) — the appointment. A candidate ONLY while there is something out
@@ -1670,6 +1770,12 @@ export class Game {
         if (s.storage.built) {
             const d = distance(point.x, point.z, s.storage.x, s.storage.y);
             if (d <= TUNE.storageCollisionRadius + 1.5) candidates.push({ kind: 'storage', d });
+        }
+        //  item 2 — the mat and the bench, at last addressable. Same slack the shelter and the
+        //  crate get, measured from the surface's own site.
+        if (s.workspace.built) {
+            const d = distance(point.x, point.z, s.workspace.x, s.workspace.y);
+            if (d <= TUNE.workspaceReachM) candidates.push({ kind: 'workspace', d });
         }
         if (s.raft.built) {
             const d = distance(point.x, point.z, s.raft.x, s.raft.y);
@@ -1929,6 +2035,17 @@ export class Game {
             else this.ghost.hide();
             return;
         }
+        //  item 2 — A MOVE OUTRANKS EVERYTHING, for exactly the reason a siting does: a
+        //  survivor who has just said "that crate, over there" means the next tap as a PLACE.
+        //  Checked AFTER `siting` so the two can never both consume one tap.
+        if (this.moving && !runtime.panelOpen) {
+            const at = this.pickHitPoint(screenX, screenY);
+            if (!at) { this.explain('Not there — pick a spot on the ground.'); return; }
+            const armed = this.moving;
+            this.recordTap(screenX, screenY, `move:${armed.kind}`);
+            this.commitMove(armed.kind, at.x, at.z);
+            return;
+        }
         if (runtime.panelOpen) { this.recordTap(screenX, screenY, 'panel-open'); return; }
         this.lastActivityAt = now();
 
@@ -2099,6 +2216,7 @@ export class Game {
             case 'fill-flask': this.doFillFlask(); break;
             case 'fill-vessel': this.doFillVessel(); break;
             case 'boil-water': this.doBoil(); break;
+            case 'move-structure': this.doArmMove(); break;
             case 'make-cup': this.doMakeShellCup(); break;
             case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
             case 'sleep': this.trySleep(); break;
@@ -2221,6 +2339,10 @@ export class Game {
         if (this.pending.kind === 'storage') {
             const st = session().state.storage;
             return st.built ? { x: st.x, z: st.y } : null;
+        }
+        if (this.pending.kind === 'workspace') {
+            const w = session().state.workspace;
+            return w.built ? { x: w.x, z: w.y } : null;
         }
         if (this.pending.kind === 'trace') {
             const t = traceById(this.pending.id);
@@ -2372,7 +2494,11 @@ export class Game {
             || this.pending.kind === 'shoreitem'
             //  RULING (C1) — ground-hold joins the same shared path, the same reasoning: a
             //  plain point is not a special enough thing to earn its own dispatch branch.
-            || this.pending.kind === 'ground') {
+            || this.pending.kind === 'ground'
+            //  item 2 — and the work surface, on the SAME shared path. Giving it a bespoke
+            //  branch is how the boar ended up with no circle; this comment block exists to
+            //  say that out loud, so the eleventh target does not repeat the ninth's mistake.
+            || this.pending.kind === 'workspace') {
             const target = this.pending.kind;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
             //  which gesture set this intention, so arriving after a hold opens the circle and
@@ -2382,10 +2508,14 @@ export class Game {
             if (this.pendingWasHold ? holdOpensCircle(s, target) : tapOpensCircle(s, target)) {
                 const at = this.lastTapPoint ?? { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 };
                 this.pending = null;
+                //  CAPTURED BEFORE THE PENDING IS GONE — see `circleTarget`. Cleared on close
+                //  as well as on choose, so a dismissed wheel cannot leave a stale answer for
+                //  the next verb that asks.
+                this.circleTarget = target;
                 this.beginPanel();
                 showVerbCircle(this.overlay, verbsFor(s, target), at.x, at.y,
-                    (id: string) => { this.endPanel(); this.performVerb(id); },
-                    () => this.endPanel());
+                    (id: string) => { this.endPanel(); this.performVerb(id); this.circleTarget = null; },
+                    () => { this.endPanel(); this.circleTarget = null; });
                 return;
             }
             const only = defaultVerb(s, target);
@@ -2595,6 +2725,28 @@ export class Game {
         this.floatText(this.storageMovedLabel(result.action, result.moved));
         session().persist(now());
         this.lastActivityAt = now();
+    }
+
+    /**
+     * item 1 — THE AIMED REACH. One kind, one direction, one batch.
+     *
+     * RE-RENDERS INSTEAD OF CLOSING, which is the whole reason this is separate from the two
+     * sweeps: a survivor at a box is usually moving several kinds, and a panel that shut on
+     * every tap would make the aimed move more tedious than the blanket one it replaces.
+     * `openLoadout(..., reopening = true)` is the SAME path the tab switch uses, so the panel
+     * lock is never released between renders and no world tap can slip through the gap.
+     */
+    private tryMoveKind(kind: string, direction: 'deposit' | 'withdraw'): void {
+        const result = moveOneKind(session().state, kind as MaterialKind, direction);
+        if (!result.ok) {
+            this.explain(direction === 'deposit' ? 'You are not carrying any of that.' : 'There is none of that in the box.');
+            return;
+        }
+        this.cues.play(direction === 'deposit' ? CUES.collected : CUES.pickup);
+        this.floatText(this.storageMovedLabel(result.action, result.moved));
+        session().persist(now());
+        this.lastActivityAt = now();
+        this.openLoadout(true, 'inventory', true);
     }
 
     private tryUseStorage(): void {
@@ -3334,6 +3486,74 @@ export class Game {
         this.lastActivityAt = now();
     }
 
+    /**
+     * item 2 — ARM A MOVE. Asks WHERE, spends nothing, and commits on the next tap.
+     *
+     * Deliberately the same three beats the placed-outcome siting already has — ghost, prompt,
+     * confirming tap — because a survivor who has sited a shelter once already knows this
+     * gesture. A second, differently-shaped relocation flow would be a new thing to learn for
+     * no reason, and the director asked for the existing one to be reused.
+     */
+    private doArmMove(): void {
+        const s = session().state;
+        //  READS THE CIRCLE'S OWN TARGET, never `this.pending` — which `actOnArrival` has
+        //  already nulled by the time any circle verb runs. See `circleTarget`.
+        const kind = MOVABLE_FOR_PENDING[this.circleTarget ?? this.pending?.kind ?? ''] ?? null;
+        if (!kind) { this.explain('There is nothing here to move.'); return; }
+        const blocked = moveStructureBlocker(s, kind);
+        if (blocked) { this.explain(blocked); return; }
+        const site = structureSite(s, kind);
+        this.pending = null;
+        this.moving = { kind };
+        this.cues.play(CUES.target);
+        this.showHint(`${MOVE_LABEL[kind]} — tap where it should stand. Nothing is spent, and nothing inside it is lost.`);
+        //  The ghost starts on its CURRENT spot, so the preview exists before the first aim
+        //  rather than appearing only once the finger has already moved somewhere.
+        if (site) this.showMoveGhost(kind, site.x, site.y);
+    }
+
+    /** The ghost for an armed move — `previewAt`'s real verdict, with the mover excluded. */
+    private showMoveGhost(kind: MovableKind, x: number, z: number): void {
+        const s = session().state;
+        const clear = { x, z };
+        //  EXCLUDES ITSELF. A structure is always inside its own spacing ring, so without this
+        //  every move would preview red on the spot it already legally occupies.
+        const viable = siteIsViable(s, clear.x, clear.z, kind) && isPlaceablePoint(clear.x, clear.z);
+        const groundY = this.island.heightAt(clear.x, clear.z);
+        this.ghost.show(clear.x, clear.z, groundY, viable);
+    }
+
+    /**
+     * item 2 — LAND IT. One write, or a refusal that says why and leaves the move armed.
+     *
+     * The armed move OUTLIVES a refusal for exactly the reason the siting does: the survivor is
+     * about to aim again, and losing the preview on the one tap that needed it would be the
+     * worst possible moment for it to vanish.
+     */
+    private commitMove(kind: MovableKind, x: number, z: number): void {
+        const s = session().state;
+        if (!moveStructure(s, kind, x, z)) {
+            const why = !siteIsViable(s, x, z, kind)
+                ? 'Too close to something already standing.'
+                : 'Not there — that ground will not take it.';
+            this.explain(why);
+            this.showMoveGhost(kind, x, z);
+            return;
+        }
+        this.moving = null;
+        this.ghost.hide();
+        this.cues.play(CUES.craft);
+        this.floatText(`${MOVE_LABEL[kind]} moved`);
+        //  NO MESH NUDGE HERE, DELIBERATELY. Every structure view already reads its position
+        //  from the brain on each frame (`shelter.update`, `storage.update`, `fire.update`,
+        //  `workspace.update` all set `position` from `state`), so a move is a state write and
+        //  the world redraws itself. Moving a mesh from here would create a second source of
+        //  truth for where a thing stands — which is how a structure ends up drawn in one
+        //  place and interacted with in another.
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     /** WAVE 0 — drink what you treated. The one water in the game that costs nothing. */
     private doDrinkClean(): void {
         const s = session().state;
@@ -3353,7 +3573,12 @@ export class Game {
         if (!makeShellCup(s)) { this.explain('That will not open cleanly.'); return; }
         this.cues.play(CUES.craft);
         this.floatText('a cup');
-        this.showHint('Half a shell, scraped smooth. It holds water — and it will hold a boil.');
+        //  NAMES THE NEXT MOVE, not a promise (Law 26 — the world tells you first). This
+        //  read "It holds water — and it will hold a boil", which describes a capability and
+        //  leaves a survivor believing the cup is ALREADY full. That is the second half of
+        //  the reported defect: they walked to the fire, found Boil greyed with "there is
+        //  nothing in it to boil", and read the whole sequence as a shell that vanished.
+        this.showHint('Half a shell, scraped smooth — and empty. Fill it at the pond, then boil it on a fire.');
         session().persist(now());
         this.lastActivityAt = now();
     }
@@ -4273,6 +4498,10 @@ export class Game {
         this.hud.update({
             warmth: state.warmth, thirst: state.thirst, hunger: state.hunger, health: state.health, energy: state.energy,
             sheltered, inventory: state.inventory, tools: state.tools,
+            //  READ FROM `vessel.ts`, never re-derived here — the same rule the Vitals tab's
+            //  water row already follows. This puts the made vessel on the strip the survivor
+            //  actually watches; see `HudView.vessel` for what was reported and why.
+            vessel: vesselChip(state),
             carry: { kg: carriedWeightKg(state), overloaded: isOverloaded(state) },
             gameHoursElapsed: state.gameHoursElapsed, goal: this.goalLine(state), action, skills: state.skills
         });

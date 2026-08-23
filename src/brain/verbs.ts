@@ -21,7 +21,8 @@
 import { TUNE } from '../data/tune';
 import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
-import { canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater } from './state';
+import { benchHasRacked, canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
+import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
 import { boilRefusalFor, canBoil, canFillVessel, canMakeShellCup, shellCupBlocker } from './vessel';
 import { defectPlace, worstDefect } from './upkeep';
@@ -45,6 +46,22 @@ export interface VerbOption {
      * check. Null when available.
      */
     reason: string | null;
+    /**
+     * REACHED BY A HOLD ONLY — never fired by a tap, and never counted when the tap is
+     * deciding what it unambiguously meant.
+     *
+     * THE DEFAULT-VERB LAW MADE THIS NECESSARY, and its own test is what caught the need.
+     * `defaultVerb` falls back to the single remaining option when the declared default is
+     * blocked — *"a survivor whose shelter has collapsed taps it and mends it, because that
+     * is the only thing to do"*. Adding an always-available verb at those targets quietly
+     * destroys that: two options remain, so the tap stops mending and opens a wheel instead.
+     * A capability the survivor gained would have taxed the frequent verb, which is the exact
+     * thing the law forbids.
+     *
+     * So a hold-only verb is invisible to the tap path and present on the circle. That is
+     * also what the director asked for in words — *long-press should offer a Move option*.
+     */
+    holdOnly?: boolean;
 }
 
 export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft' | 'fishingspot'
@@ -54,6 +71,11 @@ export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dro
     //  through this signature — see `shoreItemVerbs` for why that already-established shape
     //  fits without changing it.
     | 'outboard' | 'shoreitem'
+    //  item 2 — THE WORK SURFACE, at last a target of its own. The mat and the bench have
+    //  been standing, drawn and collidable since SESSION 1 while being the only built thing
+    //  in the game a finger could not address: no tap candidate, no circle, no verbs. Moving
+    //  one is the verb that needed it, but the gap was there before this batch asked.
+    | 'workspace'
     //  RULING (C1) — GROUND-HOLD. A plain point on open ground, not an object — the one
     //  target here with no world record behind it at all.
     | 'ground';
@@ -104,7 +126,78 @@ export type UniversalVerb = (state: GameState, target: VerbTarget) => VerbOption
  * first, and only falls back to a lone option. A universal verb arriving alongside a target's
  * own default therefore never steals the tap.
  */
-export const UNIVERSAL_VERBS: UniversalVerb[] = [];
+export const UNIVERSAL_VERBS: UniversalVerb[] = [moveVerb];
+
+/**
+ * item 2 — MOVE WHAT YOU BUILT, and the first real inhabitant of the universal tail.
+ *
+ * It is universal rather than repeated in four target functions for exactly the reason that
+ * seam was built: the alternative is editing every target that can be moved and trusting the
+ * next person to find all of them. That is the shape of defect this project keeps paying for
+ * — the boar's missing circle existed because its branch was written separately.
+ *
+ * Returns null at every target that is not a standing structure, which is what a universal
+ * verb is supposed to do when it does not apply. It cannot steal a tap it should not have:
+ * `defaultVerb` resolves `DEFAULT_VERB[target]` first, so at the shelter, the crate and the
+ * fire the existing default is untouched and Move is reached by HOLDING. At the workspace,
+ * where there is nothing else to do to the thing, it is named as the default outright.
+ */
+function moveVerb(state: GameState, target: VerbTarget): VerbOption | null {
+    const kind = MOVABLE_AT[target];
+    if (!kind) return null;
+    const blocker = moveStructureBlocker(state, kind);
+    //  ABSENT, NOT DISABLED, when the structure does not exist. A greyed "Move" on a fire pit
+    //  nobody has built yet is noise on a circle whose whole job is naming what you CAN do.
+    if (blocker !== null) return null;
+    return {
+        id: 'move-structure',
+        label: 'Move',
+        available: true,
+        reason: null,
+        //  See `VerbOption.holdOnly`. Not a preference — the Default-Verb Law's own test goes
+        //  red without it, because a collapsed shelter stops mending on a tap.
+        holdOnly: true,
+    };
+}
+
+/**
+ * WHICH TARGETS ARE A STANDING STRUCTURE — the one place that mapping lives.
+ *
+ * `Partial<Record<VerbTarget, ...>>` rather than a loose lookup so a new `VerbTarget` shows up
+ * here as a deliberate omission rather than as `undefined` at runtime.
+ */
+const MOVABLE_AT: Partial<Record<VerbTarget, MovableKind>> = {
+    shelter: 'shelter',
+    storage: 'storage',
+    fire: 'fire',
+    workspace: 'workspace',
+};
+
+/**
+ * item 2 — the work surface's own verbs. Move comes from the universal tail above, so this
+ * carries only what is specific to a mat or a bench.
+ */
+function workspaceVerbs(state: GameState): VerbOption[] {
+    const w = state.workspace;
+    return [
+        {
+            //  NAMES WHAT THIS SURFACE IS, and whether the frame is still holding. Not an
+            //  action — a reading, in the one place a survivor can put a finger on the thing
+            //  itself. `benchHasRacked` is the same term `relationsFor` consults, never a
+            //  second copy of the rule.
+            id: 'inspect-workspace',
+            label: w.tier === 'bench' ? (benchHasRacked(state) ? 'Racked bench' : 'Workbench') : 'Work mat',
+            available: false,
+            reason: !w.built
+                ? 'There is no work surface here.'
+                : w.tier === 'bench'
+                    ? (benchHasRacked(state)
+                        ? 'The joints have gone slack. Re-lay the surface and frame it again.'
+                        : `It holds ${TUNE.relationsAtBench} things steady while you work.`)
+                    : `It holds ${TUNE.relationsAtMat} things steady while you work.`,
+        },
+    ];
+}
 
 /**
  * `verbsFor` with the tail passed in — which is what makes the seam testable while it is empty.
@@ -131,6 +224,7 @@ function targetVerbs(state: GameState, target: VerbTarget): VerbOption[] {
         case 'outboard': return outboardVerbs(state);
         case 'shoreitem': return shoreItemVerbs(state);
         case 'ground': return groundVerbs(state);
+        case 'workspace': return workspaceVerbs(state);
     }
 }
 
@@ -196,6 +290,21 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  "sleep rough" is the honest answer to "if this were ever reached by a tap, what would
     //  the single most frequent ground action be".
     ground: 'sleep-rough-here',
+    //  item 2 — DECLARED BUT NEVER FIRED, exactly as `ground` above is, and deliberately one
+    //  of the workspace's OWN verbs rather than the universal Move.
+    //
+    //  Declaring `move-structure` here was the first cut and it was wrong twice over. It
+    //  breaks this file's own property — *"every target declares a default, and it is one of
+    //  that target's own verbs"* — because `moveVerb` returns null when nothing is built, so
+    //  on a fresh state the workspace would declare a default it does not offer. And it is
+    //  misleading even where it resolves: Move is `holdOnly`, so `defaultVerb` can never
+    //  return it, and a tap on your own mat arming a relocation would be a poor default in
+    //  any case. The director asked for this on the long press.
+    //
+    //  `inspect-workspace` is never `available`, so a tap here does nothing and says why —
+    //  which is the honest answer for a surface whose real verb is Combine, and Combine
+    //  happens in the pack.
+    workspace: 'inspect-workspace',
 };
 
 /**
@@ -203,7 +312,10 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
  * remaining option if there is exactly one; otherwise null, and only then does a tap ask.
  */
 export function defaultVerb(state: GameState, target: VerbTarget): VerbOption | null {
-    const usable = availableVerbs(state, target);
+    //  HOLD-ONLY VERBS ARE INVISIBLE HERE — both as a candidate and as a tie-breaker. See
+    //  `VerbOption.holdOnly`: counting them would break the single-remaining-option fallback
+    //  the Default-Verb Law depends on.
+    const usable = tapEligibleVerbs(state, target);
     const declared = usable.find((v) => v.id === DEFAULT_VERB[target]);
     if (declared) return declared;
     //  The default is blocked. One remaining option is still unambiguous — a survivor whose
@@ -217,7 +329,18 @@ export function defaultVerb(state: GameState, target: VerbTarget): VerbOption | 
  * cannot know which was wanted.
  */
 export function tapOpensCircle(state: GameState, target: VerbTarget): boolean {
-    return defaultVerb(state, target) === null && availableVerbs(state, target).length > 1;
+    return defaultVerb(state, target) === null && tapEligibleVerbs(state, target).length > 1;
+}
+
+/**
+ * What a TAP may consider — everything usable that is not hold-only.
+ *
+ * Separate from `availableVerbs` because the circle and the tap genuinely want different
+ * answers now, and having one function serve both is what let a hold-only verb leak into the
+ * tap path in the first place.
+ */
+export function tapEligibleVerbs(state: GameState, target: VerbTarget): VerbOption[] {
+    return availableVerbs(state, target).filter((v) => v.holdOnly !== true);
 }
 
 /**

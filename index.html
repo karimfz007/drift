@@ -292,6 +292,26 @@
             gap: 8px;
             justify-content: center;
         }
+        /* item 1 — the AIMED reach: one row per kind, each side's count in view. Full-width
+           inside the flex row above so the per-kind list stacks and the two blanket buttons
+           sit below it. */
+        .panel .storage-kinds { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+        .panel .storage-kind {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            padding: 4px 6px;
+            border: 1px solid var(--line, #2c2c2c);
+            border-radius: 6px;
+        }
+        .panel .storage-kind-name { font-weight: 700; font-size: 13px; min-width: 76px; text-align: left; }
+        .panel .storage-kind-counts { font-size: 11px; color: var(--dim); }
+        .panel .storage-kind-counts .held, .panel .storage-kind-counts .boxed { color: var(--text); font-weight: 700; }
+        .panel .storage-kind-acts { display: flex; gap: 6px; }
+        .panel .storage-kind-acts .quiet { font-size: 12px; padding: 3px 8px; }
+
         /* D-063: the loadout panel's zone rows. */
         .panel.loadout .zone-row { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; }
         .panel.loadout .zone-name { min-width: 104px; font-size: 12px; font-weight: 700; color: var(--dim); }

@@ -81,6 +81,7 @@ const TUNE = new Proxy({
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
     interactRadiusM: 2.5,
+    storageWithdrawBatch: 5,
     drinkPerSip: 25,
     treeWoodYield: 8,
     reedFiberYield: 2,
@@ -9148,10 +9149,10 @@ async function main() {
 
     // ---- W1: OPEN A COCONUT, at the water ------------------------------------
     await faceNode(waterX, waterY);
-    const cupTap = await openCircleOn(waterX, waterY);
+    const cupTap = await openCircleAt(waterX, waterY);
     await sleep(200);
     const pondCircle = cupTap.segs ?? [];
-    const madeCup = await pressSeg('make-cup');
+    const madeCup = await pressCircleSeg('make-cup');
     await sleep(900);
     const afterCup = await live();
     await shot('wave0b-01-cup');
@@ -9167,8 +9168,8 @@ async function main() {
 
     // ---- W1: FILL IT ---------------------------------------------------------
     await faceNode(waterX, waterY);
-    await openCircleOn(waterX, waterY);
-    const filled = await pressSeg('fill-vessel');
+    await openCircleAt(waterX, waterY);
+    const filled = await pressCircleSeg('fill-vessel');
     await sleep(900);
     const afterFill = await live();
     check('W1 — REACHABILITY: a real press fills the cup, and the water is marked UNTREATED',
@@ -9179,9 +9180,9 @@ async function main() {
     const fireAt = (await live()).fire;
     await approach(fireAt.x, fireAt.y, 25);
     await faceNode(fireAt.x, fireAt.y);
-    const fireHold = await openCircleOn(fireAt.x, fireAt.y);
+    const fireHold = await openCircleAt(fireAt.x, fireAt.y);
     const fireCircle = fireHold.segs ?? [];
-    const boiled = await pressSeg('boil-water');
+    const boiled = await pressCircleSeg('boil-water');
     await sleep(1000);
     const afterBoil = await live();
     const boilSaid = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
@@ -13256,6 +13257,302 @@ async function main() {
     check('POND 4 — ...and the SAME HOLD divides into water verbs (the control for POND 3)',
         wetHold.open && wetHold.verbs.some((v) => /drink|fill/i.test(v ?? '')),
         `circle ${wetHold.open} verbs [${wetHold.verbs.join(', ')}]`);
+    await ensureNoPanel();
+    }
+
+
+    if (section('THREE ITEMS — the aimed reach, the moved structure, the visible cup')) {
+
+    /**
+     * ONE SECTION, THREE REPORTS, each driven on the surface it was reported from.
+     *
+     * Two of the three were not the defect they were filed as, and this section is written to
+     * keep that distinction rather than to quietly assert a fix:
+     *
+     *   1  STORAGE was exactly as reported — both acts are blanket sweeps, and there has never
+     *      been a per-kind path at all. The checks below prove the aimed reach moves ONE kind
+     *      and, in the same breath, that every other stack stayed where it was.
+     *
+     *   2  MOVE is new. Witnessed end to end through the real gesture — hold, circle, press,
+     *      tap a spot — because a verb proved by calling the brain proves nothing about
+     *      whether a thumb can reach it (D-090).
+     *
+     *   3  THE SHELL was NOT item loss. The husk is spent to make the cup, which is correct
+     *      and survives a save; what was missing was any sign of the cup on the strip the
+     *      survivor was watching. So the check is a LEGIBILITY one, and it is paired: the
+     *      shell count falls AND a cup chip appears, in the same read.
+     */
+    //  LOCAL COPIES ON PURPOSE. The identical helpers exist inside WAVE 0 PART TWO's own
+    //  block scope and are invisible here — the run crashed on exactly that. Hoisting them to
+    //  module scope would be the tidier fix and is deliberately not done in this batch: they
+    //  are two lines each, and moving a helper that four sections already depend on is a
+    //  change to those sections' behaviour dressed up as a refactor.
+    const openCircleAt = async (wx, wz) => {
+        const at = await screenOf(wx, wz);
+        if (!at) return { ok: false, why: 'no pixel on screen', segs: [] };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await sleep(600);
+        const segs = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')));
+        return { ok: segs.length > 0, why: segs.length ? null : 'no circle opened', segs };
+    };
+    const pressCircleSeg = async (verb) => page.evaluate((v) => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+        if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
+        if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
+        seg.click();
+        return { ok: true, why: null };
+    }, verb);
+
+    const THREE_FIXTURE = `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 60; state.fatigue = 0;
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        state.water = { vessel: null, rawSips: 0, cleanSips: 0 };
+    `;
+
+    // ---- 1 · THE AIMED REACH ---------------------------------------------------------
+    await editSave(`${THREE_FIXTURE}
+        state.storage = { ...state.storage, built: true, x: 2, y: 96, durability: 100, stored: { wood: 30, stone: 8, berries: 2 } };
+        state.inventory = { ...state.inventory, wood: 12, stone: 9, fiber: 4, berries: 7 };
+        state.player = { x: 2, y: 90 };`);
+    await sleep(800);
+    //  OPENED BY TAPPING THE BOX — the only entry point that sets `atStorage`, and therefore
+    //  the only one that renders the per-kind rows at all. Approach stops short on purpose:
+    //  tapping from ON TOP of the crate resolves to the survivor's own pack instead.
+    await approach(2, 96, 25);
+    await faceNode(2, 96);
+    await sleep(300);
+    await tapWorld(2, 96, 55);
+    await sleep(1400);
+    const rows = await page.evaluate(() => ({
+        kinds: Array.from(document.querySelectorAll('.storage-kind')).map((r) => r.dataset.kind),
+        takes: Array.from(document.querySelectorAll('.kind-take-btn')).map((b) => b.dataset.kind),
+        puts: Array.from(document.querySelectorAll('.kind-put-btn')).map((b) => b.dataset.kind),
+        sweepsStillThere: Boolean(document.querySelector('.use-storage-btn')) && Boolean(document.querySelector('.take-storage-btn')),
+    }));
+    check('AIM 1 — the box lists what it holds PER KIND, with its own put and take',
+        rows.kinds.includes('wood') && rows.kinds.includes('stone')
+        && rows.takes.includes('wood') && rows.puts.includes('fiber'),
+        JSON.stringify(rows));
+    //  The sweeps are KEPT and that is deliberate — "put all of this down" is a real gesture.
+    //  Asserted so that a later tidy-up cannot remove them without this saying so.
+    check('AIM 1 — ...and the two blanket acts are still offered alongside, not replaced',
+        rows.sweepsStillThere, JSON.stringify(rows));
+
+    const beforeAim = await live();
+    await realTapDom('.kind-take-btn[data-kind="stone"]');
+    await sleep(900);
+    const afterAim = await live();
+    check('AIM 2 — taking STONE takes stone, and takes nothing else',
+        afterAim.inventory.stone === beforeAim.inventory.stone + TUNE.storageWithdrawBatch
+        && afterAim.inventory.wood === beforeAim.inventory.wood
+        && afterAim.inventory.berries === beforeAim.inventory.berries,
+        `stone ${beforeAim.inventory.stone} -> ${afterAim.inventory.stone}, wood ${beforeAim.inventory.wood} -> ${afterAim.inventory.wood}, berries ${beforeAim.inventory.berries} -> ${afterAim.inventory.berries}`);
+
+    //  THE PANEL MUST STILL BE OPEN. A box you have to re-open between kinds would make the
+    //  aimed reach more tedious than the sweep it replaces, which would be a fix that loses.
+    const stillOpen = await page.evaluate(() => Boolean(document.querySelector('.storage-kind')));
+    check('AIM 2 — ...and the box stays open, so a second kind costs one more tap and not four',
+        stillOpen, `per-kind rows present after the move: ${stillOpen}`);
+
+    const beforePut = await live();
+    //  THE TAP'S OWN VERDICT IS CAPTURED, not assumed. AIM 3 went red on the first run with
+    //  `berries 7 -> 7`, which is indistinguishable between "the move is broken" and "the
+    //  finger never landed" — and it was the second. `realTapDom` already answers that
+    //  question; not reading it is how a harness blames the game for its own miss.
+    const putTap = await realTapDom('.kind-put-btn[data-kind="berries"]');
+    const occludedBy = putTap.ok ? null : await page.evaluate(() => {
+        const el = document.querySelector('.kind-put-btn[data-kind="berries"]');
+        if (!el) return 'no element';
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+                 viewport: [window.innerWidth, window.innerHeight],
+                 topEl: top ? `${top.tagName}.${top.className}` : 'none' };
+    });
+    await sleep(900);
+    const afterPut = await live();
+    check('AIM 3 — putting BERRIES in leaves the wood in your hands',
+        afterPut.inventory.berries < beforePut.inventory.berries
+        && afterPut.inventory.wood === beforePut.inventory.wood,
+        `tap ${JSON.stringify(putTap)} occludedBy ${JSON.stringify(occludedBy)} · berries ${beforePut.inventory.berries} -> ${afterPut.inventory.berries}, wood ${beforePut.inventory.wood} -> ${afterPut.inventory.wood}`);
+    await ensureNoPanel();
+
+    // ---- 2 · MOVING WHAT YOU BUILT ---------------------------------------------------
+    await editSave(`${THREE_FIXTURE}
+        state.storage = { ...state.storage, built: true, x: 6, y: 96, durability: 100, stored: { wood: 17, berries: 3 } };
+        state.player = { x: 6, y: 90 };`);
+    await sleep(800);
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    const crateCircle = await openCircleAt(6, 96);
+    check('MOVE 1 — a HOLD on the crate offers Move (D-090: reachable by a real thumb)',
+        (crateCircle.segs ?? []).includes('move-structure'),
+        `circle [${(crateCircle.segs ?? []).join(', ')}]`);
+
+    const beforeMove = await live();
+    const armed = await pressCircleSeg('move-structure');
+    await sleep(600);
+    const ghostArmed = await page.evaluate(() => ({
+        //  `__drift.ghost()`, NOT `ghostReadout` — the runtime exposes it under the short
+        //  name and the first cut read a function that does not exist, which `?? null` then
+        //  turned into a confident-looking "no ghost". Another instrument fault, caught only
+        //  because the probe printed the hint beside it.
+        ghost: window.__drift?.ghost?.() ?? null,
+        hint: document.querySelector('.hint')?.textContent?.trim() ?? null,
+        panelOpen: typeof window.__drift?.panelOpen === 'function' ? window.__drift.panelOpen() : null,
+    }));
+    check('MOVE 2 — pressing it ARMS a siting: the ghost is up and nothing has moved yet',
+        armed.ok && ghostArmed.ghost?.shown === true && /tap where it should stand/i.test(ghostArmed.hint ?? ''),
+        `${armed.why ?? 'armed'} · ghost ${JSON.stringify(ghostArmed)} · crate still ${beforeMove.storage.x},${beforeMove.storage.y}`);
+
+    //  THE CONFIRMING TAP, on real ground well clear of everything else standing — and IN
+    //  FRONT of the survivor, because `tapWorld` can only land on a point the camera can
+    //  actually project. The first cut aimed behind them at (14, 88), `screenOf` returned
+    //  null, and no tap was dispatched at all: MOVE 3 read as "the move does not work" when
+    //  nothing had been pressed. The result is captured now rather than assumed.
+    await faceNode(6, 104);
+    await sleep(250);
+    const landTap = await tapWorld(6, 104, 55);
+    await sleep(900);
+    const afterMove = await live();
+    check('MOVE 3 — the tap LANDS it: the crate is at the new spot',
+        Math.hypot(afterMove.storage.x - 6, afterMove.storage.y - 104) < 3.5,
+        `tapLanded ${landTap} · crate ${beforeMove.storage.x.toFixed(1)},${beforeMove.storage.y.toFixed(1)} -> ${afterMove.storage.x.toFixed(1)},${afterMove.storage.y.toFixed(1)}`);
+    //  GATED ON THE MOVE ACTUALLY HAVING HAPPENED. On the failing runs this passed while the
+    //  crate had not moved a metre — a check that cannot fail in the direction it claims is
+    //  the vacuity this harness has been bitten by before.
+    check('MOVE 3 — ...and everything INSIDE came with it, and nothing was charged for it',
+        Math.hypot(afterMove.storage.x - beforeMove.storage.x, afterMove.storage.y - beforeMove.storage.y) > 3
+        && (afterMove.storage.stored.wood ?? 0) === 17 && (afterMove.storage.stored.berries ?? 0) === 3
+        && afterMove.inventory.wood === beforeMove.inventory.wood,
+        `stored ${JSON.stringify(afterMove.storage.stored)} · carried wood ${beforeMove.inventory.wood} -> ${afterMove.inventory.wood}`);
+    //  RENDER-WITNESSED: the crate is DRAWN at the new site, not merely recorded there. A
+    //  structure whose state moved and whose mesh did not is the exact two-sources-of-truth
+    //  failure `commitMove` refuses to create, so it is witnessed rather than assumed.
+    const crateMesh = await page.evaluate(() => {
+        const m = window.__drift?.meshInfo?.('storageCrate') ?? null;
+        return m;
+    });
+    check('MOVE 3 — ...and the RENDER agrees: the crate is drawn where the state says it is',
+        crateMesh !== null && crateMesh.enabled === true,
+        JSON.stringify(crateMesh));
+    await ensureNoPanel();
+
+    //  THE WORK SURFACE, which had no tap target of its own at all before this batch.
+    await editSave(`${THREE_FIXTURE}
+        state.workspace = { built: true, x: 6, y: 96, tier: 'mat', jointWear: 0 };
+        state.player = { x: 6, y: 92 };`);
+    await sleep(800);
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    const matCircle = await openCircleAt(6, 96);
+    check('MOVE 4 — the WORK SURFACE is addressable at last, and offers Move',
+        (matCircle.segs ?? []).includes('move-structure'),
+        `circle [${(matCircle.segs ?? []).join(', ')}]`);
+    await ensureNoPanel();
+
+    // ---- 3 · THE CUP YOU MADE, WHERE YOU LOOK FOR IT ---------------------------------
+    //  PAIRED IN ONE READ, because the report was a pair: the shell count fell and nothing
+    //  appeared. Checking only that a chip exists would leave the other half unwitnessed.
+    //  STANDING OFF THE WATER, NOT ON IT. Two traps meet at the pond's centre: the fishing
+    //  spot is authored there and wins every hold (WAVE 0 PART TWO's own note), and a tap
+    //  from ON TOP of a point resolves to the survivor's own pack instead. So the survivor
+    //  stands on the bank and reaches for the WET bearing — the -x side, per D-182, which is
+    //  where the water actually reaches its full radius.
+    await editSave(`${THREE_FIXTURE}
+        state.inventory = { ...state.inventory, shell: 2, coconut: 0 };
+        state.player = { x: -25.5, y: 8 };`);
+    await sleep(900);
+    //  PLACED ON THE BANK, NOT WALKED TO IT — [[D-182]]'s own lesson applied a second time.
+    //  The first cut held a point 7.8 m off and read `circle []` (a hold at range only sets an
+    //  intention; the circle opens on ARRIVAL). Walking there instead fixed it and then went
+    //  red again on a later run, because crossing shallow water is slow enough to outrun the
+    //  approach budget. This claim is about a READOUT, not about locomotion, so locomotion is
+    //  removed from it: the survivor stands two metres from the point they reach for, on the
+    //  wet -x bearing where the water genuinely reaches its full radius.
+    const beforeCup = await live();
+    const cupChipBefore = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.hud .chip')).map((c) => c.textContent.trim()).filter((t) => /cup|pan/i.test(t)));
+    const cupCircle = await openCircleAt(-27.5, 8);
+    const madeCup = await pressCircleSeg('make-cup');
+    await sleep(900);
+    const afterCup = await live();
+    const cupChipAfter = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.hud .chip')).map((c) => c.textContent.trim()).filter((t) => /cup|pan/i.test(t)));
+    check('CUP 1 — the shell IS spent (correct) and a cup chip appears in the same breath',
+        madeCup.ok
+        && afterCup.inventory.shell === beforeCup.inventory.shell - 1
+        && cupChipBefore.length === 0 && cupChipAfter.length === 1,
+        `shell ${beforeCup.inventory.shell} -> ${afterCup.inventory.shell} · chips ${JSON.stringify(cupChipBefore)} -> ${JSON.stringify(cupChipAfter)} · circle [${(cupCircle.segs ?? []).join(', ')}]`);
+    check('CUP 1 — ...and it reads EMPTY, which is the whole answer to "why is Boil greyed"',
+        /empty/i.test(cupChipAfter[0] ?? ''), JSON.stringify(cupChipAfter));
+
+    //  FILL IT, and the same chip must say so — a readout that does not move is a readout
+    //  a survivor learns to stop trusting. Re-placed for the same reason as above rather than
+    //  re-walked: making the cup consumed the pending intention, and a second walk would put
+    //  the same locomotion flake back into a claim that is not about walking.
+    await editSave(`state.player = { x: -25.5, y: 8 };`);
+    await sleep(700);
+    await faceNode(-27.5, 8);
+    const fillCircle = await openCircleAt(-27.5, 8);
+    const filled = await pressCircleSeg('fill-vessel');
+    await sleep(900);
+    const chipFilled = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.hud .chip')).map((c) => c.textContent.trim()).filter((t) => /cup|pan/i.test(t)));
+    check('CUP 2 — filling it at the pond changes the chip, not just the Vitals tab',
+        filled.ok && /raw/i.test(chipFilled[0] ?? ''),
+        `${filled.why ?? 'filled'} · chip ${JSON.stringify(chipFilled)} · circle [${(fillCircle.segs ?? []).join(', ')}]`);
+    await ensureNoPanel();
+
+    //  ...AND THE BOIL, which was the half of the report that read as broken. It never was:
+    //  each refusal names its own true obstacle. This drives it to the end so the sequence
+    //  the director attempted is witnessed working, not merely argued to work.
+    await editSave(`${THREE_FIXTURE}
+        state.inventory = { ...state.inventory, shell: 1, coconut: 0, wood: 10 };
+        state.water = { vessel: 'shell-cup', rawSips: 2, cleanSips: 0 };
+        state.fire = { built: true, fuel: 20, x: 0, y: 92 };
+        state.player = { x: 0, y: 88 };`);
+    await sleep(800);
+    await approach(0, 92, 25);
+    await faceNode(0, 92);
+    await sleep(300);
+    const fireCircle = await openCircleAt(0, 92);
+    const boiled = await pressCircleSeg('boil-water');
+    await sleep(900);
+    const afterBoil = await live();
+    const chipBoiled = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.hud .chip')).map((c) => c.textContent.trim()).filter((t) => /cup|pan/i.test(t)));
+    check('CUP 3 — a FILLED cup at a LIT fire genuinely boils, and the chip says boiled',
+        boiled.ok && afterBoil.water.cleanSips > 0 && /boiled/i.test(chipBoiled[0] ?? ''),
+        `${boiled.why ?? 'boiled'} · raw->clean ${afterBoil.water.rawSips}/${afterBoil.water.cleanSips} · chip ${JSON.stringify(chipBoiled)} · circle [${(fireCircle.segs ?? []).join(', ')}]`);
+
+    //  THE CONTROL FOR CUP 3, and the reason the director's boil was greyed: an EMPTY cup at
+    //  the same lit fire is refused, and the refusal names the cup rather than the fire.
+    await editSave(`${THREE_FIXTURE}
+        state.water = { vessel: 'shell-cup', rawSips: 0, cleanSips: 0 };
+        state.fire = { built: true, fuel: 20, x: 0, y: 92 };
+        state.player = { x: 0, y: 88 };`);
+    await sleep(800);
+    await approach(0, 92, 25);
+    await faceNode(0, 92);
+    await sleep(300);
+    await openCircleAt(0, 92);
+    const emptyBoil = await page.evaluate(() => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === 'boil-water');
+        if (!seg) return null;
+        return { ready: seg.classList.contains('ready'), reason: seg.querySelector('.verb-reason')?.textContent?.trim() ?? '' };
+    });
+    check('CUP 3 — ...and an EMPTY cup is refused for the CUP, never blamed on the fire',
+        emptyBoil !== null && emptyBoil.ready === false && /nothing in it/i.test(emptyBoil.reason),
+        JSON.stringify(emptyBoil));
     await ensureNoPanel();
     }
 

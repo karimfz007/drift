@@ -63,6 +63,18 @@ export interface HudView {
     sheltered: boolean;
     inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number; meat: number; fish: number };
     tools: { axe: boolean; flask: boolean; flaskSips: number };
+    /**
+     * THE VESSEL YOU MADE, WHERE YOU LOOK FOR IT (item 3, this batch).
+     *
+     * REPORTED AS ITEM LOSS: "2 shells became 1, with no filled shell appearing anywhere in
+     * inventory." No material was lost — the husk IS the cup, spent to make it, and the cup
+     * persists across a save. What was missing is any sign of it HERE. The vessel lives in
+     * `state.water`, which only the Vitals tab ever rendered, so a survivor who made a cup
+     * watched a shell disappear and got nothing back on the strip they were watching. The
+     * FOUND flask has had a chip here, reading `full`/`empty`, the whole time; the MADE cup
+     * had none. A crafted object being less legible than a scavenged one is the defect.
+     */
+    vessel: { label: string; state: 'empty' | 'raw' | 'clean' | 'both'; sips: number } | null;
     /** Carry load (D-059). Shown as a chip only once past the top band — below that the
      *  system genuinely has no effect and a permanent readout would be noise. Root cause it
      *  addresses: carry weight was not surfaced ANYWHERE in the body layer, so a player had
@@ -92,7 +104,8 @@ export class Hud {
         overlay: HTMLElement,
         onAction: () => void,
         onEat: (food: Food) => void = () => {},
-        onDrinkFlask: () => void = () => {}
+        onDrinkFlask: () => void = () => {},
+        onDrinkVessel: () => void = () => {}
     ) {
         this.root = document.createElement('div');
         this.root.className = 'hud';
@@ -145,6 +158,9 @@ export class Hud {
             //  A filled flask is a drink you carry: tap it to sip inland (restores the C03
             //  verb the direct-world model would otherwise have stranded — see D-042 audit).
             if (target.closest('[data-drink="flask"]')) { e.stopPropagation(); onDrinkFlask(); return; }
+            //  ...and the cup you MADE behaves exactly as the flask you FOUND. Only boiled
+            //  water is tappable here: see the chip's own note for why raw is not.
+            if (target.closest('[data-drink="vessel"]')) { e.stopPropagation(); onDrinkVessel(); return; }
         });
 
         this.hintBox = document.createElement('div');
@@ -193,6 +209,10 @@ export class Hud {
             ['fish', v.inventory.fish],
             ['axe', v.tools.axe],
             ['flask', v.tools.flask ? (v.tools.flaskSips > 0 ? 'full' : 'empty') : false],
+            //  Part of the repaint key, so filling or boiling the cup actually redraws the
+            //  chip. Keyed on the WHOLE readout rather than on the count alone: raw 2 and
+            //  clean 2 are different things and must not share a key.
+            ['vessel', v.vessel ? `${v.vessel.label}|${v.vessel.state}|${v.vessel.sips}` : false],
             //  D-059: part of the inventory key so the chip repaints when the load changes,
             //  not only when a stack count does. Rounded to whole kg — the same precision
             //  the vitals labels use, and the number shown is the true carried mass.
@@ -215,6 +235,22 @@ export class Hud {
                 //  A full flask is tappable (a carried drink); an empty one is just a chip.
                 if (val === 'full') chips.push(`<span class="chip tool drink" data-drink="flask" role="button" title="Tap to drink">Flask · full</span>`);
                 else if (val) chips.push(`<span class="chip tool">Flask · ${val}</span>`);
+            } else if (name === 'vessel') {
+                //  READS ITS CONTENTS, not just its name — "empty" is the whole answer to
+                //  "why is Boil greyed out", and that question is what the report was.
+                if (v.vessel) {
+                    const w = v.vessel;
+                    const what = w.state === 'empty' ? 'empty'
+                        : w.state === 'both' ? `${w.sips} sip(s), some boiled`
+                            : w.state === 'clean' ? `${w.sips} boiled` : `${w.sips} raw`;
+                    const cls = w.state === 'clean' || w.state === 'both' ? 'chip tool drink' : 'chip tool';
+                    //  Boiled water is a carried drink, so it is tappable exactly as a full
+                    //  flask is. Raw is NOT — drinking untreated water is a decision the pond
+                    //  already offers deliberately, and a one-tap chip would make it an accident.
+                    const tap = (w.state === 'clean' || w.state === 'both')
+                        ? ' data-drink="vessel" role="button" title="Tap to drink the boiled water"' : '';
+                    chips.push(`<span class="${cls}"${tap}>${w.label} · ${what}</span>`);
+                }
             } else if (name === 'carry') {
                 //  D-059: only shown once the load is genuinely past the top band, where
                 //  extra weight starts costing continuously. Below that the system has no
@@ -654,6 +690,15 @@ export interface LoadoutPanelView {
     /** item 11 — the OTHER act, offered beside it rather than instead of it. A survivor with
      *  full hands and a full box wants both on screen and has only ever been shown one. */
     storageTakeAction: string | null;
+    /**
+     * PER-KIND ROWS — the aimed reach the box never had (item 1, this batch).
+     *
+     * The two buttons above are BLANKET acts: one dumps every carried kind in full, the other
+     * takes a batch of every stored kind. Neither could be aimed, so wanting five stone meant
+     * taking five of everything and carrying the rest home. These rows are the fix: one row
+     * per kind that either side holds, each with its own put/take control.
+     */
+    storageRows: Array<{ kind: string; label: string; carried: number; stored: number; batch: number }>;
     /** Mend button label, or null when the box does not need (or cannot take) wood. */
     repairLabel: string | null;
     /** Materials the player can try putting together (Try-Combining, D-063 item 4).
@@ -981,7 +1026,12 @@ export function showLoadout(
     /** item 11 — taking, as its own act. Appended LAST so every existing positional call site
      *  keeps exactly the behaviour it had; a caller that does not pass it simply has no take
      *  button, which is the pre-item-11 world. */
-    onTakeStorage: () => void = () => {}
+    onTakeStorage: () => void = () => {},
+    /** item 1 — the AIMED reach. Appended last for the same reason `onTakeStorage` was: every
+     *  existing positional call site keeps exactly the behaviour it had. Unlike the two sweeps
+     *  this does NOT close the panel — moving three kinds should cost three taps, not three
+     *  reopenings — so the caller re-renders in place instead. */
+    onMoveKind: (kind: string, direction: 'deposit' | 'withdraw') => void = () => {}
 ): void {
     //  The panel carries the hub class AND the active tab's own class, so `.panel.loadout`
     //  and `.panel.growth` both keep resolving exactly where they always did.
@@ -1002,10 +1052,33 @@ export function showLoadout(
           ).join('')}${view.activeHand ? '<button class="quiet stow-btn" type="button">Stow</button>' : ''}</div>`
         : '<p class="subtitle">Nothing to hold yet.</p>';
 
+    //  ---- THE AIMED REACH, PER KIND (item 1) --------------------------------------------
+    //
+    //  Listed BEFORE the blanket buttons, because after this batch the per-kind move is the
+    //  ordinary way to use a box and the sweeps are the shortcut. Each row names what each
+    //  side holds, so "take 5" is never a guess about what is in there.
+    //
+    //  The sweeps are KEPT rather than removed: "put all of this down" is a real gesture that
+    //  a survivor arriving overloaded genuinely wants, and making them tap eleven kinds to do
+    //  it would trade one complaint for another. What changes is that they are no longer the
+    //  ONLY way to move anything.
+    const perKindRows = view.atStorage && view.storageRows.length
+        ? `<div class="storage-kinds">${view.storageRows.map((r) => `
+            <div class="storage-kind" data-kind="${r.kind}">
+                <span class="storage-kind-name">${r.label}</span>
+                <span class="storage-kind-counts"><span class="held">${r.carried}</span> held · <span class="boxed">${r.stored}</span> in the box</span>
+                <span class="storage-kind-acts">${
+                    r.carried > 0 ? `<button class="quiet kind-put-btn" data-kind="${r.kind}" type="button">Put ${Math.min(r.carried, r.batch)}</button>` : ''
+                }${
+                    r.stored > 0 ? `<button class="quiet kind-take-btn" data-kind="${r.kind}" type="button">Take ${Math.min(r.stored, r.batch)}</button>` : ''
+                }</span>
+            </div>`).join('')}</div>`
+        : '';
+
     //  Opened at the box: the two things you came to do, named, with the contents in view.
     //  Neither is a lottery any more — the tap used to pick one for you and never say which.
     const storageRow = view.atStorage
-        ? `<div class="storage-row">${
+        ? `<div class="storage-row">${perKindRows}${
             view.storageAction ? `<button class="quiet use-storage-btn" type="button">${view.storageAction}</button>` : ''
         }${
             //  item 11 — BOTH, WHEN BOTH ARE POSSIBLE. The box used to infer which one act it
@@ -1216,6 +1289,16 @@ export function showLoadout(
     el.querySelector<HTMLButtonElement>('.use-storage-btn')?.addEventListener('click', () => { onUseStorage(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.take-storage-btn')?.addEventListener('click', () => { onTakeStorage(); fade(el, onClose); });
     el.querySelector<HTMLButtonElement>('.repair-btn')?.addEventListener('click', () => { onRepairStorage(); fade(el, onClose); });
+    //  THE PANEL STAYS OPEN. `fade(el, onClose)` is deliberately absent: a survivor at a box
+    //  is usually moving several kinds, and closing on each tap would make the aimed reach
+    //  more tedious than the blanket sweep it replaces — which would be a fix that loses.
+    //  The caller re-renders the panel in place so the counts move under the finger.
+    el.querySelectorAll<HTMLButtonElement>('.kind-put-btn').forEach((b) => {
+        b.addEventListener('click', () => onMoveKind(b.dataset.kind ?? '', 'deposit'));
+    });
+    el.querySelectorAll<HTMLButtonElement>('.kind-take-btn').forEach((b) => {
+        b.addEventListener('click', () => onMoveKind(b.dataset.kind ?? '', 'withdraw'));
+    });
     //  Selection: tap a chip to pick it, tap again to drop it. Two to four, per the crafting
     //  spec's own range — the old hard pair was the discovery probe's arity, not the spec's,
     //  and it left `storage` and `stonehammer` permanently unreachable because wood+stone

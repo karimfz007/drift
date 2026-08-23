@@ -99,21 +99,31 @@ export interface SiteReading {
  * from what already stands. Mesh-level clearance stays in the body, where the geometry is,
  * and the body refuses separately; two checks, each owning what it can actually see.
  */
-export function siteIsViable(state: GameState, x: number, y: number): boolean {
-    if (state.shelter.built) {
+export function siteIsViable(state: GameState, x: number, y: number, exclude?: MovableKind): boolean {
+    if (state.shelter.built && exclude !== 'shelter') {
         const d = Math.hypot(state.shelter.x - x, state.shelter.y - y);
         if (d < TUNE.constructionMinSpacingM) return false;
     }
-    if (state.storage.built) {
+    if (state.storage.built && exclude !== 'storage') {
         const d = Math.hypot(state.storage.x - x, state.storage.y - y);
         if (d < TUNE.constructionMinSpacingM) return false;
     }
-    if (state.fire.built) {
+    if (state.fire.built && exclude !== 'fire') {
         const d = Math.hypot(state.fire.x - x, state.fire.y - y);
         if (d < TUNE.constructionMinSpacingM) return false;
     }
     return true;
 }
+
+/**
+ * WHAT CAN BE PICKED UP AND PUT DOWN AGAIN (item 2, this batch).
+ *
+ * The workspace is included and is deliberately NOT in the spacing test above: a mat has
+ * never been an obstacle to siting anything else, and making it one here would silently
+ * change where a shelter may be built, which is a rule change nobody asked for. Moving a mat
+ * still has to land on ground the world accepts — that check is the body's, where the mesh is.
+ */
+export type MovableKind = 'shelter' | 'storage' | 'fire' | 'workspace';
 
 /** Has the survivor demonstrated a pattern that produces this outcome? §9.6's first step. */
 export function hasPatternFor(state: GameState, spec: OutcomeSpec): boolean {

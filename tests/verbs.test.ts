@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     availableVerbs, canFish, declaredDefaultVerbId, defaultVerb, holdOpensCircle,
-    tapOpensCircle, verbsFor, verbsWith, UNIVERSAL_VERBS, type UniversalVerb, type VerbTarget,
+    tapEligibleVerbs, tapOpensCircle, verbsFor, verbsWith, UNIVERSAL_VERBS, type UniversalVerb, type VerbTarget,
 } from '../src/brain/verbs';
 import { buildShelter, buildStorage, createInitialState } from '../src/brain/state';
 import { POND } from '../src/data/world';
@@ -96,7 +96,10 @@ describe('THE DEFAULT-VERB LAW — no capability may ever tax the frequent verb'
     //  gated by anything a capability could grant, so the tap-stability claim holds trivially
     //  and is worth sweeping for that exact reason — a target with no way to fail this check
     //  is not a reason to skip it.
-    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'outboard', 'ground'];
+    //  `workspace` JOINS THE PROPERTY SET (item 2). It was added as the eleventh target this
+    //  batch, and a new target that no property test covers is a target whose invariants are
+    //  nobody's job — which is how the boar shipped with no circle path at all.
+    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'outboard', 'ground', 'workspace'];
 
     it('acquiring ANY capability never changes what a tap does, at any target', () => {
         let compared = 0;
@@ -121,7 +124,12 @@ describe('THE DEFAULT-VERB LAW — no capability may ever tax the frequent verb'
         const s = builtEverything();
         s.inventory.wood = 20;
         s.shelter.durability = 40;
-        expect(availableVerbs(s, 'shelter').map((v) => v.id)).toEqual(['sleep', 'mend']);
+        //  `move-structure` joins the CIRCLE here (item 2) and must never reach the tap: it
+        //  is `holdOnly`, so it is absent from `tapEligibleVerbs` and cannot participate in
+        //  the default. Both halves are asserted, because the half that matters to this test
+        //  is the one that would silently regress.
+        expect(availableVerbs(s, 'shelter').map((v) => v.id)).toEqual(['sleep', 'mend', 'move-structure']);
+        expect(tapEligibleVerbs(s, 'shelter').map((v) => v.id)).toEqual(['sleep', 'mend']);
         expect(defaultVerb(s, 'shelter')?.id).toBe('sleep');
         expect(tapOpensCircle(s, 'shelter')).toBe(false);
         expect(holdOpensCircle(s, 'shelter')).toBe(true);
@@ -194,7 +202,10 @@ describe('a tap is the DEFAULT VERB — the circle is the exception, not the rul
 });
 
 describe('BLOCKED SEGMENTS STATE THEIR REASON — never hidden, never generic', () => {
-    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'outboard', 'ground'];
+    //  `workspace` JOINS THE PROPERTY SET (item 2). It was added as the eleventh target this
+    //  batch, and a new target that no property test covers is a target whose invariants are
+    //  nobody's job — which is how the boar shipped with no circle path at all.
+    const TARGETS: VerbTarget[] = ['pond', 'shelter', 'storage', 'fire', 'outboard', 'ground', 'workspace'];
 
     it('every blocked segment across every target carries a reason, and every available one does not', () => {
         //  Property, not a spot-check: the invariant is that `available` and `reason` are
@@ -238,7 +249,9 @@ describe('BLOCKED SEGMENTS STATE THEIR REASON — never hidden, never generic', 
 describe('the retired hacks — shelter and storage now answer for themselves', () => {
     it('the shelter offers SLEEP and MEND at the shelter, not from inside the Build card', () => {
         const s = builtEverything();
-        expect(ids(verbsFor(s, 'shelter'))).toEqual(['sleep', 'mend']);
+        //  Move joins the list at the END (item 2) — appended by the universal tail, which is
+        //  what keeps the shelter's own most-ordinary act as the first segment.
+        expect(ids(verbsFor(s, 'shelter'))).toEqual(['sleep', 'mend', 'move-structure']);
         expect(availableVerbs(s, 'shelter').map((v) => v.id)).toContain('sleep');
     });
 
@@ -361,10 +374,27 @@ describe('THE UNIVERSAL SEAM — room for Examine, proven while it is still empt
         id: 'examine-stub', label: 'Look closely', available: true, reason: null,
     });
 
-    it('is EMPTY in production — no Examine shipped, no verb added anywhere', () => {
-        expect(UNIVERSAL_VERBS).toHaveLength(0);
+    it('CARRIES EXACTLY ONE in production — Move, and still no Examine', () => {
+        //  The seam was shipped empty and proven empty. item 2 is its first real inhabitant:
+        //  Move belongs to four targets and would otherwise have meant editing four target
+        //  functions and trusting the next person to find all four — the precise cost this
+        //  seam was built to avoid. Examine is still designed-and-unbuilt, and this keeps
+        //  saying so rather than being loosened into "some verbs exist".
+        expect(UNIVERSAL_VERBS).toHaveLength(1);
         for (const t of ALL) {
             expect(verbsFor(createInitialState(4), t).map((v) => v.id)).not.toContain('examine-stub');
+        }
+    });
+
+    it('...and the one it carries reaches ONLY the things that can actually be moved', () => {
+        //  A universal verb that applied everywhere would put "Move" on the pond. The seam's
+        //  contract is that a verb may return null where it does not apply, and this is the
+        //  witness for it on the real one rather than on a stub.
+        const s = builtEverything();
+        for (const t of ALL) {
+            const ids = verbsFor(s, t).map((v) => v.id);
+            const movable = t === 'shelter' || t === 'storage' || t === 'fire';
+            expect(ids.includes('move-structure'), `${t} answered ${ids.join(', ')}`).toBe(movable);
         }
     });
 
