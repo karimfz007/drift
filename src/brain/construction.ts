@@ -112,6 +112,15 @@ export function siteIsViable(state: GameState, x: number, y: number, exclude?: M
         const d = Math.hypot(state.fire.x - x, state.fire.y - y);
         if (d < TUNE.constructionMinSpacingM) return false;
     }
+    //  A FRAME IS TIMBER STANDING IN THE GROUND, so it takes a footprint exactly as the
+    //  finished thing does. Without this a crate could be sited on top of a half-built
+    //  shelter, and the survivor would have two objects fighting for one tap — which is the
+    //  overlap the spacing rule exists to prevent, arriving through the one structure the
+    //  rule had never heard of.
+    if (state.construction && exclude !== 'construction') {
+        const d = Math.hypot(state.construction.x - x, state.construction.y - y);
+        if (d < TUNE.constructionMinSpacingM) return false;
+    }
     return true;
 }
 
@@ -123,7 +132,7 @@ export function siteIsViable(state: GameState, x: number, y: number, exclude?: M
  * change where a shelter may be built, which is a rule change nobody asked for. Moving a mat
  * still has to land on ground the world accepts — that check is the body's, where the mesh is.
  */
-export type MovableKind = 'shelter' | 'storage' | 'fire' | 'workspace';
+export type MovableKind = 'shelter' | 'storage' | 'fire' | 'workspace' | 'construction';
 
 /** Has the survivor demonstrated a pattern that produces this outcome? §9.6's first step. */
 export function hasPatternFor(state: GameState, spec: OutcomeSpec): boolean {

@@ -66,7 +66,19 @@ export const TUNE = {
      *  misses the mesh. A difficulty number, not a decoration (D-026). */
     nodeTapSlack: 0.9,
     /** [TUNE] C01+ · **metres at C02** (was 40 px) — how close a tap must land to the fire to feed it. */
-    fireTapRadius: 1.6,
+    /**
+     * [TUNE] THE PIT AS IT IS ACTUALLY DRAWN — `firePit` is a cylinder of this radius, and it
+     * is the ONLY pickable part of the fire. Lives here rather than in `entities.ts` so the
+     * interaction boundary and the mesh cannot drift apart: `fireReachM` derives from it, and
+     * the renderer builds the cylinder from it. One number, one fire.
+     */
+    firePitRadius: 0.75,
+    /**
+     * [TUNE] Finger allowance BEYOND the reachable floor — see `fireReachM`, which is where
+     * the real boundary is computed. Deliberately small: the pit is a 1.5 m saucer, and every
+     * metre of allowance past it is a metre of open ground where a hold means the fire.
+     */
+    fireTapSlackM: 0.35,
     /** [TUNE] C02 — how far in front of you the fire is laid, in metres. In 2D the fire
      *  was built "at your spot"; in 3D that puts you standing in the flames, so it goes
      *  down an arm's length ahead — and the firelight becomes somewhere you step into. */

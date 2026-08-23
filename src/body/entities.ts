@@ -28,7 +28,7 @@ import '@babylonjs/core/Particles/particleSystemComponent';
 
 import { isFireLit, outboardPosition, regrowProgress, ringObstacles, type GameState, type ItemGrade, type NodeKind, type ShoreFate, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
-import { defectStage } from '../brain';
+import { defectStage, siteProgress } from '../brain';
 import { WORLD, surfaceHeightAt } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
@@ -908,7 +908,10 @@ export class FireView {
     private lit = false;
 
     constructor(scene: Scene) {
-        this.pit = CreateCylinder('firePit', { height: 0.22, diameter: 1.5, tessellation: 9 }, scene);
+        //  DIAMETER FROM THE TUNE, not a literal — `fireReachM` derives the interaction
+        //  boundary from this same number, so the pit a player sees and the pit they can
+        //  touch are the one object (items 1 and 2).
+        this.pit = CreateCylinder('firePit', { height: 0.22, diameter: TUNE.firePitRadius * 2, tessellation: 9 }, scene);
         this.pit.material = flat(scene, 'firePitMat', PALETTE.firePit);
         this.pit.isPickable = true;
         this.pit.metadata = { fire: true };
@@ -1039,6 +1042,84 @@ export class FireView {
 // thing as the fire (a static mesh at a chosen point, a footprint for collision, a shadow),
 // so they reuse the same `flat()`/`makeShadow()` helpers rather than inventing new ones.
 // Disrepair dims the structure rather than removing it (charter honest-systems law).
+
+/**
+ * A STRUCTURE PART-WAY UP — the incremental economy made visible (item 3).
+ *
+ * LAW 222/223 IS THE DESIGN LANGUAGE, borrowed from the Weighted Shore's stripped outboard:
+ * progress persists visibly across interruption, and a half-stripped object stays
+ * half-stripped. So this is not a placeholder or a marker — it is the shelter's own two poles
+ * and ridge, with as much of them standing as has actually been paid for. A frame at three
+ * eighths looks like a frame at three eighths, today and tomorrow.
+ *
+ * DELIBERATELY NOT A ROOF. The finished shelter's silhouette is its thatch; a frame has none,
+ * so a survivor can tell across a clearing which of the two they are looking at without
+ * reading anything. That is the same "seeing it" argument `shelterRidgeGap` is built on.
+ *
+ * WITNESSED PER PART, like the workspace's two surfaces: `frameRidge` and the poles are
+ * separately named meshes, so a render check can say WHICH of them is standing rather than
+ * "a frame rendered".
+ */
+export class ConstructionView {
+    private root: Mesh;
+    private poles: Mesh[] = [];
+    private shadow: Mesh;
+    private shown = false;
+
+    constructor(scene: Scene) {
+        //  The root is the ridge beam — the first thing you lay and the last thing standing.
+        this.root = CreateBox('frameRidge', { width: 3.4, height: 0.14, depth: 0.18 }, scene);
+        this.root.material = flat(scene, 'frameTimberMat', PALETTE.trunk);
+        this.root.isPickable = true;
+        this.root.metadata = { construction: true };
+
+        for (const side of [-1, 1]) {
+            const pole = CreateCylinder(`framePole${side}`, { height: 2.1, diameter: 0.16, tessellation: 6 }, scene);
+            pole.material = flat(scene, 'frameTimberMat2', PALETTE.trunk);
+            pole.parent = this.root;
+            pole.position.set(0, -1.05, side * 1.05);
+            pole.isPickable = false;
+            this.poles.push(pole);
+        }
+        this.shadow = makeShadow(scene, 1.4);
+        this.setShown(false);
+    }
+
+    private setShown(shown: boolean): void {
+        this.shown = shown;
+        this.root.setEnabled(shown);
+        this.shadow.setEnabled(shown);
+    }
+
+    /** The frame's footprint, so a survivor cannot stand inside the timber. */
+    obstacle(state: GameState): Obstacle | null {
+        const c = state.construction;
+        return c ? { x: c.x, z: c.y, radius: TUNE.shelterCollisionRadius } : null;
+    }
+
+    update(state: GameState, groundY: number): void {
+        const site = state.construction;
+        const shown = site !== null;
+        if (shown !== this.shown) this.setShown(shown);
+        if (!site) return;
+
+        this.root.position.set(site.x, groundY + 2.05, site.y);
+        this.shadow.position.set(site.x, groundY + 0.02, site.y);
+
+        //  HOW MUCH IS STANDING IS HOW MUCH WAS PAID FOR. The poles come up as the frame is
+        //  fed, so the object reports its own progress without a number anywhere near it —
+        //  which is the whole of Law 222/223's argument for visible persistence.
+        const progress = siteProgress(site);
+        this.poles.forEach((pole, i) => {
+            //  The first pole stands from the first contribution; the second waits for half.
+            const threshold = i === 0 ? 0 : 0.5;
+            pole.setEnabled(progress > threshold);
+        });
+        //  ...and the ridge itself rises as the last of it goes in, so a nearly-done frame
+        //  reads as nearly done rather than flicking from "sticks" to "shelter".
+        this.root.scaling.x = 0.35 + 0.65 * progress;
+    }
+}
 
 export class ShelterView {
     private root: Mesh;

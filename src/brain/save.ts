@@ -126,6 +126,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 32) current = migrateV32toV33(current);
     if (current.schemaVersion === 33) current = migrateV33toV34(current);
     if (current.schemaVersion === 34) current = migrateV34toV35(current);
+    if (current.schemaVersion === 35) current = migrateV35toV36(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -973,6 +974,24 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * so a v34 save's owner never had a third relation to lose — they arrive exactly as able as
  * they were, with one more thing they can now go and build.
  */
+/**
+ * v35 → v36 (INCREMENTAL CONSTRUCTION). The frame migrates in as ABSENT, which is both the
+ * honest reading and the only safe one.
+ *
+ * A returning survivor has never begun a partial structure, because until this version there
+ * was no such thing to begin — the old economy was stage-everything-or-nothing. So `null` is
+ * not a loss and not an invention; it is the true state of every save that predates the idea.
+ *
+ * AND IT COSTS THEM NOTHING THEY HAD. A v35 shelter is `built: true` and therefore already
+ * complete by definition: `shelter.built` keeps its exact old meaning under the new model
+ * (see `ConstructionSite`), so a finished shelter stays finished and is not re-opened as a
+ * frame to be fed. That is the whole reason completeness was NOT added as a flag beside it.
+ */
+function migrateV35toV36(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return { ...envelope, schemaVersion: 36, state: { ...old, construction: null } };
+}
+
 function migrateV34toV35(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
     return {
@@ -1157,6 +1176,10 @@ function hydrate(state: GameState): GameState {
         radio: { ...base.radio, ...state.radio },
         crash: { ...base.crash, ...state.crash },
         water: { ...base.water, ...state.water },
+        //  NOT SPREAD-MERGED, because it is a whole object or genuinely nothing. Merging a
+        //  frame field-by-field over a `null` base would resurrect a half-object from a save
+        //  that has none; taking it whole keeps "there is no frame" expressible.
+        construction: state.construction ?? null,
         freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },

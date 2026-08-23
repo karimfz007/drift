@@ -24,6 +24,7 @@ export * from './storm';
 export * from './radio';
 export * from './crash';
 export * from './vessel';
+export * from './build';
 export * from './readout';
 export * from './staged';
 export * from './boat';

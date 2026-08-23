@@ -21,6 +21,7 @@
 import { TUNE } from '../data/tune';
 import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
+import { contributionAvailable, siteIsComplete, siteShortfallNote } from './build';
 import { benchHasRacked, canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
@@ -76,6 +77,9 @@ export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dro
     //  in the game a finger could not address: no tap candidate, no circle, no verbs. Moving
     //  one is the verb that needed it, but the gap was there before this batch asked.
     | 'workspace'
+    //  INCREMENTAL CONSTRUCTION — a structure part-way up is a real object with real work to
+    //  do on it, so it is a target of its own rather than a mode of the finished shelter.
+    | 'construction'
     //  RULING (C1) — GROUND-HOLD. A plain point on open ground, not an object — the one
     //  target here with no world record behind it at all.
     | 'ground';
@@ -171,7 +175,58 @@ const MOVABLE_AT: Partial<Record<VerbTarget, MovableKind>> = {
     storage: 'storage',
     fire: 'fire',
     workspace: 'workspace',
+    construction: 'construction',
 };
+
+/**
+ * A STRUCTURE PART-WAY UP — add to it, or finish it. Never a dead end.
+ *
+ * THE DESIGN REQUIREMENT IS THAT THERE IS ALWAYS SOMETHING TO DO HERE, and it is met three
+ * ways rather than one: Add is available whenever a carried kind is wanted, Complete the
+ * moment the last material is in, and Move (from the universal tail) unconditionally — so a
+ * survivor carrying nothing, at a frame that is not ready, still has a real action and a
+ * sentence telling them exactly what it is short of. That is [[D-184]]'s law kept: a target
+ * may never claim a tap and then offer nothing the player can resolve.
+ */
+function constructionVerbs(state: GameState): VerbOption[] {
+    const site = state.construction;
+    if (!site) {
+        return [{
+            id: 'add-materials',
+            label: 'Add materials',
+            available: false,
+            reason: 'There is nothing half-built here.',
+        }];
+    }
+    const shortfall = siteShortfallNote(site);
+    //  The pack only. A frame in the world is not standing at an open crate — the box's reach
+    //  belongs to the placement gesture, which happens with the panel open, not to a hold on a
+    //  structure out in the world.
+    const giving = contributionAvailable(state, site);
+    const givingKinds = Object.keys(giving);
+    return [
+        {
+            id: 'add-materials',
+            //  NAMES WHAT IT WOULD TAKE, so the survivor knows before pressing whether this
+            //  empties their arms or tops the frame up by two.
+            label: givingKinds.length > 0
+                ? `Add ${Object.entries(giving).map(([k, n]) => `${n} ${k === 'fiber' ? 'fibre' : k}`).join(', ')}`
+                : 'Add materials',
+            available: givingKinds.length > 0,
+            reason: givingKinds.length > 0
+                ? null
+                //  THE NEAREST TRUE REASON is what it still wants, not "you have nothing" —
+                //  the survivor needs to know what to go and find.
+                : (shortfall ?? 'It has everything it needs. Finish it.'),
+        },
+        {
+            id: 'complete-build',
+            label: 'Finish it',
+            available: siteIsComplete(site),
+            reason: siteIsComplete(site) ? null : shortfall,
+        },
+    ];
+}
 
 /**
  * item 2 — the work surface's own verbs. Move comes from the universal tail above, so this
@@ -225,6 +280,7 @@ function targetVerbs(state: GameState, target: VerbTarget): VerbOption[] {
         case 'shoreitem': return shoreItemVerbs(state);
         case 'ground': return groundVerbs(state);
         case 'workspace': return workspaceVerbs(state);
+        case 'construction': return constructionVerbs(state);
     }
 }
 
@@ -305,6 +361,11 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  which is the honest answer for a surface whose real verb is Combine, and Combine
     //  happens in the pack.
     workspace: 'inspect-workspace',
+    //  ADDING IS THE ORDINARY ACT at a half-built thing — a survivor walks up to a frame
+    //  carrying wood because they mean to put the wood in it. Completing is rarer (it happens
+    //  once) and finishing something by accident on the way past would be the worse mistake,
+    //  so Complete lives on the hold and this is what a tap does.
+    construction: 'add-materials',
 };
 
 /**

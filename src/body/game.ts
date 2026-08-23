@@ -50,6 +50,8 @@ import {
     fireBurnHoursRemaining,
     gatherNode,
     isAtPond,
+    isAtFire,
+    isAtFirePoint,
     fatigueStageOf,
     fatigueStatusText,
     isExhausted,
@@ -134,6 +136,7 @@ import {
     moveOneKind,
     storageContents,
     moveStructure,
+    completeShelterFromSite,
     moveStructureBlocker,
     structureSite,
     withdrawFromStorage,
@@ -179,7 +182,13 @@ import {
     combineSlate,
     canExperimentWith,
     isPlaced,
+    contributeToSite,
+    isIncremental,
     placementBlocker,
+    siteIsComplete,
+    siteShortfallNote,
+    beginConstruction,
+    beginBlocker,
     recipeDisplayName,
     drawIntoHands,
     recipeCost,
@@ -234,7 +243,7 @@ import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, isPlaceablePoi
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { CaveView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, WorkspaceView, type NodeView } from './entities';
+import { CaveView, ConstructionView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, WorkspaceView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -268,6 +277,7 @@ const MOVABLE_FOR_PENDING: Record<string, MovableKind | undefined> = {
     storage: 'storage',
     fire: 'fire',
     workspace: 'workspace',
+    construction: 'construction',
 };
 
 const MOVE_LABEL: Record<MovableKind, string> = {
@@ -275,6 +285,7 @@ const MOVE_LABEL: Record<MovableKind, string> = {
     storage: 'The crate',
     fire: 'The fire pit',
     workspace: 'The work surface',
+    construction: 'The half-built frame',
 };
 
 type Pending =
@@ -289,6 +300,9 @@ type Pending =
     //  in the game with no tap candidate and no verbs — so a finger could never address it.
     //  Moving one is what finally needed it, but the gap predates the request.
     | { kind: 'workspace' }
+    //  A structure part-way up — its own target, for the same reason the workspace is: it is
+    //  a thing in the world with work to do on it.
+    | { kind: 'construction' }
     //  P0-3 — A STACK ON THE GROUND, and the second half of why dropped items 'vanished'.
     //  `verbs.ts` has had a `dropped` target with a `pick-up` verb since the drop shipped,
     //  and NOTHING in the body ever produced that target: `worldCandidateAt` had no such
@@ -371,6 +385,7 @@ export class Game {
     private nodes: NodeViews;
     private fire: FireView;
     private shelter: ShelterView;
+    private constructionView: ConstructionView;
     private cave: CaveView;
     private ghost: GhostView;
     /**
@@ -414,6 +429,14 @@ export class Game {
      * is the only moment the answer is still known.
      */
     private circleTarget: VerbTarget | null = null;
+    /**
+     * ...AND WHERE IT WAS OPENED, for the one target whose identity IS a point.
+     *
+     * `ground` has no world record to look up later — `pendingTarget` says so in as many
+     * words — so a ground verb that needs to act SOMEWHERE has to be handed the somewhere.
+     * Captured with `circleTarget` and cleared with it.
+     */
+    private circlePoint: { x: number; y: number } | null = null;
     //  `selectedKnownRecipe` IS GONE (ITEM 3, this batch) — the known-list row it tracked no
     //  longer exists. See the ledger entry for the full account.
     private storage: StorageView;
@@ -521,6 +544,7 @@ export class Game {
         this.player = new PlayerView(this.scene);
         this.fire = new FireView(this.scene);
         this.shelter = new ShelterView(this.scene);
+        this.constructionView = new ConstructionView(this.scene);
         this.cave = new CaveView(this.scene);
         this.ghost = new GhostView(this.scene);
         runtime.ghostReadout = () => this.ghost.debugState();
@@ -1324,22 +1348,31 @@ export class Game {
         //  that picks the spot, through the SAME `placeAtSite` the site card always used.
         //  Duplicating that would mean two paths that spend materials and decide a grade.
         if (isPlaced(recipeId)) {
-            //  ---- NEVER ARM WHAT CANNOT BE BUILT (the guard that was never here) ----------
+            //  ---- [[D-184]]'S GUARD, SUPERSEDED AND NARROWED (item 3) ---------------------
             //
-            //  THE BLOCKING DEFECT. Arming spends nothing and the PLACING tap builds, so
-            //  nothing on this path ever asked whether the survivor could afford the thing.
-            //  A shelter costs 8 wood, 4 stone and 3 fibre; a survivor carrying two of each
-            //  could arm it, and then every world tap in the game fell into the armed siting,
-            //  was refused for materials, and RE-ARMED — so going to gather the missing wood,
-            //  the one act that would have fixed it, was itself impossible.
+            //  D-184 refused to arm a placed outcome the survivor could not afford, because the
+            //  placing tap would refuse, re-arm, and eat every world tap. Under the OLD economy
+            //  that was right: a placement that could not complete had no way to become one that
+            //  could, so the only safe answer was not to start.
             //
-            //  Refused here, before anything is armed, and the refusal names the amounts.
-            //  `placementBlocker` reads the same `recipeCost` the builder charges, so this
-            //  cannot drift into refusing something that would in fact have gone up.
-            const short = placementBlocker(session().state, recipeId, storageOpen);
-            if (short) {
-                this.explain(short);
-                return;
+            //  THE NEW ECONOMY REMOVES THE PREMISE. Starting short is now the intended path — the
+            //  frame goes up with whatever was staged and is fed over as many visits as it takes.
+            //  So the affordability refusal is gone for anything raised on a site.
+            //
+            //  D-184's LAW IS NOT GONE, and it still has exactly one live case: a survivor
+            //  carrying NONE of what the thing is made of. Beginning there would put an empty
+            //  frame in the world for no investment and hand back a tap that resolves to
+            //  something the player cannot act on — the trap in a new coat. `beginBlocker`
+            //  refuses precisely that, names the kinds to go and find, and nothing else.
+            //  ...AND ONLY FOR OUTCOMES THAT CAN ACTUALLY BE FINISHED INCREMENTALLY. The
+            //  crate is still built whole, so it keeps D-184's affordability answer — for it
+            //  the old economy is still the economy, and starting short really would strand it.
+            if (isIncremental(recipeId)) {
+                const cannotBegin = beginBlocker(session().state, recipeId, storageOpen);
+                if (cannotBegin) { this.explain(cannotBegin); return; }
+            } else {
+                const short = placementBlocker(session().state, recipeId, storageOpen);
+                if (short) { this.explain(short); return; }
             }
             this.siting = { recipeId, materials, storageOpen };
             //  THE GHOST, BEFORE ANYTHING IS SPENT (LDOE bar properties 1 and 2). It stands where
@@ -1743,9 +1776,9 @@ export class Game {
      * REGRESSION found via the device harness: a tap aimed at storage kept silently
      * repairing the shelter instead.
      */
-    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | 'workspace' | null {
+    private worldCandidateAt(point: { x: number; z: number }): 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | 'workspace' | 'construction' | null {
         const s = session().state;
-        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | 'workspace'; d: number };
+        type Candidate = { kind: 'fire' | 'pond' | 'shelter' | 'storage' | 'raft' | 'boat' | 'crash' | 'dropped' | 'outboard' | 'shoreitem' | 'workspace' | 'construction'; d: number };
         const candidates: Candidate[] = [];
         {
             //  DROP 3B(i) — the appointment. A candidate ONLY while there is something out
@@ -1770,7 +1803,14 @@ export class Game {
         }
         if (s.fire.built) {
             const d = distance(point.x, point.z, s.fire.x, s.fire.y);
-            if (d <= TUNE.fireTapRadius + 1.5) candidates.push({ kind: 'fire', d });
+            //  ---- THE FIRE'S TARGET IS THE PIT, DERIVED (items 1 and 2) ----------------
+            //
+            //  Was `fireTapRadius + 1.5` = 3.1 m against a pit drawn at 0.75 — the pond's own
+            //  shape one object over, and the direct cause of item 2: a hold on open ground
+            //  near a camp resolved to the fire, so sleep-rough and build-shelter-here were
+            //  unreachable anywhere a survivor would actually want them. `isAtFirePoint` is
+            //  the same answer the arrival check uses, so the two cannot drift apart.
+            if (isAtFirePoint(s, point.x, point.z)) candidates.push({ kind: 'fire', d });
         }
         {
             const d = distance(point.x, point.z, POND.x, POND.y);
@@ -1793,6 +1833,10 @@ export class Game {
         }
         //  item 2 — the mat and the bench, at last addressable. Same slack the shelter and the
         //  crate get, measured from the surface's own site.
+        if (s.construction) {
+            const d = distance(point.x, point.z, s.construction.x, s.construction.y);
+            if (d <= TUNE.shelterCollisionRadius + 1.5) candidates.push({ kind: 'construction', d });
+        }
         if (s.workspace.built) {
             const d = distance(point.x, point.z, s.workspace.x, s.workspace.y);
             if (d <= TUNE.workspaceReachM) candidates.push({ kind: 'workspace', d });
@@ -1970,28 +2014,53 @@ export class Game {
         //  read `state.inventory` and nothing else. Teaching them a second source would mean
         //  teaching every future builder the same thing; moving the material is one line here
         //  and is what a person does anyway.
-        //  ---- A MATERIALS REFUSAL CANCELS. ONLY A BAD SPOT RE-ARMS. --------------------
+        //  ---- RAISE THE FRAME, WHOLE OR PART-WAY (item 3) ------------------------------
         //
-        //  THE DISTINCTION IS THE WHOLE BUG. The branch above re-arms because the survivor
-        //  picked a bad SPOT and is about to aim again — losing the ghost on the one tap that
-        //  needed it would punish them for aiming. This one was written the same way and the
-        //  reasoning does not carry: no amount of re-aiming produces wood. Re-arming here
-        //  turned a single honest refusal into a permanent lock on every world tap, because
-        //  `onTap`'s siting branch outranks every target and returns before any of them are
-        //  considered — including the tree the survivor was walking to for the missing wood.
+        //  There is no materials refusal on this path any more, and therefore no re-arm and no
+        //  lock: `beginConstruction` accepts whatever the survivor has and puts a frame down.
+        //  D-184's cancel-not-re-arm survives only for the BAD SPOT branch above, where it was
+        //  always the right reading — the survivor is about to aim again.
         //
-        //  `onCombine` now refuses before arming, so reaching this at all means the reach
-        //  shrank AFTER arming (an open crate that closed, most plainly). Either way the
-        //  answer is the same: let go of the siting, hide the ghost, say what is short, and
-        //  give the player their world back.
-        for (const { kind, amount } of recipeCost(recipeId)) {
-            if (!drawIntoHands(s, kind, amount, storageOpen)) {
-                this.siting = null;
-                this.ghost.hide();
-                this.explain(placementBlocker(s, recipeId, storageOpen) ?? 'You do not have enough for that yet.');
-                return;
+        //  A FULLY-STOCKED SURVIVOR STILL GETS A FINISHED THING IN ONE TAP. Making everyone
+        //  raise a frame and then walk back to finish it would tax the common path to serve the
+        //  rare one, so the site is begun and immediately completed when it is already fed —
+        //  same gesture, same result, and the incremental path costs nothing to anyone not on it.
+        //  THE WHOLE-BUILD PATH, UNCHANGED, for everything not in the incremental set. The
+        //  first cut sent the crate down the frame path and it could never be finished.
+        if (!isIncremental(recipeId)) {
+            for (const { kind, amount } of recipeCost(recipeId)) {
+                if (!drawIntoHands(s, kind, amount, storageOpen)) {
+                    this.siting = null;
+                    this.ghost.hide();
+                    this.explain(placementBlocker(s, recipeId, storageOpen) ?? 'You do not have enough for that yet.');
+                    return;
+                }
             }
+            this.placeAtSite(recipeId, clear.x, clear.z);
+            return;
         }
+        if (!beginConstruction(s, recipeId, clear.x, clear.z, storageOpen)) {
+            this.siting = null;
+            this.ghost.hide();
+            this.explain(beginBlocker(s, recipeId, storageOpen) ?? 'That cannot be raised here.');
+            return;
+        }
+        const site = s.construction!;
+        if (siteIsComplete(site) && completeShelterFromSite(s)) {
+            this.cues.play(CUES.craft);
+            this.floatText('the shelter stands');
+            this.showHint('It will hold the weather off. Sleep here when you need to.');
+            session().persist(now());
+            this.lastActivityAt = now();
+            return;
+        }
+        //  ...otherwise a HALF-BUILT thing stands, honestly, and says what it still wants.
+        this.cues.play(CUES.craft);
+        this.floatText('a frame goes up');
+        this.showHint(`${siteShortfallNote(site) ?? 'It is ready to finish.'} Come back and add more when you have it.`);
+        session().persist(now());
+        this.lastActivityAt = now();
+        return;
         this.placeAtSite(recipeId, clear.x, clear.z);
     }
 
@@ -2252,6 +2321,8 @@ export class Game {
             case 'fill-vessel': this.doFillVessel(); break;
             case 'boil-water': this.doBoil(); break;
             case 'move-structure': this.doArmMove(); break;
+            case 'add-materials': this.doAddToSite(); break;
+            case 'complete-build': this.doCompleteSite(); break;
             case 'make-cup': this.doMakeShellCup(); break;
             case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
             case 'sleep': this.trySleep(); break;
@@ -2375,6 +2446,10 @@ export class Game {
             const st = session().state.storage;
             return st.built ? { x: st.x, z: st.y } : null;
         }
+        if (this.pending.kind === 'construction') {
+            const c = session().state.construction;
+            return c ? { x: c.x, z: c.y } : null;
+        }
         if (this.pending.kind === 'workspace') {
             const w = session().state.workspace;
             return w.built ? { x: w.x, z: w.y } : null;
@@ -2428,6 +2503,10 @@ export class Game {
         if (!this.pending) return false;
         const s = session().state;
         if (this.pending.kind === 'pond') return isAtPond(s);
+        //  ...and the fire, through the SAME helper the tap resolver used to pick it. Reading
+        //  the generic `interactRadiusM` here while targeting used its own number is precisely
+        //  how the pond's gate and target disagreed for three reports.
+        if (this.pending.kind === 'fire') return isAtFire(s);
         const t = this.pendingTarget();
         if (!t) return false;
         return distance(s.player.x, s.player.y, t.x, t.z) <= TUNE.interactRadiusM;
@@ -2533,8 +2612,13 @@ export class Game {
             //  item 2 — and the work surface, on the SAME shared path. Giving it a bespoke
             //  branch is how the boar ended up with no circle; this comment block exists to
             //  say that out loud, so the eleventh target does not repeat the ninth's mistake.
-            || this.pending.kind === 'workspace') {
+            || this.pending.kind === 'workspace'
+            || this.pending.kind === 'construction') {
             const target = this.pending.kind;
+            //  Read BEFORE `this.pending` is cleared below — see `circlePoint`.
+            const groundPoint = this.pending.kind === 'ground'
+                ? { x: this.pending.x, y: this.pending.y }
+                : null;
             //  THE DEFAULT-VERB LAW (C1). A HOLD asks; a TAP acts. `pendingWasHold` carries
             //  which gesture set this intention, so arriving after a hold opens the circle and
             //  arriving after a tap never does. A tap opens it only in the narrow case where
@@ -2547,10 +2631,11 @@ export class Game {
                 //  as well as on choose, so a dismissed wheel cannot leave a stale answer for
                 //  the next verb that asks.
                 this.circleTarget = target;
+                this.circlePoint = groundPoint;
                 this.beginPanel();
                 showVerbCircle(this.overlay, verbsFor(s, target), at.x, at.y,
-                    (id: string) => { this.endPanel(); this.performVerb(id); this.circleTarget = null; },
-                    () => { this.endPanel(); this.circleTarget = null; });
+                    (id: string) => { this.endPanel(); this.performVerb(id); this.circleTarget = null; this.circlePoint = null; },
+                    () => { this.endPanel(); this.circleTarget = null; this.circlePoint = null; });
                 return;
             }
             const only = defaultVerb(s, target);
@@ -2686,18 +2771,50 @@ export class Game {
      *   surviving half). The pack opens, and a spoken hint says what for, so arriving there
      *   reads as a continuation of the tap that got you here, not an unexplained bounce.
      */
+    /**
+     * "BUILD A SHELTER" NOW BUILDS A SHELTER (item 3, and the pending redirect item).
+     *
+     * IT USED TO OPEN THE PACK. A survivor held the ground, chose the verb that says *Build a
+     * shelter*, and got the Backpack and an instruction to go and combine three things — a
+     * verb that named an act and then performed navigation. Under the old economy there was
+     * some excuse for it: you could not start without all eight wood, so the honest answer
+     * really was "go and assemble it". The incremental economy removes that excuse entirely.
+     * The verb now raises a frame on the spot the survivor picked, out of whatever they are
+     * carrying, and that frame is fed on later visits.
+     *
+     * It also stops demanding all three kinds up front — `beginBlocker` asks for one of
+     * anything, which is the new rule and is checked in the one place that owns it.
+     */
     private doOpenBuildShelter(): void {
         const s = session().state;
-        //  Plain, local names for exactly the three kinds a shelter ever asks for — not a
-        //  general-purpose label table, because this message is the only caller.
-        const name: Record<'wood' | 'stone' | 'fiber', string> = { wood: 'wood', stone: 'stone', fiber: 'fibre' };
-        const missing = (['wood', 'stone', 'fiber'] as const).filter((k) => s.inventory[k] <= 0);
-        if (missing.length > 0) {
-            this.explain(`You need ${missing.map((k) => name[k]).join(', ')} before you can even start a shelter — gather that first.`);
+        if (s.shelter.built) { this.explain('You already have a shelter. Move it if you want it elsewhere.'); return; }
+        const blocked = beginBlocker(s, 'shelter');
+        if (blocked) { this.explain(blocked); return; }
+        //  THE GROUND-HOLD'S OWN POINT, not the survivor's feet: they held a spot because they
+        //  meant that spot. Falling back to where they stand keeps the verb working if it is
+        //  ever reached from a target that carries no point of its own.
+        const at = this.circlePoint ?? { x: s.player.x, y: s.player.y };
+        const clear = this.island.resolveCollision(at.x, at.y, TUNE.shelterCollisionRadius, this.dynamicObstacles());
+        if (!siteIsViable(s, clear.x, clear.z, 'construction') || !isPlaceablePoint(clear.x, clear.z)) {
+            this.explain('Too close to something already standing.');
             return;
         }
-        this.openLoadout(false, 'inventory');
-        this.showHint('Wood, stone and fibre — put them together in your pack.');
+        if (!beginConstruction(s, 'shelter', clear.x, clear.z)) {
+            this.explain(beginBlocker(s, 'shelter') ?? 'That cannot be raised here.');
+            return;
+        }
+        const site = s.construction!;
+        if (siteIsComplete(site) && completeShelterFromSite(s)) {
+            this.cues.play(CUES.craft);
+            this.floatText('the shelter stands');
+            this.showHint('It will hold the weather off. Sleep here when you need to.');
+        } else {
+            this.cues.play(CUES.craft);
+            this.floatText('a frame goes up');
+            this.showHint(`${siteShortfallNote(site) ?? 'It is ready to finish.'} Come back and add more when you have it.`);
+        }
+        session().persist(now());
+        this.lastActivityAt = now();
     }
 
     /**
@@ -2965,6 +3082,9 @@ export class Game {
         //  a second copy of the rule living out here.
         const workspaceObstacle = this.workspace.obstacle(state);
         if (workspaceObstacle) out.push(workspaceObstacle);
+        //  A frame is timber standing in the ground, so it blocks exactly as the shelter does.
+        const frameObstacle = this.constructionView.obstacle(state);
+        if (frameObstacle) out.push(frameObstacle);
         //  DROP 1 FIX — the boar is SOLID. It shipped as a ghost: the player walked straight
         //  through the one thing on the island that is supposed to be frightening, which
         //  undoes the threat more thoroughly than any tuning could. Push-out only, joining
@@ -3589,6 +3709,49 @@ export class Game {
         this.lastActivityAt = now();
     }
 
+    /**
+     * INCREMENTAL CONSTRUCTION — put what you carry into the frame (item 3).
+     *
+     * Repeatable by design and across sessions: this is the verb the whole economy rests on,
+     * so it stays available every time there is something in hand the frame still wants.
+     */
+    private doAddToSite(): void {
+        const s = session().state;
+        const site = s.construction;
+        if (!site) { this.explain('There is nothing half-built here.'); return; }
+        const moved = contributeToSite(s);
+        const kinds = Object.entries(moved);
+        if (kinds.length === 0) {
+            //  NAMES WHAT IT WANTS, never a bare "you have nothing" — the survivor has to know
+            //  what to go and look for, which is the whole of Law 26 at a half-built thing.
+            this.explain(siteShortfallNote(site) ?? 'It has everything it needs already.');
+            return;
+        }
+        this.cues.play(CUES.craft);
+        this.floatText(kinds.map(([k, n]) => `${n} ${MATERIAL_LABEL[k]?.toLowerCase() ?? k}`).join(', ') + ' in');
+        const left = siteShortfallNote(site);
+        this.showHint(left ?? 'That is everything it needs. Finish it when you are ready.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * ...AND FINISH IT. Pays nothing — every material went in on the way, so this is labour
+     * rather than purchase, and charging again here would take the same wood twice.
+     */
+    private doCompleteSite(): void {
+        const s = session().state;
+        const site = s.construction;
+        if (!site) { this.explain('There is nothing half-built here.'); return; }
+        if (!siteIsComplete(site)) { this.explain(siteShortfallNote(site) ?? 'It is not ready yet.'); return; }
+        if (!completeShelterFromSite(s)) { this.explain('There is already a shelter standing.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('the shelter stands');
+        this.showHint('It will hold the weather off. Sleep here when you need to.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     /** WAVE 0 — drink what you treated. The one water in the game that costs nothing. */
     private doDrinkClean(): void {
         const s = session().state;
@@ -3946,6 +4109,9 @@ export class Game {
         const groundAtFire = state.fire.built ? this.island.heightAt(state.fire.x, state.fire.y) : 0;
         this.fire.update(state, groundAtFire, this.nightFactor(state.gameHoursElapsed));
         this.shelter.update(state, this.island.heightAt(state.shelter.x, state.shelter.y));
+        this.constructionView.update(state, state.construction
+            ? this.island.heightAt(state.construction.x, state.construction.y)
+            : 0);
         this.cave.update(state, this.island.heightAt(state.cave.x, state.cave.y));
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
         this.workspace.update(state, this.island.heightAt(state.workspace.x, state.workspace.y));

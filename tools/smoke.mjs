@@ -12526,7 +12526,14 @@ async function main() {
             && afterMissingTap.shelterBuilt === false,
         `panel "${afterMissingTap.panel}", said "${afterMissingTap.said}", shelter built ${afterMissingTap.shelterBuilt}`);
 
-    //  3b — MATERIALS HELD: THE PACK OPENS WITH A HINT, AND STILL BUILDS NOTHING ON THE SPOT.
+    //  3b — MATERIALS HELD: IT BUILDS, ON THE SPOT. [[D-185]] SUPERSEDES THIS CHECK'S OLD
+    //  CLAIM, which was that the same hold "opens the pack (Combine) with a hint, and still
+    //  builds NOTHING on the spot". That was true and was the defect: a verb reading *Build a
+    //  shelter* that named an act and then performed navigation. Under the old economy there
+    //  was some excuse — you could not start without all eight wood, so "go and assemble it"
+    //  was nearly honest. The incremental economy removes it: the verb now raises a frame
+    //  where the survivor held, out of whatever they carry, and with 8/8/8 in hand against a
+    //  cost of 8/4/3 that frame is fed in full and completes in the same gesture.
     await editSave(`
         state.player = { x: 6, y: 96 };
         state.shelter = { ...state.shelter, built: false };
@@ -12547,8 +12554,9 @@ async function main() {
         said: window.__drift.hints().last ?? '',
         shelterBuilt: window.__drift.state().shelter.built,
     }));
-    check('GROUND-HOLD 3b — ...and WITH wood/stone/fibre held, the same hold opens the pack (Combine) with a hint, and still builds NOTHING on the spot',
-        afterBuildTap.panel !== null && afterBuildTap.said.length > 0 && afterBuildTap.shelterBuilt === false,
+    check('GROUND-HOLD 3b — ...and WITH wood/stone/fibre held, the same hold BUILDS IT, on the spot, and says so',
+        afterBuildTap.shelterBuilt === true && afterBuildTap.said.length > 0
+        && afterBuildTap.panel === null,
         `panel "${afterBuildTap.panel}", said "${afterBuildTap.said}", shelter built ${afterBuildTap.shelterBuilt}`);
     await page.evaluate(() => {
         const c = document.querySelector('.panel.backpack .close-btn, .panel.loadout .close-btn');
@@ -13578,6 +13586,11 @@ async function main() {
      * gathering tap that was actually blocked, because "no ghost" on its own would pass just
      * as happily on a game that had stopped responding altogether.
      */
+    //  THE FIXTURE CLEARS `state.construction`, and that line is here because it was missing.
+    //  This fixture predates the incremental economy, so without it the frame LOCK 2 now
+    //  raises survives into LOCK 4 — where `siteIsViable` refuses every spot within four
+    //  metres of it and `beginBlocker` refuses a second frame outright. LOCK 4 then read
+    //  "every candidate spot refused" and blamed the affordable path for leftovers.
     const LOCK_FIXTURE = `
         state.player = { x: 0, y: 96 };
         state.energy = 100; state.health = 100; state.warmth = 70;
@@ -13586,6 +13599,7 @@ async function main() {
         state.storage = { ...state.storage, built: false };
         state.fire = { built: false, fuel: 0, x: 0, y: 0 };
         state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        state.construction = null;
     `;
 
     const ghostNow = async () => page.evaluate(() => (window.__drift?.ghost?.() ?? null));
@@ -13619,7 +13633,15 @@ async function main() {
         slate.known.some((t) => /shelter/i.test(t)) && slate.short.some((t) => /more wood/i.test(t)),
         JSON.stringify(slate));
 
-    // ---- 2 · CHOOSING IT MUST NOT ARM ANYTHING -----------------------------------------
+    // ---- 2 · CHOOSING IT NOW RAISES A FRAME, WHICH IS A RESOLUTION -------------------
+    //
+    //  [[D-185]] SUPERSEDES THIS BLOCK'S OLD CLAIM. It used to assert that choosing an
+    //  unaffordable shelter armed NOTHING — [[D-184]]'s guard — because under the old economy
+    //  the placing tap could only refuse, re-arm, and eat every world tap after it. The
+    //  incremental economy makes starting short the intended path, so the siting arms, the tap
+    //  RESOLVES by putting a frame in the world, and the siting clears. The section's own claim
+    //  is unchanged and is what still matters: an unaffordable placement may never eat the
+    //  world. Only the mechanism that makes it true has moved.
     const chose = await page.evaluate(() => {
         const k = Array.from(document.querySelectorAll('.slate-slot.known')).find((x) => /shelter/i.test(x.textContent ?? ''));
         if (!(k instanceof HTMLElement)) return false;
@@ -13630,22 +13652,30 @@ async function main() {
     await realTapDom('.combine-btn');
     await sleep(1200);
     await ensureNoPanel();
-    const afterChoose = await ghostNow();
+    const armedAfter = await ghostNow();
+    check('LOCK 2 — choosing an unaffordable shelter ARMS a siting now, ghost and all',
+        chose && armedAfter?.shown === true,
+        `chose ${chose} · ghost ${JSON.stringify(armedAfter)}`);
+
+    //  ...and the placing tap RESOLVES it. This is the whole difference: under D-184 this tap
+    //  refused and re-armed, and every tap after it did the same.
+    await faceNode(4, 100);
+    await sleep(250);
+    const placeTap = await tapWorld(4, 100, 55);
+    await sleep(1100);
+    const afterPlace = await live();
     const saidAfter = await page.evaluate(() => document.querySelector('.hint')?.textContent?.trim() ?? '');
-    check('LOCK 2 — choosing an unaffordable shelter arms NO siting: there is no ghost',
-        chose && (afterChoose === null || afterChoose.shown === false),
-        `chose ${chose} · ghost ${JSON.stringify(afterChoose)} · said "${saidAfter}"`);
-    check('LOCK 2 — ...and it says WHICH amounts are missing, not "not enough"',
-        /more wood/i.test(saidAfter) && /more stone|more fibre/i.test(saidAfter),
-        `said "${saidAfter}"`);
+    check('LOCK 2 — ...and the placing tap RESOLVES: a frame stands, and the siting is cleared',
+        placeTap && afterPlace.construction !== null && (await ghostNow())?.shown !== true,
+        `tap ${placeTap} · construction ${JSON.stringify(afterPlace.construction)} · said "${saidAfter}"`);
+    check('LOCK 2 — ...and it says what the frame still wants, rather than refusing',
+        /still needs/i.test(saidAfter), `said "${saidAfter}"`);
 
     // ---- 3 · THE CONTROL, AND THE WHOLE POINT: the world still works --------------------
     //  THE SYMPTOM WAS NEVER "a ghost appeared", it was "I could not go and get more wood".
-    //  So the check that matters is a real gather, driven through a real tap, right after the
-    //  refusal. Without this the two above would pass on a game that had frozen completely.
+    //  So the check that matters is a real gather, driven through a real tap, right after.
+    //  Without this the checks above would pass on a game that had frozen completely.
     const beforeGather = await live();
-    //  `harvest` is the harness's own gather loop — walk, face, tap, wait — so this is the
-    //  real journey the director could not complete, not a predicate standing in for it.
     const drift = await harvest('driftwood');
     const afterGather = await live();
     check('LOCK 3 — THE REPORTED SYMPTOM: a world tap still gathers, so the world is not eaten',
@@ -13696,6 +13726,225 @@ async function main() {
     check('LOCK 5 — ...and opening the pack CANCELS it: the ghost is gone and it says so',
         reachedPack.ok && afterCancel?.shown !== true && /never mind/i.test(cancelSaid),
         `packTap ${JSON.stringify(reachedPack)} · ghost ${JSON.stringify(afterCancel)} · said "${cancelSaid}"`);
+    await ensureNoPanel();
+    }
+
+
+    if (section('FIVE ITEMS — the fire that was too big, and the shelter you can start')) {
+
+    /**
+     * THREE ITEMS ON ONE SURFACE, and the first two are the same defect seen twice.
+     *
+     *   1  THE FIRE'S BOUNDARY was `fireTapRadius + 1.5` = 3.1 m against a pit DRAWN at 0.75 m,
+     *      and that pit is the only pickable fire mesh. The pond's own shape, one object over.
+     *   2  IS ITEM 1 FROM THE PLAYER'S SIDE: because the fire claimed 3.1 m of open ground, a
+     *      hold anywhere near a camp resolved to the fire and the ground verbs — sleep rough,
+     *      build a shelter here — could not be reached where a survivor would ever want them.
+     *      Checked as a PAIR, so "the ground answers" cannot pass on a fire that stopped
+     *      answering at all.
+     *   3  INCREMENTAL CONSTRUCTION: a frame goes up with whatever was carried and is fed over
+     *      later visits. Driven end to end — begin short, walk away, come back, add, finish —
+     *      because the whole claim of the economy is that it survives being left.
+     */
+    const FIVE_FIXTURE = `
+        state.player = { x: 0, y: 96 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.shelter = { ...state.shelter, built: false };
+        state.storage = { ...state.storage, built: false };
+        state.workspace = { built: false, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        state.construction = null;
+    `;
+
+    const circleAt = async (wx, wz) => {
+        //  FACE IT FIRST. The camera yaw is independent of where the survivor stands, so a
+        //  point can be squarely in reach and still behind them — `screenOf` then returns null
+        //  and no touch is dispatched at all, which reads as "no circle opened" and blames the
+        //  game for the harness looking the wrong way. The first cut of this section did
+        //  exactly that at both the fire and the ground.
+        await faceNode(wx, wz);
+        await sleep(220);
+        const at = await screenOf(wx, wz);
+        if (!at) return { ok: false, why: 'no pixel on screen', segs: [] };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        //  POLLED, NOT SLEPT — the lesson GROUND-HOLD's own section already carries. A hold
+        //  only ARMS a pending target; the circle opens once the frame loop's own walk brings
+        //  the survivor within reach, which is a real walk over real frames and not a delay
+        //  this harness can predict. A fixed 620 ms read `no circle opened` on a game that was
+        //  simply still walking, and would have blamed it for that.
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null,
+            { timeout: 15_000 },
+        ).catch(() => {});
+        const segs = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')));
+        return { ok: segs.length > 0, why: segs.length ? null : 'no circle opened', segs };
+    };
+    const pressSegment = async (verb) => page.evaluate((v) => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+        if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
+        if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
+        seg.click();
+        return { ok: true, why: null };
+    }, verb);
+
+    // ---- 1 · THE FIRE IS THE PIT, NOT THE GLOW ---------------------------------------
+    //  PLACED, NOT WALKED — [[D-182]]'s rule. This is a claim about a BOUNDARY, so locomotion
+    //  is taken out of it and the survivor stands on the exact metre.
+    await editSave(`${FIVE_FIXTURE}
+        state.fire = { built: true, fuel: 20, x: 0, y: 96 };
+        state.player = { x: 0, y: 94.6 };`);
+    await sleep(900);
+    const nearFire = await circleAt(0, 96);
+    check('FIRE 1 — standing 1.4 m out, a hold still reaches the fire (it must stay usable)',
+        (nearFire.segs ?? []).some((v) => /^boil-water|^feed-fire/.test(v)),
+        `1.4 m from the pit · circle [${(nearFire.segs ?? []).join(', ')}]`);
+    await ensureNoPanel();
+
+    // ---- 2 · ...AND TWO METRES OUT IS GROUND, WHICH IS ITEM 2 -------------------------
+    await editSave(`${FIVE_FIXTURE}
+        state.fire = { built: true, fuel: 20, x: 0, y: 96 };
+        state.player = { x: 2, y: 84 };
+        state.inventory = { ...state.inventory, wood: 4, stone: 4, fiber: 4 };`);
+    await sleep(900);
+    //  HELD FROM A DISTANCE, AND BESIDE THE FIRE — and this fixture took four cuts.
+    //
+    //  Aiming at ground BETWEEN the survivor and the pit sends a shallow camera ray down the
+    //  same line as the fire, and the pit stands 0.22 m proud: the ray skims the terrain and
+    //  strikes the mesh, which `pickHitPoint` correctly snaps to the fire's centre. Standing
+    //  two metres off it instead put the target so close to the survivor that their own PACK
+    //  won the ray — the ambiguity GROUND-HOLD's own section already carries a note about.
+    //  So: held from ten metres back, along x = 2, a line that never passes near the pit.
+    //  2.44 m from the fire — comfortably inside the OLD 3.1 m boundary, which is the point.
+    await page.evaluate(() => window.__drift?.holdTrace?.().splice(0));
+    const onGround = await circleAt(2, 94.6);
+    const groundTrace = await page.evaluate(() => (window.__drift?.holdTrace?.() ?? []).join(' -> '));
+    check('DIAGNOSTIC — which branch the hold 2.44 m from the pit actually took', true, groundTrace || '(empty)');
+    check('FIRE 2 — 2.44 m from the pit is GROUND: sleep-rough and build-shelter-here are reachable',
+        (onGround.segs ?? []).some((v) => /sleep-rough-here/.test(v))
+        && (onGround.segs ?? []).some((v) => /build-shelter-here/.test(v)),
+        `circle [${(onGround.segs ?? []).join(', ')}]`);
+    check('FIRE 2 — ...and the fire has NOT captured it: no fire verb is on this wheel',
+        (onGround.segs ?? []).length > 0
+        && !(onGround.segs ?? []).some((v) => /feed-fire|boil-water|light-torch/.test(v)),
+        `circle [${(onGround.segs ?? []).join(', ')}]`);
+    await ensureNoPanel();
+
+    // ---- 3 · "BUILD A SHELTER" NOW BUILDS ONE ----------------------------------------
+    //  It used to open the Backpack and tell the survivor to go and combine three things —
+    //  a verb that named an act and performed navigation. With four of each carried against a
+    //  cost of 8/4/3 this raises a FRAME, which is the new economy's whole point.
+    //  ITS OWN FIXTURE, WITH NO FIRE NEARBY. `constructionMinSpacingM` is 4 m, so a frame
+    //  raised 2.44 m from a pit is refused — correctly, and for a reason that has nothing to
+    //  do with this item. Reusing the fire fixture here would have tested the spacing rule and
+    //  called it a construction failure.
+    await editSave(`${FIVE_FIXTURE}
+        state.fire = { built: false, fuel: 0, x: 0, y: 0 };
+        state.player = { x: 2, y: 84 };
+        state.inventory = { ...state.inventory, wood: 4, stone: 4, fiber: 4 };`);
+    await sleep(900);
+    await page.evaluate(() => window.__drift?.holdTrace?.().splice(0));
+    const buildCircle = await circleAt(2, 94.6);
+    check('BUILD 0 — the ground offers "Build a shelter" on open ground',
+        (buildCircle.segs ?? []).some((v) => /build-shelter-here/.test(v)),
+        `circle [${(buildCircle.segs ?? []).join(', ')}]`);
+    const beforeFrame = await live();
+    const started = await pressSegment('build-shelter-here');
+    await sleep(1100);
+    await ensureNoPanel();
+    const afterFrame = await live();
+    check('BUILD 1 — the ground verb raises a FRAME on the spot, from what was carried',
+        started.ok && afterFrame.construction !== null
+        && (afterFrame.construction?.contributed?.wood ?? 0) === 4,
+        `${started.why ?? 'pressed'} · construction ${JSON.stringify(afterFrame.construction)}`);
+    check('BUILD 1 — ...and it took the materials out of the pack, into the structure',
+        afterFrame.inventory.wood < beforeFrame.inventory.wood && afterFrame.inventory.wood === 0,
+        `wood ${beforeFrame.inventory.wood} -> ${afterFrame.inventory.wood}`);
+    //  A FRAME IS NOT A SHELTER — the safety property the whole design rests on, on the device.
+    check('BUILD 1 — ...and it is NOT a shelter: nothing that asks for a roof can see it',
+        afterFrame.shelter.built === false,
+        `shelter.built ${afterFrame.shelter.built} · construction present ${afterFrame.construction !== null}`);
+    //  RENDER-WITNESSED: honestly incomplete, and drawn (Law 222/223).
+    const frameMesh = await page.evaluate(() => window.__drift?.meshInfo?.('frameRidge') ?? null);
+    check('BUILD 1 — ...and the frame is genuinely DRAWN, not merely recorded',
+        frameMesh !== null && frameMesh.enabled === true, JSON.stringify(frameMesh));
+
+    // ---- 4 · IT SURVIVES BEING LEFT (D-011, and the point of the economy) -------------
+    const awayBefore = await live();
+    await goAway(45);
+    const awayAfter = await live();
+    //  GATED ON A FRAME EXISTING. On the failing runs this passed reading `null -> null`,
+    //  which is a check that cannot fail in the direction it claims.
+    check('BUILD 2 — D-011: a 45-minute absence changes the frame by NOTHING',
+        awayBefore.construction !== null
+        && JSON.stringify(awayAfter.construction) === JSON.stringify(awayBefore.construction),
+        `${JSON.stringify(awayBefore.construction)} -> ${JSON.stringify(awayAfter.construction)}`);
+
+    // ---- 5 · COME BACK AND ADD TO IT -------------------------------------------------
+    //  REAL NUMBERS, read back from the frame the game actually put down — the ground-hold
+    //  picked the spot, so the harness cannot assume it.
+    const placed = await live();
+    await editSave(`state.inventory = { ...state.inventory, wood: 4, stone: 4, fiber: 4 };
+        state.player = { x: ${placed.construction.x}, y: ${placed.construction.y - 2} };`);
+    await sleep(900);
+    const atFrame = await live();
+    const frameCircle = await circleAt(atFrame.construction.x, atFrame.construction.y);
+    check('BUILD 3 — a hold on the frame offers ADD, and says what it would put in',
+        (frameCircle.segs ?? []).some((v) => /^add-materials$/.test(v)),
+        `circle [${(frameCircle.segs ?? []).join(', ')}]`);
+    const added = await pressSegment('add-materials');
+    await sleep(1000);
+    await ensureNoPanel();
+    const afterAdd = await live();
+    check('BUILD 3 — ...and adding genuinely moves it in, capped at what the frame still wants',
+        added.ok && (afterAdd.construction?.contributed?.wood ?? 0) > (atFrame.construction?.contributed?.wood ?? 0),
+        `${added.why ?? 'added'} · contributed ${JSON.stringify(afterAdd.construction?.contributed)}`);
+
+    // ---- 6 · AND FINISH IT ------------------------------------------------------------
+    //  NO SECOND ADD. The first one already filled it — the frame wanted 8/4/3 and the visit
+    //  above carried enough — so a second `add-materials` is a BLOCKED verb, and pressing a
+    //  blocked verb is not a test of completion. The first cut did exactly that and then
+    //  blamed the finish step for a circle it had itself closed.
+    const fed = await live();
+    const finishCircle = await circleAt(fed.construction.x, fed.construction.y);
+    check('BUILD 4 — once fed, the frame offers FINISH IT',
+        (finishCircle.segs ?? []).some((v) => /^complete-build$/.test(v)),
+        `contributed ${JSON.stringify(fed.construction.contributed)} · circle [${(finishCircle.segs ?? []).join(', ')}]`);
+    const heldBefore = await live();
+    const finished = await pressSegment('complete-build');
+    await sleep(1200);
+    await ensureNoPanel();
+    const done = await live();
+    check('BUILD 4 — ...and finishing it puts a real shelter up, at the frame own site',
+        finished.ok && done.shelter.built === true && done.construction === null
+        && Math.hypot(done.shelter.x - fed.construction.x, done.shelter.y - fed.construction.y) < 1,
+        `${finished.why ?? 'finished'} · shelter ${Math.round(done.shelter.x)},${Math.round(done.shelter.y)} · frame was ${Math.round(fed.construction.x)},${Math.round(fed.construction.y)}`);
+    check('BUILD 4 — ...and it charged NOTHING at completion: it was all paid on the way in',
+        done.shelter.built === true
+        && done.inventory.wood === heldBefore.inventory.wood
+        && done.inventory.stone === heldBefore.inventory.stone
+        && done.inventory.fiber === heldBefore.inventory.fiber,
+        `wood ${heldBefore.inventory.wood} -> ${done.inventory.wood}, stone ${heldBefore.inventory.stone} -> ${done.inventory.stone}, fibre ${heldBefore.inventory.fiber} -> ${done.inventory.fiber}`);
+
+    // ---- 7 · NEVER A DEAD END (D-184's law, in the form that still applies) -----------
+    await editSave(`${FIVE_FIXTURE}
+        state.inventory = { ...state.inventory, wood: 0, stone: 0, fiber: 0 };
+        state.construction = { recipeId: 'shelter', x: 0, y: 96, contributed: { wood: 2 } };
+        state.player = { x: 0, y: 94 };`);
+    await sleep(900);
+    const strandedCircle = await circleAt(0, 96);
+    const segs = strandedCircle.segs ?? [];
+    check('BUILD 5 — a frame you cannot feed still offers a real action, and a reason',
+        segs.some((v) => /^move-structure$/.test(v))
+        && segs.some((v) => /add-materials:blocked/.test(v)),
+        `carrying nothing · circle [${segs.join(', ')}]`);
+    const blockedReason = await page.evaluate(() => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === 'add-materials');
+        return seg ? (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') : null;
+    });
+    check('BUILD 5 — ...and the reason names what to go and FIND, not that your hands are empty',
+        blockedReason !== null && /still needs/i.test(blockedReason),
+        `reason "${blockedReason}"`);
     await ensureNoPanel();
     }
 

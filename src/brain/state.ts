@@ -16,6 +16,7 @@ import { freshCrash } from './crash';
 import { freshWater } from './vessel';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
 import { siteIsViable, type MovableKind } from './construction';
+import { clearConstruction, siteIsComplete } from './build';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
 import { freshTraces } from './traces';
@@ -69,6 +70,7 @@ export function createInitialState(nowMs: number): GameState {
         skills: emptySkills(),
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
+        construction: null,
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
         //  SESSION 1 — `tier: 'mat'` on an UNBUILT workspace is the ladder's floor, not a
         //  claim that a mat exists: `built` is the only field that says whether anything is
@@ -1103,6 +1105,47 @@ export function distance(ax: number, ay: number, bx: number, by: number): number
     return Math.sqrt(dx * dx + dy * dy);
 }
 
+/**
+ * HOW NEAR IS "AT THE FIRE" — derived from the pit that is actually drawn (items 1 and 2).
+ *
+ * SAME SHAPE AS THE POND, one object over. The fire's interaction boundary was
+ * `fireTapRadius + 1.5` = 3.1 m against a pit drawn at 0.75 m — a scalar four times the size
+ * of the thing it stood for, and the only pickable fire mesh is that pit (`fireGlow` is a
+ * 7 m light disc with `isPickable = false`; the logs are parented inside the pit). So a hold
+ * on open ground two and a half metres away resolved to the fire, and `groundVerbs` — sleep
+ * rough, build a shelter here — could not be reached anywhere near a camp. That is item 2,
+ * and it is not a separate defect: it is this number, seen from the player's side.
+ *
+ * BOUNDED BELOW BY THE COLLISION PUSH-OUT, and that bound is why this is a function rather
+ * than a constant. `fireCollisionRadius + playerCollisionRadius` is how close a survivor can
+ * physically stand; a boundary tighter than that would put the fire permanently out of reach
+ * of the person standing as close to it as the world allows — the exact defect the quarry's
+ * own tune note records being caught by the harness. So the honest boundary is "the pit, or
+ * the nearest a body can get, whichever is larger", plus a named finger allowance.
+ *
+ * `fireWarmthRadius` IS UNTOUCHED AND IS NOT THIS. Seven metres of heat is a physical claim
+ * about a fire and stays exactly as it was — you feel a campfire from further than you can
+ * put a hand on it. Warmth is what the fire DOES; this is where the fire IS.
+ */
+export function fireReachM(): number {
+    const reachableFloor = TUNE.fireCollisionRadius + TUNE.playerCollisionRadius;
+    return Math.max(TUNE.firePitRadius, reachableFloor) + TUNE.fireTapSlackM;
+}
+
+/**
+ * Is this point close enough to the fire to mean the fire? The ONE answer, shared by the tap
+ * resolver and the arrival check, so targeting and reach can never disagree the way the
+ * pond's two gates did before [[D-182]].
+ */
+export function isAtFirePoint(state: GameState, x: number, y: number): boolean {
+    return state.fire.built && distance(x, y, state.fire.x, state.fire.y) <= fireReachM();
+}
+
+/** ...and the same question asked about where the survivor is standing. */
+export function isAtFire(state: GameState): boolean {
+    return isAtFirePoint(state, state.player.x, state.player.y);
+}
+
 export function isPlayerInFireRadius(state: GameState): boolean {
     if (!state.fire.built) return false;
     return distance(state.player.x, state.player.y, state.fire.x, state.fire.y) <= TUNE.fireWarmthRadius;
@@ -1780,6 +1823,36 @@ export function buildShelter(state: GameState, x: number, y: number): boolean {
     return true;
 }
 
+/**
+ * FINISH THE FRAME — the completion step of the incremental economy (item 3).
+ *
+ * PAYS NOTHING. Every material went in as it was carried, so completion is labour rather than
+ * purchase; charging again here would take the same wood twice. That is why this cannot route
+ * through `buildShelter`, which deducts — it builds the same shelter, at the frame's own site,
+ * from materials the frame already holds.
+ *
+ * The grade is rolled here rather than at the start, because the grade is a property of the
+ * finished work and a frame is not finished. A survivor who takes three sessions to gather the
+ * timber is not thereby building a worse shelter.
+ */
+export function completeShelterFromSite(state: GameState): boolean {
+    const site = state.construction;
+    if (!site || site.recipeId !== 'shelter' || !siteIsComplete(site)) return false;
+    if (state.shelter.built) return false;
+    const grade = rollGrade(nextGradeSeed(state));
+    state.shelter = {
+        built: true,
+        x: site.x,
+        y: site.y,
+        durability: TUNE.structureDurabilityMax,
+        defects: freshDefects(),
+        grade,
+    };
+    clearConstruction(state);
+    recordTrying(state, recipeDomain('shelter'));
+    return true;
+}
+
 export function canBuildStorage(state: GameState): boolean {
     return (
         !state.storage.built &&
@@ -2165,6 +2238,9 @@ export function moveStructureBlocker(state: GameState, kind: MovableKind): strin
         case 'storage': return state.storage.built ? null : 'There is no crate here to move.';
         case 'fire': return state.fire.built ? null : 'There is no fire pit here to move.';
         case 'workspace': return state.workspace.built ? null : 'There is no work surface here to move.';
+        //  THE ESCAPE HATCH, and the reason a half-built frame can never be a dead end: a
+        //  survivor who raised one in a bad place is never simply stuck with it.
+        case 'construction': return state.construction ? null : 'There is nothing half-built here to move.';
     }
 }
 
@@ -2175,6 +2251,7 @@ export function structureSite(state: GameState, kind: MovableKind): { x: number;
         case 'storage': return state.storage.built ? { x: state.storage.x, y: state.storage.y } : null;
         case 'fire': return state.fire.built ? { x: state.fire.x, y: state.fire.y } : null;
         case 'workspace': return state.workspace.built ? { x: state.workspace.x, y: state.workspace.y } : null;
+        case 'construction': return state.construction ? { x: state.construction.x, y: state.construction.y } : null;
     }
 }
 
@@ -2193,6 +2270,12 @@ export function moveStructure(state: GameState, kind: MovableKind, x: number, y:
         case 'storage': state.storage = { ...state.storage, x, y }; return true;
         case 'fire': state.fire = { ...state.fire, x, y }; return true;
         case 'workspace': state.workspace = { ...state.workspace, x, y }; return true;
+        //  Spread, like every other kind — so `contributed` travels with the frame and a
+        //  survivor who moves a half-fed shelter does not lose what they put in it.
+        case 'construction':
+            if (!state.construction) return false;
+            state.construction = { ...state.construction, x, y };
+            return true;
     }
 }
 

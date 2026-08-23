@@ -81,7 +81,7 @@
  *      relation nobody pegged together would be the migration inventing capability rather
  *      than declining to invent history.
  */
-export const SCHEMA_VERSION = 35;
+export const SCHEMA_VERSION = 36;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -319,6 +319,41 @@ export interface TorchState {
  * structure's bonus at 0 until repaired. Nothing is ever destroyed (charter honest-systems
  * law) — disrepair, never deletion.
  */
+/**
+ * A STRUCTURE PART-WAY UP — the incremental economy, and deliberately its OWN state.
+ *
+ * WHY THIS IS NOT A `complete` FLAG ON `ShelterState`, which was the obvious shape and the
+ * wrong one. `shelter.built` is read in thirty-five places across fourteen files — warmth,
+ * sleep, storm shelter, vulnerability, the death review, succession, the ladder, discovery —
+ * and almost all of them mean "is there a working roof". Adding a flag beside `built` would
+ * have made every one of those a site that must remember to ask a second question, and a
+ * single miss hands an empty frame the full warmth bonus. There is no compiler for "you
+ * forgot to check completeness".
+ *
+ * A separate field makes the safe answer the DEFAULT instead. `shelter.built` keeps exactly
+ * the meaning it has always had — a finished shelter stands here — so all thirty-five readers
+ * stay correct with no edits at all, and nothing that asks "is there a shelter" can
+ * accidentally see a skeleton. What it costs is that the skeleton needs its own render, its
+ * own target and its own verbs; that work is ADDITIVE, which is the trade worth making.
+ *
+ * LAW 222/223 IS THE DESIGN LANGUAGE, borrowed from the Weighted Shore: progress persists
+ * visibly across interruption, and a half-stripped object stays half-stripped. A frame with
+ * three of its eight timber in it looks like a frame with three of its eight timber in it,
+ * and it is still that when you come back tomorrow.
+ *
+ * [[D-011]] BY CONSTRUCTION: `reconcile` has no term for this field. Nothing decays, nothing
+ * spoils, nothing is lost, and there is no incompleteness penalty for having been away —
+ * because there is no code that could apply one. Materials set down are materials set down.
+ */
+export interface ConstructionSite {
+    /** Which placed outcome this will become. `shelter` is the one wired through today. */
+    recipeId: string;
+    x: number;
+    y: number;
+    /** What has been put into it so far, per kind. Never exceeds the recipe's own cost. */
+    contributed: Partial<Record<MaterialKind, number>>;
+}
+
 export interface Structure {
     built: boolean;
     x: number;
@@ -652,6 +687,8 @@ export interface GameState {
     /** The work surface (SESSION 1): W0's mat, upgraded in place to W1's bench. The bench is
      *  what holds what a second hand cannot — Law 220's third controlled relation. */
     workspace: WorkspaceState;
+    /** A structure part-way up, or null. See `ConstructionSite` for why this is its own field. */
+    construction: ConstructionSite | null;
     /** The carried torch (Living Island Track A, FIX 5). */
     torch: TorchState;
     player: PlayerState;

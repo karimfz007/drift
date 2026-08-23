@@ -33,7 +33,7 @@
 | `joystickRadius` | 78 | C01+ | Thumb travel for full speed |
 | `joystickDeadzone` | 0.18 | C01+ | Fraction of the stick radius that reads as still |
 | `nodeTapSlack` | 34 | C01+ | Fat-finger forgiveness around a wood node — a difficulty number, not a decoration (D-026) |
-| `fireTapRadius` | 40 | C01+ | How close a tap must land to the fire to feed it (D-026) |
+| ~~`fireTapRadius`~~ / `firePitRadius` / `fireTapSlackM` | — / 0.75 / 0.35 | C01+, **retired D-185** | RETIRED and replaced by geometry. `fireTapRadius + 1.5` was 3.1 m against a pit DRAWN at 0.75 m, and the only pickable fire mesh is that pit — so a hold on open ground near a camp resolved to the fire and the ground verbs were unreachable. `fireReachM()` now derives the boundary from `firePitRadius` (the same number the renderer builds the cylinder from), floored at `fireCollisionRadius + playerCollisionRadius` so the fire cannot be pushed out of its own reach, plus `fireTapSlackM`. `fireWarmthRadius` (7) is untouched: warmth is what a fire DOES, this is where it IS |
 | `approachStopFraction` | 0.6 | C01+ | Walking to a tapped node stops this far into the reach — beside it, not on it (D-026) |
 | `walkSpeedMps` | 3.5 | C02 | Metres per second on foot in the 3D body |
 | `cameraDistanceM` | 6 | C02 | Close third-person camera distance |

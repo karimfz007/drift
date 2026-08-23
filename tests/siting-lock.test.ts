@@ -1,23 +1,29 @@
 /**
- * THE ARMED SITING THAT ATE THE WORLD — a blocking defect, and the guard that was never there.
+ * THE ARMED SITING THAT ATE THE WORLD — and what survived the economy that replaced it.
  *
  * REPORTED as: chose to build a shelter, did not have the materials, and then every tap in the
- * world showed the placement ghost instead of gathering. That is exactly what the code did, and
- * it needed two independent mistakes to happen:
+ * world showed the placement ghost instead of gathering. Two mistakes met — nothing checked
+ * affordability before arming, and the refusal RE-ARMED, so every world tap re-entered it.
  *
- *   1. NOTHING CHECKED AFFORDABILITY BEFORE ARMING. A placed outcome spends nothing when it is
- *      chosen — it arms a siting, and the tap that picks the spot builds. So the slate offered
- *      a shelter (8 wood, 4 stone, 3 fibre) to a survivor carrying two of each, and `onCombine`
- *      armed it without asking.
+ * ---------------------------------------------------------------------------------------
+ * SUPERSEDED IN PART BY THE INCREMENTAL ECONOMY (item 3), and this file records which part.
  *
- *   2. THE REFUSAL RE-ARMED. `placeFromSlate` re-arms on a bad SPOT, which is right — the
- *      survivor is about to aim again. The materials branch was written the same way, and there
- *      the reasoning does not carry: no amount of re-aiming produces wood. Every world tap then
- *      fell into the armed siting, was refused, re-armed, and returned before any other target
- *      was considered — so walking to a tree for the missing wood was itself impossible.
+ * [[D-184]]'s fix was to refuse to arm what could not be paid for. Under the OLD economy that
+ * was right: a placement that could not complete had no way to become one that could. The new
+ * economy removes that premise — starting short is the intended path — so the affordability
+ * GATE is gone, and the tests that guarded it as a gate are gone with it.
  *
- * This file guards (1), which is the one that prevents the state existing at all. (2) lives in
- * the body and is witnessed on the device, in the harness section of the same name.
+ * WHAT IS NOT SUPERSEDED, and is what this file now guards:
+ *
+ *   1. THE LAW: never arm something the player cannot resolve. It survives in exactly one
+ *      case — a survivor carrying NONE of what the thing is made of — and `beginBlocker`
+ *      holds that line. Asserted in `tests/incremental-build.test.ts`, where the new economy
+ *      lives.
+ *   2. THE SHORTFALL IS STILL NAMED BEFORE THE CHOICE. `placementBlocker` no longer gates
+ *      anything; it tells the slate what a frame would START short of, which is a better
+ *      sentence than a refusal and is still the Law 26 answer.
+ *   3. THE BAD-SPOT REFUSAL STILL RE-ARMS, and the materials one never comes back — the
+ *      distinction that was the actual root cause.
  */
 import { describe, expect, it } from 'vitest';
 import { createInitialState, buildStorage } from '../src/brain/state';
@@ -61,15 +67,16 @@ describe('the armed siting that blocked every world tap', () => {
         expect(slate.known.map((k) => k.recipeId), 'the shelter vanished from the slate').toContain('shelter');
     });
 
-    it('THE GUARD: an unaffordable placed outcome is refused, and the refusal names the amounts', () => {
+    it('THE SHORTFALL IS STILL NAMED — no longer a gate, still the answer before the choice', () => {
+        //  Under the incremental economy this refuses NOTHING. It reports what a frame raised
+        //  right now would still be short of, so the survivor chooses knowingly between
+        //  starting today and feeding it, or gathering first and raising it whole.
         const s = poor();
         const said = placementBlocker(s, 'shelter', false);
-        expect(said, 'an unaffordable shelter reported no obstacle at all').toBeTruthy();
-        //  NAMES AMOUNTS, not "requirements not met" — Law 95's own test applied to a build.
+        expect(said, 'the slate lost its shortfall reading').toBeTruthy();
         expect(said).toMatch(/\d+ more wood/i);
         expect(said).toMatch(/\d+ more stone/i);
         expect(said).toMatch(/\d+ more fibre/i);
-        //  ...and the numbers are the REAL shortfall, not a restatement of the cost.
         const missing = placementShortfall(s, 'shelter', false);
         expect(missing.wood).toBe(TUNE.shelterWoodCost - 2);
         expect(missing.stone).toBe(TUNE.shelterStoneCost - 2);
@@ -82,8 +89,8 @@ describe('the armed siting that blocked every world tap', () => {
     });
 
     it('the SLATE carries it, so the answer arrives before the choice rather than after', () => {
-        //  The whole point: a placed outcome commits the survivor to AIMING, and learning the
-        //  cost only from the placing tap is learning it one commitment too late.
+        //  Now reading "starts part-built, still needs X" rather than "you cannot" — the same
+        //  fact, in the sentence the new economy makes true.
         const shortSlot = combineSlate(poor(), ['wood', 'stone', 'fiber']).known
             .find((k) => k.recipeId === 'shelter')!;
         expect(shortSlot.affordable).toBe(false);

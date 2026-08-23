@@ -1323,16 +1323,14 @@ export function showLoadout(
         if (chosenRecipe && !slate.known.some((k) => k.recipeId === chosenRecipe)) chosenRecipe = null;
 
         if (slateEl) {
-            //  THE SHORTFALL IS ON THE SLOT, BEFORE THE CHOICE. A placed outcome spends
-            //  nothing when it is chosen — it arms a siting — so a survivor could pick a
-            //  shelter they could not afford and only learn it from the placing tap. Marked
-            //  here instead, in the amounts they are short, which is the Law 26 answer: the
-            //  world tells you first. Still SELECTABLE, deliberately — a greyed slot with no
-            //  words is the silent refusal this project keeps paying for, and choosing it
-            //  now explains itself rather than arming a siting that cannot complete.
+            //  THE SHORTFALL IS ON THE SLOT, BEFORE THE CHOICE — and under the incremental
+            //  economy it no longer means "you cannot". It means "this will go up as a FRAME,
+            //  still wanting these", which is a different and better sentence: the survivor
+            //  decides knowingly whether to start now and feed it, or gather first and raise
+            //  it whole. Still selectable, and now genuinely actionable either way.
             const knownMarkup = slate.known.map((k) =>
                 `<button class="quiet slate-slot known${chosenRecipe === k.recipeId ? ' chosen' : ''}${k.affordable ? '' : ' short'}" data-recipe="${k.recipeId}" type="button">${k.name}${
-                    k.affordable ? '' : `<span class="slate-short">${k.shortfall ?? ''}</span>`
+                    k.affordable ? '' : `<span class="slate-short">Starts part-built · ${(k.shortfall ?? '').replace(/^You need /, 'still needs ')}</span>`
                 }</button>`
             ).join('');
             //  Generated from a COUNT. Every unknown slot is byte-identical to every other, so
