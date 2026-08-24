@@ -45,6 +45,21 @@ export interface VerbOption {
     id: string;
     /** Imperative, in the player's language. "Drink", not "consume water". */
     label: string;
+    /**
+     * DID THIS COME FROM THE UNIVERSAL TAIL? — stamped by `verbsWith`, never by a target.
+     *
+     * WHAT IT IS FOR. A universal verb appears at many objects, and the whole value of that
+     * is that a survivor learns ONE place to look for it. [[D-188]] gave the circle a real
+     * capacity, and the arc fills in the target’s own order — which puts the universal tail
+     * last and therefore first out. So `Move` sat on the wheel at the shelter, the crate and
+     * the workspace and slid behind the pip at a busy fire: the same verb in two different
+     * places depending on how much else happened to be possible nearby.
+     *
+     * That is exactly the thing a universal verb must not do, and it lands hardest on this
+     * one because `holdOnly` means there is no tap route to fall back on — a buried `Move`
+     * is hold, then pip, then row, to reposition something you built.
+     */
+    universal?: boolean;
     /** Can it be used right now? A false here is shown, greyed, never removed. */
     available: boolean;
     /**
@@ -366,7 +381,13 @@ function workspaceVerbs(state: GameState): VerbOption[] {
  * push a stub verb through and prove it reaches every target, today, without shipping Examine.
  */
 export function verbsWith(universal: UniversalVerb[], state: GameState, target: VerbTarget): VerbOption[] {
-    return [...targetVerbs(state, target), ...universal.map((f) => f(state, target)).filter((v) => v !== null)];
+    //  STAMPED HERE, which is the only place that knows. A target cannot mark its own verbs
+    //  universal by accident, and a universal verb cannot forget to say so.
+    const tail = universal
+        .map((f) => f(state, target))
+        .filter((v) => v !== null)
+        .map((v) => ({ ...v, universal: true }));
+    return [...targetVerbs(state, target), ...tail];
 }
 
 /** Each target's own verbs — the switch, unchanged; composition happens above it. */

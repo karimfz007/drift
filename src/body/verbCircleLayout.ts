@@ -74,6 +74,12 @@
 /** One option as the circle receives it — mirrors `CircleOption` in `hud.ts`. */
 export interface LayoutOption {
     id: string;
+    /**
+     * A verb from the universal tail — `Move` today. It keeps its place on the arc when the
+     * wheel overflows, because a verb that appears at many targets must not move about
+     * depending on how busy one of them happens to be. See `planVerbCircle`.
+     */
+    universal?: boolean;
     available: boolean;
 }
 
@@ -214,7 +220,29 @@ export function planVerbCircle(options: readonly LayoutOption[], g: CircleGeomet
     //  names a capability this object has — and the reason is one press away in the list.
     const available = options.filter((o) => o.available);
     const blocked = options.filter((o) => !o.available);
-    const ordered = [...available, ...blocked];
+    //  UNIVERSAL VERBS KEEP THEIR SLOT, and this is the one place ordering is not simply
+    //  the target’s own. `Move` is appended by the universal tail, so it is LAST in every
+    //  target’s list and therefore the first available verb pushed out when the arc fills.
+    //  Measured: it stayed on the wheel at the shelter, the crate, the workspace and the
+    //  frame in every state, and slid behind the pip at a fire with four of its own six
+    //  verbs live. A verb whose position depends on how busy the nearby object is has lost
+    //  the thing that made it worth being universal — and `Move` is `holdOnly`, so buried it
+    //  becomes hold, then pip, then row.
+    //
+    //  IT COSTS A LOCAL VERB ITS SLOT, and that is the trade taken deliberately: the local
+    //  one still has a tap route or a place in the list, and it is local, so a survivor
+    //  learns it HERE rather than expecting it everywhere.
+    const universal = available.filter((o) => o.universal);
+    const local = available.filter((o) => !o.universal);
+    const ordered = [...local, ...universal, ...blocked];
+    if (universal.length > 0 && ordered.slice(0, capacity).every((o) => !o.universal)) {
+        //  The tail did not fit in the target’s own order, so it takes the last slot from
+        //  the local verbs rather than going to the pip.
+        const head = local.slice(0, Math.max(0, capacity - universal.length));
+        const kept = [...head, ...universal];
+        const rest = [...local.slice(head.length), ...blocked];
+        return draw(kept.slice(0, capacity), [...kept.slice(capacity), ...rest]);
+    }
 
     //  RULE 3. What is left over goes to the pip, nearest-first by the same ordering.
     return draw(ordered.slice(0, capacity), ordered.slice(capacity));

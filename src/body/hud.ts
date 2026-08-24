@@ -1598,6 +1598,8 @@ export interface CircleOption {
     label: string;
     available: boolean;
     reason: string | null;
+    /** From the universal tail (`Move`). Keeps its slot on the arc — see `planVerbCircle`. */
+    universal?: boolean;
 }
 
 /** The one place the arc’s length is computed, so the plan and the drawing cannot disagree. */

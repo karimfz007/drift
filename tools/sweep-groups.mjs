@@ -88,7 +88,7 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 68],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 69],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

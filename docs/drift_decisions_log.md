@@ -3,6 +3,91 @@
 
 ---
 
+**D-189 · 2026-08-25 — FOUR ITEMS: THE SHELL DUPLICATE THAT ISN'T, MOVE'S ONE REAL CASE, THE SPOILAGE CLOCKS AS THEY STAND, AND A VERB THE BOAT COULD LOSE.**
+
+---
+
+**1 · THE COCONUT SHELL DOES NOT DUPLICATE. Counted on device, through the exact reported gesture, and the shells are conserved to the unit.**
+
+The report was an economy-integrity one and deserved a number rather than a reading of the code, so `THE SHELL LEDGER` drives the whole journey a player takes — make the cup at the pond circle, boil in it at the fire, walk to the crate, tap it, press *Store what you carry* — and counts `inventory.shell + storage.stored.shell` at every step:
+
+```
+setup            held 0 · stored 0 · vessel null      · coconut 2
+made a cup       held 0 · stored 0 · vessel shell-cup · coconut 1
+boiled in it     held 0 · stored 0 · vessel shell-cup · coconut 1
+PLACE ALL        held 0 · stored 0 · vessel shell-cup · coconut 0
+4 full cycles    3 shell(s) before, 3 after
+```
+
+**No shell enters the box, the cup stays with the survivor, and four deposit/withdraw passes create nothing.** The brain says the same in isolation: `depositToStorage`, `withdrawFromStorage` and `moveOneKind` are each a straight move with the sign flipped, and ten cycles over a seeded three leave three.
+
+**AND THE MINTING PATH DOES NOT EXIST, which is worth stating rather than merely not finding.** `shell` enters the world in exactly one place — `eat('coconut')`, the emptied husk — and leaves in exactly one, `makeShellCup`, which spends the husk if there is one and the whole nut otherwise. `canMakeShellCup` refuses outright while a vessel is held, so a second cup cannot be made to spend a second husk. There is no branch that adds a shell without a coconut being drunk.
+
+**WHAT WAS ALMOST CERTAINLY SEEN, and it is a real legibility problem rather than an invented one.** Two candidates, both visible in the trace above. The spare **coconut** goes into the box on *place all* (`coconut 1 → 0`) — it is a material and it should. And a spare **husk** goes in too, under the name *"Coconut shell"*, which is the same name as the thing the cup was made from. A survivor holding a cup and seeing *"Coconut shell"* in the crate is looking at a different husk with an identical label, and nothing on either surface distinguishes them.
+
+That is the mirror of [[D-183]], which answered *"2 shells became 1, with no filled shell appearing anywhere"* with *"no material was lost — the husk IS the cup, spent to make it"*, and fixed it by giving the cup a chip of its own. The same ambiguity read from the other end. **Not built here, because the honest fix is a naming or chip change and the director asked for a root cause first** — but if the sighting persists it is where I would look, and a save from the moment it happens would settle it in one pass.
+
+---
+
+**2 · MOVE IS NOT UNIVERSALLY IN OVERFLOW. It has exactly one case, and the rule is now exact.**
+
+`Move` is not declared by any target: `verbsWith` appends it from `UNIVERSAL_VERBS`, so it is **last in every list** and therefore the first available verb the filled arc pushes out. Measured at all five movable targets:
+
+```
+shelter    3 verbs, 2 live  ->  Move ON THE WHEEL   (both geometries)
+storage    3 verbs, 2 live  ->  Move ON THE WHEEL
+workspace  2 verbs, 1 live  ->  Move ON THE WHEEL
+frame      3 verbs          ->  Move ON THE WHEEL
+fire       7 verbs, 3 live  ->  Move ON THE WHEEL
+fire       7 verbs, 4 live  ->  Move ON THE WHEEL   (exactly fills the arc)
+```
+
+**So the rule is: Move can only be pushed when four or more of a target's OWN verbs are live at once** — and the arc holds four on a landscape phone. Four of the five movable targets have two verbs or fewer of their own and can never reach it. **Only the fire, with six of its own, can.** It is the disclosed [[D-188]] limitation rather than a new bug, and it is narrower than the report suggested — but it is genuinely reachable at a well-supplied fire.
+
+**AND IT IS FIXED ANYWAY, on the director's own reasoning.** A universal verb's whole value is that a survivor learns ONE place to look for it; a position that depends on how busy the nearby object happens to be has given that away. It lands hardest on this one because `Move` is `holdOnly` — there is no tap route to fall back on, so buried it becomes hold, then pip, then row, to reposition something you built.
+
+`VerbOption` gains a `universal` flag, stamped by `verbsWith` and nowhere else, and `planVerbCircle` keeps universal verbs on the arc when it overflows. **The cost is stated rather than hidden:** at a fire with five things live one LOCAL verb goes to the pip instead — `make-journal`, in the measured case. That is the right way round, because the local verb is still one press away and is still local, while the universal one is expected in the same place at five different objects.
+
+---
+
+**3 · SPOILAGE, AS IT STANDS TODAY — and it already does what the director wants.**
+
+Both perish, through **one shared clock** rather than two:
+
+```
+meat   TUNE.meatSpoilGameHours   48 game hours   (~2 game days)
+fish   TUNE.fishFreshGameHours   24 game hours   (~1 game day)
+```
+
+**Fish spoils exactly twice as fast as meat.** One mechanism (`state.freshUntil`, counted down by `perishOnTick`), one reader (`isSpoiled`), so the two cannot answer the question differently — which is why `meatFreshUntilGameHours` was retired when fishing shipped.
+
+**TWO PROPERTIES WORTH CONFIRMING BEFORE ANY TUNING.** The clock counts down on the **online tick only**, deliberately: an absolute deadline would rot food while the tab was shut, and this project already wrote the other way for dropped stacks. So **food does not spoil during an absence** — that is [[D-011]] applied to the pack. And spoilage never takes health by itself: it becomes harm only when a survivor CHOOSES to eat it, through `onsetFrom('spoiled-food')`.
+
+So there is nothing to fix unless the director wants a different RATIO than 2:1, or wants fish to spoil in under a game day.
+
+---
+
+**4 · THE BOAT'S TEN VERBS — one I would cut, and no more. Nothing built without a go-ahead.**
+
+Having driven the fixed wheel, the count is not what makes her busy; the LADDER is, and the ladder is the content. Most of the ten cannot merge without breaking something named:
+
+- `repair-frames` and `seal-seams` **must not merge** — Law 124 forbids one repair recipe by name, and the render witnesses the split.
+- `shore-up-boat` and `dewater-boat` **could** merge into one "make her safe to work in", but the two have different enablers (timber; something to bail with) and merging produces a compound refusal, which Law 95 dislikes — a refusal names ONE thing.
+- `inspect-boat` and `survey-hull` are looking versus working, which [[D-187]] argued at length. Keep.
+- `float-test`, `ferry-boat`, `moor-boat` are the gate, the propulsion and the fifth system.
+
+**THE ONE CANDIDATE IS `board-boat`.** It exists to teach what she carries, and once `loadKnown` is true it re-reports something the inspection already says. Retiring itself at that point would follow the same one-shot principle `survey-hull` already uses — and it would take the boat's fullest state from five live to **four**, which is exactly the arc's capacity on a phone, so nothing at the boat would ever reach the pip again.
+
+That is a real simplification with a measurable payoff and it is one line. **It is the director's call and I have not made it.**
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — the mechanisms shipped are: `VerbOption.universal`, stamped by `verbsWith`; `planVerbCircle` keeping universal verbs on the arc through an overflow; and `THE SHELL LEDGER` device section counting the shell economy end to end. Items 3's report and items 2 and 4 are findings, and change no code.
+
+*Status: standing. Refines [[D-188]]'s arc-filling rule with the universal exception; confirms [[D-183]]'s husk-is-the-cup finding from the opposite direction and names the labelling ambiguity it leaves. No spoilage constant is changed.* — C2
+
+---
+
 **D-188 · 2026-08-24 — THE VERB CIRCLE COULD NOT COUNT. NINE OF THE BOAT'S TEN VERBS PRESSED THE WRONG ONE, AND FOUR OPTIONS WAS ALREADY BROKEN.**
 
 **THE CAUSE, AND IT IS NOT A TUNING NUMBER.** The circle sized its segments with a two-step rule — 116 px, or 68 px once there were five or more — against a spacing that shrinks as the count rises. **Nothing in the code ever compared the two.** The only thing that looked at the option count at all was a boolean CSS class, `crowded`, added in DROP 3 when brewing a remedy made five verbs on the fire. It narrowed the button and bought two more verbs. It did not add a rule.

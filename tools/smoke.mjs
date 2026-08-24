@@ -14750,6 +14750,137 @@ async function main() {
     await ensureNoPanel();
     }
 
+    if (section('THE SHELL LEDGER — a cup is a spent husk, and the box cannot mint one')) {
+
+    /**
+     * THE DIRECTOR’S EXACT SEQUENCE, ON REAL PIXELS: make a cup, boil water in it, "place
+     * all" into storage, then deposit and withdraw repeatedly and COUNT.
+     *
+     * WHY IT IS WORTH A SECTION. The report is an economy-integrity one — *"the same physical
+     * object appearing to exist in two places"*, with shells multiplying each cycle. That is
+     * the kind of claim that has to be answered by a number rather than by reading code, and
+     * by the WHOLE journey rather than by one function: the brain conserves shells exactly in
+     * a unit test, so if a duplicate exists it is somewhere between the verb and the crate.
+     *
+     * AND THE MIRROR OF THIS REPORT IS ALREADY IN THE LEDGER. [[D-183]] answered "2 shells
+     * became 1, with no filled shell appearing anywhere" — no material was lost; the husk IS
+     * the cup, spent to make it. The cup lives in `state.water.vessel` and the shell is an
+     * ordinary `MaterialKind`, so the two are countable separately and this section counts them.
+     */
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: 6, y: 92 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.storage = { ...state.storage, built: true, x: 6, y: 96, durability: 100, stored: {} };
+        state.fire = { built: true, fuel: 20, x: 0, y: 92 };
+        state.water = { vessel: null, rawSips: 0, cleanSips: 0 };
+        state.inventory = { ...state.inventory, coconut: 2, sharpblade: 1, shell: 0, wood: 4 };
+    `);
+    await sleep(900);
+    const ledger = async () => {
+        const s = await live();
+        return {
+            held: s.inventory.shell ?? 0,
+            stored: s.storage.stored.shell ?? 0,
+            vessel: s.water.vessel,
+            coconut: s.inventory.coconut ?? 0,
+            total: (s.inventory.shell ?? 0) + (s.storage.stored.shell ?? 0),
+        };
+    };
+
+    const start = await ledger();
+    check('SHELL 1 — setup: a survivor with coconuts, a blade and an empty crate',
+        start.held === 0 && start.stored === 0 && start.vessel === null,
+        JSON.stringify(start));
+
+    // ---- MAKE THE CUP -----------------------------------------------------------------
+    //  Through the pond circle, the way a player does it — not by writing the vessel in.
+    await ensureNoPanel();
+    await editSave(`state.player = { x: -22, y: 10 };`);
+    await sleep(800);
+    await approach(-22, 8, 25);
+    await faceNode(-22, 8);
+    await sleep(300);
+    await openCircleAt(-22, 8);
+    await sleep(500);
+    const madeCup = await pressCircleSeg('make-cup');
+    await sleep(900);
+    await ensureNoPanel();
+    const afterCup = await ledger();
+    check('SHELL 2 — making a cup SPENDS the husk: a cup in hand and no loose shell',
+        madeCup.ok === true && afterCup.vessel !== null && afterCup.held === 0,
+        `${madeCup.why ?? 'made'} · ${JSON.stringify(afterCup)}`);
+
+    // ---- BOIL IN IT -------------------------------------------------------------------
+    await editSave(`state.player = { x: 0, y: 88 };
+        state.water = { ...state.water, rawSips: 2, cleanSips: 0 };`);
+    await sleep(800);
+    await approach(0, 92, 25);
+    await faceNode(0, 92);
+    await sleep(300);
+    await openCircleAt(0, 92);
+    await sleep(500);
+    const boiled = await pressCircleSeg('boil-water');
+    await sleep(1100);
+    await ensureNoPanel();
+    const afterBoil = await ledger();
+    check('SHELL 3 — boiling in it mints nothing: still one cup, still no loose shell',
+        afterBoil.vessel !== null && afterBoil.held === 0 && afterBoil.total === 0,
+        `${boiled.why ?? 'boiled'} · ${JSON.stringify(afterBoil)}`);
+
+    // ---- PLACE ALL --------------------------------------------------------------------
+    //  The exact gesture in the report: walk to the crate, tap it, "Store what you carry".
+    await editSave(`state.player = { x: 6, y: 92 };`);
+    await sleep(800);
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    await tapWorld(6, 96, 55);
+    await sleep(1000);
+    const placedAll = await realTapDom('.panel.loadout .use-storage-btn');
+    await sleep(1100);
+    await ensureNoPanel();
+    const afterPlaceAll = await ledger();
+    check('SHELL 4 — PLACE ALL PUTS NO SHELL IN THE BOX, and the cup stays with the survivor',
+        placedAll.ok === true && afterPlaceAll.stored === 0 && afterPlaceAll.vessel !== null,
+        `stored.shell ${afterPlaceAll.stored} · vessel ${String(afterPlaceAll.vessel)} · ${JSON.stringify(afterPlaceAll)}`);
+
+    // ---- THE DUPLICATION CLAIM, COUNTED ------------------------------------------------
+    //  Seeded with THREE loose husks so there is something real to move, then cycled. If a
+    //  pass mints one, three becomes four and the check says by how many.
+    await editSave(`state.inventory = { ...state.inventory, shell: 3 };
+        state.storage = { ...state.storage, stored: { ...state.storage.stored, shell: 0 } };`);
+    await sleep(800);
+    const beforeCycles = await ledger();
+    for (let i = 0; i < 4; i++) {
+        await approach(6, 96, 25);
+        await faceNode(6, 96);
+        await sleep(250);
+        await tapWorld(6, 96, 55);
+        await sleep(900);
+        await realTapDom('.panel.loadout .use-storage-btn');
+        await sleep(900);
+        await ensureNoPanel();
+        await tapWorld(6, 96, 55);
+        await sleep(900);
+        await realTapDom('.panel.loadout .use-storage-btn');
+        await sleep(900);
+        await ensureNoPanel();
+    }
+    const afterCycles = await ledger();
+    check('SHELL 5 — FOUR DEPOSIT/WITHDRAW CYCLES CREATE NO MATTER: the shell count is conserved',
+        afterCycles.total === beforeCycles.total && beforeCycles.total === 3,
+        `${beforeCycles.total} shell(s) before, ${afterCycles.total} after · before ${JSON.stringify(beforeCycles)} · after ${JSON.stringify(afterCycles)}`);
+    //  ...AND THE CUP IS NOT ONE OF THEM. The vessel is not a `MaterialKind` and can never
+    //  be swept into a crate by any gesture — which is [[D-183]]’s own reason for putting it
+    //  in `state.water` rather than in the pack.
+    check('SHELL 6 — ...and the cup is still the survivor\u2019s, never in the box',
+        afterCycles.vessel !== null && afterCycles.stored + afterCycles.held === 3,
+        `vessel ${String(afterCycles.vessel)} · held ${afterCycles.held} · stored ${afterCycles.stored}`);
+    await ensureNoPanel();
+    }
+
     // ---- END OF RUN — hygiene and the bench profile, AFTER every section --------------
     //
     //  Moved here from the middle of the file, where they could not see the last eleven

@@ -190,6 +190,47 @@ describe('the verb circle scales with its option count', () => {
         expect(plan.arc).toHaveLength(plan.capacity);
     });
 
+    it('A UNIVERSAL VERB KEEPS ITS SLOT — `Move` does not move about with the local crowding', () => {
+        //  `Move` is appended by the universal tail, so it is LAST in every target’s list and
+        //  therefore the first available verb the arc pushes out. Measured across the five
+        //  movable targets: on the wheel at the shelter, the crate, the workspace and the frame
+        //  in every state, and behind the pip at a fire with four of its own six verbs live.
+        //  A verb whose position depends on how busy the nearby object is has lost the thing
+        //  that made it worth being universal — and this one is `holdOnly`, so buried it becomes
+        //  hold, then pip, then row, to reposition something you built.
+        const busyFire: LayoutOption[] = [
+            { id: 'boil-water', available: true },
+            { id: 'feed-fire', available: true },
+            { id: 'light-torch', available: true },
+            { id: 'make-journal', available: true },
+            { id: 'write-journal', available: false },
+            { id: 'brew-remedy', available: false },
+            { id: 'move-structure', available: true, universal: true },
+        ];
+        for (const g of GEOMETRIES) {
+            const plan = planVerbCircle(busyFire, g);
+            expect(plan.arc.some((o) => o.id === 'move-structure'), `r=${g.radius}: Move fell behind the pip`).toBe(true);
+            //  ...and it costs a LOCAL verb its slot, never a lost option.
+            expect([...plan.arc, ...plan.overflow]).toHaveLength(7);
+        }
+        //  On a landscape phone the arc holds four, so one local verb goes to the pip — which
+        //  is the trade, stated: the local verb is still one press away and is still local.
+        const phone = planVerbCircle(busyFire, SHORT);
+        expect(phone.arc.map((o) => o.id)).toContain('move-structure');
+        expect(phone.overflow.map((o) => o.id)).toContain('make-journal');
+    });
+
+    it('...and an uncrowded target is untouched by the rule — every verb, in the target\u2019s order', () => {
+        const crate: LayoutOption[] = [
+            { id: 'open-store', available: true },
+            { id: 'mend-store', available: false },
+            { id: 'move-structure', available: true, universal: true },
+        ];
+        const plan = planVerbCircle(crate, SHORT);
+        expect(plan.arc.map((o) => o.id)).toEqual(['open-store', 'mend-store', 'move-structure']);
+        expect(plan.overflow).toHaveLength(0);
+    });
+
     it('THE ARC IS ALWAYS FULL BEFORE ANYTHING IS WITHHELD — no empty slot beside a pip', () => {
         //  The property behind the fix above, at every count and every mix. An unused slot
         //  next to a "4 more" pip is the shape the device found at the fire.
