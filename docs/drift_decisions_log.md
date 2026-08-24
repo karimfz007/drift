@@ -68,7 +68,7 @@ That last part is the reversal worth reading. `showVerbCircle`'s docblock has al
 
 
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed as **`40568c9`** and confirmed three ways — local `HEAD`, `origin/main`, and the served page at `https://karimfz007.github.io/drift/` all read `40568c9` (built 2026-08-24T18:53:07Z), with both CI workflows (`deploy`, `done-checks`) green **on that same SHA**.
 
 **DEVICE: THE FULL SWEEP, 776/790 across all 69 sections.** Fourteen reds: **twelve are the pre-existing set [[D-187]] named and attributed** — unchanged, and diffed by check name against the pre-change baseline. Of the two that were not, one is `SLICE 2`’s own check, which this entry rewrites and which reads **15/15** on the corrected harness; the other is `JUNK 6`, which passed in all three prior full runs and fails here with a boar mid-charge (*"It snorts and paws the ground"*) — **21/21 re-run alone**, which is what this instrument’s own rule asks for from a run carrying **25 stalls over 90 s, the worst 2512 s**.
 
