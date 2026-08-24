@@ -80,7 +80,13 @@ Having driven the fixed wheel, the count is not what makes her busy; the LADDER 
 
 That is a real simplification with a measurable payoff and it is one line. **It is the director's call and I have not made it.**
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed as **`5ad7faf`** and confirmed three ways — local `HEAD`, `origin/main`, and the served page at `https://karimfz007.github.io/drift/` all read `5ad7faf` (built 2026-08-24T21:03:05Z), with both CI workflows (`deploy`, `done-checks`) green **on that same SHA**. The witness refused the first time it was asked, correctly: origin was already `5ad7faf` while Pages still served `988f8b2`.
+
+**DEVICE, TARGETED:** the new `THE SHELL LEDGER` section **15/15** — which is the whole of item 3’s answer, counted rather than argued. Alongside it, every section the universal-verb rule could touch: `THE VERB CIRCLE SCALES` **18/18**, `SESSION 2 — THE BOAT` **42/42**, `PERFECT pass — FIX 1` (the pond wheel) **15/15**, `ENTROPY & MAINTENANCE` (the fire and the movable structures) **20/20**.
+
+**FAIL-THEN-PASS:** with the universal stickiness removed, the contract reads **13/14** and the failure is exactly the claim — `r=96: Move fell behind the pip`. Restored, 14/14.
+
+**STATIC + UNIT:** typecheck clean; purity 59 brain files with zero body imports; docs-integrity 189 decisions; tune-mirror 74 refs, none drifted; selector gate 40/40; **1721 unit tests across 91 files**.
 
 **Class: OPERATIVE** — the mechanisms shipped are: `VerbOption.universal`, stamped by `verbsWith`; `planVerbCircle` keeping universal verbs on the arc through an overflow; and `THE SHELL LEDGER` device section counting the shell economy end to end. Items 3's report and items 2 and 4 are findings, and change no code.
 
