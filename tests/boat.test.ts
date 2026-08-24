@@ -27,9 +27,9 @@ import {
     boatAffordance,
     boatSight,
     boatStage,
+    stageNote,
     boatUnderstanding,
     boatUnderstandingNote,
-    boatWorkBlocker,
     createInitialState,
     gatherNode,
     handsUnderstand,
@@ -330,36 +330,50 @@ describe('inspection reveals questions, never a parts list', () => {
 });
 
 // ---------------------------------------------------------------------------
-describe('the scope cap is real, not a promise in a comment', () => {
-    it('B0 is the only stage there is, at every level of understanding', () => {
-        expect(boatStage()).toBe('B0');
+describe('the stage is EARNED, never granted by knowing things', () => {
+    it('UNDERSTANDING ALONE MOVES NOTHING — B0 at every level of it (SESSION 2 revises the cap)', () => {
+        //  SESSION 1 capped this at "B0 is the only stage there is", which was the honest
+        //  surface while no work existed. SESSION 2 lifts the cap and keeps the claim that
+        //  actually mattered: reading a manual or doing a hundred boat-hours does not prop,
+        //  bail or caulk anything. The stage is derived from WORK, so knowledge cannot fake it.
         for (const s of [fresh(), readTheBook(fresh()), didTheWork(fresh()), didTheWork(readTheBook(fresh()))]) {
             expect(boatUnderstanding(s)).toBeDefined();
-            expect(boatStage()).toBe('B0');
+            expect(boatStage(s), 'understanding alone advanced the hull').toBe('B0');
         }
     });
 
-    it('there is no repair verb, and the absence SPEAKS', () => {
-        //  [[D-042]]: silence is never a legal outcome. A survivor who came expecting a verb
-        //  gets a sentence, so "nothing happened" and "nothing is offered" stay distinguishable.
-        const blocker = boatWorkBlocker();
-        expect(blocker.length).toBeGreaterThan(0);
-        expect(namesAFinishedAnswer(blocker)).toBe(false);
-        //  ...and it stays true however much the survivor knows. Understanding is not a key.
-        expect(boatWorkBlocker()).toBe(blocker);
+    it('THE ABSENCE THAT SPOKE IS GONE, AND WHAT SPEAKS NOW IS THE CEILING (SESSION 2)', () => {
+        //  `boatWorkBlocker()` said "You are not fixing her today" and satisfied [[D-042]]
+        //  about a deliberate absence. There is work here now, so that sentence is retired
+        //  and the rule it served is kept by a different one: every stage names what she is
+        //  NOT, so no single action can feel like it finished the boat.
+        for (const stage of ['B0', 'B1', 'B2'] as const) {
+            const note = stageNote(stage);
+            expect(note.length, `${stage} says nothing`).toBeGreaterThan(0);
+            expect(namesAFinishedAnswer(note), `${stage} hands over a parts list`).toBe(false);
+        }
+        //  ...and B0 in particular still tells a survivor plainly where she stands.
+        expect(stageNote('B0')).toMatch(/will not float/i);
     });
 
-    it('the boat holds no state, so nothing about her can be saved, migrated or lost', () => {
-        //  A hard structural claim, and the reason no save migration ships with this drop:
-        //  the boat adds no key to GameState. Everything it reads already existed.
+    it('SHE HOLDS STATE NOW, and it starts at nothing done (SESSION 2 supersedes)', () => {
+        //  SESSION 1's claim was that the boat added no key to `GameState`, and that was the
+        //  honest structural surface while there was no work to record. SESSION 2 gives her
+        //  five systems and a save migration, so the claim that replaces it is the one that
+        //  now matters: a FRESH boat has nothing done to her, and every one of those five
+        //  fields starts empty rather than at some convenient midpoint.
         const s = fresh();
-        const keys = Object.keys(s);
-        expect(keys.some((k) => k.toLowerCase().includes('boat'))).toBe(false);
-        //  The one thing that DOES persist is the manual, and it persists in `traces.read` —
-        //  a field that has shipped since the far island.
+        expect(s.boat).toBeDefined();
+        expect(s.boat.surveyed).toBe(false);
+        expect(s.boat.supports).toBe(false);
+        expect(s.boat.dewatered).toBe(false);
+        expect(s.boat.structural).toBeNull();
+        expect(s.boat.seal).toBeNull();
+        expect(s.boat.floatTest).toBeNull();
+        expect(boatStage(s)).toBe('B0');
+        //  The manual still persists where it always did.
         const read = readTheBook(fresh());
         expect(read.traces.read).toContain(MANUAL.id);
-        expect(Object.keys(read)).toEqual(keys);
     });
 });
 
@@ -386,7 +400,7 @@ describe('D-011 — absence cannot reach her', () => {
 
         expect(boatUnderstanding(after)).toEqual(understandingBefore);
         expect(boatAffordance(after)).toEqual(affordanceBefore);
-        expect(boatStage()).toBe('B0');
+        expect(boatStage(after)).toBe('B0');
     });
 
     it('absence neither grants understanding nor takes it away', () => {

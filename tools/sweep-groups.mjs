@@ -52,7 +52,7 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  * `A1–A4`, and `A4 — absence` reads `revived` from it in turn, so 9 through 14 is one atom.
  *
  * G12 — WAVE 1's two sections plus the ground-hold/Build-panel/knap ruling, the workspace
- * ladder, the pond boundary, the three-items batch and the siting-lock fix, [58, 65] — its
+ * ladder, the pond boundary, the three-items batch and the siting-lock fix, [58, 67] — its
  * own group rather than folded onto the tail of G11: between them they run roughly a dozen
  * `editSave` reloads plus two `goAway` returns (one of which stages a near-maximum shore for
  * the PERF sample), which would have pushed G11 well past its own ~20 minute target. The
@@ -69,10 +69,19 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  * reloads and a real `goAway`, which is the single most expensive thing a section can do.
  * G12 is now the group most likely to outgrow the ~20 minute target, and the honest fix
  * when it does is a G13 boundary rather than a quieter target.
+ *
+ * SESSION 2 (the boat, B0 to B2) makes it 10 sections and is the largest single addition G12
+ * has taken: 33 checks over four editSave reloads and a real goAway, because each of the
+ * three stages is render-witnessed separately AND the gate is driven from both sides — a
+ * rushed hull refused, then the same hull floated after better work. The first version of
+ * this sentence said "30 checks" when the section had 25; the number is now counted from the
+ * file rather than remembered.
+ * named above is therefore CLOSE, and the number that decides it is this group’s measured
+ * wall-clock on the next full run, not an estimate made while adding to it.
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 66],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 67],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

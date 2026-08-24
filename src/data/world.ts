@@ -441,10 +441,12 @@ export const JUNK_SITES: readonly TraceSite[] = [
 ];
 
 /**
- * THE BROKEN FISHING BOAT — DROP 4, "THE PULL: THE WAY HOME, VISIBLE" (Laws 124–125).
+ * THE FISHING BOAT — "THE PULL: THE WAY HOME, VISIBLE" (Laws 124–125).
  *
- * STATE B0, and B0 is the whole of this drop: beached, hull holed, engineless. Nothing here
- * moves it off that stage and nothing pretends it is close. What it is for is the horizon.
+ * SHE ARRIVES AT B0: beached, hull holed, engineless. She does not STAY there — the ladder to
+ * B1 and B2 lives in `boat.ts`, and a survivor can walk her all the way to floating. But where
+ * she SITS never changes, and that is what this file decides: she is worked on exactly where
+ * she was first seen, so the horizon below is the same horizon over the shoulder of every repair.
  *
  * ---------------------------------------------------------------------------------------
  * THE VISUAL SENTENCE, which is the reason the coordinates are what they are.

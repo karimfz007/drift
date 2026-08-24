@@ -17,6 +17,7 @@ import { freshWater } from './vessel';
 import { answerLoss, degradeProfile, upkeepNote } from './upkeep';
 import { siteIsViable, type MovableKind } from './construction';
 import { clearConstruction, siteIsComplete } from './build';
+import { freshBoat } from './boat';
 import { builtShelterProfile } from './vulnerability';
 import { freshDefects, hasOutstandingWork, mendWorst } from './upkeep';
 import { freshTraces } from './traces';
@@ -71,6 +72,7 @@ export function createInitialState(nowMs: number): GameState {
         fire: { built: false, fuel: 0, x: 0, y: 0 },
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
         construction: null,
+        boat: freshBoat(),
         storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
         //  SESSION 1 — `tier: 'mat'` on an UNBUILT workspace is the ladder's floor, not a
         //  claim that a mat exists: `built` is the only field that says whether anything is

@@ -81,7 +81,7 @@
  *      relation nobody pegged together would be the migration inventing capability rather
  *      than declining to invent history.
  */
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -689,6 +689,8 @@ export interface GameState {
     workspace: WorkspaceState;
     /** A structure part-way up, or null. See `ConstructionSite` for why this is its own field. */
     construction: ConstructionSite | null;
+    /** The staged fishing boat (Law 124). See `BoatState`. */
+    boat: BoatState;
     /** The carried torch (Living Island Track A, FIX 5). */
     torch: TorchState;
     player: PlayerState;
@@ -939,6 +941,72 @@ export interface TeardownOutcome {
  * build a discovery/reveal step for it; it is visible on the beach exactly as the brief asks,
  * "visible on the beach" being the FIRST listed requirement).
  */
+/**
+ * A REPAIR THAT REMEMBERS WHO MADE IT AND HOW (Law 124's "the craft preserves maker history
+ * and defects").
+ *
+ * A repair is not a boolean and not a percentage. It records the RUNG it was done at and what
+ * it was made from, because those two facts are what the post-trial inspection reads and what
+ * the hull's behaviour in the water depends on. A rough patch made of green timber holds
+ * differently from a braced one made with a salvaged bracket, and the boat should be able to
+ * say which it is carrying — years later, to a survivor who has forgotten.
+ *
+ * ALL THREE FIELDS ARE READ, which is worth stating because for a while only one was.
+ * `rung` drives `weaknessOf` and therefore the float test, the ferry, the capacity and the
+ * post-trial inspection. `usedMaterials` ACCUMULATES across attempts — ten timber in her
+ * frames says she was worked twice — and is what the redo reads to carry the first attempt
+ * forward. `usedParts` is what tells a redo the bracket is already in her, so a survivor is
+ * never asked for a second piece of steel that does not exist.
+ */
+export interface BoatRepair {
+    /** How well it was done. Reuses the teardown ladder's own vocabulary. */
+    rung: TeardownRung;
+    /** What went into it, so the boat can describe its own history. */
+    usedParts: OutboardPart[];
+    usedMaterials: Partial<Record<MaterialKind, number>>;
+}
+
+/**
+ * THE STAGED BOAT (Law 124) — B0 secured, B1 stabilized, B2 floating.
+ *
+ * FIVE SEPARATE SYSTEMS, NOT ONE REPAIR METER, which is the source's explicit constraint:
+ * hull integrity (`structural`), watertightness (`seal`), flotation (`floatTest`), what she
+ * can carry (`loadKnown`) and whether she is made fast (`moored`) are each their own field.
+ * Collapsing any two would be the "one repair recipe" Law 124 forbids by name. Getting on
+ * and off her is separate AGAIN and stored nowhere at all: `canBoardBoat` DERIVES it from
+ * the stage, so boarding cannot be granted to a hull that does not float.
+ *
+ * THE STAGE IS DERIVED, NEVER STORED. `boatStage` computes it from the work actually done, so
+ * there is no way to be at B2 without the things B2 means — and no migration can ever hand a
+ * returning survivor a stage they did not earn.
+ *
+ * [[D-011]] ABSOLUTE, and structural rather than guarded: `reconcile` has no boat term at all.
+ * Nothing here floods back in, rots, silts up or settles while the game is closed. A hull
+ * shored and half-sealed is exactly as shored and half-sealed tomorrow.
+ */
+export interface BoatState {
+    /** The hull survey (B0→B1 entry): what is actually wrong, learned rather than assumed. */
+    surveyed: boolean;
+    /** Cribbing and props under the hull — she stops moving when you work on her. */
+    supports: boolean;
+    /** The water bailed out of her. Needs supports first: you do not bail a hull that rolls. */
+    dewatered: boolean;
+    /** Hull integrity. Null until repaired at all. */
+    structural: BoatRepair | null;
+    /** Watertightness. A SEPARATE system from the above, per the source. */
+    seal: BoatRepair | null;
+    /** The tethered flotation test (B1→B2 gate) — and what it taught. */
+    floatTest: { attempted: boolean; held: boolean; tookOnWater: number } | null;
+    /** Whether the survivor has actually loaded her and learned what she carries. */
+    loadKnown: boolean;
+    /** Tied up, so she is where you left her. */
+    moored: boolean;
+    /** She has been out on the line under her own paddle. Evidence that manual propulsion
+     *  was actually exercised — not a sixth system, which is why it stores a fact rather
+     *  than a quality: what it gates is the readout, and what it cost was paid in arms. */
+    ferried: boolean;
+}
+
 export interface OutboardState {
     /** Cumulative metres dragged from its original wash-up point. Distance, not a position
      *  delta, so progress reads the same regardless of which direction it was hauled. */

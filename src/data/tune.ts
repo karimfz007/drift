@@ -1370,9 +1370,12 @@ export const TUNE = {
 
     // ---- DROP 4 — THE PULL: the way home, visible ---------------------------
     //
-    //  TWO CONSTANTS, and that is the whole of this drop's tuning surface. The boat is a
-    //  promise made visible rather than a system to master, so there is nothing here to
-    //  balance — only a reach and a threshold.
+    //  IT BEGAN AS TWO CONSTANTS — a reach and a threshold — because the boat was a promise
+    //  made visible rather than a system to master. SESSION 2 gave her a ladder, so the block
+    //  below now carries the prices of the work as well: what it costs to prop her, back her,
+    //  seal her, moor her, and what she leaks and carries when you have. Every one of those is
+    //  a SEPARATE number, because Law 124 forbids one repair recipe and shared costs are how a
+    //  single recipe grows back.
 
     /** [TUNE] Boat — tap forgiveness around the hull, in metres. Basis: she is 7.6 m long and
      *  2.6 m in the beam, so half her diagonal is ~4.0; this is that plus a hand's slack. A
@@ -1403,6 +1406,53 @@ export const TUNE = {
      *  arithmetic. It needs no dive and no regrow, and at nearly three times
      *  `knowledgeInnateFloor` (5) a fresh castaway can never arrive holding it. */
     boatSeamanshipTechnique: 14,
+    /** [TUNE] SESSION 2 — timber to crib and prop her so she stops moving under the work.
+     *  Law 125's rigging route priced: no amount of strength substitutes for wood under the
+     *  bilge, so this is a real cost a survivor must go and meet rather than push through. */
+    boatSupportWoodCost: 6,
+    /** [TUNE] The structural repair — frames and a backing patch. Wants a salvaged bracket as
+     *  well (see `structuralBlocker`); the timber is what the bracket is fastened through. */
+    boatStructuralWoodCost: 5,
+    /** [TUNE] The seal — caulking the garboard the length of her. Fibre driven into the seam,
+     *  which is what oakum actually is. Deliberately a SEPARATE cost from the structure above:
+     *  Law 124 forbids one repair recipe, and two costs is the honest shape of two systems. */
+    boatSealFiberCost: 6,
+    /** [TUNE] How much water she takes in a float test, per point of unaddressed weakness.
+     *  Read by `floatTestForecast` AND by the test itself, so the preview cannot lie. */
+    boatLeakPerWeakness: 0.34,
+    /** [TUNE] Above this, the test is a failure and she comes back out. Below it she swims.
+     *
+     *  RETUNED FROM 0.5, WHICH MADE THE GATE UNFAILABLE. Measured: the lowest competence a
+     *  survivor can actually reach at repair time is 20.609 — the hands route crosses the
+     *  survey gate there, and propping her is mandatory before repairing, so the +8 workspace
+     *  term is always in. That is rung `basic`, weakness 0.6 on each system, and 1.2 x 0.34 =
+     *  **0.408** — under 0.5, in every reachable state. A sweep of technique 0..100 against
+     *  three understanding profiles found ZERO states where she failed to swim.
+     *
+     *  0.25 IS CHOSEN TO MEAN ONE LEGIBLE SENTENCE: *no `basic` repair may remain in her*.
+     *  basic/basic is 0.408 and basic/competent 0.323 — both above it; competent/competent is
+     *  0.238, below it with room. So the gate refuses exactly the hull that was rushed, the
+     *  forecast says so before a survivor commits, and the post-trial inspection names which
+     *  of the two is the weak one. It is only fair because a repair can now be REDONE — see
+     *  `structuralBlocker`; a reachable failure with no route out would be a dead end. */
+    boatSwampAt: 0.25,
+    /** [TUNE] How far a paddled boat travels per stroke-effort, as a fraction of a walk. She
+     *  is a platform in flat water, not a way to outrun anything. */
+    boatPaddleSpeedFraction: 0.42,
+    /** [TUNE] What a sound hull of this size carries before her freeboard goes. Scaled DOWN by
+     *  how well she was actually repaired, so load reads the hull rather than duplicating it. */
+    boatBaseCapacityKg: 180,
+    /** [TUNE] Cordage for a painter, so she is where you left her. */
+    boatMooringFiberCost: 3,
+    /** [TUNE] SESSION 2 — how far a short line-ferry actually goes: out to the end of a line
+     *  you can still haul her back on, and home again. Metres of water, round trip.
+     *
+     *  BASIS, AND IT IS A CEILING RATHER THAN A DISTANCE. The wreck lies ~115 m off this
+     *  shore — the number `swimEnergyDrainPerGameHour` is balanced against and counted in.
+     *  90 m round trip is 45 m out, comfortably short of it, and short ON PURPOSE: the wreck
+     *  is a B3 destination and a B2 hull has no business arriving there. The tether is the
+     *  honest reason a survivor cannot simply paddle away, and this is its length as a number. */
+    boatFerryDistanceM: 90,
 
     // ---- RAIN & WET ESCALATION — the second hazard family --------------------
     //

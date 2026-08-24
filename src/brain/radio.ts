@@ -28,9 +28,11 @@
  * belongs. `wr3` has been "the instrument housing, off the bow" since [[D-124]] authored the
  * six parts, and it already yields `glass` and `wiring` — the set is the thing that housing
  * was built to hold. The crossing already gates it, so the receiver inherits a real journey
- * rather than needing one invented for it. The boat ([[D-135]]) is at stage B0 with an explicit
- * cap against restoration mechanics; hanging salvage on her would have implied work on her
- * hull, which is precisely what that cap exists to prevent.
+ * rather than needing one invented for it. The boat ([[D-135]]) was at stage B0 with an explicit
+ * cap against restoration mechanics when this was weighed, so hanging salvage on her would have
+ * implied hull work the cap existed to prevent. [[D-187]] has since opened that work, and the
+ * choice still stands on its own merits: the housing is where a receiver belongs, and a hull is
+ * not.
  *
  * ---------------------------------------------------------------------------------------
  * POWER IS THE COST, AND IT IS FINITE. One salvaged cell, no generator, no solar, no bench.

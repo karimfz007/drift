@@ -22,6 +22,12 @@ import { TUNE } from '../data/tune';
 import { canBrewRemedy, isIll } from './illness';
 import type { GameState } from './types';
 import { contributionAvailable, siteIsComplete, siteShortfallNote } from './build';
+import {
+    boatStage, canSurveyHull, surveyBlocker, canShoreUp, shoreUpBlocker, canDewater,
+    dewaterBlocker, canRepairStructure2, structuralBlocker, canSealHull, sealBlocker,
+    canFloatTest, floatTestBlocker, canBoardBoat, boardBlocker, canMoor, moorBlocker,
+    canFerry, ferryBlocker,
+} from './boat';
 import { benchHasRacked, canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
@@ -80,6 +86,11 @@ export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dro
     //  INCREMENTAL CONSTRUCTION — a structure part-way up is a real object with real work to
     //  do on it, so it is a target of its own rather than a mode of the finished shelter.
     | 'construction'
+    //  SESSION 2 — THE BOAT JOINS THE SHARED PATH. She had a bespoke tap branch that ran one
+    //  verb (`doInspectBoat`), which was right while inspecting was the only thing to want
+    //  from her. B0-B2 gives her ten, and a target with ten things to do that keeps its
+    //  own dispatch is exactly the shape the boar's missing circle came in.
+    | 'boat'
     //  RULING (C1) — GROUND-HOLD. A plain point on open ground, not an object — the one
     //  target here with no world record behind it at all.
     | 'ground';
@@ -226,6 +237,102 @@ function constructionVerbs(state: GameState): VerbOption[] {
 }
 
 /**
+ * SESSION 2 — THE BOAT, B0 TO B2 (Laws 124 and 125).
+ *
+ * TEN VERBS AND FIVE SYSTEMS, and the ordering is the ladder itself: survey, prop, bail,
+ * back the frames, pay the seams, float her, then the things floating is FOR: get in, take
+ * her out on the line, make her fast. Every one of them is offered at every stage and
+ * refuses with the one true reason when it is not her turn — which is what makes the ladder
+ * legible from the boat rather than from a wiki.
+ *
+ * NOTHING HERE IS A REPAIR METER. Structure and seal are separate verbs with separate costs
+ * because they are separate systems (Law 124's "never one repair recipe"), and the float test
+ * is a third thing again: proof, not progress.
+ *
+ * AND THE TWO REPAIR VERBS COME BACK when your hands could better the work already in her,
+ * which is what makes the post-trial inspection's advice something a survivor can act on.
+ * They say so in the label — "Back the frames AGAIN" — and refuse by naming the enabler when
+ * there is nothing to gain: the way past that refusal is more boats, not more timber.
+ */
+function boatVerbs(state: GameState): VerbOption[] {
+    const stage = boatStage(state);
+    const b = state.boat;
+    return [
+        {
+            //  ALWAYS AVAILABLE, at every stage. Looking at a boat is never refused.
+            id: 'inspect-boat',
+            label: stage === 'B0' ? 'Look her over' : `Look her over (${stage})`,
+            available: true,
+            reason: null,
+        },
+        {
+            id: 'survey-hull',
+            label: 'Survey the hull',
+            available: canSurveyHull(state),
+            reason: surveyBlocker(state),
+        },
+        {
+            id: 'shore-up-boat',
+            label: `Prop and crib her`,
+            available: canShoreUp(state),
+            reason: shoreUpBlocker(state),
+        },
+        {
+            id: 'dewater-boat',
+            label: 'Bail her out',
+            available: canDewater(state),
+            reason: dewaterBlocker(state),
+        },
+        {
+            //  HULL INTEGRITY. Named for the job rather than for the stage, so the survivor
+            //  learns the boat rather than the ladder.
+            id: 'repair-frames',
+            label: b.structural ? 'Back the frames again' : 'Back the frames',
+            available: canRepairStructure2(state),
+            reason: structuralBlocker(state),
+        },
+        {
+            //  WATERTIGHTNESS — a different system, a different verb, a different cost.
+            id: 'seal-seams',
+            label: b.seal ? 'Pay the seams again' : 'Pay the seams',
+            available: canSealHull(state),
+            reason: sealBlocker(state),
+        },
+        {
+            //  THE GATE, and the consequence is readable before committing — though NOT from
+            //  this label, which would be a mouthful on a wheel. `floatForecastNote` is spoken
+            //  by both repair handlers the moment either repair lands, so a survivor reaching
+            //  for this verb has already been told in plain words what she would do.
+            id: 'float-test',
+            label: b.floatTest?.held ? 'Float her again' : 'Float her on a line',
+            available: canFloatTest(state),
+            reason: floatTestBlocker(state),
+        },
+        {
+            id: 'board-boat',
+            label: 'Get in',
+            available: canBoardBoat(state),
+            reason: boardBlocker(state),
+        },
+        {
+            //  MANUAL PROPULSION (Law 125) — the third of the source’s three B2 capabilities,
+            //  after tethered flotation and the platform. A boat that cannot be moved is not a
+            //  boat, and this is the verb that stops B2 being a diorama.
+            id: 'ferry-boat',
+            label: b.ferried ? 'Take her out again' : 'Take her out on the line',
+            available: canFerry(state),
+            reason: ferryBlocker(state),
+        },
+        {
+            id: 'moor-boat',
+            label: 'Make her fast',
+            available: canMoor(state),
+            reason: moorBlocker(state),
+        },
+    ];
+}
+
+/**
  * item 2 — the work surface's own verbs. Move comes from the universal tail above, so this
  * carries only what is specific to a mat or a bench.
  */
@@ -278,6 +385,7 @@ function targetVerbs(state: GameState, target: VerbTarget): VerbOption[] {
         case 'ground': return groundVerbs(state);
         case 'workspace': return workspaceVerbs(state);
         case 'construction': return constructionVerbs(state);
+        case 'boat': return boatVerbs(state);
     }
 }
 
@@ -366,6 +474,10 @@ const DEFAULT_VERB: Record<VerbTarget, string> = {
     //  is gone: completion happens when the last material goes in, not as a second decision
     //  the survivor has to think of. See `constructionVerbs`.
     construction: 'add-materials',
+    //  LOOKING AT HER IS THE ORDINARY ACT, at every stage — you walk up to a boat to see how
+    //  she is. Everything that CHANGES her is on the hold, so no tap can prop, bail, patch or
+    //  launch anything by accident.
+    boat: 'inspect-boat',
 };
 
 /**

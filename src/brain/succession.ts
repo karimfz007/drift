@@ -39,6 +39,7 @@
  */
 import { succeedJournal } from './journal';
 import { createInitialState } from './state';
+import { freshBoat } from './boat';
 
 export { arrivalProfile, type ArrivalProfile } from './arrival';
 import type { GameState, SurvivorRecord } from './types';
@@ -162,6 +163,42 @@ export function closeSurvivor(state: GameState, cause: string): {
         //  it would wake a new castaway already at sea, aboard something they have never seen,
         //  which is the personal/worldly line this whole module is built on.
         raft: { ...state.raft, aboard: false },
+        //  THE HULL IS MATTER, AND SHE STAYS — the second time this module’s "default to
+        //  death" rule has caught a worldly field, and the reasoning is the workspace’s
+        //  exactly. Timber sistered into her frames, oakum driven into her garboard and
+        //  cribbing under her bilge are as worldly as a roof. A successor walks up to the
+        //  boat somebody else spent three days on and finds that work still in her, at
+        //  whatever rung it was done — defects and all, the same grade of inheritance the
+        //  shelter gets.
+        //
+        //  WHAT DOES NOT CROSS IS EVERYTHING THAT HAPPENED IN A MIND. She has been over
+        //  a hull with weight in her and knows what she carries (`loadKnown`); she has had
+        //  a paddle in her hands and knows how she handles (`ferried`); and — the one that
+        //  matters — somebody watched her swim (`floatTest`). None of that is a fact about
+        //  the island. So a successor finds a hull that LOOKS finished, at B1, and has to
+        //  put her in the water to learn whether she floats. That costs an afternoon and
+        //  no materials, which is the right price for a thing only a witness could know,
+        //  and it is the same line `wreck.reached` and the traces already draw.
+        //
+        //  THE SURVEY CROSSES, and that is the one judgement call here. It reads like
+        //  knowledge and it is not: it is floorboards up and frames exposed. She is still
+        //  open when the next survivor reaches her, and they see what the last one saw
+        //  because it is still there to see. It also keeps the STAGE honest — without it a
+        //  propped, bailed, backed and sealed hull would read B0, "a hull on dry sand",
+        //  which would be the island lying about a boat you can walk around.
+        boat: {
+            ...freshBoat(),
+            surveyed: state.boat.surveyed,
+            supports: state.boat.supports,
+            dewatered: state.boat.dewatered,
+            structural: state.boat.structural
+                ? { ...state.boat.structural, usedParts: [...state.boat.structural.usedParts], usedMaterials: { ...state.boat.structural.usedMaterials } }
+                : null,
+            seal: state.boat.seal
+                ? { ...state.boat.seal, usedParts: [...state.boat.seal.usedParts], usedMaterials: { ...state.boat.seal.usedMaterials } }
+                : null,
+            moored: state.boat.moored,
+        },
         //  TRACES ARE NOT LISTED HERE, and that absence is the decision. Having READ a
         //  stranger's note is something that happened to a mind, not to the island — so it
         //  dies with the reader, and the successor must cross and look for themselves. The

@@ -289,7 +289,26 @@ describe('THE TEARDOWN LADDER — graded, degrade vs destroy, subassemblies (Law
         s.carriedParts = ['fuelTank', 'tillerHandle'];
         axeOutboard(s);
         expect(s.outboard.teardown?.destroyed).toBe(true);
-        expect(s.carriedParts).toEqual(['fuelTank', 'tillerHandle']);
+        for (const part of ['fuelTank', 'tillerHandle'] as const) {
+            expect(s.carriedParts, part + ' was destroyed by an axe swung at an empty husk').toContain(part);
+        }
+    });
+
+    it('...AND IT LEAVES THE TRANSOM BRACKET, because that is what the motor hangs THROUGH', () => {
+        //  SESSION 2 made this load-bearing. The bracket is the only part the boat
+        //  consumes and there is no second one in the world, so an axe that destroyed it made
+        //  the whole B0-to-B2 ladder permanently impossible for that save — a legitimate
+        //  shortcut silently foreclosing an unrelated system, with the refusal still naming an
+        //  enabler the game could no longer produce. It is also simply true: the bracket is the
+        //  outermost piece, not something inside the motor.
+        const s = fresh();
+        expect(s.carriedParts).not.toContain('mountingBracket');
+        axeOutboard(s);
+        expect(s.carriedParts, 'the axe destroyed the one part the boat cannot do without')
+            .toContain('mountingBracket');
+        //  ...and it is added ONCE, however many times the husk is hit.
+        axeOutboard(s);
+        expect(s.carriedParts.filter((p) => p === 'mountingBracket')).toHaveLength(1);
     });
 
     it('axing after a COMPLETE Expert-level teardown leaves all eleven parts untouched', () => {

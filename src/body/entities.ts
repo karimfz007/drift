@@ -28,8 +28,8 @@ import '@babylonjs/core/Particles/particleSystemComponent';
 
 import { isFireLit, outboardPosition, regrowProgress, ringObstacles, type GameState, type ItemGrade, type NodeKind, type ShoreFate, type WoodNode } from '../brain';
 import { TUNE } from '../data/tune';
-import { defectStage, siteProgress } from '../brain';
-import { WORLD, surfaceHeightAt } from '../data/world';
+import { boatStage, defectStage, siteProgress } from '../brain';
+import { BOAT, FAR_ISLAND, WORLD, surfaceHeightAt } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
 
@@ -1150,6 +1150,82 @@ export class ConstructionView {
         //  the moment the survivor most needs to reach it (to add the next armful) is exactly
         //  when it would be hardest. The site is the same size whatever is standing on it.
         this.pickVolume.scaling.x = 1 / ridgeScale;
+    }
+}
+
+/**
+ * THE BOAT'S THREE STATES, DRAWN (SESSION 2, Laws 124/125).
+ *
+ * B0/B1/B2 must be individually witnessable, not asserted as one blob — so each stage owns a
+ * separately NAMED surface and a render check can say which of the three is standing rather
+ * than "the boat rendered":
+ *
+ *      boatProps   — cribbing under the bilge. B1's whole claim: she stops moving.
+ *      boatPatch   — the backing plate over the breach. HULL INTEGRITY, visible as geometry.
+ *      boatCaulk   — payed seams along the garboard. WATERTIGHTNESS, a different surface for
+ *                    a different system, because the source forbids collapsing the two.
+ *      boatTether  — the line she swims on at B2. Tethered flotation, drawn as the tether.
+ *
+ * THE CRAFT PRESERVES MAKER HISTORY (Law 124). The patch and the caulk stay visible for the
+ * rest of the game: a boat repaired at novice rung and a boat repaired at expert rung are the
+ * same silhouette, and the difference lives in the record and in how she behaves in the water —
+ * but that the work was DONE is written on her hull where anyone can see it.
+ *
+ * The hull itself is built once in `island.ts` with a frozen world matrix and stays exactly
+ * where it is; these are additions to her rather than a second copy of her.
+ */
+export class BoatWorkView {
+    private props: Mesh;
+    private patch: Mesh;
+    private caulk: Mesh;
+    private tether: Mesh;
+
+    constructor(scene: Scene) {
+        const y = surfaceHeightAt(BOAT.x, BOAT.y);
+        const bearing = Math.atan2(FAR_ISLAND.x - BOAT.x, FAR_ISLAND.y - BOAT.y);
+
+        //  CRIBBING — two stacks of timber under her bilge. B1 made visible.
+        this.props = CreateBox('boatProps', { width: 3.2, height: 0.7, depth: 5.4 }, scene);
+        this.props.material = flat(scene, 'boatPropsMat', PALETTE.trunk);
+        this.props.position.set(BOAT.x, y + 0.12, BOAT.y);
+        this.props.rotation.y = bearing;
+        this.props.isPickable = false;
+
+        //  THE PATCH — a plate over the breach, offset to the port side where the hole is.
+        this.patch = CreateBox('boatPatch', { width: 0.34, height: 0.86, depth: 0.9 }, scene);
+        this.patch.material = flat(scene, 'boatPatchMat', PALETTE.disrepair);
+        this.patch.position.set(BOAT.x - 1.42, y + 0.3, BOAT.y - 1.5);
+        this.patch.rotation.y = bearing;
+        this.patch.isPickable = false;
+
+        //  THE CAULK — a pale line the length of her garboard. A different system, drawn as a
+        //  different thing, at a different place on the hull.
+        this.caulk = CreateBox('boatCaulk', { width: 2.7, height: 0.1, depth: 7.2 }, scene);
+        this.caulk.material = flat(scene, 'boatCaulkMat', PALETTE.thatch);
+        this.caulk.position.set(BOAT.x, y + 0.02, BOAT.y);
+        this.caulk.rotation.y = bearing;
+        this.caulk.isPickable = false;
+
+        //  THE TETHER — the line she swims on. B2 is TETHERED flotation, so the tether is the
+        //  honest silhouette for it: she is afloat and she is still tied to the shore.
+        this.tether = CreateBox('boatTether', { width: 0.08, height: 0.08, depth: 6.0 }, scene);
+        this.tether.material = flat(scene, 'boatTetherMat', PALETTE.thatch);
+        this.tether.position.set(BOAT.x + 1.6, y + 1.1, BOAT.y - 3.2);
+        this.tether.rotation.y = bearing + 0.5;
+        this.tether.isPickable = false;
+
+        for (const m of [this.props, this.patch, this.caulk, this.tether]) m.setEnabled(false);
+    }
+
+    update(state: GameState): void {
+        const b = state.boat;
+        //  EACH SURFACE READS ITS OWN SYSTEM. No surface is driven by the stage, because the
+        //  stage is derived from the systems and driving the render off it would put a second
+        //  derivation in the world that could disagree with the first.
+        this.props.setEnabled(b.supports);
+        this.patch.setEnabled(b.structural !== null);
+        this.caulk.setEnabled(b.seal !== null);
+        this.tether.setEnabled(boatStage(state) === 'B2');
     }
 }
 

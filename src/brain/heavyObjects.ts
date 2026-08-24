@@ -299,7 +299,13 @@ export function teardownForecast(state: GameState, workspaceClear: boolean): Tea
     };
 }
 
-function rungForCompetence(competence: number): TeardownRung {
+/**
+ * EXPORTED FOR THE BOAT (SESSION 2). The ladder from a competence score to a rung is the
+ * shape worth reusing; the DOMAIN it reads is not. A hull's frames and caulking are
+ * boatbuilding, not small-engine mechanics, so `boat.ts` supplies its own score and shares
+ * this — one ladder, two competences, rather than two ladders that could drift apart.
+ */
+export function rungForCompetence(competence: number): TeardownRung {
     if (competence >= TUNE.teardownExpertAt) return 'expert';
     if (competence >= TUNE.teardownSkilledAt) return 'skilled';
     if (competence >= TUNE.teardownCompetentAt) return 'competent';
@@ -415,6 +421,19 @@ export function applyTeardown(state: GameState, outcome: TeardownOutcome): void 
  *  those parts were never added to `carriedParts` in the first place, so there is nothing
  *  this function needs to remove. */
 export function axeOutboard(state: GameState): void {
+    //  THE TRANSOM BRACKET SURVIVES THE AXE, and this is a reachability fix rather than a
+    //  softening. It is the one part that is not INSIDE the motor — it is the plate the motor
+    //  hangs THROUGH, the outermost piece of the whole assembly — so smashing the powerhead
+    //  to scrap leaves you holding it. Physically true, and load-bearing since SESSION 2:
+    //  the boat’s structural repair is the only consumer of `mountingBracket` and there is no
+    //  second one anywhere in the world, so axing an unstripped outboard used to make
+    //  `repair-frames` permanently impossible — and with it `float-test`, `board-boat`,
+    //  `ferry-boat` and `moor-boat`. A legitimate shortcut silently foreclosing the whole
+    //  boat ladder, while `structuralBlocker` went on naming an enabler the game could no
+    //  longer produce. What the axe still costs is everything else.
+    if (!state.carriedParts.includes('mountingBracket')) {
+        state.carriedParts = [...state.carriedParts, 'mountingBracket'];
+    }
     state.outboard = { ...state.outboard, teardown: { rung: 'novice', destroyed: true, gained: {}, parts: [] } };
     state.inventory.stone = (state.inventory.stone ?? 0) + TUNE.outboardDestroyedScrapStone;
 }

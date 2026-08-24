@@ -80,6 +80,16 @@ const TUNE = new Proxy({
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
     realSecondsPerGameHour: 150,
+    //  SESSION 2 — the line-ferry’s cost, mirrored because the check RECOMPUTES it rather
+    //  than asserting "energy went down". The first cut asserted the direction alone and
+    //  passed 34/34 on a build with the charge deleted: ambient drain moves energy every
+    //  second the game is open, so the measurement could not tell a paddled boat from a
+    //  free one. [[D-186]]’s rule, on this check: a number that reads the same on the
+    //  broken build and the fixed one measures nothing.
+    walkSpeedMps: 3.5,
+    raftEnergyDrainPerGameHour: 9,
+    boatPaddleSpeedFraction: 0.42,
+    boatFerryDistanceM: 90,
     interactRadiusM: 2.5,
     storageWithdrawBatch: 5,
     shelterWoodCost: 8,
@@ -770,6 +780,28 @@ async function main() {
     const goneFromWorld = (w) => w === null || w.enabled === false;
 
     const tapWorld = async (wx, wz, hold = 55) => { const p = await screenOf(wx, wz); if (!p) return false; await tapAt(p.x, p.y, hold); return true; };
+    /**
+     * OPEN A VERB CIRCLE ON A WORLD POINT, and press one segment of it — the two gestures
+     * four separate sections drive. Defined HERE rather than inside any one of them: they
+     * were block-scoped to section 64 while section 64’s own comment claimed section 44 had
+     * copies, and section 44 had none, so the harness crashed the first time a run reached it.
+     */
+    const openCircleAt = async (wx, wz) => {
+        const at = await screenOf(wx, wz);
+        if (!at) return { ok: false, why: 'no pixel on screen', segs: [] };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await sleep(600);
+        const segs = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')));
+        return { ok: segs.length > 0, why: segs.length ? null : 'no circle opened', segs };
+    };
+    const pressCircleSeg = async (verb) => page.evaluate((v) => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+        if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
+        if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
+        seg.click();
+        return { ok: true, why: null };
+    }, verb);
     //  A HOLD on world coordinates: the same gesture as a tap, held past `tapMaxMs`. Under
     //  the Default-Verb Law a tap acts and a hold asks, and §9.6's site card is what a hold on
     //  open ground asks. Derived from the TUNE value rather than a literal so a retuned tap
@@ -2613,7 +2645,7 @@ async function main() {
     //  one directly here (the full stone-hammer/knap tier is proven for real elsewhere,
     //  the new "D-055" section below; this section is about the axe DOING something once
     //  owned, same as it always was).
-    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2; ${grantBlueprints('axe')}`);
+    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2;`);
     check('the Build button opens the panel', (await openBuild()).ok);
     await sleep(400);
     await shot('c04-05-craftcard');
@@ -2655,7 +2687,19 @@ async function main() {
     //  than inheriting the previous check's deliberately empty hands.
     //  EXACTLY ONE AXE'S WORTH. The check below proves the parts were spent by finding the
     //  pack empty, so a generous restock would leave a remainder and read as a failed craft.
-    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2;`);
+    //  ...AND A WORK SURFACE, WHICH THIS FIXTURE HAS BEEN MISSING SINCE [[D-182]]. An axe is
+    //  THREE loose parts; Law 220 prices three controlled relations at a work mat; and this
+    //  section stages a survivor standing on bare sand. So the brain’s own attempt gate said
+    //  no, the slate came back with an EMPTY known list, and EIGHT checks went red on
+    //  behaviour that is correct — the axe genuinely cannot be assembled bare-handed, and has
+    //  not been able to since that ruling. The fixture never caught up with it.
+    //
+    //  ATTRIBUTED, NOT GUESSED. Found by the first full sweep that ever got this far. This
+    //  section is G2 on its own and no recent witness ran it; the same eight reds appear on a
+    //  build with none of SESSION 2 in it, which is how it was established as pre-existing.
+    await editSave(`state.inventory.wood = 3; state.inventory.sharpblade = ${TUNE.axeSharpbladeCost}; state.inventory.fiber = 2;
+        state.workspace = { ...state.workspace, built: true, tier: 'mat', jointWear: 0,
+                            x: state.player.x, y: state.player.y };`);
     await sleep(750);
     const craftTap = await (async () => {
         const made = await makeViaSlate('axe', ['wood', 'sharpblade', 'fiber']);
@@ -8218,12 +8262,15 @@ async function main() {
         && !/fibreglass|fiberglass|resin|epoxy|outboard|petrol|diesel/i.test(uninformed),
         `on screen: "${uninformed}"`);
 
-    //  ...AND THE ABSENCE OF A REPAIR VERB SPEAKS. `boatWorkBlocker`'s sentence has to reach
-    //  a screen, or the scope cap is a comment. Matched on its own opening words rather than
-    //  the whole string, so rewording the line does not turn this into a spelling test.
-    check('BOAT 4b — ...and is told plainly that there is no work here yet',
-        /not fixing her/i.test(uninformed),
-        `closing beat present: ${/not fixing her/i.test(uninformed)}`);
+    //  ...AND THE CEILING SPEAKS. This required `boatWorkBlocker`’s "You are not fixing her
+    //  today" to reach the screen, which was right while B0 was the whole drop and became
+    //  false the moment SESSION 2 gave her a ladder — the function is retired and the check
+    //  would have RED on every run. What replaces it is the rule that outlived the sentence:
+    //  every stage names what she IS and what she still is NOT, so no single action can feel
+    //  like it finished the boat (Law 124: "a successful start is not a completed repair").
+    check('BOAT 4b — ...and she names her own ceiling, at the bottom of the ladder as at the top',
+        /will not float/i.test(uninformed) && /not flotation|not carrying anyone/i.test(uninformed),
+        `closing beat: "${uninformed.slice(-140)}"`);
 
     // ---- 5. THE MANUAL ROUTE CHANGES WHAT SHE SAYS -----------------------------
     //
@@ -8246,18 +8293,24 @@ async function main() {
 
     //  THE ONE THE FIRST BUILD GOT BACKWARDS. The handler read `route ?? blocker`, so the
     //  survivor who now knows what the hull needs — and is therefore likeliest to reach for a
-    //  repair verb — was the only one never told there isn't one. Both beats, for both people.
-    check('BOAT 5b — ...and the informed survivor is told BOTH: which route taught them, and that there is still no work',
+    //  repair verb — was the only one never told where she stands. Both beats, for both people.
+    //  The second beat was `boatWorkBlocker`’s retired sentence; it is now the capability note.
+    check('BOAT 5b — ...and the informed survivor is told BOTH: which route taught them, and where she stands',
         /dry-bag book|handled enough boats|read it and you have done it/i.test(informed)
-        && /not fixing her/i.test(informed),
+        && /will not float/i.test(informed),
         `route named ${/dry-bag book|handled enough boats|read it and you have done it/i.test(informed)},`
-        + ` blocker present ${/not fixing her/i.test(informed)}`);
+        + ` ceiling present ${/will not float/i.test(informed)}`);
 
-    // ---- 6. THE SCOPE CAP HOLDS, AND SAYS SO -----------------------------------
+    // ---- 6. LOOKING IS NOT DOING -----------------------------------------------
     //
-    //  The drop's own boundary, witnessed: repeated taps must not advance her. B1 does not
-    //  exist, and a survivor who keeps tapping should be TOLD there is no work here rather
-    //  than left in silence — [[D-042]], applied to an absence that is deliberate.
+    //  This asserted the DROP 4 scope cap: that no GameState key contained "boat" at all.
+    //  Schema v37 adds `boat: BoatState`, so that conjunct became permanently false and the
+    //  check would have RED on every run — in a section (G9) the SESSION 2 sweep never ran.
+    //
+    //  The claim worth keeping is the one underneath it, and it is stronger now than it was:
+    //  a TAP is inspection, and inspection changes nothing. There are nine other verbs on her
+    //  circle that DO change things, every one of them behind a deliberate hold — so "looking
+    //  at her twice moved nothing" is no longer a scope cap, it is the tap/hold contract.
     const beforeMore = await live();
     await tapMesh('boat_hull', 55);
     await sleep(500);
@@ -8265,13 +8318,13 @@ async function main() {
     await sleep(700);
     const afterMore = await live();
     const stillB0 = await page.evaluate(() => window.__drift.boat().stage);
-    check('BOAT 6 — no repair verb: tapping her again changes nothing she has and nothing you have',
+    check('BOAT 6 — LOOKING IS NOT DOING: two more taps move neither the hull nor the pack',
         stillB0 === 'B0'
         && JSON.stringify(afterMore.inventory) === JSON.stringify(beforeMore.inventory)
-        && Object.keys(afterMore).every((k) => !k.toLowerCase().includes('boat')),
+        && JSON.stringify(afterMore.boat) === JSON.stringify(beforeMore.boat),
         `stage ${stillB0}, pack unchanged`
         + ` ${JSON.stringify(afterMore.inventory) === JSON.stringify(beforeMore.inventory)},`
-        + ` no boat key in the save ${Object.keys(afterMore).every((k) => !k.toLowerCase().includes('boat'))}`);
+        + ` hull unchanged ${JSON.stringify(afterMore.boat) === JSON.stringify(beforeMore.boat)}`);
 
     // ---- 7. THE VISUAL SENTENCE ------------------------------------------------
     //
@@ -11597,80 +11650,18 @@ async function main() {
 
 
 
-    // ---- Hygiene ----
-    console.log('\nHygiene');
-    check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
-    check('no console errors during the whole run', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
-
-    //  BENCH RELIABILITY — close the last section and write the instrument's data out before
-    //  the browser goes away, so a crashed or filtered run still leaves whatever it managed to
-    //  measure. A diagnostic that only survives a clean finish cannot diagnose a run that
-    //  timed out, which is exactly the run this exists for.
-    closeCurrentSection();
-    await sampleBench(page, 'final');
-    try {
-        writeFileSync('.smoke/bench-profile.json', JSON.stringify({
-            argv: process.argv.slice(2),
-            filtered: isFilteredRun(),
-            sections: sectionTimings,
-            samples: benchSamples,
-        }, null, 2), 'utf8');
-        //  ---- THE STALL VERDICT, and the actionable half of the whole investigation ------
-        //
-        //  WHAT THE DATA SAID. Across a 2 h 8 m sweep the page did NOT leak: heap moved +7 MB,
-        //  RSS went DOWN, listeners went down, documents went 4 to 9. The bench also got
-        //  FASTER as it ran — median gap between screenshots fell 60 s to 16 s across the
-        //  quarters — which is the opposite of progressive degradation and rules out both leak
-        //  hypotheses outright.
-        //
-        //  What actually happens is STALLS: twelve gaps over ninety seconds in one run, the
-        //  worst of them 29.7 MINUTES, each landing while the machine sat at or above its
-        //  commit limit with as little as 277 MB of physical memory free. Windows grew the
-        //  pagefile from 28,672 MB to 32,636 MB mid-run to cope. A pagefile grow is a
-        //  synchronous disk operation, and everything that allocates — Chrome navigating, most
-        //  of all — waits for it.
-        //
-        //  THAT IS THE FOUR-MINUTE NAVIGATION TIMEOUT, the felling budget that ran out, and the
-        //  radio's scheduled hour drifting past. One external cause, three symptoms that each
-        //  looked like a game defect. The harness cannot fix the machine. What it CAN do is
-        //  stop letting a red from such a run be read as a product failure, so it now measures
-        //  its own stalls and says so where the count is printed.
-        const gaps = [];
-        for (let i = 1; i < benchSamples.length; i++) {
-            gaps.push({ ms: benchSamples[i].atMs - benchSamples[i - 1].atMs, at: benchSamples[i].label });
-        }
-        const stalls = gaps.filter((g) => g.ms > STALL_MS).sort((a, b) => b.ms - a.ms);
-        if (stalls.length > 0) {
-            console.log('');
-            console.log('=== BENCH STALLED DURING THIS RUN — TIMING-SENSITIVE REDS ARE SUSPECT ===');
-            console.log(`  ${stalls.length} stall(s) over ${(STALL_MS / 1000).toFixed(0)}s. Worst: ${stalls.slice(0, 3).map((g) => `${(g.ms / 1000).toFixed(0)}s before ${g.at}`).join(' | ')}`);
-            console.log('  A stall this long is the machine paging, not the game. Any red that depends on a');
-            console.log('  budget, a deadline or a scheduled hour should be re-run alone before it is believed.');
-        }
-
-        if (fixtureFailures.length > 0) {
-            console.log('');
-            console.log('=== FIXTURES THAT DID NOT APPLY — CHECKS DOWNSTREAM OF THESE TESTED THE WRONG STATE ===');
-            console.log(`  ${fixtureFailures.length} editSave call(s) did not take. First few:`);
-            for (const f of fixtureFailures.slice(0, 5)) console.log(`    ${f}`);
-        }
-
-        const slowest = [...sectionTimings].sort((a, b) => b.ms - a.ms).slice(0, 5);
-        const first = benchSamples[0], last = benchSamples[benchSamples.length - 1];
-        console.log('');
-        console.log('BENCH PROFILE  (.smoke/bench-profile.json)');
-        console.log(`  sections timed : ${sectionTimings.length}, total ${(sectionTimings.reduce((t, x) => t + x.ms, 0) / 1000).toFixed(0)} s`);
-        console.log(`  slowest        : ${slowest.map((x) => `${x.name.slice(0, 28)} ${(x.ms / 1000).toFixed(0)}s`).join(' | ')}`);
-        if (first && last) {
-            console.log(`  page heap      : ${first.heapMB} -> ${last.heapMB} MB`);
-            console.log(`  DOM nodes      : ${first.nodes} -> ${last.nodes}`);
-            console.log(`  listeners      : ${first.listeners} -> ${last.listeners}`);
-            console.log(`  documents      : ${first.documents} -> ${last.documents}`);
-            console.log(`  node rss       : ${first.rssMB} -> ${last.rssMB} MB`);
-        }
-    } catch (e) {
-        console.log('BENCH PROFILE could not be written: ' + String(e));
-    }
+    //  HYGIENE AND THE BENCH PROFILE USED TO BE HERE, AND THAT WAS THE BUG.
+    //
+    //  Both blocks read as end-of-run summaries and were written as end-of-run summaries,
+    //  but ELEVEN sections are declared below them. So "no console errors during the whole
+    //  run" was asserted with a sixth of the suite still to come — it could not have seen
+    //  an error thrown by any of them — and the bench profile was WRITTEN before those
+    //  sections were timed, which is why a G12 group log read "sections timed : 0" while
+    //  G11 read 7. Neither was measuring what its own sentence claimed.
+    //
+    //  They now run at the very end of main(), immediately before the browser closes. The
+    //  rule this earns: a check whose name says WHOLE RUN must be the last thing in the
+    //  file, and appending a section below one is how it quietly stops being true.
 
     // ======== UNIVERSAL LONG-PRESS — a hold ALWAYS asks ========
     //
@@ -13291,27 +13282,16 @@ async function main() {
      *      survivor was watching. So the check is a LEGIBILITY one, and it is paired: the
      *      shell count falls AND a cup chip appears, in the same read.
      */
-    //  LOCAL COPIES ON PURPOSE. The identical helpers exist inside WAVE 0 PART TWO's own
-    //  block scope and are invisible here — the run crashed on exactly that. Hoisting them to
-    //  module scope would be the tidier fix and is deliberately not done in this batch: they
-    //  are two lines each, and moving a helper that four sections already depend on is a
-    //  change to those sections' behaviour dressed up as a refactor.
-    const openCircleAt = async (wx, wz) => {
-        const at = await screenOf(wx, wz);
-        if (!at) return { ok: false, why: 'no pixel on screen', segs: [] };
-        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
-        await sleep(600);
-        const segs = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
-            .map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')));
-        return { ok: segs.length > 0, why: segs.length ? null : 'no circle opened', segs };
-    };
-    const pressCircleSeg = async (verb) => page.evaluate((v) => {
-        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
-        if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
-        if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
-        seg.click();
-        return { ok: true, why: null };
-    }, verb);
+    //  `openCircleAt` AND `pressCircleSeg` USED TO BE COPIED HERE, and the comment that
+    //  justified the copy was wrong in a way that cost a whole sweep. It read: "the identical
+    //  helpers exist inside WAVE 0 PART TWO’s own block scope and are invisible here". They
+    //  did not exist there. Section 44 CALLS both and DEFINES neither, so every run that
+    //  reached it died with `ReferenceError: openCircleAt is not defined` — taking the whole
+    //  process down, which is why no full sweep completed and why G9 could not be green.
+    //
+    //  They are now defined once, beside `tapWorld`, and both callers see the same two
+    //  functions. The deferred hoist was the right instinct and the wrong deferral: a helper
+    //  that four sections depend on is exactly the one that must not be scoped to one of them.
 
     const THREE_FIXTURE = `
         state.player = { x: 0, y: 96 };
@@ -13990,6 +13970,478 @@ async function main() {
         `framePick ${JSON.stringify(framePick)} · pole ${JSON.stringify(poleMesh)}`);
 
     await ensureNoPanel();
+    }
+
+
+    if (section('SESSION 2 — THE BOAT: B0 secured, B1 stabilized, B2 afloat')) {
+
+    /**
+     * THE STAGED CAPABILITY, DRIVEN END TO END (Laws 124 and 125).
+     *
+     * The whole ladder on real pixels: look her over, survey her, prop her, bail her, back the
+     * frames, pay the seams, float her on a line — then get in, take her out under the
+     * paddle, and make her fast. Ten verbs on one target, five separate systems, three
+     * visually distinct states.
+     *
+     * EACH STATE IS WITNESSED INDIVIDUALLY, which the brief asks for by name — not asserted as
+     * one blob. `boatProps`, `boatPatch`, `boatCaulk` and `boatTether` are four separately
+     * named surfaces, one per system, so a render check says WHICH of them is standing rather
+     * than "the boat rendered". A patch that appeared when the seams were payed would be
+     * exactly the collapse of two systems into one that Law 124 forbids, and it would show up
+     * here as the wrong mesh being enabled.
+     *
+     * AND THE GATE IS DRIVEN FROM BOTH SIDES, which is the half a render witness cannot give.
+     * The last leg stages a survivor who barely understands hulls, watches her do BASIC work,
+     * reads the forecast warning her, sees the trial refuse her and the tether stay UNDRAWN —
+     * then raises her seamanship, finds the repair verbs reopened and labelled again, redoes
+     * the work at a better rung with the first attempt still counted in her timber, and floats
+     * her. A gate that cannot refuse is not a gate; a refusal with no way out is a dead end.
+     */
+    const BOAT_AT = { x: 14, y: 100 };
+    const BOAT_FIXTURE = `
+        state.player = { x: 14, y: 94 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.boat = { surveyed: false, supports: false, dewatered: false, structural: null,
+                       seal: null, floatTest: null, loadKnown: false, moored: false,
+                       ferried: false };
+        state.knowledge.domains.navigationSeamanship.technique = 40;
+        state.knowledge.domains.navigationSeamanship.understanding = 40;
+        state.tools = { ...state.tools, flask: true };
+        state.outboard = { ...state.outboard, teardown: { rung: 'expert', destroyed: false,
+                           gained: {}, parts: ['mountingBracket', 'cowling', 'prop'] } };
+        state.carriedParts = ['mountingBracket', 'cowling', 'prop'];
+        state.inventory = { ...state.inventory, wood: 30, fiber: 30, stone: 20 };
+    `;
+
+    const closeVerbCircle = async () => {
+        const wasUp = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (!el) return false;
+            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            return true;
+        });
+        if (wasUp) await sleep(420);
+    };
+    const boatCircle = async () => {
+        //  WAIT FOR CONTROL TO COME BACK BEFORE TOUCHING ANYTHING. `endPanel` hands
+        //  `panelOpen` back on a DEFERRED macrotask, and `onTap` returns immediately while it
+        //  is still true — so a hold dispatched too soon after closing a circle is silently
+        //  swallowed. The first cut read `circle []` on every other check for exactly this,
+        //  alternating empty and full down the whole section, which looked like the boat
+        //  refusing and was the harness knocking before the door was unlocked.
+        await page.waitForFunction(
+            () => (typeof window.__drift?.panelOpen === 'function' ? window.__drift.panelOpen() : false) === false,
+            { timeout: 8_000 },
+        ).catch(() => {});
+        await faceNode(BOAT_AT.x, BOAT_AT.y);
+        await sleep(260);
+        const at = await screenOf(BOAT_AT.x, BOAT_AT.y);
+        if (!at) return { ok: false, why: 'no pixel on screen', segs: [] };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        //  POLLED, NOT SLEPT — a hold ARMS a target and the circle opens once the frame loop's
+        //  own walk carries the survivor in. A fixed delay reads "no circle" on a game that is
+        //  simply still walking, which this harness has been bitten by before.
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        const segs = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')));
+        return { ok: segs.length > 0, why: segs.length ? null : 'no circle opened', segs };
+    };
+    /**
+     * OPEN THE CIRCLE AND PRESS ONE THING — one helper, because the first cut separated them
+     * and every check after the first read `no <verb> segment`. A circle closed by the
+     * previous check's `ensureNoPanel` has to be re-opened before it can be pressed, and a
+     * press that reports "no segment" cannot tell "the verb is missing" from "the wheel was
+     * not up". This opens, reports what it saw, and presses — so a failure names which.
+     */
+    const doBoatVerb = async (verb) => {
+        //  DISMISS THE WHEEL EXPLICITLY. `ensureNoPanel` clicks `.close-btn`/`.done`, and the
+        //  verb circle has neither — it closes on a `pointerdown` anywhere on itself. So the
+        //  circle survived every `ensureNoPanel`, the next hold landed ON it and dismissed it,
+        //  and the check after that opened one again: the strict full/empty/full alternation
+        //  the first two cuts read all the way down the section. It looked like the boat
+        //  refusing every other verb and was the harness closing its own wheel.
+        await closeVerbCircle();
+        await ensureNoPanel();
+        await sleep(260);
+        const circle = await boatCircle();
+        const pressed = await page.evaluate((v) => {
+            const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+            if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
+            if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
+            seg.click();
+            return { ok: true, why: null };
+        }, verb);
+        await sleep(1000);
+        await ensureNoPanel();
+        return { ...pressed, circle: circle.segs ?? [] };
+    };
+    const pressBoat = doBoatVerb;
+    //  FOUR SURFACES, READ TOGETHER, so every check can say which stage is actually drawn.
+    const boatSurfaces = async () => page.evaluate(() => ({
+        props: window.__drift?.meshInfo?.('boatProps')?.enabled ?? null,
+        patch: window.__drift?.meshInfo?.('boatPatch')?.enabled ?? null,
+        caulk: window.__drift?.meshInfo?.('boatCaulk')?.enabled ?? null,
+        tether: window.__drift?.meshInfo?.('boatTether')?.enabled ?? null,
+    }));
+    //  LABELS, NOT JUST IDS — a redo announces itself in the label ("Back the frames AGAIN"),
+    //  and a check that only read the id could not tell a second attempt from a first.
+    const boatLabels = async () => page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+        .map((o) => `${o.dataset.verb}=${(o.querySelector('.verb-label')?.textContent ?? o.textContent ?? '').trim().slice(0, 30)}`));
+    const hintNow = async () => page.evaluate(() => document.querySelector('.hint')?.textContent?.trim() ?? '');
+
+    // ---- B0 · SHE IS A SHELL ON THE SAND ---------------------------------------------
+    await editSave(BOAT_FIXTURE);
+    await sleep(900);
+    const atB0 = await live();
+    const b0Circle = await boatCircle();
+    check('BOAT B0 — she is a target with real work on her: the ladder is on one circle',
+        (b0Circle.segs ?? []).some((v) => /^inspect-boat/.test(v))
+        && (b0Circle.segs ?? []).some((v) => /^survey-hull$/.test(v)),
+        `stage ${atB0.boat ? 'fresh' : '?'} · circle [${(b0Circle.segs ?? []).join(', ')}]`);
+    //  THE STAGE IS DRAWN AS NOTHING YET — this is B0 witnessed, not merely un-witnessed.
+    const b0Surf = await boatSurfaces();
+    check('BOAT B0 — RENDER: no props, no patch, no caulk, no tether. She is untouched',
+        b0Surf.props === false && b0Surf.patch === false && b0Surf.caulk === false && b0Surf.tether === false,
+        JSON.stringify(b0Surf));
+    //  ...and everything that would change her is REFUSED, each with its own reason.
+    const b0Blocked = (b0Circle.segs ?? []).filter((v) => /:blocked$/.test(v));
+    check('BOAT B0 — ...and the work that is not her turn yet is refused, not hidden',
+        b0Blocked.some((v) => /shore-up-boat/.test(v)) && b0Blocked.some((v) => /float-test/.test(v)),
+        `blocked [${b0Blocked.join(', ')}]`);
+    await closeVerbCircle();
+    await ensureNoPanel();
+
+    // ---- B0 → B1 · SURVEY, PROP, BAIL ------------------------------------------------
+    const surveyed = await pressBoat('survey-hull');
+    const surveySaid = await hintNow();
+    check('BOAT B1 — the survey names TWO jobs, which is the whole design (Law 124)',
+        surveyed.ok && /two different jobs/i.test(surveySaid)
+        && /hull/i.test(surveySaid) && /seams/i.test(surveySaid),
+        `${surveyed.why ?? 'surveyed'} · circle [${surveyed.circle.join(', ')}] · said "${surveySaid.slice(0, 160)}"`);
+
+    const beforeProps = await live();
+    const propped = await pressBoat('shore-up-boat');
+    const afterProps = await live();
+    const propSurf = await boatSurfaces();
+    check('BOAT B1 — propping her costs TIMBER (Law 125: rigging, not strength)',
+        propped.ok && afterProps.boat.supports === true
+        && afterProps.inventory.wood < beforeProps.inventory.wood,
+        `${propped.why ?? 'propped'} · circle [${propped.circle.join(', ')}] · wood ${beforeProps.inventory.wood} -> ${afterProps.inventory.wood}`);
+    check('BOAT B1 — RENDER: the cribbing is DRAWN, and nothing else has appeared with it',
+        propSurf.props === true && propSurf.patch === false
+        && propSurf.caulk === false && propSurf.tether === false,
+        JSON.stringify(propSurf));
+
+    const bailed = await pressBoat('dewater-boat');
+    const atB1 = await live();
+    const b1Said = await hintNow();
+    check('BOAT B1 — bailed out, she is STABILIZED, and she says what she still is not',
+        bailed.ok && atB1.boat.dewatered === true && /do not trust her in the water/i.test(b1Said),
+        `${bailed.why ?? 'bailed'} · said "${b1Said.slice(0, 140)}"`);
+
+    // ---- B1 · TWO SEPARATE REPAIRS, TWO SEPARATE SURFACES ----------------------------
+    const beforeFrames = await live();
+    const framed = await pressBoat('repair-frames');
+    const afterFrames = await live();
+    const frameSurf = await boatSurfaces();
+    check('BOAT B1 — backing the frames uses the SALVAGED BRACKET off the outboard',
+        framed.ok && afterFrames.boat.structural !== null
+        && !(afterFrames.carriedParts ?? []).includes('mountingBracket'),
+        `${framed.why ?? 'framed'} · in hand [${(afterFrames.carriedParts ?? []).join(', ')}] · teardown record kept [${(afterFrames.outboard.teardown?.parts ?? []).join(', ')}]`);
+    //  THE SYSTEMS ARE SEPARATE, AND THE RENDER PROVES IT: the patch is up, the caulk is not.
+    check('BOAT B1 — RENDER: the patch is drawn and the SEAMS ARE STILL OPEN (Law 124)',
+        frameSurf.patch === true && frameSurf.caulk === false && frameSurf.props === true,
+        JSON.stringify(frameSurf));
+    check('BOAT B1 — ...and the hull repair left watertightness exactly where it was',
+        afterFrames.boat.seal === null,
+        `structural ${JSON.stringify(afterFrames.boat.structural)} · seal ${JSON.stringify(afterFrames.boat.seal)}`);
+
+    const beforeSeal = await live();
+    const sealed = await pressBoat('seal-seams');
+    const afterSeal = await live();
+    const sealSurf = await boatSurfaces();
+    check('BOAT B1 — paying the seams costs FIBRE, a different job wanting different stuff',
+        sealed.ok && afterSeal.boat.seal !== null
+        && afterSeal.inventory.fiber < beforeSeal.inventory.fiber
+        && afterSeal.inventory.wood === beforeSeal.inventory.wood,
+        `${sealed.why ?? 'sealed'} · fibre ${beforeSeal.inventory.fiber} -> ${afterSeal.inventory.fiber}, wood unchanged ${afterSeal.inventory.wood === beforeSeal.inventory.wood}`);
+    check('BOAT B1 — RENDER: now BOTH surfaces stand, and she is still not afloat',
+        sealSurf.patch === true && sealSurf.caulk === true && sealSurf.tether === false,
+        JSON.stringify(sealSurf));
+
+    // ---- D-011 · NOTHING ABOUT HER CHANGES WHILE NOBODY IS THERE ---------------------
+    const awayBefore = await live();
+    await goAway(60);
+    const awayAfter = await live();
+    check('BOAT D-011 — an hour away changes her hull by NOTHING: no flooding, no decay',
+        JSON.stringify(awayAfter.boat) === JSON.stringify(awayBefore.boat),
+        `${JSON.stringify(awayBefore.boat)} -> ${JSON.stringify(awayAfter.boat)}`);
+
+    // ---- B1 → B2 · THE TETHERED FLOAT TEST -------------------------------------------
+    //  VITALS RESTORED, not because the boat cares but because a long device run drains a
+    //  survivor and an exhaustion hint displaces the boat's own words — which the first cut
+    //  read as the post-trial inspection saying nothing.
+    await editSave(`state.player = { x: 14, y: 94 };
+        state.energy = 100; state.hunger = 90; state.thirst = 80; state.fatigue = 0;`);
+    await sleep(800);
+    const beforeFloat = await live();
+    await closeVerbCircle();
+    const floatCircle = await boatCircle();
+    check('BOAT B2 — with both systems repaired, the float test is finally offered',
+        (floatCircle.segs ?? []).some((v) => /^float-test$/.test(v)),
+        `circle [${(floatCircle.segs ?? []).join(', ')}]`);
+    const floated = await pressBoat('float-test');
+    const afterFloat = await live();
+    const floatSaid = await hintNow();
+    const floatSurf = await boatSurfaces();
+    check('BOAT B2 — SHE FLOATS: the test holds and she reaches B2',
+        floated.ok && afterFloat.boat.floatTest?.held === true,
+        `${floated.why ?? 'floated'} · floatTest ${JSON.stringify(afterFloat.boat.floatTest)}`);
+    check('BOAT B2 — RENDER: the tether is drawn — she is afloat, and still on a line',
+        floatSurf.tether === true && floatSurf.props === true && floatSurf.patch === true,
+        JSON.stringify(floatSurf));
+    //  THE POST-TRIAL READ, and the ceiling named in the same breath — "a successful start is
+    //  not a completed repair". B2 must feel real AND must not feel like the end.
+    check('BOAT B2 — ...and the post-trial inspection reads BOTH systems, not pass/fail',
+        /frames/i.test(floatSaid) && /seams|garboard/i.test(floatSaid),
+        `said "${floatSaid.slice(0, 200)}"`);
+    check('BOAT B2 — ...and she names her own ceiling: not the open sea, and no engine',
+        /not the open sea/i.test(floatSaid) || /no engine/i.test(floatSaid),
+        `said "${floatSaid.slice(0, 200)}"`);
+
+    // ---- B2 · WHAT FLOATING IS FOR ---------------------------------------------------
+    await closeVerbCircle();
+    const b2Circle = await boatCircle();
+    check('BOAT B2 — boarding and mooring are offered only now that she swims',
+        (b2Circle.segs ?? []).includes('board-boat') && (b2Circle.segs ?? []).includes('moor-boat'),
+        `circle [${(b2Circle.segs ?? []).join(', ')}]`);
+    const boarded = await pressBoat('board-boat');
+    const aboard = await live();
+    const loadSaid = await hintNow();
+    check('BOAT B2 — getting in TEACHES what she carries: load is its own system',
+        boarded.ok && aboard.boat.loadKnown === true && /\d+\s*kg/i.test(loadSaid),
+        `${boarded.why ?? 'aboard'} · said "${loadSaid.slice(0, 140)}"`);
+    //  FAIR CHALLENGE FOR THE PADDLE: the cost and the ceiling are spoken at the moment
+    //  before a survivor could reach for it, not after they have already spent the arms.
+    check('BOAT B2 — ...and getting in also says what MOVING her would cost, before you do',
+        /end of the line/i.test(loadSaid) && /wreck is further/i.test(loadSaid),
+        `said "${loadSaid.slice(0, 240)}"`);
+
+    // ---- B2 · MANUAL PROPULSION, WHICH IS WHAT STOPS B2 BEING A DIORAMA -------------
+    //  A hull you can sit in but never move is a raft with better manners. This is the
+    //  third of the source’s three B2 capabilities, and the one that costs arms.
+    const beforeFerry = await live();
+    const ferried = await pressBoat('ferry-boat');
+    const afterFerry = await live();
+    const ferrySaid = await hintNow();
+    //  THE CHARGE, RECOMPUTED RATHER THAN ASSUMED. `hours = metres / (walk x fraction) /
+    //  realSecondsPerGameHour`, priced at the raft’s own paddling drain. Ambient drain rides
+    //  on top over the second the press takes, so the band is one-sided: at least the
+    //  charge, and not much more than it.
+    const ferryHours = (TUNE.boatFerryDistanceM / (TUNE.walkSpeedMps * TUNE.boatPaddleSpeedFraction))
+        / TUNE.realSecondsPerGameHour;
+    const ferryCharge = ferryHours * TUNE.raftEnergyDrainPerGameHour;
+    const ferryDrop = beforeFerry.energy - afterFerry.energy;
+    check('BOAT B2 — she MOVES under her own paddle, and the ARMS ARE ACTUALLY CHARGED',
+        ferried.ok && afterFerry.boat.ferried === true
+        && ferryDrop >= ferryCharge * 0.98 && ferryDrop <= ferryCharge + 0.5,
+        `${ferried.why ?? 'ferried'} · energy ${beforeFerry.energy.toFixed(3)} -> ${afterFerry.energy.toFixed(3)}`
+        + ` = ${ferryDrop.toFixed(3)} against a computed charge of ${ferryCharge.toFixed(3)}`
+        + ` · said "${ferrySaid.slice(0, 120)}"`);
+    //  THE CEILING, SPOKEN AT THE MOMENT IT WOULD MOST LIKE TO BE IGNORED.
+    check('BOAT B2 — ...and the trip names the line and the ceiling, not a destination',
+        /paddle/i.test(ferrySaid) && (/no engine/i.test(ferrySaid) || /not the open sea/i.test(ferrySaid)),
+        `said "${ferrySaid.slice(0, 200)}"`);
+    //  PROPULSION IS A CAPABILITY, NOT A RUNG: nothing about the ladder moved.
+    check('BOAT B2 — ...and paddling neither advanced the ladder nor spent any material',
+        afterFerry.boat.structural !== null && afterFerry.boat.seal !== null
+        && afterFerry.inventory.wood === beforeFerry.inventory.wood
+        && afterFerry.inventory.fiber === beforeFerry.inventory.fiber,
+        `wood ${beforeFerry.inventory.wood} -> ${afterFerry.inventory.wood}, fibre ${beforeFerry.inventory.fiber} -> ${afterFerry.inventory.fiber}`);
+
+    const beforeMoor = await live();
+    const moored = await pressBoat('moor-boat');
+    const afterMoor = await live();
+    check('BOAT B2 — and she can be made fast, for a painter of fibre',
+        moored.ok && afterMoor.boat.moored === true
+        && afterMoor.inventory.fiber < beforeMoor.inventory.fiber,
+        `${moored.why ?? 'moored'} · fibre ${beforeMoor.inventory.fiber} -> ${afterMoor.inventory.fiber}`);
+
+    // ---- THE GATE CAN REFUSE, AND THERE IS A ROUTE OUT OF ITS REFUSAL ---------------
+    //
+    //  A gate that cannot refuse is not a gate. Measured before this leg existed: the
+    //  lowest competence reachable at repair time is 20.609, which is rung `basic`, which
+    //  shipped 0.408 against a `boatSwampAt` of 0.5 — so the float test could not fail in
+    //  ANY reachable state and its whole failure half was dead. Retuned to 0.25, which
+    //  means one legible sentence: no `basic` repair may remain in her.
+    //
+    //  AND THE REFUSAL MUST HAVE A WAY OUT, or it is a hard dead end: the repair verbs now
+    //  come back when your hands could better the work already in her. Both halves are
+    //  driven here, because either alone is worse than neither.
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: 14, y: 94 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.boat = { surveyed: true, supports: true, dewatered: true, structural: null,
+                       seal: null, floatTest: null, loadKnown: false, moored: false,
+                       ferried: false };
+        state.knowledge.domains.navigationSeamanship.technique = 19;
+        state.knowledge.domains.navigationSeamanship.understanding = 5;
+        state.tools = { ...state.tools, flask: true };
+        state.outboard = { ...state.outboard, teardown: { rung: \'expert\', destroyed: false,
+                           gained: {}, parts: [\'mountingBracket\'] } };
+        state.carriedParts = [\'mountingBracket\'];
+        state.inventory = { ...state.inventory, wood: 30, fiber: 30, stone: 20 };
+    `);
+    await sleep(900);
+
+    const rushFrames = await pressBoat('repair-frames');
+    const rushSeams = await pressBoat('seal-seams');
+    const rushed = await live();
+    const warned = await hintNow();
+    check('BOAT GATE — a survivor who barely understands hulls does BASIC work, not expert',
+        rushFrames.ok && rushSeams.ok
+        && rushed.boat.structural?.rung === 'basic' && rushed.boat.seal?.rung === 'basic',
+        `frames ${rushFrames.why ?? 'ok'} · seams ${rushSeams.why ?? 'ok'} · rungs ${rushed.boat.structural?.rung}/${rushed.boat.seal?.rung}`);
+    //  FAIR CHALLENGE: she is told, in words, BEFORE she commits to the water.
+    check('BOAT GATE — ...and the forecast WARNS her before she puts a rushed hull in the water',
+        /fill faster than you could bail/i.test(warned),
+        `said "${warned.slice(0, 200)}"`);
+
+    const sank = await pressBoat('float-test');
+    const afterSank = await live();
+    const sankSaid = await hintNow();
+    const sankSurf = await boatSurfaces();
+    check('BOAT GATE — SHE DOES NOT SWIM, and nothing she did is lost (degrade, not destroy)',
+        sank.ok && afterSank.boat.floatTest?.held === false
+        && afterSank.boat.structural !== null && afterSank.boat.seal !== null,
+        `${sank.why ?? 'floated'} · floatTest ${JSON.stringify(afterSank.boat.floatTest)}`);
+    //  RENDER: the tether is the one surface that means B2, and it must NOT be drawn.
+    check('BOAT GATE — RENDER: no tether. A failed trial is not a stage (Law 124)',
+        sankSurf.tether === false && sankSurf.patch === true && sankSurf.caulk === true,
+        JSON.stringify(sankSurf));
+    check('BOAT GATE — ...and the post-trial inspection names WHICH system to go and fix',
+        /frames|patch/i.test(sankSaid) && /seams|garboard|caulk/i.test(sankSaid),
+        `said "${sankSaid.slice(0, 200)}"`);
+
+    //  THE ROUTE OUT. Nothing here changes the hull — only the survivor.
+    await ensureNoPanel();
+    await editSave(`
+        state.knowledge.domains.navigationSeamanship.technique = 50;
+        state.knowledge.domains.navigationSeamanship.understanding = 30;
+        state.energy = 100; state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+    `);
+    await sleep(900);
+    await closeVerbCircle();
+    const redoCircle = await boatCircle();
+    const redoLabels = await boatLabels();
+    check('BOAT GATE — BETTER HANDS REOPEN THE WORK, and the label says it is a second attempt',
+        (redoCircle.segs ?? []).includes('repair-frames')
+        && redoLabels.some((l) => /^repair-frames=.*again/i.test(l)),
+        `circle [${(redoCircle.segs ?? []).join(', ')}] · labels [${redoLabels.join(' | ')}]`);
+
+    const beforeRedo = await live();
+    const redoFrames = await pressBoat('repair-frames');
+    const redoSeams = await pressBoat('seal-seams');
+    const afterRedo = await live();
+    check('BOAT GATE — the redo is REAL work at a better rung, and it keeps her history',
+        redoFrames.ok && redoSeams.ok
+        && afterRedo.boat.structural?.rung === 'competent' && afterRedo.boat.seal?.rung === 'competent'
+        && (afterRedo.boat.structural?.usedMaterials?.wood ?? 0) > (beforeRedo.boat.structural?.usedMaterials?.wood ?? 0)
+        && (afterRedo.boat.structural?.usedParts ?? []).includes('mountingBracket'),
+        `rungs ${afterRedo.boat.structural?.rung}/${afterRedo.boat.seal?.rung} · timber in her frames ${beforeRedo.boat.structural?.usedMaterials?.wood} -> ${afterRedo.boat.structural?.usedMaterials?.wood} · parts ${JSON.stringify(afterRedo.boat.structural?.usedParts)}`);
+
+    const swam = await pressBoat('float-test');
+    const afterSwam = await live();
+    const swamSurf = await boatSurfaces();
+    check('BOAT GATE — AND NOW SHE SWIMS: the refusal had a way out, and the render agrees',
+        swam.ok && afterSwam.boat.floatTest?.held === true && swamSurf.tether === true,
+        `${swam.why ?? 'floated'} · floatTest ${JSON.stringify(afterSwam.boat.floatTest)} · ${JSON.stringify(swamSurf)}`);
+    await ensureNoPanel();
+    await ensureNoPanel();
+    }
+
+    // ---- END OF RUN — hygiene and the bench profile, AFTER every section --------------
+    //
+    //  Moved here from the middle of the file, where they could not see the last eleven
+    //  sections. See the signpost at their old position for what that cost.
+    // ---- Hygiene ----
+    console.log('\nHygiene');
+    check('every requested asset was found', missing.length === 0, missing.slice(0, 4).join(' | '));
+    check('no console errors during the whole run', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
+
+    //  BENCH RELIABILITY — close the last section and write the instrument's data out before
+    //  the browser goes away, so a crashed or filtered run still leaves whatever it managed to
+    //  measure. A diagnostic that only survives a clean finish cannot diagnose a run that
+    //  timed out, which is exactly the run this exists for.
+    closeCurrentSection();
+    await sampleBench(page, 'final');
+    try {
+        writeFileSync('.smoke/bench-profile.json', JSON.stringify({
+            argv: process.argv.slice(2),
+            filtered: isFilteredRun(),
+            sections: sectionTimings,
+            samples: benchSamples,
+        }, null, 2), 'utf8');
+        //  ---- THE STALL VERDICT, and the actionable half of the whole investigation ------
+        //
+        //  WHAT THE DATA SAID. Across a 2 h 8 m sweep the page did NOT leak: heap moved +7 MB,
+        //  RSS went DOWN, listeners went down, documents went 4 to 9. The bench also got
+        //  FASTER as it ran — median gap between screenshots fell 60 s to 16 s across the
+        //  quarters — which is the opposite of progressive degradation and rules out both leak
+        //  hypotheses outright.
+        //
+        //  What actually happens is STALLS: twelve gaps over ninety seconds in one run, the
+        //  worst of them 29.7 MINUTES, each landing while the machine sat at or above its
+        //  commit limit with as little as 277 MB of physical memory free. Windows grew the
+        //  pagefile from 28,672 MB to 32,636 MB mid-run to cope. A pagefile grow is a
+        //  synchronous disk operation, and everything that allocates — Chrome navigating, most
+        //  of all — waits for it.
+        //
+        //  THAT IS THE FOUR-MINUTE NAVIGATION TIMEOUT, the felling budget that ran out, and the
+        //  radio's scheduled hour drifting past. One external cause, three symptoms that each
+        //  looked like a game defect. The harness cannot fix the machine. What it CAN do is
+        //  stop letting a red from such a run be read as a product failure, so it now measures
+        //  its own stalls and says so where the count is printed.
+        const gaps = [];
+        for (let i = 1; i < benchSamples.length; i++) {
+            gaps.push({ ms: benchSamples[i].atMs - benchSamples[i - 1].atMs, at: benchSamples[i].label });
+        }
+        const stalls = gaps.filter((g) => g.ms > STALL_MS).sort((a, b) => b.ms - a.ms);
+        if (stalls.length > 0) {
+            console.log('');
+            console.log('=== BENCH STALLED DURING THIS RUN — TIMING-SENSITIVE REDS ARE SUSPECT ===');
+            console.log(`  ${stalls.length} stall(s) over ${(STALL_MS / 1000).toFixed(0)}s. Worst: ${stalls.slice(0, 3).map((g) => `${(g.ms / 1000).toFixed(0)}s before ${g.at}`).join(' | ')}`);
+            console.log('  A stall this long is the machine paging, not the game. Any red that depends on a');
+            console.log('  budget, a deadline or a scheduled hour should be re-run alone before it is believed.');
+        }
+
+        if (fixtureFailures.length > 0) {
+            console.log('');
+            console.log('=== FIXTURES THAT DID NOT APPLY — CHECKS DOWNSTREAM OF THESE TESTED THE WRONG STATE ===');
+            console.log(`  ${fixtureFailures.length} editSave call(s) did not take. First few:`);
+            for (const f of fixtureFailures.slice(0, 5)) console.log(`    ${f}`);
+        }
+
+        const slowest = [...sectionTimings].sort((a, b) => b.ms - a.ms).slice(0, 5);
+        const first = benchSamples[0], last = benchSamples[benchSamples.length - 1];
+        console.log('');
+        console.log('BENCH PROFILE  (.smoke/bench-profile.json)');
+        console.log(`  sections timed : ${sectionTimings.length}, total ${(sectionTimings.reduce((t, x) => t + x.ms, 0) / 1000).toFixed(0)} s`);
+        console.log(`  slowest        : ${slowest.map((x) => `${x.name.slice(0, 28)} ${(x.ms / 1000).toFixed(0)}s`).join(' | ')}`);
+        if (first && last) {
+            console.log(`  page heap      : ${first.heapMB} -> ${last.heapMB} MB`);
+            console.log(`  DOM nodes      : ${first.nodes} -> ${last.nodes}`);
+            console.log(`  listeners      : ${first.listeners} -> ${last.listeners}`);
+            console.log(`  documents      : ${first.documents} -> ${last.documents}`);
+            console.log(`  node rss       : ${first.rssMB} -> ${last.rssMB} MB`);
+        }
+    } catch (e) {
+        console.log('BENCH PROFILE could not be written: ' + String(e));
     }
 
     await browser.close();

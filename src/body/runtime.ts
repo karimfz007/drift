@@ -565,7 +565,7 @@ function installDebugHook(): void {
         return {
             x: BOAT.x,
             y: BOAT.y,
-            stage: boatStage(),
+            stage: st ? boatStage(st) : 'B0',
             bearingToFarIsland: Math.atan2(FAR_ISLAND.x - BOAT.x, FAR_ISLAND.y - BOAT.y),
             manualId: MANUALS[0]?.id ?? null,
             ...(st

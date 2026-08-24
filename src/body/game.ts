@@ -172,7 +172,32 @@ import {
     boatAffordance,
     boatSight,
     boatUnderstandingNote,
-    boatWorkBlocker,
+    surveyFindings,
+    surveyHull,
+    surveyBlocker,
+    shoreUpBoat,
+    shoreUpBlocker,
+    dewaterBoat,
+    dewaterBlocker,
+    repairHullStructure,
+    structuralBlocker,
+    sealHull,
+    sealBlocker,
+    runFloatTest,
+    floatTestBlocker,
+    floatForecastNote,
+    postTrialFindings,
+    boatCapabilityNote,
+    boatStage,
+    learnLoad,
+    loadNote,
+    runFerry,
+    ferryBlocker,
+    ferryNote,
+    ferryFindings,
+    boardBlocker,
+    moorBoat,
+    moorBlocker,
     masteryDomainForNodeKind,
     noticedAtWork,
     readoutRows,
@@ -243,7 +268,7 @@ import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, isPlaceablePoi
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
-import { CaveView, ConstructionView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, WorkspaceView, type NodeView } from './entities';
+import { BoatWorkView, CaveView, ConstructionView, DroppedView, FireView, GhostView, NodeViews, OutboardView, PlayerView, RaftView, ShelterView, ShoreItemsView, StorageView, WorkspaceView, type NodeView } from './entities';
 import {
     addCarriedButton,
     paintBackpackLoad,
@@ -386,6 +411,7 @@ export class Game {
     private fire: FireView;
     private shelter: ShelterView;
     private constructionView: ConstructionView;
+    private boatWork: BoatWorkView;
     private cave: CaveView;
     private ghost: GhostView;
     /**
@@ -545,6 +571,7 @@ export class Game {
         this.fire = new FireView(this.scene);
         this.shelter = new ShelterView(this.scene);
         this.constructionView = new ConstructionView(this.scene);
+        this.boatWork = new BoatWorkView(this.scene);
         this.cave = new CaveView(this.scene);
         this.ghost = new GhostView(this.scene);
         runtime.ghostReadout = () => this.ghost.debugState();
@@ -2334,6 +2361,16 @@ export class Game {
             case 'boil-water': this.doBoil(); break;
             case 'move-structure': this.doArmMove(); break;
             case 'add-materials': this.doAddToSite(); break;
+            case 'inspect-boat': this.doInspectBoat(); break;
+            case 'survey-hull': this.doSurveyHull(); break;
+            case 'shore-up-boat': this.doShoreUpBoat(); break;
+            case 'dewater-boat': this.doDewaterBoat(); break;
+            case 'repair-frames': this.doRepairFrames(); break;
+            case 'seal-seams': this.doSealSeams(); break;
+            case 'float-test': this.doFloatTest(); break;
+            case 'board-boat': this.doBoardBoat(); break;
+            case 'ferry-boat': this.doFerryBoat(); break;
+            case 'moor-boat': this.doMoorBoat(); break;
             case 'make-cup': this.doMakeShellCup(); break;
             case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
             case 'sleep': this.trySleep(); break;
@@ -2539,19 +2576,11 @@ export class Game {
             return;
         }
 
-        //  ---- DROP 4: THE PULL. Looking at her IS the verb ----
-        //
-        //  A tap does it, for the same reason the trace above does: there is exactly one thing
-        //  to want from her, and the Default-Verb Law's simplest case is a target with one
-        //  option. A circle here would be a menu with a single item. What the tap gives back is
-        //  what the survivor can currently SEE in her — which grows with understanding and
-        //  never becomes a list.
-        if (this.pending.kind === 'boat') {
-            this.pending = null;
-            this.doInspectBoat();
-            return;
-        }
-
+        //  THE BOAT’S OWN TAP BRANCH STOOD HERE and is gone with it. It ran `doInspectBoat`
+        //  on a tap because looking at her was the only thing to want from her, which was true
+        //  for exactly as long as B0 was the whole drop. SESSION 2 gives her ten verbs and she
+        //  joins the shared circle path below; the comment is kept only to say that the
+        //  precedent the `crash` block cites next is a precedent the boat no longer sets.
         //  ---- DROP 3B(i): THE APPOINTMENT. Working it IS the verb ----
         //
         //  A tap does it, for the same reason the trace and the boat do: there is exactly one
@@ -2624,7 +2653,11 @@ export class Game {
             //  branch is how the boar ended up with no circle; this comment block exists to
             //  say that out loud, so the eleventh target does not repeat the ninth's mistake.
             || this.pending.kind === 'workspace'
-            || this.pending.kind === 'construction') {
+            || this.pending.kind === 'construction'
+            //  SESSION 2 — the boat joins the shared path. She had her own tap branch running
+            //  one verb, which was right while inspecting was the only thing to want from her.
+            //  B0-B2 gives her ten, and this is the comment above made good on.
+            || this.pending.kind === 'boat') {
             const target = this.pending.kind;
             //  Read BEFORE `this.pending` is cleared below — see `circlePoint`.
             const groundPoint = this.pending.kind === 'ground'
@@ -3312,12 +3345,174 @@ export class Game {
         //  better ones, never answers, and the closing beat is always that there is no work
         //  here yet.
         const route = boatUnderstandingNote(s);
+        //  ---- SESSION 2 REPLACES THE CLOSING BEAT -----------------------------------
+        //
+        //  It used to end on `boatWorkBlocker()` — "there is no work here yet" — which was the
+        //  honest sentence while B0 was the whole drop. There is work here now, so the boat
+        //  says WHAT SHE IS and what she still is not (Law 124's "a successful start is not a
+        //  completed repair"), plus whatever the survey has actually taught.
         this.showHint([
             ...seen.properties,
             ...seen.questions,
             ...(route ? [route] : []),
-            boatWorkBlocker(),
+            ...surveyFindings(s),
+            ...postTrialFindings(s),
+            ...(s.boat.loadKnown ? [loadNote(s)] : []),
+            ...ferryFindings(s),
+            boatCapabilityNote(s),
         ].join('  ·  '));
+        this.lastActivityAt = now();
+    }
+
+    /** SESSION 2 — the hull survey. Study before the attempt, on a boat. */
+    private doSurveyHull(): void {
+        const s = session().state;
+        const blocked = surveyBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        surveyHull(s);
+        this.cues.play(CUES.craft);
+        this.floatText('you go over her');
+        this.showHint(surveyFindings(s).join('  ·  '));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** Law 125's rigging route: timber under the bilge, not strength. */
+    private doShoreUpBoat(): void {
+        const s = session().state;
+        const blocked = shoreUpBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        shoreUpBoat(s);
+        this.cues.play(CUES.craft);
+        this.floatText('propped and cribbed');
+        this.showHint('She sits solid now. You could work in her without her rolling on you.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    private doDewaterBoat(): void {
+        const s = session().state;
+        const blocked = dewaterBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        dewaterBoat(s);
+        this.cues.play(CUES.drink);
+        this.floatText('bailed dry');
+        //  THE STAGE CHANGED HERE, and the survivor is told so in the boat's own words.
+        this.showHint(`Floorboards clear and the bilge showing. ${boatCapabilityNote(s)}`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** HULL INTEGRITY — one of two separate systems. */
+    private doRepairFrames(): void {
+        const s = session().state;
+        const blocked = structuralBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        const done = repairHullStructure(s);
+        if (!done) { this.explain('That will not go together.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('frames backed');
+        //  NAMES THE QUALITY, because the hull will remember it and the float test will read
+        //  it. An honest degrade is only honest if the survivor is told what they achieved.
+        this.showHint(`Sistered and backed with the bracket — ${done.rung} work. ${floatForecastNote(s)}`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** WATERTIGHTNESS — the other system, deliberately its own act. */
+    private doSealSeams(): void {
+        const s = session().state;
+        const blocked = sealBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        const done = sealHull(s);
+        if (!done) { this.explain('That will not drive home.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('seams payed');
+        this.showHint(`Fibre teased out and driven into the garboard — ${done.rung} work. ${floatForecastNote(s)}`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * THE GATE, AND THE CELEBRATION THE SOURCE ASKS FOR.
+     *
+     * A FAILURE COSTS THE AFTERNOON AND NOTHING ELSE. She is on a line: a swamped hull comes
+     * back up the sand with every repair still in her, and the survivor learns which of the two
+     * systems let her down. That is the degrade-not-destroy rule applied to the gate itself.
+     */
+    private doFloatTest(): void {
+        const s = session().state;
+        const blocked = floatTestBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        const before = boatStage(s);
+        const result = runFloatTest(s);
+        if (!result) { this.explain('Not yet.'); return; }
+        const after = boatStage(s);
+        this.cues.play(result.wouldHold ? CUES.craft : CUES.denied);
+        this.floatText(result.wouldHold ? 'SHE FLOATS' : 'she fills');
+        this.showHint([
+            ...postTrialFindings(s),
+            after !== before ? boatCapabilityNote(s) : 'Haul her out and think again. Nothing you did is lost.',
+        ].join('  ·  '));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /** B2 — getting into her, and learning what she carries by doing it. */
+    private doBoardBoat(): void {
+        const s = session().state;
+        const blocked = boardBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        const learned = learnLoad(s);
+        this.cues.play(CUES.target);
+        this.floatText('aboard');
+        //  AND WHAT MOVING HER WOULD COST, spoken HERE — the moment before a survivor could
+        //  reach for the paddle, and the fair-challenge half of manual propulsion. The same
+        //  discipline `floatForecastNote` keeps for the gate: evidence before committing.
+        this.showHint([
+            learned
+                ? `You step in and she takes it without complaint. ${loadNote(s)}`
+                : `${loadNote(s)}  ·  ${boatCapabilityNote(s)}`,
+            ferryNote(s),
+        ].join('  ·  '));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * TAKE HER OUT ON THE LINE — manual propulsion, and the third thing B2 is FOR.
+     *
+     * The forecast is spoken BEFORE the arms are spent only in the verb label and the
+     * refusal; here the trip is already committed, so what this owes is the outcome and the
+     * ceiling in the same breath. She went out, she came back, and the line is why.
+     */
+    private doFerryBoat(): void {
+        const s = session().state;
+        const blocked = ferryBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        const trip = runFerry(s);
+        if (!trip) { this.explain(ferryNote(s)); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('out on the line');
+        this.showHint([
+            ...ferryFindings(s),
+            //  THE CEILING, EVERY TIME. Law 124’s "a successful start is not a completed
+            //  repair" applies hardest to the verb that feels most like leaving.
+            boatCapabilityNote(s),
+        ].join('  ·  '));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    private doMoorBoat(): void {
+        const s = session().state;
+        const blocked = moorBlocker(s);
+        if (blocked) { this.explain(blocked); return; }
+        moorBoat(s);
+        this.cues.play(CUES.craft);
+        this.floatText('made fast');
+        this.showHint('A painter round the rock and two turns on itself. She will be here when you come back.');
+        session().persist(now());
         this.lastActivityAt = now();
     }
 
@@ -4126,6 +4321,7 @@ export class Game {
         this.constructionView.update(state, state.construction
             ? this.island.heightAt(state.construction.x, state.construction.y)
             : 0);
+        this.boatWork.update(state);
         this.cave.update(state, this.island.heightAt(state.cave.x, state.cave.y));
         this.storage.update(state, this.island.heightAt(state.storage.x, state.storage.y));
         this.workspace.update(state, this.island.heightAt(state.workspace.x, state.workspace.y));

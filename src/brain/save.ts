@@ -8,6 +8,7 @@
 
 import { TUNE } from '../data/tune';
 import { CAVE_SITE } from '../data/world';
+import { freshBoat } from './boat';
 import { freshDomainScores } from './knowledge';
 import { freshLoadout } from './loadout';
 import { freshIllness } from './illness';
@@ -127,6 +128,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 33) current = migrateV33toV34(current);
     if (current.schemaVersion === 34) current = migrateV34toV35(current);
     if (current.schemaVersion === 35) current = migrateV35toV36(current);
+    if (current.schemaVersion === 36) current = migrateV36toV37(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -987,6 +989,21 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * (see `ConstructionSite`), so a finished shelter stays finished and is not re-opened as a
  * frame to be fed. That is the whole reason completeness was NOT added as a flag beside it.
  */
+/**
+ * v36 → v37 (SESSION 2, the boat B0-B2). The hull migrates in UNTOUCHED — `freshBoat()`, which
+ * is B0 and is exactly where every existing save already stands.
+ *
+ * Nothing is invented and nothing is lost, because until this version there was no work to do
+ * on her: [[D-165]]-era saves have a beached hull and a manual they may or may not have found,
+ * and both of those survive unchanged. The STAGE is derived rather than stored (`boatStage`),
+ * so this migration cannot hand anyone a rung they did not earn even by accident — there is no
+ * field in which to write one.
+ */
+function migrateV36toV37(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return { ...envelope, schemaVersion: 37, state: { ...old, boat: freshBoat() } };
+}
+
 function migrateV35toV36(envelope: SaveEnvelope): SaveEnvelope {
     const old = envelope.state as unknown as GameState;
     return { ...envelope, schemaVersion: 36, state: { ...old, construction: null } };
@@ -1180,6 +1197,7 @@ function hydrate(state: GameState): GameState {
         //  frame field-by-field over a `null` base would resurrect a half-object from a save
         //  that has none; taking it whole keeps "there is no frame" expressible.
         construction: state.construction ?? null,
+        boat: { ...base.boat, ...state.boat },
         freshUntil: { ...state.freshUntil },
         player: { ...base.player, ...state.player },
         settings: { ...base.settings, ...state.settings },
