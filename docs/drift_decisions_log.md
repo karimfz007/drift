@@ -3,6 +3,87 @@
 
 ---
 
+**D-188 · 2026-08-24 — THE VERB CIRCLE COULD NOT COUNT. NINE OF THE BOAT'S TEN VERBS PRESSED THE WRONG ONE, AND FOUR OPTIONS WAS ALREADY BROKEN.**
+
+**THE CAUSE, AND IT IS NOT A TUNING NUMBER.** The circle sized its segments with a two-step rule — 116 px, or 68 px once there were five or more — against a spacing that shrinks as the count rises. **Nothing in the code ever compared the two.** The only thing that looked at the option count at all was a boolean CSS class, `crowded`, added in DROP 3 when brewing a remedy made five verbs on the fire. It narrowed the button and bought two more verbs. It did not add a rule.
+
+So this is not a boat problem that arrived with ten verbs. It is the same problem all the way down, and the boat is simply where it became undeniable. Measured on the harness viewport (412 px tall, so the radius clamps to its 96 px floor):
+
+```
+n= 4   116px segments   1 overlapping pair    <- and NOT flagged crowded: the class arms at 5
+n= 5    68px segments   4 overlapping pairs
+n= 7    68px segments   8 overlapping pairs   <- the fire, since DROP 3
+n=10    68px segments  19 overlapping pairs   <- the boat
+```
+
+**AND THE SYMPTOM IS WORSE THAN THE PICTURE.** An overlapping segment is only a defect because the press lands on the wrong one, so the device asks the document directly, at each segment's own centre. On the shipped build, **nine of the boat's ten segments returned their neighbour**: `inspect-boat->survey-hull`, `survey-hull->shore-up-boat`, … `ferry-boat->moor-boat`. Pressing *"Look her over"* ran the survey. Only the last segment in the sweep was hittable at all.
+
+---
+
+**1 · ARC LENGTH IS THE WRONG RULER, and it cost this fix its first version.** The obvious repair is to size the segment from the arc: `arc / (n - 1)` is how far apart the centres are along the curve, so keep the width under that and nothing can touch. That shipped, the unit suite went green at every count from one to fifty — and the device measured **four overlapping pairs among five segments**, `inspect-boat/float-test by 19x12px`.
+
+Two reasons, and both matter. Centres are separated by the **chord**, not the arc, and the chord is always shorter. And a segment is an axis-aligned **rectangle** on a curve: near the apex two neighbours are separated almost entirely horizontally, so width is what must clear — but near the ends of a 130-degree sweep the separation has tilted, and two boxes can be a full chord apart while their horizontal extents still overlap by half a button.
+
+The condition for two equal axis-aligned boxes to miss each other is exact: **`|dx| >= w` OR `|dy| >= h`**. So `planVerbCircle` stops estimating and checks it, for every adjacent pair, at every candidate count. That is why it takes the radius and the sweep rather than a single arc number — and why a green unit suite was not enough to know.
+
+**2 · WHICH MADE THE SEGMENT'S HEIGHT LOAD-BEARING, and it was `min-height`.** A box that grows when a label wraps onto a third line is a box the test cannot reason about. It is `height: 48px` now, with the label clamped to two lines and the full text always one press away in the list. **48 rather than the 52 it was drawn at, and the four pixels are worth more than they look:** the vertical gap between the last two segments of the sweep is just under 52 px on the 96 px arc, so a 52 px box misses clearing by a hair and the width has to collapse to 52 px to compensate. At 48 the pair clears vertically instead and the width goes to **71 px** — the same number of segments, each half again as wide, out of four pixels of height nobody was using.
+
+**3 · THE ARC CARRIES WHAT YOU CAN DO FIRST — the director’s option (b), with one correction the device forced.** Counted across every target in the game, the most verbs that are ever AVAILABLE at once is **five** — the boat, afloat and aboard. The boat’s own ladder runs 2, 3, 2, 2, 4, 5 available out of ten as she comes up the stages. So the wheel never needed to carry ten; it needed to carry what a survivor can act on, and that has always fitted.
+
+
+**BUT AVAILABILITY ORDERS THE ARC; IT DOES NOT GATE IT.** The first cut put ONLY the available verbs on the wheel, and the full sweep found what that costs: at the fire — seven verbs, three of them live, capacity four — it drew **three segments, left a slot empty, and sent four blocked verbs to the pip**. Leaving room unused while withholding something is indefensible on exactly the reasoning rule 5 below is built on. The arc now FILLS: everything you can do, then blocked ones in the target’s own order until it is full. **A greyed segment carrying only its label still teaches** — it names a capability this object has — and at B0 the boat draws `Look her over` and `Survey the hull` followed by `Prop and crib her` and `Bail her out`, greyed, which is the ladder.
+
+
+**4 · ...UNLESS NOTHING IS AVAILABLE, and that exception is the whole of Law 26's argument.** The pond offers five verbs and none of them without a vessel. A wheel that showed only what you can do would be **empty** there — the silent refusal [[D-042]] forbids outright — and the greyed `fill-flask` is the only thing in the game that tells you a flask is a thing to want. So when nothing is available the arc carries the refusals, unchanged.
+
+**5 · AND IF IT FITS, IT IS DRAWN.** The conservative rule, and the one that keeps this from being a regression everywhere it was not needed: a target at or under capacity draws every verb it has, available and blocked, in its own order. A construction frame offering `move-structure` and a greyed `add-materials` has the whole arc for the pair and no crowding to solve — withholding one would be a pure loss and a pip would be ceremony. **Nothing below that line touches any target that was not already overlapping.**
+
+**6 · THE PIP OPENS THE COMPLETE LIST — and it now teaches MORE than the wheel ever did.** The overflow goes to a pip at the hub (not on the arc, so it never costs a segment the spacing this exists to protect), which opens **every verb this target has**: the ones you can do, pressable, and the ones you cannot with the sentence that says why.
+
+
+**IT LISTS EVERYTHING RATHER THAN ONLY THE OVERFLOW, and that took a second device red.** The first cut listed only what the arc could not take, which left a hole: a verb ON the arc, blocked, at a width too narrow to print its reason had that reason **nowhere at all**. `CUP 3` found it exactly — an empty cup at a lit fire, `boil-water` correctly refused on the wheel and `{"ready":false,"reason":""}` where *"there is nothing in it"* should have been. So the pip appears for two reasons now, not one: when verbs were withheld, AND when the wheel is too narrow to say why something on it is refused. Both are *the wheel cannot say everything*.
+
+
+
+**AND `CUP 3` HAD BEEN PASSING ON A STRING NO PLAYER COULD READ.** It asserted the reason by pulling `textContent` off the segment — and `.crowded .verb-reason` was `display: none`, so the node was in the DOM and invisible. The check was green while the fire showed a grey unlabelled lump. It now asserts the wheel refuses AND the pip carries the why, which is a claim about something a person can actually see.
+
+
+That last part is the reversal worth reading. `showVerbCircle`'s docblock has always justified greyed segments this way — *"carrying the one true reason — never hidden. Hiding teaches nothing: the player never learns the flask exists."* **The `crowded` class carried `.verb-reason { display: none }`.** So from five options onward the reason was already hidden, and a blocked segment was a grey unlabelled lump consuming a fifth of the arc while teaching nothing at all. The justification had quietly stopped applying at exactly the count where the crowding starts. At B0 the boat now draws two segments at full 116 px **with their reasons**, and the eight it withholds arrive with more explanation than the wheel could ever have given them.
+
+**7 · IT IS A CAPABILITY, NOT A BOAT PATCH.** Both call sites pass `verbsFor(state, target)` straight into `showVerbCircle`, so the whole change lives in one function and one pure module and applies to every target that has ever had a wheel. The fire got it for free: seven verbs, three live, drawn at 116 px with no overlaps — it had been overlapping in eight pairs since DROP 3.
+
+**THE ONE HONEST COST, NAMED RATHER THAN DISCOVERED.** On a landscape phone the arc takes **four** segments; on anything taller, five. So at the single fullest state in the game — the boat afloat and aboard, five things live — `moor-boat` sits behind the pip. It is pressable there, and the device drives that exact route rather than pretending otherwise: `doBoatVerb` presses from the arc when the verb is on it and from the list when it is not, which is both the real player path and the only thing that proves the list is functional rather than decorative.
+
+**THE PRACTICE.** A unit suite that asserted the *stated* rule at fifty counts on two viewports went green on a layout the device then measured four overlapping pairs in — because the rule was checking the wrong quantity, thoroughly. **Coverage is not correctness when the model is wrong; what caught it was a check that measured the real thing** (`getBoundingClientRect`, every pair, plus `elementFromPoint` at each centre). The unit tests now compute intersections rather than compare widths to spacings, and they assert the OLD geometry fails the same property — 19 pairs at ten, 1 at four — so the fix cannot be quietly undone.
+
+
+**AND IT HAPPENED TWICE MORE, BOTH TIMES ON THE FULL SWEEP RATHER THAN THE SECTION.** The empty slot at the fire and the mute refusal at the cup were both invisible to the boat’s own section, to the circle’s own section, and to twelve unit tests — because every one of those was looking at the case the design was written for. What found them was running the change against **sixty-nine sections of game nobody wrote it for**. Three device reds, three real defects, none of them in the thing under test.
+
+
+**AND THREE CHECKS HAD BEEN GREEN ON A SENTENCE NO PLAYER COULD READ.** `CUP 3`, `SLICE 2` and `OUTBOARD 1` all asserted that a greyed segment carries its reason — by pulling `textContent` off the node. `.crowded .verb-reason` was `display: none`, and `.crowded` armed at five options, so on the pond (five verbs), the fire (seven) and the outboard (five) the node was in the DOM and invisible. Three green checks, three mute wheels. The baseline log says it without interpretation: `ready [drink, fill-flask] blocked [make-cup, fill-vessel, fish]` — five segments, which is crowded, which is hidden.
+
+
+
+**SO `SLICE 2` NOW ASSERTS A STRONGER LAW THAN IT EVER DID: NO REFUSAL IS MUTE.** Not *"the segment carries its reason"* — which was only ever true under five options — but *every blocked verb’s reason is REACHABLE*, on the segment when the wheel is wide enough and in the pip’s list when it is not. That is true at every count, which is what the original was reaching for. It reads, on the pond: `blocked on wheel [make-cup, fill-vessel] · 2 of them mute there · pip "3 more" · 3 reason(s) in the list`.
+
+
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**DEVICE: THE FULL SWEEP, 776/790 across all 69 sections.** Fourteen reds: **twelve are the pre-existing set [[D-187]] named and attributed** — unchanged, and diffed by check name against the pre-change baseline. Of the two that were not, one is `SLICE 2`’s own check, which this entry rewrites and which reads **15/15** on the corrected harness; the other is `JUNK 6`, which passed in all three prior full runs and fails here with a boar mid-charge (*"It snorts and paws the ground"*) — **21/21 re-run alone**, which is what this instrument’s own rule asks for from a run carrying **25 stalls over 90 s, the worst 2512 s**.
+
+**AND THE SWEEP IS WHAT FOUND THE DESIGN, TWICE.** The run before it — 774/790 — red at `OUTBOARD 1`, `CUP 3` and `SLICE 2`, none of them in the section under test, and two of the three were real defects rather than stale claims: the arc leaving a slot empty at the fire, and a blocked verb on a narrow wheel with its reason nowhere. Both fixed here; both greens confirmed section by section (`THE VERB CIRCLE SCALES` **18/18**, `WAVE 1 — THE OUTBOARD` **27/27**, `THREE ITEMS` **25/25**, `SESSION 2 — THE BOAT` **42/42**).
+
+**FAIL-THEN-PASS, BOTH LEGS, AGAINST THE SHIPPED GEOMETRY RESTORED.** Unit: **3 of 12 fail**, including the property that no two segments intersect. Device: **12/18**, reading 19 overlapping pairs among ten segments and nine of ten presses returning the neighbour — `inspect-boat->survey-hull`, `survey-hull->shore-up-boat`, on down the arc. Restored: 12/12 and 18/18.
+
+**STATIC + UNIT:** typecheck clean; purity 59 brain files with zero body imports; docs-integrity 188 decisions; tune-mirror 74 refs, none drifted; selector gate 40/40; **1719 unit tests across 91 files**.
+
+**Class: OPERATIVE** — every mechanism is named and shipped: `src/body/verbCircleLayout.ts` with `planVerbCircle`/`circleCapacity`/`widthFor`/`segmentCentre` and the exact non-overlap test; `showVerbCircle` rewritten to draw from the plan and to carry a hub pip; `showVerbList` as the overflow surface; `.crowded` retired for a measured `terse`; the segment's fixed 48 px height and clamped label; and `doBoatVerb` driving both press routes.
+
+*Status: standing. Supersedes DROP 3's `crowded` class and the count threshold behind it. Does not touch the arc's radius, sweep or start angle — SLICE 2's ONE-THUMB REACH gate certifies those, and this works within them.* — C2
+
+---
+
 **D-187 · 2026-08-24 — SESSION 2: THE BOAT, B0 TO B2. FIVE SYSTEMS, A GATE THAT CAN REFUSE, AND A LOOP THAT CLOSES ON THE BOAT HERSELF.**
 
 **WHAT SHIPPED.** The whole staged ladder, playable end to end: look her over, survey her, prop and crib her, bail her out, back the frames, pay the seams, float her on a line — then get in, learn what she carries, take her out under the paddle, and make her fast. **Ten verbs on one target**, and the device drives every one of them.

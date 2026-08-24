@@ -78,10 +78,17 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  * file rather than remembered.
  * named above is therefore CLOSE, and the number that decides it is this group’s measured
  * wall-clock on the next full run, not an estimate made while adding to it.
+ *
+ * AND THE VERB CIRCLE SECTION makes it 11. The G13 boundary is now OWED rather than close:
+ * the first full sweep that ever completed measured G12 at 44m35s against this file’s ~20
+ * minute target, and it has grown since. What has been missing is a per-section number to
+ * split on — the bench profile could not produce one, because it was written from the middle
+ * of the file and never saw these sections at all. It does now, so the split is a measurement
+ * away rather than a proxy away, and the next completed run is what places it.
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 67],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 68],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

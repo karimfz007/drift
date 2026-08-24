@@ -7,6 +7,7 @@
  * the interface names them and gets out of the way.
  */
 
+import { planVerbCircle, type CirclePlan } from './verbCircleLayout';
 import { formatClock, levelProgress, type Food, type MorningReport, type RadioPanelView, type ReadoutRow, type Skills } from '../brain';
 
 /** Player-facing names for the shipped skills. */
@@ -1581,15 +1582,77 @@ export function showSiteCard(
  * edge, because the thumb that just tapped is the thumb that must reach the answer. A wheel
  * centred on the tap would put a third of its options under the hand that is covering them.
  *
- * BLOCKED SEGMENTS ARE SHOWN, greyed, carrying the one true reason — never hidden. Hiding
- * teaches nothing: the player never learns the flask exists. The reason text is the brain's,
- * verbatim, so this layer cannot soften it into a generic apology.
+ * WHAT FITS ON THE ARC IS DECIDED IN `verbCircleLayout.ts`, and that module carries the
+ * measurements and the reasoning. In short: the arc takes what you can DO (or, when nothing
+ * is available, what you cannot — the flask case), sized so that nothing overlaps; anything
+ * left over goes to a pip at the hub which opens the full list.
+ *
+ * BLOCKED SEGMENTS ARE STILL SHOWN AND STILL CARRY THEIR REASON — the claim this docblock has
+ * always made, and now the first time it has been true past four verbs. It used to be undone
+ * one file away by `.crowded .verb-reason { display: none }`, so from five onward the greyed
+ * segment taught nothing while still eating the arc. The reason now prints whenever the
+ * segment is wide enough to read it, and in the overflow list ALWAYS, whatever the count.
  */
 export interface CircleOption {
     id: string;
     label: string;
     available: boolean;
     reason: string | null;
+}
+
+/** The one place the arc’s length is computed, so the plan and the drawing cannot disagree. */
+function circleArc(): { radius: number; spread: number } {
+    const radius = Math.min(132, Math.max(96, window.innerHeight * 0.22));
+    const spread = Math.PI * 0.72;
+    return { radius, spread };
+}
+
+/**
+ * THE FULL LIST — every verb this target has, with the reason in full.
+ *
+ * IT IS THE COMPLETE SURFACE, and it took a device red to get there. The first cut listed
+ * only what the arc could not take, which left a hole: a verb ON the arc, blocked, at a
+ * width too narrow to print its reason had that reason NOWHERE. `CUP 3` found it exactly
+ * — an empty cup at a lit fire, `boil-water` correctly refused on the wheel and
+ * `{"ready":false,"reason":""}` where "there is nothing in it" should have been.
+ *
+ * So this lists everything, in the target’s own order: what you can do, pressable, and
+ * what you cannot with the sentence that says why. That is what keeps the pip honest —
+ * whatever the wheel is too small to say, this can always say.
+ */
+function showVerbList(
+    overlay: HTMLElement,
+    options: CircleOption[],
+    onPick: (id: string) => void,
+    onClose: () => void,
+): void {
+    const el = panel(overlay, 'verb-list');
+    const rows = options.map((o) => `
+        <div class="verb-row ${o.available ? 'ready' : 'blocked'}">
+            ${o.available
+                ? `<button class="quiet verb-row-btn" data-verb="${o.id}" type="button">${o.label}</button>`
+                : `<strong class="verb-row-label">${o.label}</strong>`}
+            ${o.reason ? `<p class="subtitle verb-row-reason">${o.reason}</p>` : ''}
+        </div>`).join('');
+    el.innerHTML = `
+        <h2>Everything here</h2>
+        <p class="subtitle">What you can do, and what the rest would take.</p>
+        <div class="verb-rows">${rows}</div>
+        <button class="primary close-btn" type="button">Back</button>`;
+    let done = false;
+    el.querySelectorAll<HTMLButtonElement>('.verb-row-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+            if (done) return;
+            done = true;
+            const id = b.dataset.verb;
+            fade(el, () => { if (id) onPick(id); else onClose(); });
+        });
+    });
+    el.querySelector('.close-btn')!.addEventListener('click', () => {
+        if (done) return;
+        done = true;
+        fade(el, onClose);
+    });
 }
 
 export function showVerbCircle(
@@ -1600,48 +1663,77 @@ export function showVerbCircle(
     onPick: (id: string) => void,
     onCancel: () => void,
 ): void {
-    //  FIVE VERBS IS CROWDED. At the certified arc, adjacent centres sit ~75px apart with a
-    //  116px segment, so from five onward they overlap and hit-testing returns the neighbour
-    //  rather than the button under the thumb. The class narrows the segments; the ARC is
-    //  untouched, because SLICE 2's ONE-THUMB REACH gate certifies that geometry and a fix
-    //  that moved it would be trading a certified property for an uncertified one.
-    const el = panel(overlay, `verb-circle${options.length >= 5 ? ' crowded' : ''}`);
+    const geometry = circleArc();
+    const { radius, spread } = geometry;
+    const plan: CirclePlan = planVerbCircle(options, geometry);
+    const byId = new Map(options.map((o) => [o.id, o]));
+    const arc = plan.arc.map((o) => byId.get(o.id)!).filter(Boolean);
+    const overflow = plan.overflow.map((o) => byId.get(o.id)!).filter(Boolean);
+
+    const el = panel(overlay, `verb-circle${plan.showReasons ? '' : ' terse'}`);
 
     //  The arc opens upward and inward. `inward` flips the sweep when the tap is on the right
     //  half, so segments always fall toward the middle of the screen where a thumb can reach.
     const inward = atX > window.innerWidth / 2 ? -1 : 1;
-    const radius = Math.min(132, Math.max(96, window.innerHeight * 0.22));
-    const spread = Math.PI * 0.72;
     const start = -Math.PI / 2 - (spread / 2) * inward;
+    const w = plan.segmentWidth;
 
-    const segs = options.map((o, i) => {
-        const t = options.length === 1 ? 0.5 : i / (options.length - 1);
+    const segs = arc.map((o, i) => {
+        const t = arc.length === 1 ? 0.5 : i / (arc.length - 1);
         const angle = start + spread * t * inward;
         const dx = Math.cos(angle) * radius;
         const dy = Math.sin(angle) * radius;
+        //  WIDTH IS DRAWN FROM THE PLAN, not from a class. The margin keeps the segment
+        //  centred on its own point, which is what the overlap arithmetic assumes.
+        const box = `width:${w.toFixed(1)}px; margin-left:${(-w / 2).toFixed(1)}px;`;
         return `
             <button class="verb-seg ${o.available ? 'ready' : 'blocked'}" type="button"
                     data-verb="${o.id}" ${o.available ? '' : 'disabled'}
-                    style="transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">
+                    style="${box} transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">
                 <span class="verb-label">${o.label}</span>
-                ${o.reason ? `<span class="verb-reason">${o.reason}</span>` : ''}
+                ${o.reason && plan.showReasons ? `<span class="verb-reason">${o.reason}</span>` : ''}
             </button>`;
     }).join('');
 
+    //  THE PIP SITS AT THE HUB, not on the arc, and that placement is the point: the arc’s
+    //  spacing is what this whole change is about, so the overflow affordance must not take a
+    //  slot from it. The hub is also where the thumb already is, having just tapped there.
+    //
+    //  IT APPEARS FOR TWO REASONS, not one. Obviously when verbs were withheld — but ALSO
+    //  when the wheel is too narrow to print a reason and something on it is refused, because
+    //  then the arc is showing a greyed label with no way to ask why. Both are "the wheel
+    //  cannot say everything", and the count is how many verbs it cannot fully speak for.
+    const mute = plan.showReasons ? 0 : arc.filter((o) => !o.available).length;
+    const unsaid = overflow.length + mute;
+    const pip = unsaid > 0
+        ? `<button class="verb-more" type="button" data-more="${unsaid}">${unsaid} more</button>`
+        : '';
+
     //  KEEP THE WHOLE ARC ON SCREEN. The arc opens upward, so a press near the top of the
     //  viewport threw segments off it — the one-thumb-reach check caught exactly that, three
-    //  segments outside the screen. The hub is nudged inward until the arc's own bounding box
+    //  segments outside the screen. The hub is nudged inward until the arc’s own bounding box
     //  fits, rather than the arc being shrunk: a smaller wheel would be harder to hit, which
     //  trades one reach problem for another.
     const pad = 62;                       // half a segment (58px) plus breathing room
     const hubX = Math.min(Math.max(atX, radius + pad), window.innerWidth - radius - pad);
     const hubY = Math.min(Math.max(atY, radius + pad), window.innerHeight - pad);
-    el.innerHTML = `<div class="verb-hub" style="left:${hubX}px; top:${hubY}px">${segs}</div>`;
+    el.innerHTML = `<div class="verb-hub" style="left:${hubX}px; top:${hubY}px">${segs}${pip}</div>`;
 
     for (const button of Array.from(el.querySelectorAll<HTMLButtonElement>('.verb-seg.ready'))) {
         button.addEventListener('click', () => {
             const id = button.dataset.verb;
             fade(el, () => { if (id) onPick(id); });
+        });
+    }
+    const more = el.querySelector<HTMLButtonElement>('.verb-more');
+    if (more) {
+        //  STOP THE DISMISS. The circle closes on a `pointerdown` anywhere on itself, which is
+        //  what makes it impossible to trap the player — and would otherwise eat this press
+        //  before the click ever fired.
+        more.addEventListener('pointerdown', (e) => e.stopPropagation());
+        more.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fade(el, () => showVerbList(overlay, options, onPick, onCancel));
         });
     }
     //  A tap anywhere else closes it. Opening a circle must never trap the player — the same

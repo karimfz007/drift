@@ -1794,9 +1794,46 @@ async function main() {
         check('SLICE 2 — HOLDING the pond opens the circle',
             Boolean(held) && held.ready.includes('drink') && held.ready.includes('fill-flask'),
             held ? `ready [${held.ready.join(', ')}] blocked [${held.blocked.join(', ')}]` : 'no circle opened on hold');
-        check('SLICE 2 — a blocked segment is SHOWN, greyed, carrying its own reason',
-            Boolean(held) && (held.blocked.length === 0 || held.reasons.every((r) => r.length > 0)),
-            held ? `blocked [${held.blocked.join(', ')}] reasons [${held.reasons.join(' | ')}]` : 'no circle opened');
+        //  NO REFUSAL IS EVER MUTE — the law this check has always been for, asserted at last
+        //  against something a player could actually read.
+        //
+        //  IT USED TO PULL `.verb-reason` OFF THE SEGMENT AND PASS ON IT. The pond with a flask
+        //  offers five verbs, `.crowded` armed at five, and that class carried
+        //  `.verb-reason { display: none }` — so the node was in the DOM, the check read its
+        //  `textContent`, and the survivor saw three grey lumps with not a word on them. Green
+        //  check, mute wheel. The baseline log says it plainly: `ready [drink, fill-flask]
+        //  blocked [make-cup, fill-vessel, fish]`, which is five, which is crowded.
+        //
+        //  [[D-188]] gives the reason a place it fits: on the segment when the wheel is wide
+        //  enough to print it, and in the pip’s list — always, whatever the count — when it is
+        //  not. So the claim is now about REACHABILITY rather than about one element: every
+        //  refused verb has its sentence somewhere the player can get to.
+        const refusalsSpeak = await page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            const onWheel = segs.filter((b) => b.classList.contains('blocked')).map((b) => ({
+                verb: b.dataset.verb ?? '',
+                reason: (b.querySelector('.verb-reason')?.textContent ?? '').trim(),
+            }));
+            const more = document.querySelector('.panel.verb-circle .verb-more');
+            if (more) more.click();
+            return { onWheel, pip: more ? (more.textContent ?? '').trim() : null };
+        });
+        await sleep(600);
+        const inList = await page.evaluate(() => Object.fromEntries(
+            Array.from(document.querySelectorAll('.panel.verb-list .verb-row')).map((r) => [
+                (r.querySelector('.verb-row-btn')?.dataset.verb) ?? (r.dataset.verb ?? (r.querySelector('strong')?.textContent ?? '').trim()),
+                (r.querySelector('.verb-row-reason')?.textContent ?? '').trim(),
+            ])));
+        const listReasons = Object.values(inList).filter((r) => r.length > 8).length;
+        const mute = (refusalsSpeak.onWheel ?? []).filter((s) => s.reason.length === 0);
+        check('SLICE 2 — NO REFUSAL IS MUTE: every blocked verb\u2019s reason is reachable, on the wheel or in the list',
+            Boolean(held) && (refusalsSpeak.onWheel.length === 0
+                || refusalsSpeak.onWheel.every((s) => s.reason.length > 0)
+                || (refusalsSpeak.pip !== null && listReasons >= mute.length)),
+            `blocked on wheel [${refusalsSpeak.onWheel.map((s) => s.verb).join(', ')}] · ${mute.length} of them mute there · pip ${JSON.stringify(refusalsSpeak.pip)} · ${listReasons} reason(s) in the list`);
+        await ensureNoPanel();
+        if (holdPoint) await tapAt(holdPoint.x, holdPoint.y, TUNE.tapMaxMs + 260);
+        await sleep(600);
         check('SLICE 2 — ONE-THUMB REACH: every segment is on-screen',
             Boolean(held) && held.offscreen === 0,
             held ? `${held.offscreen} segment(s) off-screen, lowest edge at ${held.lowest.toFixed(0)}px` : 'no circle');
@@ -12007,14 +12044,45 @@ async function main() {
         };
     });
     const segIds = circle.segs.map((s) => s.verb);
-    check('OUTBOARD 1 — a hold shows the whole circle: drag, study, strip, axe, reassemble (greyed)',
+    //  FIVE VERBS, AND A LANDSCAPE PHONE’S ARC HOLDS FOUR. [[D-188]] measured that: at the
+    //  96px radius floor a fifth segment cannot be drawn without intersecting a neighbour,
+    //  and the build that "showed" all five drew them 68px wide at 54px centres, where a
+    //  press returned the button next door. So the arc takes the four the survivor can
+    //  actually use and `reassemble-outboard` — the one blocked verb — moves to the pip.
+    //
+    //  THE CLAIM IS UNCHANGED AND BETTER SERVED: never hidden, never a false yes. It is
+    //  still shown, still refused, and now carries its reason in a place with room to
+    //  print it — which the old wheel did NOT, because `.crowded .verb-reason` was
+    //  `display: none` from five options up. The check below used to read that reason out
+    //  of the DOM and pass on it while the player could not see a word of it.
+    check('OUTBOARD 1 — a hold shows the four verbs there is room for: drag, study, strip, axe',
         held.ok && circle.up
-            && ['drag-outboard', 'study-outboard', 'strip-outboard', 'axe-outboard', 'reassemble-outboard'].every((v) => segIds.includes(v)),
+            && ['drag-outboard', 'study-outboard', 'strip-outboard', 'axe-outboard'].every((v) => segIds.includes(v))
+            && circle.segs.every((s) => s.enabled),
         `hold ${held.why} · segments [${segIds.join(' | ')}]`);
-    const reassembleSeg = circle.segs.find((s) => s.verb === 'reassemble-outboard');
-    check('OUTBOARD 1 — ...reassemble is shown but GREYED — nothing recovered yet (never hidden, never a false yes)',
-        reassembleSeg !== undefined && !reassembleSeg.enabled,
-        reassembleSeg ? `enabled ${reassembleSeg.enabled}` : 'segment missing entirely');
+    const outboardMore = await page.evaluate(() => {
+        const more = document.querySelector('.panel.verb-circle .verb-more');
+        if (!more) return { pip: null };
+        more.click();
+        return { pip: (more.textContent ?? '').trim() };
+    });
+    await sleep(700);
+    const reassembleRow = await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('.panel.verb-list .verb-row'));
+        const row = rows.find((r) => /reassemble/i.test(r.textContent ?? ''));
+        if (!row) return null;
+        return {
+            blocked: row.classList.contains('blocked'),
+            pressable: row.querySelector('.verb-row-btn') !== null,
+            reason: (row.querySelector('.verb-row-reason')?.textContent ?? '').trim(),
+        };
+    });
+    check('OUTBOARD 1 — ...and reassemble is SHOWN AND REFUSED, with the reason the old wheel hid',
+        outboardMore.pip !== null && reassembleRow !== null
+        && reassembleRow.blocked === true && reassembleRow.pressable === false
+        && reassembleRow.reason.length > 8,
+        `pip ${JSON.stringify(outboardMore.pip)} · row ${JSON.stringify(reassembleRow)}`);
+    await ensureNoPanel();
     await closeCircle();
 
     // ---- 2 · DRAG MOVES IT — STATE AND PIXELS BOTH ------------------------------------
@@ -13539,9 +13607,28 @@ async function main() {
         if (!seg) return null;
         return { ready: seg.classList.contains('ready'), reason: seg.querySelector('.verb-reason')?.textContent?.trim() ?? '' };
     });
+    //  ...AND THE REASON LIVES WHERE THERE IS ROOM TO PRINT IT. Four segments on this arc are
+    //  71px wide, which is a real thumb target and too narrow for a sentence, so the wheel
+    //  refuses and the pip carries the why. That is not a loss: the old build kept the reason
+    //  in the DOM under `.crowded .verb-reason { display: none }`, so THIS CHECK PASSED on a
+    //  string the player could not see a word of — it read `textContent` off a hidden node.
+    const emptyBoilWhy = await page.evaluate(() => {
+        const more = document.querySelector('.panel.verb-circle .verb-more');
+        if (!more) return null;
+        more.click();
+        return true;
+    });
+    await sleep(700);
+    const boilRow = await page.evaluate(() => {
+        const row = Array.from(document.querySelectorAll('.panel.verb-list .verb-row')).find((r) => /boil/i.test(r.textContent ?? ''));
+        if (!row) return null;
+        return { blocked: row.classList.contains('blocked'), reason: (row.querySelector('.verb-row-reason')?.textContent ?? '').trim() };
+    });
     check('CUP 3 — ...and an EMPTY cup is refused for the CUP, never blamed on the fire',
-        emptyBoil !== null && emptyBoil.ready === false && /nothing in it/i.test(emptyBoil.reason),
-        JSON.stringify(emptyBoil));
+        emptyBoil !== null && emptyBoil.ready === false
+        && emptyBoilWhy === true && boilRow !== null && boilRow.blocked === true
+        && /nothing in it/i.test(boilRow.reason),
+        `wheel ${JSON.stringify(emptyBoil)} · list ${JSON.stringify(boilRow)}`);
     await ensureNoPanel();
     }
 
@@ -14067,13 +14154,37 @@ async function main() {
         await ensureNoPanel();
         await sleep(260);
         const circle = await boatCircle();
+        //  PRESS FROM THE WHEEL, OR FROM THE PIP THE WHEEL SENT IT TO — which is the real
+        //  player path rather than a convenience. The arc carries what fits, and on a landscape
+        //  phone (radius clamped to its 96px floor) that is FOUR segments; the boat afloat and
+        //  aboard has FIVE things a survivor can do, so one of them — `moor-boat`, last in the
+        //  target’s own order — lives behind "6 more". A harness that only knew how to press
+        //  the arc would report that as the boat refusing to be moored, which it is not.
+        //
+        //  Driving both routes is also the only thing that proves the overflow list is
+        //  FUNCTIONAL rather than decorative: everything else about it only checks it renders.
         const pressed = await page.evaluate((v) => {
             const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
-            if (!seg) return { ok: false, why: 'no ' + v + ' segment' };
-            if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
-            seg.click();
-            return { ok: true, why: null };
+            if (seg) {
+                if (!seg.classList.contains('ready')) return { ok: false, why: v + ' is blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '') };
+                seg.click();
+                return { ok: true, why: null, via: 'arc' };
+            }
+            const more = document.querySelector('.panel.verb-circle .verb-more');
+            if (!more) return { ok: false, why: 'no ' + v + ' segment, and no pip to look behind' };
+            more.click();
+            return { ok: false, why: 'deferred', via: 'pip' };
         }, verb);
+        if (pressed.via === 'pip') {
+            await sleep(700);
+            const fromList = await page.evaluate((v) => {
+                const btn = document.querySelector(`.panel.verb-list .verb-row-btn[data-verb="${v}"]`);
+                if (!btn) return { ok: false, why: 'no ' + v + ' in the overflow list either' };
+                btn.click();
+                return { ok: true, why: null, via: 'pip' };
+            }, verb);
+            Object.assign(pressed, fromList);
+        }
         await sleep(1000);
         await ensureNoPanel();
         return { ...pressed, circle: circle.segs ?? [] };
@@ -14106,11 +14217,32 @@ async function main() {
     check('BOAT B0 — RENDER: no props, no patch, no caulk, no tether. She is untouched',
         b0Surf.props === false && b0Surf.patch === false && b0Surf.caulk === false && b0Surf.tether === false,
         JSON.stringify(b0Surf));
-    //  ...and everything that would change her is REFUSED, each with its own reason.
-    const b0Blocked = (b0Circle.segs ?? []).filter((v) => /:blocked$/.test(v));
-    check('BOAT B0 — ...and the work that is not her turn yet is refused, not hidden',
-        b0Blocked.some((v) => /shore-up-boat/.test(v)) && b0Blocked.some((v) => /float-test/.test(v)),
-        `blocked [${b0Blocked.join(', ')}]`);
+    //  ...AND EVERYTHING THAT WOULD CHANGE HER IS REFUSED, NOT HIDDEN — which is now a claim
+    //  about the OVERFLOW LIST rather than about nine greyed segments, and is a stronger one.
+    //
+    //  This used to assert `shore-up-boat:blocked` and `float-test:blocked` on the wheel. They
+    //  were there, and they taught nothing: `.crowded .verb-reason { display: none }` armed at
+    //  five options, so from five onward a blocked segment was an unlabelled grey lump. Ten of
+    //  them sat at 24px centres under a 68px button. The wheel now carries what a survivor can
+    //  DO and the rest is one press away WITH the reason — so the same two verbs are asserted,
+    //  in the place they can actually be read.
+    const b0More = await page.evaluate(() => {
+        const more = document.querySelector('.panel.verb-circle .verb-more');
+        if (!more) return { opened: false, rows: [] };
+        more.click();
+        return { opened: true };
+    });
+    await sleep(700);
+    const b0Withheld = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-list .verb-row')).map((r) => ({
+        label: (r.querySelector('.verb-row-label')?.textContent ?? '').trim(),
+        reason: (r.querySelector('.verb-row-reason')?.textContent ?? '').trim(),
+    })));
+    check('BOAT B0 — ...and the work that is not her turn yet is refused WITH ITS REASON, not hidden',
+        b0More.opened === true
+        && b0Withheld.some((r) => /prop and crib/i.test(r.label) && /go over her first/i.test(r.reason))
+        && b0Withheld.some((r) => /float her/i.test(r.label) && r.reason.length > 8),
+        `${b0Withheld.length} withheld · ${b0Withheld.map((r) => `${r.label}: "${r.reason.slice(0, 40)}"`).join(' | ').slice(0, 300)}`);
+    await ensureNoPanel();
     await closeVerbCircle();
     await ensureNoPanel();
 
@@ -14362,6 +14494,259 @@ async function main() {
         swam.ok && afterSwam.boat.floatTest?.held === true && swamSurf.tether === true,
         `${swam.why ?? 'floated'} · floatTest ${JSON.stringify(afterSwam.boat.floatTest)} · ${JSON.stringify(swamSurf)}`);
     await ensureNoPanel();
+    await ensureNoPanel();
+    }
+
+    if (section('THE VERB CIRCLE SCALES — ten verbs on one target, and nothing overlapping')) {
+
+    /**
+     * THE DEFECT, MEASURED ON REAL PIXELS RATHER THAN DESCRIBED.
+     *
+     * The circle sized its segments with a two-step rule — 116px, or 68px once there were five
+     * or more — against a spacing that shrinks as `arc / (n - 1)`. Nothing compared the two. On
+     * this viewport the arc is 217px, so ten verbs put adjacent centres 24px apart under a 68px
+     * button: a 65% overlap, where `elementFromPoint` returns the neighbour rather than the
+     * thing under the thumb. That is the same failure DROP 3 hit at five and answered with the
+     * `crowded` class, which bought two more verbs and no rule.
+     *
+     * SO THIS SECTION MEASURES BOUNDING BOXES, not appearance. Two claims a screenshot cannot
+     * make: no two segments intersect, and a press at each segment’s own centre lands on that
+     * segment. Both fail loudly on the geometry that shipped.
+     */
+    const CIRCLE_AT = { x: 14, y: 100 };
+    const circleFixture = (extra) => `
+        state.player = { x: 14, y: 94 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.knowledge.domains.navigationSeamanship.technique = 50;
+        state.knowledge.domains.navigationSeamanship.understanding = 30;
+        state.tools = { ...state.tools, flask: true };
+        state.inventory = { ...state.inventory, wood: 40, fiber: 40, stone: 20 };
+        ${extra}`;
+
+    const dismissCircle = async () => {
+        const wasUp = await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (!el) return false;
+            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            return true;
+        });
+        if (wasUp) await sleep(420);
+    };
+
+    //  OPEN THE WHEEL AND READ ITS GEOMETRY. The boxes are what this section is about, so
+    //  they come back with the ids rather than being inspected inside a check.
+    const readCircle = async () => {
+        await page.waitForFunction(
+            () => (typeof window.__drift?.panelOpen === 'function' ? window.__drift.panelOpen() : false) === false,
+            { timeout: 8_000 },
+        ).catch(() => {});
+        await faceNode(CIRCLE_AT.x, CIRCLE_AT.y);
+        await sleep(260);
+        const at = await screenOf(CIRCLE_AT.x, CIRCLE_AT.y);
+        if (!at) return { ok: false, why: 'no pixel on screen', segs: [], boxes: [], more: null };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        //  LET THE PANEL SETTLE. `panel()` fades in, so boxes read the instant a segment
+        //  exists are boxes from part-way through an animation — which is how the first cut
+        //  of this section measured positions the elements had already left, and then
+        //  hit-tested at them and found nothing at all.
+        await sleep(500);
+        //  MEASURED AND HIT-TESTED IN ONE EVALUATE, so there is no gap in which the DOM
+        //  could move between the box and the probe.
+        return page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            const more = document.querySelector('.panel.verb-circle .verb-more');
+            const boxes = segs.map((o) => {
+                const b = o.getBoundingClientRect();
+                return {
+                    verb: o.dataset.verb ?? '',
+                    left: b.left, top: b.top, right: b.right, bottom: b.bottom,
+                    w: b.width, h: b.height,
+                    cx: b.left + b.width / 2, cy: b.top + b.height / 2,
+                };
+            });
+            const hits = boxes.map((b) => {
+                const el = document.elementFromPoint(b.cx, b.cy);
+                const seg = el && el.closest ? el.closest('.verb-seg') : null;
+                return {
+                    want: b.verb,
+                    got: seg ? (seg.dataset.verb ?? '?') : `(${el ? el.tagName.toLowerCase() + '.' + (el.className || '') : 'nothing'})`,
+                };
+            });
+            return {
+                ok: segs.length > 0,
+                why: segs.length ? null : 'no circle opened',
+                segs: segs.map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')),
+                boxes,
+                hits,
+                reasons: segs.filter((o) => o.querySelector('.verb-reason')).length,
+                more: more ? (more.textContent ?? '').trim() : null,
+            };
+        });
+    };
+
+    /** Every pair of boxes that genuinely intersect, named, so a red says WHICH two. */
+    const overlaps = (boxes) => {
+        const hits = [];
+        for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+                const a = boxes[i], b = boxes[j];
+                const dx = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+                const dy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+                if (dx > 0.5 && dy > 0.5) hits.push(`${a.verb}/${b.verb} by ${dx.toFixed(0)}x${dy.toFixed(0)}px`);
+            }
+        }
+        return hits;
+    };
+
+    // ---- THE FULLEST TARGET IN THE GAME: the boat, afloat and aboard ----------------
+    //  Ten verbs, five of them available — measured across every target, this is the most
+    //  that are ever live at once. It is the state the old wheel drew at 24px centres.
+    await editSave(circleFixture(`
+        state.boat = { surveyed: true, supports: true, dewatered: true,
+                       structural: { rung: 'competent', usedParts: ['mountingBracket'], usedMaterials: { wood: 5 } },
+                       seal: { rung: 'competent', usedParts: [], usedMaterials: { fiber: 6 } },
+                       floatTest: { attempted: true, held: true, tookOnWater: 0.238 },
+                       loadKnown: true, moored: false, ferried: false };`));
+    await sleep(900);
+    const full = await readCircle();
+    check('CIRCLE 1 — the fullest target in the game draws NO overlapping segments',
+        full.ok && overlaps(full.boxes).length === 0,
+        `${full.why ?? 'open'} · ${full.boxes.length} segment(s) · overlaps [${overlaps(full.boxes).join(' | ')}]`);
+    //  THE ARC CARRIES WHAT YOU CAN DO. Ten verbs exist here and five are live; the rest are
+    //  one press away rather than five greyed lumps competing for the same 24px of arc.
+    check('CIRCLE 2 — ...because the arc carries only what is actually actionable right now',
+        full.segs.length > 0 && full.segs.every((v) => !/:blocked$/.test(v)) && full.segs.length <= 6,
+        `circle [${full.segs.join(', ')}]`);
+    //  ...AND WHAT IT WITHHELD IS ANNOUNCED, not silently dropped.
+    check('CIRCLE 3 — ...and the rest is announced at the hub, with a count',
+        full.more !== null && /\d+\s+more/i.test(full.more ?? ''),
+        `pip ${JSON.stringify(full.more)}`);
+
+    //  ---- HIT-TESTING: the symptom, not the cause ----------------------------------
+    //  An overlapping segment is only a defect because the press lands on the wrong one.
+    //  The probe asks the document directly, at each segment’s own centre, in the same
+    //  evaluate that measured the box — so a stale coordinate cannot be mistaken for a
+    //  miss, which is precisely what the first cut of this check did.
+    const wrong = (full.hits ?? []).filter((h) => h.want !== h.got);
+    check('CIRCLE 4 — a press at each segment\u2019s own centre lands on THAT segment',
+        (full.hits ?? []).length > 0 && wrong.length === 0,
+        `${(full.hits ?? []).length} probed · wrong [${wrong.map((h) => `${h.want}->${h.got}`).join(', ')}]`);
+    await dismissCircle();
+    await ensureNoPanel();
+
+    // ---- A ROOMY WHEEL GETS ITS REASONS BACK ----------------------------------------
+    //  At B0 two verbs are live, so each segment has the whole arc to itself and draws at
+    //  full width WITH its reason. The old rule hid `.verb-reason` from five options onward
+    //  regardless of room — which is what made `showVerbCircle`’s own justification for
+    //  showing blocked segments ("carrying the one true reason") stop being true.
+    await editSave(circleFixture(`
+        state.boat = { surveyed: false, supports: false, dewatered: false, structural: null,
+                       seal: null, floatTest: null, loadKnown: false, moored: false,
+                       ferried: false };`));
+    await sleep(900);
+    const b0 = await readCircle();
+    //  THE ARC FILLS, AND AVAILABILITY ORDERS IT. At B0 the survivor can look her over and
+    //  survey her; the next two rungs follow, greyed. The first cut of this drew only the
+    //  two available and left two slots empty — caught at the fire, three segments into
+    //  room for four — which is withholding something while the space to show it sits
+    //  unused.
+    check('CIRCLE 5 — at B0 the arc FILLS: what she can do first, then the next rungs greyed',
+        b0.ok && b0.segs.length === 4 && overlaps(b0.boxes).length === 0
+        && !/:blocked$/.test(b0.segs[0]) && !/:blocked$/.test(b0.segs[1])
+        && /:blocked$/.test(b0.segs[2]) && /:blocked$/.test(b0.segs[3]),
+        `circle [${b0.segs.join(', ')}] · widths [${b0.boxes.map((x) => x.w.toFixed(0)).join(', ')}]`);
+    //  AND EVERY SEGMENT IS A REAL TARGET. 71px on this arc — narrower than the 116px two
+    //  segments would get, and comfortably over the 48px a thumb needs, which is what the
+    //  old 68px-at-24px-centres never was.
+    check('CIRCLE 6 — ...and every segment is still a real thumb target, none overlapping',
+        b0.boxes.length === 4 && b0.boxes.every((x) => x.w >= 48)
+        && (b0.hits ?? []).every((h) => h.want === h.got),
+        `widths [${b0.boxes.map((x) => x.w.toFixed(0)).join(', ')}] against the 48px minimum · hits ${(b0.hits ?? []).filter((h) => h.want !== h.got).length} wrong`);
+
+    // ---- NOTHING IS HIDDEN: the pip opens the COMPLETE list, with every reason ---------
+    //  Not just what was withheld. A verb ON the arc but blocked, at a width too narrow to
+    //  print a reason, would otherwise have that reason NOWHERE — which is exactly what
+    //  `CUP 3` caught: `{"ready":false,"reason":""}` where "there is nothing in it" belonged.
+    //  So the list is every verb this target has: the ones you can do, pressable, and the
+    //  ones you cannot with the sentence that says why.
+    const listed = await page.evaluate(() => {
+        const more = document.querySelector('.panel.verb-circle .verb-more');
+        if (!more) return { opened: false, why: 'no pip' };
+        more.click();
+        return { opened: true };
+    });
+    await sleep(700);
+    const listRows = await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('.panel.verb-list .verb-row'));
+        return {
+            count: rows.length,
+            pressable: rows.filter((r) => r.querySelector('.verb-row-btn') !== null).length,
+            blocked: rows.filter((r) => r.classList.contains('blocked')).length,
+            blockedWithReason: rows.filter((r) => r.classList.contains('blocked')
+                && (r.querySelector('.verb-row-reason')?.textContent ?? '').trim().length > 8).length,
+            first: (rows[0]?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 90),
+        };
+    });
+    check('CIRCLE 7 — NOTHING IS HIDDEN: the pip opens ALL ten, and every refusal carries its why',
+        listed.opened === true && listRows.count === 10
+        && listRows.pressable === 2 && listRows.blocked === 8
+        && listRows.blockedWithReason === 8,
+        `${listRows.count} row(s) · ${listRows.pressable} pressable · ${listRows.blocked} refused, ${listRows.blockedWithReason} of them with a real reason · first: "${listRows.first}"`);
+    await ensureNoPanel();
+
+    // ---- IT IS NOT ABOUT BOATS: the fire is the second-most-crowded target -----------
+    //  Seven verbs, three of them live. It has been overlapping since DROP 3 made brewing
+    //  a remedy the fifth — which is when the `crowded` class was added, buying two more
+    //  verbs and no rule. This is the same fix arriving there for free.
+    await ensureNoPanel();
+    await editSave(`state.player = { x: 0, y: 94 };
+        state.energy = 100; state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.fire = { built: true, fuel: 6, x: 0, y: 92 };
+        state.water = { vessel: null, rawSips: 0, cleanSips: 0 };
+        state.inventory = { ...state.inventory, wood: 10, fiber: 6 };`);
+    await sleep(900);
+    await approach(0, 92, 25);
+    await faceNode(0, 92);
+    await sleep(300);
+    const fire = await openCircleAt(0, 92);
+    await sleep(500);
+    const fireBoxes = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).map((o) => {
+        const b = o.getBoundingClientRect();
+        return { verb: o.dataset.verb ?? '', left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width };
+    }));
+    check('CIRCLE 8 — IT IS NOT ABOUT BOATS: the fire\u2019s seven verbs draw without overlapping either',
+        (fire.segs ?? []).length > 0 && overlaps(fireBoxes).length === 0,
+        `circle [${(fire.segs ?? []).join(', ')}] · widths [${fireBoxes.map((x) => x.w.toFixed(0)).join(', ')}] · overlaps [${overlaps(fireBoxes).join(' | ')}]`);
+    await dismissCircle();
+    await ensureNoPanel();
+
+    // ---- AND A TARGET THAT WAS NEVER CROWDED IS UNTOUCHED -----------------------------
+    //  The conservative half of the rule: if everything fits, everything is drawn, blocked
+    //  ones included, and no pip appears. The crate offers three verbs and always has.
+    await editSave(`state.player = { x: 6, y: 92 };
+        state.energy = 100; state.hunger = 90; state.thirst = 80;
+        state.storage = { ...state.storage, built: true, x: 6, y: 96, durability: 100,
+                          stored: { wood: 4 } };`);
+    await sleep(900);
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    const crate = await openCircleAt(6, 96);
+    await sleep(500);
+    const crateState = await page.evaluate(() => ({
+        segs: Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')),
+        more: document.querySelector('.panel.verb-circle .verb-more') ? 'present' : null,
+        widths: Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).map((o) => o.getBoundingClientRect().width),
+    }));
+    check('CIRCLE 9 — a wheel that always fitted is unchanged: every verb drawn, and no pip',
+        (crate.segs ?? []).length >= 2 && crateState.more === null
+        && crateState.widths.every((w) => w >= 48),
+        `circle [${crateState.segs.join(', ')}] · pip ${crateState.more ?? 'none'} · widths [${crateState.widths.map((w) => w.toFixed(0)).join(', ')}]`);
+    await dismissCircle();
     await ensureNoPanel();
     }
 
