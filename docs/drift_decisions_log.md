@@ -3,6 +3,96 @@
 
 ---
 
+**D-192 · 2026-08-25 — FILING: THE CRAFTING, WRECKFALL AND ISLAND INDUSTRY CHAPTER (v2.9), ITS QUARANTINE LIFTED BY THREE NEW LAWS — 239 PROTECTED ABSENCE, 240 FINITE PROVENANCE, 241 HARM BY CONTACT.**
+
+---
+
+**THE QUARANTINE, AND WHY IT IS RECORDED AS A GOOD PRACTICE RATHER THAN AN OBSTACLE.**
+
+The chapter arrived proposing 422 new names against a graph of 222 governed nodes — and its author held it out of canon themselves, pending ratification, rather than filing it and letting the game absorb it quietly. **That self-quarantine is the practice worth repeating, and it is recorded here so that it is repeatable rather than remembered.** A document that can change what 222 existing nodes mean is a document that should not be readable as canon until someone has said out loud what it may and may not do. The author did not need to be told; they built the pause in.
+
+The quarantine is **lifted** by this entry, on the condition that made it liftable: three laws, ratified and filed *inside the document itself* so it cannot be read, quoted or implemented without them. The filed chapter opens with a banner naming them and closes with their verbatim text. Where the chapter conflicts with a law, the law wins — stated in the document, not only here.
+
+**FILED AS:**
+
+```
+docs/reference/the_first_night_crafting_wreckfall_and_island_industry_v2_9.md
+docs/reference/model/the_first_night_crafting_wreckfall_catalogue_v0_2.xlsx
+```
+
+**THE NAME IS CORRECTED, for the fifth time on record.** "RUSTED" → "THE FIRST NIGHT" throughout both. One occurrence in the chapter (the H1) and exactly two in the workbook (`Summary!A1`, `Expansion Summary v0.2!A1`). **A blanket find-and-replace would have corrupted three legitimate cells:** `Salvage Manifest v0.2` carries *"un**trusted** load rating"*, *"un**trusted** for life support"* and *"cracked sheave; un**trusted** rating"* — the word is a condition note, not the product. The two title cells were rewritten in place and every other entry in the workbook is byte-identical to the file as received.
+
+---
+
+## The three laws, verbatim
+
+### LAW 239 — PROTECTED ABSENCE
+
+No event may cause loss while the player is offline: no decay, breakup, depletion, disappearance, spoilage, theft, flooding, contamination, drain, harm to wildlife, or bait consumed. No timed opportunity expires unattended. Positive arrivals may queue virtually but alter nothing until return. On return, a hazardous event begins its clock only after a VISIBLE WARNING and player proximity or interaction — it never retroactively catches up. The system may not create an emergency merely to punish absence.
+
+**REFINEMENT (load-bearing):** this protects PROPERTY, not OPPORTUNITY. Caches, builds, tools, partial teardowns and stores are safe whenever the player is away from the game. An OPPORTUNITY that closes on the world's clock — [[D-141]]'s appointment, the wreck window, a tide — still closes while the player is present in the world but elsewhere on the island. Being offline is not a choice about the world; being on the far shore is. Read any wider and this law repeals the game's only clock. "Cannot reasonably respond" means OUT OF THE GAME, never merely out of walking range.
+
+**WHY THE REFINEMENT IS THE DANGEROUS HALF.** The law reads naturally as "nothing bad happens while I am not there", and one careless generalisation of that sentence disables [[D-141]]'s appointment, every tide, and the wreck window — the island's only real clock. The refinement is the guard against a future implementer reading the headline and softening timed content in good faith. **No implementation of this law may treat distance as absence.** [[D-011]] is its narrower, already-shipped ancestor: absence may never worsen a body. 239 widens that from the body to property and keeps the clock.
+
+### LAW 240 — FINITE PROVENANCE
+
+Every named component exists exactly once in its parent assembly. Recovery or destruction removes it permanently. Breakup transfers finite material and never duplicates it. Background drift carries natural debris, consumables, repair stock and common matter only — it may NEVER clone a wreck-specific or progression-critical part. This reconciles the generous shore with finite wrecks: abundance is background, scarcity is named, and the two never leak into each other.
+
+**This is the law the chapter most needed.** Its own "Rules that prevent loot rain" section argues for finite parent mass and lineage; 240 makes that binding rather than advisory, and draws the line the chapter left implicit — the drift system may be as generous as it likes with matter that has no name.
+
+### LAW 241 — HARM TRAVELS BY CONTACT, NEVER BY PROXIMITY
+
+Contamination, corrosion, fire and fouling propagate only through actual contact, with bounded and physically-grounded consequences. No aura, no inventory-wide penalty, no invisible spread. Metal and glass are generally cleanable; porous materials in direct contact are downgraded to technical grade, never food, medical or clean-craft grade.
+
+**The chapter's hazard material is exactly what this bounds.** Its salvage condition vector, its shipbreaking citation and its "contaminated fuel can as a negative find" all describe harm that could easily be implemented as a bag-wide penalty. 241 forbids that shape outright and gives the downgrade a floor: technical grade, never destroyed.
+
+---
+
+## Sequencing confirmation
+
+The author's six-step macro-order **matches the standing session order: Sessions 1–3 ARE its steps 2, 3 and 4.** No re-planning follows from this filing.
+
+**The anti-shortcut clause is adopted.** A lucky, unusually complete salvaged boat still goes through the full workbench-supported inspect/repair/prove route. **Good fortune shortens the work; it never skips the proof.** This is the same rule [[D-187]] already enforces on the fishing boat's ladder and [[D-190]] on her staged verbs — a hull that arrives in good condition still gets surveyed, propped, bailed, backed, payed and floated on a line.
+
+---
+
+## What was built now, and what deliberately was not
+
+**NAMES STILL ENTER REACTIVELY.** The standing rule is unchanged by this filing: a name is minted when play reaches for it, never in advance of the need. **Filing this chapter mints nothing.** None of the 422 proposals is now a game object, a recipe, or a promise.
+
+**AN INDEX WAS BUILT. A SHORTLIST WAS NOT.** What exists is navigation — family, section, count, threshold-ladder position — so that a future session can find what the catalogue already says about a thing it has reached for. It is explicitly **not** a pre-filtered recommendation, and no proposal has been marked Keep, Rename, Merge or Remove by this filing. Evaluation is the Director's, on contact, later.
+
+```
+422 names · 37 families · threshold ladder H0–H7
+
+Natural Tools v0.2        17 families    88 names    H0–H3
+Salvage Manifest v0.2     18 families   226 names    H0–H7
+Material Routes v0.2       1 family      58 names    H0–H5
+Power Roadmap v0.2         1 family      50 names    H2–H7
+
+ladder distribution   H0=43  H1=108  H2=100  H3=64  H4=42  H5=36  H6=23  H7=6
+```
+
+**⚑ ONE COUNTING DISCREPANCY IN THE SOURCE, recorded because it changes what a review means.** The chapter calls the workbook *"the complete name-level review surface"* and says the `Expansion Index v0.2` sheet lets the Director mark *"every proposed name"*. It does not. The seven catalogue sheets hold **499** entries; the index holds **422**. Missing exactly 77:
+
+```
+disassembly actions   36        material routes    8
+research sources      17        power components   1
+beach ecology events  15
+```
+
+The chapter's own summary line enumerates those seven categories — 88 + 226 + 66 + 36 + 15 + 51 + 17 = **499** — while calling the total 422. So filtering the index will never surface a disassembly action, a beach event or a research source. **Not a blocker and nothing was changed to hide it:** both files are filed exactly as received apart from the name correction and the appended amendments. It is recorded so that "I reviewed every name" is not believed of a pass over the index alone.
+
+---
+
+*Witness:* pending — filed with the landed SHA and the clause (e) verification once this is on `main`.
+
+**Class: DESIGN-BINDING** — the trigger is named and the mechanisms are explicitly not-yet-live. Nothing in 239, 240 or 241 is implemented by this entry; all three bind the next system that touches absence, provenance or contamination, and 239's refinement binds every existing timed system against being softened. The filing itself (two documents into canon, name corrected, amendments appended, index built) is complete and verified at origin.
+
+*Status: standing. Lifts the author's self-quarantine on the v2.9 chapter and files it with its companion catalogue. Adds Laws 239–241 to canon, which ran to 238. Confirms the six-step macro-order against the standing session order and adopts the anti-shortcut clause. Mints no names.* — C2
+
+---
+
 **D-191 · 2026-08-25 — TWO ITEMS: THE OVER-FIX CORRECTED (CUPS ARE PLURAL, CEILINGS ARE NOT), AND THE LAST UNBOUNDED STORE GIVEN A LIMIT.**
 
 ---
