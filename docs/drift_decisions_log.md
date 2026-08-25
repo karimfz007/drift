@@ -134,7 +134,7 @@ So a survivor carrying one nearly-rotten unit who killed a second boar had **the
 
 **AND IT CONFIRMED [[D-189]]'S SPOILAGE FINDING EMPIRICALLY** rather than by reading: driven through `reconcile` — the real absence path — a year away ages neither raw nor cooked meat. Food does not spoil while the tab is shut, which is [[D-011]] applied to the pack.
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed as `41d9491` and confirmed three ways — local HEAD, `origin/main` and the served `drift-build` meta all read **41d9491** (built 2026-08-25T08:28:39Z), with both CI workflows green. Verified on device before landing: `88/88` across the six sections this batch touched — `SESSION 2 — THE BOAT`, `THE VERB CIRCLE SCALES`, `THE SHELL LEDGER`, and the three new ones (`THE BOAT SHOWS ONE RUNG`, `THE FIRE COOKS`, `THE CUP CANNOT OUTGROW ITSELF`). The unit suite is 92 files / 1757 tests, up 27 from 1730.
 
 **Class: OPERATIVE** — shipped: `heldSips`/`roomLeft` bounding the vessel; `shown` staging on `boatVerbs` and one verb of `fireVerbs`; `canFeedFire` reaching the verb that needs it and a full-pit refusal on both surfaces; `src/brain/cooking.ts` with `cookedMeat`, schema 38, and the fire's `cook-meat`; `data-verb` on overflow rows so a refused verb's reason is addressable at all. Item 4's cap is a finding and is unchanged.
 
