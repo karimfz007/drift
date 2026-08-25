@@ -130,6 +130,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 35) current = migrateV35toV36(current);
     if (current.schemaVersion === 36) current = migrateV36toV37(current);
     if (current.schemaVersion === 37) current = migrateV37toV38(current);
+    if (current.schemaVersion === 38) current = migrateV38toV39(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -991,6 +992,57 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * frame to be fed. That is the whole reason completeness was NOT added as a flag beside it.
  */
 /**
+ * v38 → v39 (VESSELS PLURAL, AND THE BOX GETS A TIER). `water: { vessel, rawSips,
+ * cleanSips }` becomes `water: { vessels: Vessel[] }`, and `storage` gains the `tier` that
+ * `storageCapacityBulk` reads.
+ * `water: { vessels: Vessel[] }`.
+ *
+ * THE CUP AND ITS WATER BOTH SURVIVE, which is the only thing that matters here. A save
+ * holding a shell cup with one boiled sip in it migrates to a one-entry list holding a
+ * shell cup with one boiled sip in it — same object, same water, different shape around
+ * it. A save with no vessel migrates to an empty list, which is what "nothing to carry
+ * water in" now looks like.
+ *
+ * NOTHING IS INVENTED. Nobody is handed a second cup by this migration: the number of
+ * vessels after it is exactly the number before it, one or zero. The new capability is
+ * that a survivor can now MAKE more — which is a thing they do, not a thing a schema
+ * change does to them. That is this file’s standing rule (possession is proof).
+ *
+ * READ UNTYPED, WRITTEN TYPED. `old.water` is cast through the CURRENT `WaterState`
+ * shape like every step in this file, so the v38 fields are invisible to the type even
+ * though they are genuinely there in the JSON this function receives. A local shape
+ * reads what the annotation will not let it say — the same technique `migrateV33toV34`
+ * used to see `tools.stoneHammer` after it had been moved.
+ */
+function migrateV38toV39(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const legacy = old.water as unknown as {
+        vessel?: 'shell-cup' | 'found-pan' | null;
+        rawSips?: number;
+        cleanSips?: number;
+        vessels?: unknown;
+    } | undefined;
+    //  ALREADY PLURAL is possible and must be a no-op rather than a reset: a save written
+    //  by a build that had this shape but an older version number would otherwise have its
+    //  water quietly emptied by its own upgrade.
+    const vessels = Array.isArray(legacy?.vessels)
+        ? (legacy.vessels as GameState['water']['vessels'])
+        : legacy?.vessel
+            ? [{
+                kind: legacy.vessel,
+                rawSips: Math.max(0, Math.floor(legacy.rawSips ?? 0)),
+                cleanSips: Math.max(0, Math.floor(legacy.cleanSips ?? 0)),
+            }]
+            : [];
+    //  EVERY EXISTING CRATE IS THE ONE TIER THERE IS. Seeded explicitly rather than left to
+    //  the loader’s base-merge: a state that reaches `storageCapacityBulk` without a tier
+    //  would index the table with `undefined` and get NaN room, which reads as a box that
+    //  refuses everything. There is one tier, so there is one honest answer.
+    const storage = { ...old.storage, tier: 'crate' as const };
+    return { ...envelope, schemaVersion: 39, state: { ...old, water: { vessels }, storage } };
+}
+
+/**
  * v37 → v38 (COOKING). Adds `inventory.cookedMeat`, at ZERO.
  *
  * NOBODY IS HANDED A MEAL THEY DID NOT COOK, which is this file’s standing rule:
@@ -1216,7 +1268,12 @@ function hydrate(state: GameState): GameState {
         storm: { ...base.storm, ...state.storm },
         radio: { ...base.radio, ...state.radio },
         crash: { ...base.crash, ...state.crash },
-        water: { ...base.water, ...state.water },
+        //  TAKEN WHOLE, NOT SPREAD-MERGED, now that it is a list. `{ ...base.water,
+        //  ...state.water }` was right for three scalar fields and is wrong for one array:
+        //  a saved `vessels` would replace the base’s wholesale anyway, and an ABSENT one
+        //  would leave the base’s empty list in place while looking like a merge. Falling
+        //  back to a fresh, empty set says what a save with no water field actually means.
+        water: { vessels: [...(state.water?.vessels ?? [])] },
         //  NOT SPREAD-MERGED, because it is a whole object or genuinely nothing. Merging a
         //  frame field-by-field over a `null` base would resurrect a half-object from a save
         //  that has none; taking it whole keeps "there is no frame" expressible.

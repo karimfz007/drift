@@ -29,6 +29,7 @@
 
 import { TUNE } from '../data/tune';
 import { carriedWeightKg } from './body';
+import { vesselsBulk } from './vessel';
 import type { GameState, LoadoutState, MaterialKind, ToolId } from './types';
 
 /** The six zones, in the order §9 lists them (hand outwards to the world). */
@@ -94,6 +95,11 @@ export function carriedBulk(state: GameState): number {
     let bulk = 0;
     for (const kind of BULK_KINDS) bulk += state.inventory[kind] * TUNE.materialBulk[kind];
     for (const tool of TOOL_IDS) if (ownsTool(state, tool)) bulk += toolBulk(tool);
+    //  The carried vessels, for the same reason `carriedWeightKg` counts their mass: a
+    //  rigid open bowl does not pack down, and three of them do not pack down three times
+    //  less. Water itself is given no bulk — it takes the shape of what holds it, and the
+    //  vessel’s bulk is already counted whether it is full or empty.
+    bulk += vesselsBulk(state);
     return bulk;
 }
 

@@ -98,6 +98,7 @@ import {
     drinkClean,
     fillVessel,
     makeShellCup,
+    vesselCount,
     shellCupBlocker,
     waterNote,
     vesselChip,
@@ -3821,9 +3822,13 @@ export class Game {
      */
     private doFillVessel(): void {
         const s = session().state;
-        if (!fillVessel(s)) { this.explain('There is nothing to fill, or it is already full.'); return; }
+        //  HOW MANY SIPS WENT IN, not just that something did. With one cup "filled" said
+        //  everything there was to say; with a set of them a survivor topping up at a pond
+        //  needs to know whether that tap took one sip or six.
+        const filled = fillVessel(s);
+        if (filled <= 0) { this.explain('There is nothing to fill, or it is already full.'); return; }
         this.cues.play(CUES.drink);
-        this.floatText('filled');
+        this.floatText(`+${filled} sip${filled === 1 ? '' : 's'}`);
         this.showHint(waterNote(s) ?? '');
         session().persist(now());
         this.lastActivityAt = now();
@@ -3984,7 +3989,11 @@ export class Game {
         if (blocked) { this.explain(blocked); return; }
         if (!makeShellCup(s)) { this.explain('That will not open cleanly.'); return; }
         this.cues.play(CUES.craft);
-        this.floatText('a cup');
+        //  WHICH CUP THIS IS. One cup could only ever be "a cup"; a survivor who has just
+        //  turned their fourth husk into their fourth cup is being told something useful
+        //  by the count, and told nothing at all without it.
+        const cups = vesselCount(s);
+        this.floatText(cups > 1 ? `a cup (${cups})` : 'a cup');
         //  NAMES THE NEXT MOVE, not a promise (Law 26 — the world tells you first). This
         //  read "It holds water — and it will hold a boil", which describes a capability and
         //  leaves a survivor believing the cup is ALREADY full. That is the second half of

@@ -86,7 +86,7 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  * of the file and never saw these sections at all. It does now, so the split is a measurement
  * away rather than a proxy away, and the next completed run is what places it.
  *
- * G13 — [[D-190]]’s three sections: the boat’s staged ladder, the fire’s cook verb, and the
+ * G13 — [[D-190]]’s three sections plus [[D-191]]’s crate, four in all: the boat’s staged
  * cup-capacity loop. Its OWN group rather than G12’s tail, on the same measured basis G12
  * itself was split off for. All three are `editSave`-and-walk sections rather than assertion
  * sweeps: the ladder re-seeds and re-opens the wheel at nine separate rungs, the cook section
@@ -96,7 +96,7 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 69], [70, 72],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 69], [70, 73],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

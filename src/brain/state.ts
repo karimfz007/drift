@@ -50,7 +50,7 @@ import {
     type Skills,
     type StorageInventory,
     type Structure,
-    type WoodNode, type KnowledgeDomain } from './types';
+    type WoodNode, type StorageState, type KnowledgeDomain } from './types';
 
 export function createInitialState(nowMs: number): GameState {
     return {
@@ -73,7 +73,7 @@ export function createInitialState(nowMs: number): GameState {
         shelter: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, grade: 'serviceable', defects: freshDefects() },
         construction: null,
         boat: freshBoat(),
-        storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } },
+        storage: { built: false, x: 0, y: 0, durability: TUNE.structureDurabilityMax, tier: 'crate', stored: { wood: 0, stone: 0, fiber: 0 } },
         //  SESSION 1 — `tier: 'mat'` on an UNBUILT workspace is the ladder's floor, not a
         //  claim that a mat exists: `built` is the only field that says whether anything is
         //  there. Naming the floor rather than leaving the tier nullable keeps every reader
@@ -1877,7 +1877,7 @@ export function buildStorage(state: GameState, x: number, y: number): boolean {
     if (!canBuildStorage(state)) return false;
     state.inventory.wood -= TUNE.storageWoodCost;
     state.inventory.stone -= TUNE.storageStoneCost;
-    state.storage = { built: true, x, y, durability: TUNE.structureDurabilityMax, stored: { wood: 0, stone: 0, fiber: 0 } };
+    state.storage = { built: true, x, y, durability: TUNE.structureDurabilityMax, tier: 'crate', stored: { wood: 0, stone: 0, fiber: 0 } };
     recordTrying(state, recipeDomain('storage'));
     return true;
 }
@@ -2058,6 +2058,82 @@ export function repairStructure(state: GameState, which: RepairTarget): boolean 
 //  this got stuck: the crate was built before half the game's matter existed and never widened.
 const STORABLE_KEYS: MaterialKind[] = ALL_MATERIAL_KINDS;
 
+/**
+ * WHAT ONE BOX HOLDS — a real ceiling, measured in bulk, per container.
+ *
+ * THE CRATE WAS UNLIMITED. `depositToStorage` moved every carried kind in full and nothing
+ * ever said no, so a survivor could bank a hundred wood in a box the size of a crate. That is
+ * the same shape as the two holes this project has already closed at the other end of the
+ * same economy — a cup that refilled past its own brim ([[D-190]]), a pile whose clock reset
+ * when you added to it — and it is the last unbounded store in the game.
+ *
+ * MEASURED IN BULK, NOT IN SLOTS OR IN UNITS. `materialBulk` already exists, already has a
+ * considered entry for every material, and is already shown to the player beside carried
+ * mass. A crate is a VOLUME, so it is the right question to ask of it, and asking it with the
+ * table the game already keeps is the difference between one measure of size and two that
+ * will eventually disagree. Counting units instead would have made two hundred berries cost
+ * the same room as two hundred logs, which is not a crate.
+ *
+ * PER BOX, AND BY TIER, so upgrades have somewhere to land. `storageCapacityBulk` takes the
+ * container rather than reading a global, and reads a per-tier figure — the same shape
+ * `WorkspaceTier` already uses for the mat and the bench. A later session that adds a lined
+ * or lidded or braced crate adds a tier and a number, and every call site here follows without
+ * being touched. Nothing about upgrades is BUILT in this pass; what is built is the seam.
+ */
+export function storageCapacityBulk(storage: StorageState): number {
+    return TUNE.storageCapacityBulk[storage.tier];
+}
+
+/**
+ * A UNIT'S FOOTPRINT IN A BOX, floored so that nothing is free.
+ *
+ * `materialBulk.stonehammer` is 0, and its own tuning comment says why: it was added "only to
+ * satisfy `materialBulk`'s own compile-time 'every MaterialKind has a bulk' guarantee, not to
+ * add a second count." That was harmless while bulk was a readout. The moment bulk became a
+ * CEILING it meant a crate would hold infinitely many stone hammers — a genuine unlimited
+ * store hiding inside the fix for unlimited stores.
+ *
+ * So a floor, rather than retuning a constant whose comment says it is deliberately zero: a
+ * thing that exists takes up some room, and this is the smallest amount of room the box is
+ * willing to describe.
+ */
+export function bulkPerUnit(kind: MaterialKind): number {
+    return Math.max(TUNE.materialBulk[kind], TUNE.storageMinBulkPerUnit);
+}
+
+/** How much of the box is spoken for, in bulk. */
+export function storedBulk(storage: StorageState): number {
+    let bulk = 0;
+    for (const kind of STORABLE_KEYS) bulk += (storage.stored[kind] ?? 0) * bulkPerUnit(kind);
+    return bulk;
+}
+
+/** How much room is left in the box, in bulk. Never negative. */
+export function storageRoomBulk(storage: StorageState): number {
+    return Math.max(0, storageCapacityBulk(storage) - storedBulk(storage));
+}
+
+/**
+ * HOW MANY MORE OF ONE KIND THIS BOX WOULD TAKE — the question every deposit path asks.
+ *
+ * Floored to a whole unit, because half a log does not go in a crate: a box with room for
+ * 3.8 wood takes three, and the fourth is refused rather than rounded in.
+ */
+export function storageFitsFor(storage: StorageState, kind: MaterialKind): number {
+    if (!storage.built) return 0;
+    return Math.floor(storageRoomBulk(storage) / bulkPerUnit(kind));
+}
+
+/**
+ * ONE SENTENCE NAMING THE BOX'S OWN LIMIT (Law 95), for a surface that has to say why a
+ * deposit did nothing. Null when there is room.
+ */
+export function storageFullBlocker(state: GameState): string | null {
+    if (!state.storage.built) return 'There is no crate here yet.';
+    if (storageRoomBulk(state.storage) > 0) return null;
+    return 'The crate is full. Take something out, or build somewhere else to put it.';
+}
+
 export interface StorageActionResult {
     ok: boolean;
     action: 'deposit' | 'withdraw' | null;
@@ -2096,10 +2172,15 @@ export function depositToStorage(state: GameState): StorageActionResult {
     const moved: Partial<StorageInventory> = {};
     for (const key of STORABLE_KEYS) {
         const held = state.inventory[key] ?? 0;
-        if (held > 0) {
-            moved[key] = held;
-            state.storage.stored[key] = (state.storage.stored[key] ?? 0) + held;
-            state.inventory[key] = 0;
+        //  WHAT FITS, NOT WHAT IS HELD. This used to move the whole stack unconditionally,
+        //  which is what made the crate unlimited. A partial deposit is the honest
+        //  outcome: the box takes what it can and the rest stays in the pack, where the
+        //  survivor can still see it and decide what to do.
+        const n = Math.min(held, storageFitsFor(state.storage, key));
+        if (n > 0) {
+            moved[key] = n;
+            state.storage.stored[key] = (state.storage.stored[key] ?? 0) + n;
+            state.inventory[key] = held - n;
         }
     }
     return Object.keys(moved).length > 0
@@ -2168,12 +2249,17 @@ export function moveOneKind(
     if (n <= 0) return none;
 
     if (direction === 'deposit') {
-        state.inventory[kind] = have - n;
-        state.storage.stored[kind] = (state.storage.stored[kind] ?? 0) + n;
-    } else {
-        state.storage.stored[kind] = have - n;
-        state.inventory[kind] = (state.inventory[kind] ?? 0) + n;
+        //  THE BOX GETS THE LAST WORD on a deposit. `n` above is what the survivor HAS; this
+        //  is what the crate will take. Kept separate from `n` so the withdraw path, which no
+        //  ceiling applies to, reads exactly as it always did.
+        const fits = Math.min(n, storageFitsFor(state.storage, kind));
+        if (fits <= 0) return none;
+        state.inventory[kind] = have - fits;
+        state.storage.stored[kind] = (state.storage.stored[kind] ?? 0) + fits;
+        return { ok: true, action: direction, moved: { [kind]: fits } };
     }
+    state.storage.stored[kind] = have - n;
+    state.inventory[kind] = (state.inventory[kind] ?? 0) + n;
     return { ok: true, action: direction, moved: { [kind]: n } };
 }
 
@@ -2195,7 +2281,10 @@ export function storageContents(state: GameState): Array<{ kind: MaterialKind; c
 export function storageActionsFor(state: GameState): { canDeposit: boolean; canWithdraw: boolean } {
     if (!state.storage.built) return { canDeposit: false, canWithdraw: false };
     return {
-        canDeposit: STORABLE_KEYS.some((k) => (state.inventory[k] ?? 0) > 0),
+        //  ...AND THE BOX HAS ROOM FOR IT. Offering "store what you carry" at a full crate
+        //  and having it move nothing is the silent refusal Law 26 forbids; the surface
+        //  asks this, so it can say `storageFullBlocker` instead of doing nothing.
+        canDeposit: STORABLE_KEYS.some((k) => (state.inventory[k] ?? 0) > 0 && storageFitsFor(state.storage, k) > 0),
         canWithdraw: STORABLE_KEYS.some((k) => (state.storage.stored[k] ?? 0) > 0),
     };
 }

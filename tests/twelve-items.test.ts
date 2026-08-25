@@ -77,7 +77,7 @@ describe('ITEM 3 — the husk you already opened is a cup', () => {
         expect(shellCupBlocker(s), 'a survivor holding a husk was still blocked').toBeNull();
         expect(canMakeShellCup(s)).toBe(true);
         expect(makeShellCup(s)).toBe(true);
-        expect(s.water.vessel).toBe('shell-cup');
+        expect(s.water.vessels.map((v) => v.kind)).toEqual(['shell-cup']);
         expect(s.inventory.shell, 'the husk was not the thing spent').toBe(0);
     });
 
@@ -87,11 +87,19 @@ describe('ITEM 3 — the husk you already opened is a cup', () => {
         expect(shellCupBlocker(s)).toMatch(/coconut|shell/i);
     });
 
-    it('...and a survivor who already has a cup is not offered a second', () => {
+    it('...and a survivor holding a cup IS offered another, while the husks last', () => {
+        //  THE ASSERTION IS INVERTED because the RULE was: holding a cup used to close
+        //  `canMakeShellCup` outright, so every husk after the first was dead weight. What
+        //  limits cups now is husks, which is the world rather than a predicate.
         const s = ready();
         s.inventory.shell = 3;
+        s.inventory.coconut = 0;
         makeShellCup(s);
-        expect(canMakeShellCup(s), 'a second cup was offered').toBe(false);
+        expect(canMakeShellCup(s), 'a second cup was refused').toBe(true);
+        makeShellCup(s);
+        makeShellCup(s);
+        expect(s.water.vessels.length).toBe(3);
+        expect(canMakeShellCup(s), 'a fourth cup came from nowhere').toBe(false);
     });
 });
 

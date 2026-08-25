@@ -81,7 +81,7 @@
  *      relation nobody pegged together would be the migration inventing capability rather
  *      than declining to invent history.
  */
-export const SCHEMA_VERSION = 38;
+export const SCHEMA_VERSION = 39;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -459,8 +459,20 @@ export interface ShelterState extends Structure {
  */
 export type StorageInventory = Partial<Record<MaterialKind, number>>;
 
+/**
+ * WHAT KIND OF BOX THIS IS — and the seam a capacity upgrade lands on.
+ *
+ * ONE TIER TODAY, which is honest: there is one crate recipe and it makes one crate. The
+ * shape is a union rather than a boolean or a bare number for the same reason
+ * `WorkspaceTier` is ('mat' | 'bench'): a later session adds a tier and a figure in
+ * `storageCapacityBulk`, and nothing that ASKS a box how much it holds has to change.
+ */
+export type StorageTier = 'crate';
+
 export interface StorageState extends Structure {
     stored: StorageInventory;
+    /** Which box this is. Read by `storageCapacityBulk`, never by anything else. */
+    tier: StorageTier;
 }
 
 /** One skill in the Development Tree seed. Levels through meaningful use (§I.9). */
@@ -1283,10 +1295,33 @@ export type CrashStage = 'none' | 'sighted' | 'standing' | 'fresh' | 'picked-ove
  * Matrix's qualification is "completed boil + clean cooling/storage" — treated water is a
  * different thing from raw, not the same water wearing a label.
  */
-export interface WaterState {
-    vessel: 'shell-cup' | 'found-pan' | null;
+/**
+ * ONE CARRIER AND WHAT IS IN IT. Raw and treated are separate quantities of different
+ * things (the Treatment Matrix’s "completed boil + clean cooling/storage"), and a survivor
+ * can hold both in the same cup.
+ */
+export interface Vessel {
+    kind: 'shell-cup' | 'found-pan';
     rawSips: number;
     cleanSips: number;
+}
+
+/**
+ * EVERY VESSEL THE SURVIVOR CARRIES, each with its OWN water and its own ceiling.
+ *
+ * THIS WAS ONE VESSEL AND THREE FLAT NUMBERS — `{ vessel, rawSips, cleanSips }` — and the
+ * shape itself was the restriction: there was nowhere to put a second cup, so
+ * `canMakeShellCup` refused one and `makeFoundPan` overwrote whatever was held. Every
+ * shell after the first was dead weight, and a survivor heading inland could carry two
+ * sips of water however many coconuts they had opened.
+ *
+ * A LIST, NOT A COUNT, because the cups are not interchangeable once there is water in
+ * them: one may be full of boiled and one half full of pond, and a count could not say so.
+ * [[D-190]]’s per-vessel ceiling is unchanged and now applies to each entry independently
+ * — three cups is three ceilings, which is the whole difference between storage and a leak.
+ */
+export interface WaterState {
+    vessels: Vessel[];
 }
 
 export interface CrashState {

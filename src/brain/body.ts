@@ -29,6 +29,7 @@
 
 import { TUNE } from '../data/tune';
 import { capacityEaseOf, practiceShareOf } from './capacities';
+import { vesselsMassKg } from './vessel';
 import type { GameState, MaterialKind } from './types';
 
 // ---- Carry weight -------------------------------------------------------
@@ -58,6 +59,13 @@ export function carriedWeightKg(state: GameState): number {
     //  automatically and no special-cased line is needed here any more. The old
     //  `toolMassKg.stoneHammer` line this replaced is gone with it.
     if (state.torch.owned) kg += TUNE.toolMassKg.torch;
+    //  ...AND WHAT THE VESSELS HOLD. A vessel lives in `state.water`, not `Inventory`
+    //  ([[D-183]]: the husk IS the cup, and a cup is not a stackable material), so this
+    //  loop could never have seen one. That was a quarter-kilo rounding error while a
+    //  survivor could carry exactly ONE; once they can carry several it is the whole
+    //  difference between water storage that costs something and water storage that is
+    //  free. See `vesselsMassKg` for the argument in full.
+    kg += vesselsMassKg(state);
     return kg;
 }
 

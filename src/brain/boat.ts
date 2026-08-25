@@ -118,6 +118,7 @@
  */
 
 import { TUNE, realSecondsPerGameHour } from '../data/tune';
+import { hasVessel } from './vessel';
 import { BOAT } from '../data/world';
 import { ladderFor, rung, type LadderState } from './ladder';
 import type { Affordance } from './affordance';
@@ -394,7 +395,7 @@ export function shoreUpBoat(state: GameState): boolean {
 export function dewaterBlocker(state: GameState): string | null {
     if (state.boat.dewatered) return 'She is dry inside, or as dry as she gets.';
     if (!state.boat.supports) return 'Not until she is propped. A hull that rolls with you inside it is how people are killed.';
-    if (state.water.vessel === null && !state.tools.flask) {
+    if (!hasVessel(state) && !state.tools.flask) {
         return 'You would need something to bail with — a cup, a pan, anything that holds water.';
     }
     return null;

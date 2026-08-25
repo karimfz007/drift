@@ -32,7 +32,7 @@ import {
 import { benchHasRacked, canBoardRaft, canFeedFire, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
-import { boilRefusalFor, canBoil, canFillVessel, canMakeShellCup, shellCupBlocker } from './vessel';
+import { boilRefusalFor, hasVessel, canBoil, canFillVessel, canMakeShellCup, shellCupBlocker } from './vessel';
 import { defectPlace, worstDefect } from './upkeep';
 import { handlineBlocker, haulNetBlocker, nearestSpot, setNetBlocker, spearFishBlocker } from './fishing';
 import { nearestBoar } from './fauna';
@@ -755,7 +755,7 @@ function pondVerbs(state: GameState): VerbOption[] {
             label: 'Fill cup',
             available: canFillVessel(state),
             reason: notThere
-                ?? (state.water.vessel === null
+                ?? (!hasVessel(state)
                     ? 'You have no vessel of your own yet.'
                     : 'It is already full.'),
         },

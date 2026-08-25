@@ -262,7 +262,7 @@ describe('ITEM 3 — the coconut shell, and what actually happened to it', () =>
         expect(canMakeShellCup(s)).toBe(true);
         expect(makeShellCup(s)).toBe(true);
         expect(s.inventory.shell, 'the husk was not spent').toBe(1);
-        expect(s.water.vessel, 'a shell was spent and nothing came back').toBe('shell-cup');
+        expect(s.water.vessels.map((v) => v.kind), 'a shell was spent and nothing came back').toEqual(['shell-cup']);
     });
 
     it('...and the cup is legible where the survivor looked — a real inventory chip', () => {
@@ -316,15 +316,24 @@ describe('ITEM 3 — the coconut shell, and what actually happened to it', () =>
         makeShellCup(s); fillVessel(s);
         const env = deserialize(serialize(s, NOW))!;
         expect(env.state.inventory.shell).toBe(1);
-        expect(env.state.water.vessel).toBe('shell-cup');
-        expect(env.state.water.rawSips).toBe(TUNE.shellCupSips);
+        expect(env.state.water.vessels.map((v) => v.kind)).toEqual(['shell-cup']);
+        expect(env.state.water.vessels[0].rawSips).toBe(TUNE.shellCupSips);
     });
 
-    it('a second cup is refused rather than eating a second husk', () => {
-        //  The loss path that WOULD have been real, asserted so that it stays closed.
+    it('a second husk makes a second cup, and spends exactly one husk doing it', () => {
+        //  THIS ASSERTED THE SECOND CUP WAS REFUSED, which was true and is no longer the rule:
+        //  one shell, one cup, as many as you have. The LOSS PATH it was really guarding is
+        //  unchanged and still asserted — a husk spent must become a cup, and a cup made must
+        //  cost exactly one husk. That is what “eating a second husk” was about.
         const s = withShells(2);
-        makeShellCup(s);
+        expect(makeShellCup(s)).toBe(true);
+        expect(s.inventory.shell, 'the first cup ate more than one husk').toBe(1);
+        expect(makeShellCup(s), 'the second husk could not become a cup').toBe(true);
+        expect(s.inventory.shell, 'the second cup ate more than one husk').toBe(0);
+        expect(s.water.vessels.length, 'two husks did not become two cups').toBe(2);
+        //  ...and with no husks left it refuses, without taking anything.
         expect(makeShellCup(s)).toBe(false);
-        expect(s.inventory.shell, 'a refused cup still ate a husk').toBe(1);
+        expect(s.inventory.shell).toBe(0);
+        expect(s.water.vessels.length).toBe(2);
     });
 });

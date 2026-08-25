@@ -3,6 +3,76 @@
 
 ---
 
+**D-191 · 2026-08-25 — TWO ITEMS: THE OVER-FIX CORRECTED (CUPS ARE PLURAL, CEILINGS ARE NOT), AND THE LAST UNBOUNDED STORE GIVEN A LIMIT.**
+
+---
+
+**1 · THE SINGLE-CUP RULE IS GONE. THE PER-CUP CEILING IS NOT. They were never the same thing.**
+
+[[D-190]] closed real infinite-water generation and — correctly — did not touch the much older rule sitting beside it. That rule was the first line of `canMakeShellCup`:
+
+```
+if (state.water.vessel !== null) return false;      // "You already have a coconut-shell cup."
+```
+
+**The shape of the state WAS the restriction.** `WaterState` was `{ vessel, rawSips, cleanSips }` — one slot and two flat numbers — so there was nowhere to put a second cup even if the predicate had allowed one. Every husk after the first was dead weight, and a survivor walking inland carried two sips however many coconuts they had opened. `makeFoundPan` was worse: it *overwrote* the cup, silently destroying a made object and any raw water in it.
+
+`WaterState` is now `{ vessels: Vessel[] }`, each entry carrying its own water and **its own ceiling**. A list rather than a count, because cups stop being interchangeable the moment there is water in them: one may be full of boiled and one half full of pond, and a count could not say so.
+
+**WHAT IS UNCHANGED IS THE HALF THAT MATTERED.** `roomIn` is asked of each vessel separately, and `boil` moves each cup's raw into that same cup's clean rather than pooling — so the one operation that used to be able to slip past a ceiling still cannot. **Three cups is three ceilings, not one loophole.** Driven ten fill/boil passes deep in the unit suite and six on device; the set never exceeds the sum of its parts, and no single cup ever exceeds its own.
+
+**AND CARRYING THEM COSTS SOMETHING, which is what stops this being a hole of its own.** A vessel has never been in `Inventory` — [[D-183]] put the cup in `state.water` because the husk IS the cup and a cup is not a stackable material — so `carriedWeightKg` has never seen one. That was a quarter-kilo rounding error while a survivor could hold exactly ONE; with several it is unlimited water storage at no cost, which is the same shape of defect at the other end. The vessels and the water in them now weigh and take up room:
+
+```
+vesselMassKg      shell-cup 0.25   (= materialMassKg.shell — the husk IS the cup)
+vesselBulk        shell-cup 1.6    (= materialBulk.shell — "a rigid open bowl does not pack down")
+waterMassKgPerSip 0.125            (a shell holds ~250 ml over 2 sips; water is a kilo a litre)
+```
+
+**There is no cap on how many cups a survivor may hold, deliberately.** The limits are the husks they have and the weight on their back — the world, not a number in a predicate. Asserted as a property: turning a husk into a cup is **mass-neutral**, because a cup that weighed more than the husk it came from would be matter appearing from nowhere.
+
+**⚑ ONE THING FOR THE DIRECTOR, flagged rather than changed.** The brief describes the intended design as *"each coconut can become 2 shells, each shell a cup"*. The game yields **one**: `eat('coconut')` does `state.inventory.shell += 1`, and `shellCupShellCost` is 1. So today it is one coconut, one shell, one cup — and *"several coconuts, several cups"* works exactly as asked. Doubling the yield is a one-constant change and I have not made it, because it doubles the water economy and the brief scoped this item to the cup COUNT. Say the word and it is a line.
+
+---
+
+**2 · THE CRATE HAD NO CEILING AT ALL. It has one now, measured in bulk, per box.**
+
+`depositToStorage` moved every carried kind **in full**, unconditionally, and nothing ever said no — so a survivor could bank a hundred logs in a box the size of a crate. This was the last unbounded store in the game; the other two (a cup refilling past its brim, a food pile whose clock reset when you added to it) were closed in [[D-190]].
+
+**MEASURED IN BULK, NOT IN SLOTS OR UNITS.** `materialBulk` already exists, already has a considered entry for every material, and is already shown to the player beside carried mass. A crate is a **volume**, so that is the right question to ask of it — and asking it with the table the game already keeps is the difference between one measure of size and two that eventually disagree. Counting units would have priced two hundred berries the same as two hundred logs.
+
+**THE DEFAULT IS 240 BULK, and the reasoning is from play rather than from arithmetic.** Wood is 1.2 kg and 4 bulk a unit, and `loadHeavyAtKg` is 30 — so one *heavy* backpack of timber is 25 wood, which is 100 bulk. 240 therefore holds:
+
+```
+60 wood   ·   200 stone   ·   96 fibre   ·   120 coconut     ~2.4 heavy loads of the bulkiest thing worth hoarding
+```
+
+A realistic mid-game base stock — 25 wood, 30 stone, 20 fibre, 10 coconut, 20 berries — comes to about 220 and fits with headroom, which is asserted as its own test. **Measured on device:** the same crate takes **60 logs** or **500 berries**, which is the tenfold difference between 4 bulk a log and 0.4 a handful, and is exactly why the unit is volume rather than a count of things. **So the ceiling is invisible to a survivor living out of the box and bites exactly when one is deliberately stockpiling a single material** — which is the moment an upgrade ought to start looking worth building.
+
+**BUILT FOR UPGRADES WITHOUT BUILDING ANY.** `StorageState` gains a `tier`, and `storageCapacityBulk` **takes the container** and reads a per-tier figure — the same shape `WorkspaceTier` already uses for the mat and the bench. A later session adds a tier and a row and nothing that asks a box how much it holds is touched. One tier exists today and the union says so; an empty upgrade table would have been a system pretending to be general.
+
+**A PARTIAL DEPOSIT IS THE HONEST OUTCOME.** The box takes what fits and the rest stays in the pack, where the survivor can still see it — a crate that silently ate the overflow would be worse than one with no ceiling. `storageActionsFor` no longer offers a deposit a full box cannot honour, and `storageFullBlocker` says why, because a button that is offered, pressed, and moves nothing is the silent refusal Law 26 forbids by name.
+
+**AND A HOLE INSIDE THE FIX, found while building it.** `materialBulk.stonehammer` is **0**, and its own tuning comment says that is deliberate — "only to satisfy the compile-time guarantee, not to add a second count." Harmless while bulk was a readout; the moment bulk became a *ceiling* it meant a crate would hold infinitely many stone hammers, which is an unlimited store hiding inside the fix for unlimited stores. `bulkPerUnit` floors every kind at `storageMinBulkPerUnit` (0.1) rather than retuning a constant whose comment says it is deliberately zero. Asserted as a property over every material: nothing is free.
+
+---
+
+**SCHEMA 38 → 39, one bump for both items.** `water.vessel`/`rawSips`/`cleanSips` become a one-entry `vessels` list carrying the same cup and the same water; `storage` gains `tier: 'crate'`. **Nobody is handed a second cup by the migration** — the number of vessels after it is exactly the number before, one or zero. The new capability is that a survivor can now MAKE more, which is a thing they do rather than a thing a schema change does to them. An already-plural save is a no-op rather than a reset, so a build that had the shape before the number could not have its water quietly emptied by its own upgrade.
+
+**FAIL-THEN-PASS on both items.** Removing the storage ceiling reds 4 checks; removing the zero-bulk floor reds 2; pooling the per-cup ceiling across the set reds 4 in the vessel suite.
+
+**FOUR TESTS ASSERTED THE RULES THIS BATCH REMOVED** and were restated rather than deleted — `one vessel, not an inventory`, `A SECOND CUP IS STILL REFUSED`, `a second cup is refused rather than eating a second husk`, `a survivor who already has a cup is not offered a second`, plus the device's `CUP CAP 4`. In every case the property they were really guarding survives and is still asserted: a husk spent must become a cup, a cup made must cost exactly one husk, and a new cup arrives EMPTY — if making one could hand a survivor sips they had not carried, that would be [[D-190]]'s defect with extra steps.
+
+**AND ONE OF MY OWN TESTS WAS WRONG IN A WAY WORTH KEEPING.** It compared a survivor holding four husks against the same survivor holding the four cups made from them and expected the load to rise. It did not move at all — which is correct, and is now asserted on purpose: the husk IS the cup, so the conversion is mass-neutral by construction.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `WaterState.vessels` with per-vessel ceilings and `hasVessel`/`vesselCount`/`rawSips`/`cleanSips`/`totalCapacity` reading across the set; `vesselsMassKg`/`vesselsBulk` putting carried vessels and their water into the load system for the first time; `StorageTier` and `storageCapacityBulk`/`storedBulk`/`storageRoomBulk`/`storageFitsFor`/`storageFullBlocker`, with `depositToStorage` and `moveOneKind` honouring the ceiling; `bulkPerUnit`'s floor; and schema 39.
+
+*Status: standing. Corrects [[D-190]]'s over-reach without touching its fix — the per-cup ceiling is unchanged and now applies per cup. Closes the last unbounded store in the game, after the cup and the perishable pile. Nothing about storage upgrades is built; the seam they land on is.* — C2
+
+---
+
 **D-190 · 2026-08-25 — FIVE ITEMS: THE CUP THAT COULD OUTGROW ITSELF, THE BOAT'S TWO STACKED FAULTS, TEN VERBS DOWN TO FOUR, A CAP THAT LIED ABOUT ITSELF, AND COOKING, BUILT.**
 
 ---

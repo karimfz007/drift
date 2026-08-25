@@ -1301,6 +1301,25 @@ export const TUNE = {
      *  ladder — more volume per boil, which is the reason to carry one at all. Kept modest so a
      *  pan is an improvement rather than an end to the water problem. */
     foundPanSips: 4,
+    // ---- WHAT A VESSEL WEIGHS (item 1, this batch) ------------------------------
+    //  A vessel has never been in `Inventory`, so `carriedWeightKg` has never seen one.
+    //  That was free while a survivor could hold exactly ONE. Now that they can hold
+    //  several, the load system has to see them or "carry more cups" is unlimited water
+    //  storage at no cost — the same shape of hole [[D-190]] closed inside a single cup.
+    /** [TUNE] Mass of one carried vessel, empty. Basis: a shell cup IS an emptied husk,
+     *  so it weighs exactly what `materialMassKg.shell` says one weighs (0.25) — the same
+     *  object cannot weigh two different amounts depending on which field it sits in. The
+     *  pan is wreck-era cookware: heavier than a husk, lighter than a hull plate. */
+    vesselMassKg: { 'shell-cup': 0.25, 'found-pan': 0.7 },
+    /** [TUNE] Bulk of one carried vessel. Basis: the same husk again — `materialBulk.shell`
+     *  is 1.6, "bulky for its weight: a rigid open bowl does not pack down", which is if
+     *  anything MORE true once it is a cup you are trying not to spill. */
+    vesselBulk: { 'shell-cup': 1.6, 'found-pan': 2.2 },
+    /** [TUNE] Mass of one sip of water. Basis: a coconut shell holds roughly a quarter of a
+     *  litre and `shellCupSips` is 2, so a sip is ~125 ml and water is a kilo a litre. A
+     *  full pan (4 sips) is then half a kilo, which is what half a litre ought to feel
+     *  like on a long walk — not nothing, and not a reason never to carry water. */
+    waterMassKgPerSip: 0.125,
 
     // ---- DROP 6 — THE READOUT: what the body knows, made perceivable --------
     //
@@ -1915,6 +1934,27 @@ export const TUNE = {
      *  player is carrying none — the disjoint-state rule the pond's fill/drink conflict
      *  proved out (D-042 audit), applied up front here instead of found by a bug report. */
     storageWithdrawBatch: 5,
+    // ---- WHAT ONE BOX HOLDS (item 2, this batch) --------------------------------
+    /** [TUNE] Capacity of each storage tier, in the SAME bulk units `materialBulk` uses.
+     *  Keyed by tier so a later upgrade adds a row rather than editing a global.
+     *
+     *  BASIS FOR 240, worked from what a survivor can actually carry. Wood is 1.2 kg and
+     *  4 bulk a unit, and `loadHeavyAtKg` is 30 — so one HEAVY backpack of timber is 25
+     *  wood, which is 100 bulk. A crate at 240 therefore holds about two and a half full
+     *  loads of the bulkiest thing worth hoarding (60 wood), or 200 stone, or 96 fibre.
+     *
+     *  A REALISTIC MID-GAME BASE STOCK — 25 wood, 30 stone, 20 fibre, 10 coconut, 20
+     *  berries and a few days of meat — comes to about 220 and fits with room to spare.
+     *  So the ceiling is invisible to a survivor who is living out of the box, and bites
+     *  exactly when one is deliberately stockpiling a single material, which is the
+     *  moment an upgrade ought to start looking worth building. */
+    storageCapacityBulk: { crate: 240 },
+    /** [TUNE] The smallest footprint the box will describe for one unit of anything.
+     *  Basis: `materialBulk.stonehammer` is deliberately 0 ("not to add a second count"),
+     *  which was harmless while bulk was a readout and becomes an unlimited store the
+     *  moment bulk is a ceiling. A tenth of a unit is small enough to be no tax on the
+     *  things that legitimately pack down, and enough that nothing is free. */
+    storageMinBulkPerUnit: 0.1,
 
     // ---- Structure upkeep (C05) — disrepair, never deletion ----------------
     /** [TUNE] C05 — full durability, for any structure (shelter or storage). */

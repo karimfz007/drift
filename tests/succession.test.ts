@@ -59,7 +59,7 @@ function accomplished(): GameState {
     s.skills.woodcutting.level = 5;
     s.skills.foraging.level = 4;
     s.shelter = { built: true, x: 12, y: -8, durability: 64, grade: 'refined', defects: { lashing: 0, thatch: 0, footing: 0 } };
-    s.storage = { built: true, x: 18, y: -4, durability: 77, stored: { wood: 50, stone: 40, fiber: 25 } };
+    s.storage = { built: true, x: 18, y: -4, durability: 77, tier: 'crate', stored: { wood: 50, stone: 40, fiber: 25 } };
     s.fire = { built: true, fuel: 6, x: 10, y: -10 };
     s.nodes[0].available = false;
     s.nodes[0].depletedAtGameHours = 40;

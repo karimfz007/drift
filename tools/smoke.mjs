@@ -713,6 +713,14 @@ async function main() {
 
     // ---- Helpers ----
     const live = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__drift.state())));
+    //  THE WATER, READ ACROSS EVERY VESSEL. `state.water` was `{ vessel, rawSips, cleanSips }`
+    //  and is now `{ vessels: [...] }`, each cup carrying its own water and its own ceiling.
+    //  Every check that used to reach for the flat fields asks one of these instead, so there
+    //  is one place that knows the shape rather than a dozen.
+    const wVessel = (s) => s.water.vessels[0]?.kind ?? null;
+    const wCount = (s) => s.water.vessels.length;
+    const wRaw = (s) => s.water.vessels.reduce((n, v) => n + v.rawSips, 0);
+    const wClean = (s) => s.water.vessels.reduce((n, v) => n + v.cleanSips, 0);
     const panelOpen = () => page.evaluate(() => window.__drift.panelOpen());
     const fps = () => page.evaluate(() => window.__drift.fps());
     const camera = () => page.evaluate(() => window.__drift.camera());
@@ -9259,10 +9267,10 @@ async function main() {
     const afterCup = await live();
     await shot('wave0b-01-cup');
     check('W1 — REACHABILITY: a HOLD on the water offers "open a coconut", and a real press makes a cup',
-        cupTap.ok && madeCup.ok && afterCup.water.vessel === 'shell-cup' && afterCup.inventory.coconut === 1,
+        cupTap.ok && madeCup.ok && wVessel(afterCup) === 'shell-cup' && afterCup.inventory.coconut === 1,
         `hold ${JSON.stringify({ ok: cupTap.ok, why: cupTap.why })}, at pond ${(await live()).player.x.toFixed(1)},${(await live()).player.y.toFixed(1)},`
         + ` circle [${pondCircle.join(', ')}], press ${madeCup.ok} ${madeCup.why ?? ''},`
-        + ` vessel ${afterCup.water.vessel}, coconut 2 -> ${afterCup.inventory.coconut}`);
+        + ` vessel ${wVessel(afterCup)}, coconut 2 -> ${afterCup.inventory.coconut}`);
 
     check('W1 — ...and the blade is NOT consumed: opening a shell does not eat a knife',
         afterCup.inventory.sharpblade === 1,
@@ -9275,8 +9283,8 @@ async function main() {
     await sleep(900);
     const afterFill = await live();
     check('W1 — REACHABILITY: a real press fills the cup, and the water is marked UNTREATED',
-        filled.ok && afterFill.water.rawSips > 0 && afterFill.water.cleanSips === 0,
-        `press ${filled.ok} ${filled.why ?? ''}, raw ${afterFill.water.rawSips}, clean ${afterFill.water.cleanSips}`);
+        filled.ok && wRaw(afterFill) > 0 && wClean(afterFill) === 0,
+        `press ${filled.ok} ${filled.why ?? ''}, raw ${wRaw(afterFill)}, clean ${wClean(afterFill)}`);
 
     // ---- W2a: BOIL IT, on the fire's own circle ------------------------------
     const fireAt = (await live()).fire;
@@ -9290,10 +9298,10 @@ async function main() {
     const boilSaid = await page.evaluate(() => window.__drift.lastReadout?.() ?? '');
     await shot('wave0b-02-boiled');
     check('W2a — REACHABILITY: a HOLD on the fire offers "boil water", and a real press boils it',
-        boiled.ok && afterBoil.water.cleanSips > 0 && afterBoil.water.rawSips === 0,
+        boiled.ok && wClean(afterBoil) > 0 && wRaw(afterBoil) === 0,
         `circle [${fireCircle.join(', ')}], press ${boiled.ok} ${boiled.why ?? ''},`
-        + ` raw ${afterFill.water.rawSips} -> ${afterBoil.water.rawSips},`
-        + ` clean ${afterFill.water.cleanSips} -> ${afterBoil.water.cleanSips}`);
+        + ` raw ${wRaw(afterFill)} -> ${wRaw(afterBoil)},`
+        + ` clean ${wClean(afterFill)} -> ${wClean(afterBoil)}`);
 
     check('W2a — ...and the world says what happened, in the survivor\'s own terms',
         /rolling boil|dead/i.test(boilSaid), `said "${boilSaid}"`);
@@ -9321,10 +9329,10 @@ async function main() {
     check('P-CLEAN-WATER — REACHABILITY: the Vitals tab shows the treated water and a real tap drinks it',
         packTap.ok && vitalsTap.ok && waterRow?.present === true && waterRow.hasButton === true
         && drankTap.ok && afterDrink.thirst > thirstBefore
-        && afterDrink.water.cleanSips === afterBoil.water.cleanSips - 1,
+        && wClean(afterDrink) === wClean(afterBoil) - 1,
         `row ${waterRow?.present} "${waterRow?.text}", tap ${drankTap.ok} ${drankTap.reason ?? ''},`
         + ` thirst ${thirstBefore.toFixed(1)} -> ${afterDrink.thirst.toFixed(1)},`
-        + ` clean ${afterBoil.water.cleanSips} -> ${afterDrink.water.cleanSips}`);
+        + ` clean ${wClean(afterBoil)} -> ${wClean(afterDrink)}`);
 
     check('P-CLEAN-WATER — ...and it cost no illness, which is the whole reward for the rung',
         afterDrink.illness.severity <= 0,
@@ -13599,8 +13607,8 @@ async function main() {
     const chipBoiled = await page.evaluate(() =>
         Array.from(document.querySelectorAll('.hud .chip')).map((c) => c.textContent.trim()).filter((t) => /cup|pan/i.test(t)));
     check('CUP 3 — a FILLED cup at a LIT fire genuinely boils, and the chip says boiled',
-        boiled.ok && afterBoil.water.cleanSips > 0 && /boiled/i.test(chipBoiled[0] ?? ''),
-        `${boiled.why ?? 'boiled'} · raw->clean ${afterBoil.water.rawSips}/${afterBoil.water.cleanSips} · chip ${JSON.stringify(chipBoiled)} · circle [${(fireCircle.segs ?? []).join(', ')}]`);
+        boiled.ok && wClean(afterBoil) > 0 && /boiled/i.test(chipBoiled[0] ?? ''),
+        `${boiled.why ?? 'boiled'} · raw->clean ${wRaw(afterBoil)}/${wClean(afterBoil)} · chip ${JSON.stringify(chipBoiled)} · circle [${(fireCircle.segs ?? []).join(', ')}]`);
 
     //  THE CONTROL FOR CUP 3, and the reason the director's boil was greyed: an EMPTY cup at
     //  the same lit fire is refused, and the refusal names the cup rather than the fire.
@@ -14863,7 +14871,7 @@ async function main() {
      *
      * AND THE MIRROR OF THIS REPORT IS ALREADY IN THE LEDGER. [[D-183]] answered "2 shells
      * became 1, with no filled shell appearing anywhere" — no material was lost; the husk IS
-     * the cup, spent to make it. The cup lives in `state.water.vessel` and the shell is an
+     * the cup, spent to make it. The cup lives in `wVessel(state)` and the shell is an
      * ordinary `MaterialKind`, so the two are countable separately and this section counts them.
      */
     await ensureNoPanel();
@@ -14882,7 +14890,7 @@ async function main() {
         return {
             held: s.inventory.shell ?? 0,
             stored: s.storage.stored.shell ?? 0,
-            vessel: s.water.vessel,
+            vessel: wVessel(s),
             coconut: s.inventory.coconut ?? 0,
             total: (s.inventory.shell ?? 0) + (s.storage.stored.shell ?? 0),
         };
@@ -15502,10 +15510,14 @@ async function main() {
     const water = async () => {
         const s = await live();
         return {
-            vessel: s.water.vessel,
-            raw: s.water.rawSips,
-            clean: s.water.cleanSips,
-            held: s.water.rawSips + s.water.cleanSips,
+            vessel: wVessel(s),
+            count: wCount(s),
+            raw: wRaw(s),
+            clean: wClean(s),
+            held: wRaw(s) + wClean(s),
+            //  PER CUP, because the ceiling that matters is each cup’s own. A total alone
+            //  cannot tell a full set from one cup holding everything.
+            perCup: s.water.vessels.map((v) => v.rawSips + v.cleanSips),
         };
     };
     const closeWheel = async () => {
@@ -15577,19 +15589,188 @@ async function main() {
         refusals > 0,
         `${refusals} of 6 fills refused · ${JSON.stringify(after)}`);
 
-    // ---- AND NO SECOND CUP, FROM A STORED HUSK OR ANY OTHER ------------------------------
-    //  The other half of the report: whether pulling a shell out of the crate bypasses the
-    //  one-vessel check. It does not — `canMakeShellCup` refuses on the VESSEL being held,
-    //  and a husk's provenance is not part of that question.
+    // ---- ...AND A SECOND CUP IS NOW ALLOWED, which is this batch's whole item 1 -----------
+    //  THIS ASSERTED THE OPPOSITE, and it was right when it was written: `canMakeShellCup`
+    //  opened with "you already have a coconut-shell cup" and refused. [[D-190]] closed real
+    //  infinite-water generation inside ONE cup and left that much older rule standing beside
+    //  it — so every husk after the first was dead weight, and a survivor walking inland could
+    //  carry two sips however many coconuts they had opened.
+    //
+    //  THE HALF THAT MATTERED IS UNCHANGED AND IS CHECKED ABOVE: `CUP CAP 2` still drives six
+    //  fill/boil passes and still ends with two sips in a two-sip cup. What is gone is the
+    //  count, not the ceiling.
     await closeWheel();
-    await editSave(`state.inventory = { ...state.inventory, shell: 4, coconut: 4 };`);
+    await editSave(`state.inventory = { ...state.inventory, shell: 4, coconut: 0 };`);
     await sleep(800);
     const second = await doAt(POND_AT, 'make-cup');
     const afterSecond = await water();
-    check('CUP CAP 4 — a SECOND cup is refused while one is held, whatever the husk came from',
-        second.ok === false && afterSecond.vessel !== null,
-        `${second.why ?? 'made a second one'} · segs [${(second.segs ?? []).join(' | ')}]`);
+    check('CUP CAP 4 — a SECOND cup is MADE from a second husk, not refused',
+        second.ok === true && afterSecond.count === 2,
+        `${second.why ?? 'made'} · ${afterSecond.count} vessel(s) · segs [${(second.segs ?? []).join(' | ')}]`);
+
+    //  ...AND THE SET'S CEILING IS THE SUM OF ITS CUPS, not one shared pool. Fill everything,
+    //  and every cup must be full and none of them over.
     await closeWheel();
+    const thirdMade = await doAt(POND_AT, 'make-cup');
+    await closeWheel();
+    await doAt(POND_AT, 'fill-vessel');
+    const three = await water();
+    check('CUP CAP 5 — three cups hold three cups’ worth, and not one sip more',
+        thirdMade.ok === true && three.count === 3
+        && three.held === 3 * TUNE.shellCupSips
+        && three.perCup.every((n) => n <= TUNE.shellCupSips),
+        `${three.count} cup(s) holding ${three.held} of ${3 * TUNE.shellCupSips} · per cup [${three.perCup.join(', ')}]`);
+
+    //  ...AND THE PACK SAYS SO. A survivor holding three cups must be able to SEE it without
+    //  opening a panel: the vessel chip is in the strip beside the food, and it now counts the
+    //  set rather than describing one cup. Read off the rendered chip, not computed.
+    const chips = await page.evaluate(() => Array.from(document.querySelectorAll('.chip'))
+        .map((o) => (o.textContent ?? '').replace(/\s+/g, ' ').trim()));
+    const cupChip = chips.find((t) => /^Cup/i.test(t)) ?? '';
+    check('CUP CAP 6 — the pack chip counts the whole set, not one cup of it',
+        /Cup x3/i.test(cupChip),
+        `chip "${cupChip}" · all [${chips.join(' | ').slice(0, 160)}]`);
+    await closeWheel();
+    }
+
+
+    if (section('THE CRATE HAS A CEILING — a box that says no, and says why')) {
+
+    /**
+     * THE LAST UNBOUNDED STORE IN THE GAME, given a limit.
+     *
+     * `depositToStorage` moved every carried kind IN FULL and nothing ever said no, so a
+     * survivor could bank a hundred logs in a box the size of a crate. That is the same shape
+     * as the two holes already closed at the other end of this economy — a cup that refilled
+     * past its own brim ([[D-190]]) and a food pile whose spoilage clock reset when you added
+     * to it — and it is the third and last of them.
+     *
+     * DRIVEN THROUGH THE REAL CRATE, not the function: walk to it, tap it, press *Store what
+     * you carry*, and count what actually moved. A capacity that holds in a unit test and not
+     * on the panel is a capacity the player does not have.
+     */
+    const CRATE_AT = { x: 6, y: 96 };
+    const crateState = async () => {
+        const s = await live();
+        return {
+            stored: s.storage.stored ?? {},
+            wood: s.storage.stored?.wood ?? 0,
+            carriedWood: s.inventory.wood ?? 0,
+            tier: s.storage.tier ?? null,
+        };
+    };
+
+    // ---- A CRATE THAT REFUSES TO SWALLOW A FOREST ---------------------------------------
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: 6, y: 92 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.storage = { built: true, x: 6, y: 96, durability: 100, tier: 'crate', stored: {} };
+        state.inventory = { ...state.inventory, wood: 500, stone: 0, fiber: 0 };
+    `);
+    await sleep(900);
+    const seeded = await crateState();
+    check('CRATE 1 — setup: a built crate, empty, and a survivor holding five hundred logs',
+        seeded.tier === 'crate' && seeded.wood === 0 && seeded.carriedWood === 500,
+        `tier ${String(seeded.tier)} · stored ${seeded.wood} · carried ${seeded.carriedWood}`);
+
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    await tapWorld(6, 96, 55);
+    await sleep(1000);
+    const placed = await realTapDom('.panel.loadout .use-storage-btn');
+    await sleep(1100);
+    await ensureNoPanel();
+    const afterAll = await crateState();
+
+    check('CRATE 2 — THE BOX TAKES WHAT IT HOLDS AND NO MORE',
+        placed.ok === true && afterAll.wood > 0 && afterAll.wood < 500,
+        `stored ${afterAll.wood} of 500 · ${placed.why ?? 'pressed'}`);
+    //  AND NOTHING WAS DESTROYED ON THE WAY IN. A partial deposit is the honest outcome; a
+    //  crate that silently ate the overflow would be worse than one with no ceiling at all.
+    check('CRATE 3 — ...and what did not fit is still in the pack, not gone',
+        afterAll.wood + afterAll.carriedWood === 500,
+        `stored ${afterAll.wood} + carried ${afterAll.carriedWood} = ${afterAll.wood + afterAll.carriedWood}, seeded 500`);
+
+    // ---- A FULL CRATE SAYS SO RATHER THAN DOING NOTHING ---------------------------------
+    //  Law 26: the world tells you first. A button that is offered, pressed, and moves nothing
+    //  is the silent refusal this project forbids by name.
+    await ensureNoPanel();
+    await tapWorld(6, 96, 55);
+    await sleep(1000);
+    const full = await page.evaluate(() => {
+        const btn = document.querySelector('.panel.loadout .use-storage-btn');
+        const panel = document.querySelector('.panel.loadout');
+        return {
+            offered: btn !== null,
+            disabled: btn ? btn.disabled === true : null,
+            said: (panel?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        };
+    });
+    check('CRATE 4 — a FULL crate does not offer to be filled again, or says why it will not',
+        full.offered === false || full.disabled === true || /full/i.test(full.said),
+        `offered ${String(full.offered)} · disabled ${String(full.disabled)} · "${full.said.slice(0, 140)}"`);
+    await ensureNoPanel();
+
+    // ---- TAKING SOMETHING OUT MAKES ROOM AGAIN ------------------------------------------
+    //  THROUGH THE PER-KIND BUTTON, which is the one that actually withdraws. The first cut
+    //  pressed `.use-storage-btn` again — that is "store what you carry", and with empty hands
+    //  it is not even rendered, so the check watched nothing happen and called it a failure to
+    //  give back. The crate’s own panel has `Put N` / `Take N` per kind; `Take` is this one.
+    await ensureNoPanel();
+    await editSave(`state.inventory = { ...state.inventory, wood: 0 };`);
+    await sleep(800);
+    //  WALK BACK TO IT FIRST. The previous check left the survivor wherever the panel
+    //  interaction put them; a tap on a crate out of reach opens nothing, and the check then
+    //  reads “no Take button” and blames the box.
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    await tapWorld(6, 96, 55);
+    await sleep(1000);
+        //  CLICKED IN-PAGE, not with a synthetic touch. The crate panel repaints whenever the
+        //  state under it changes, so a real tap can find the button, have it re-rendered out
+        //  from under the pointer, and land on a detached node — which reports a successful
+        //  press and moves nothing, exactly as the first cut of this check read.
+    const took = await page.evaluate(() => {
+        const btn = document.querySelector('.panel.loadout .kind-take-btn[data-kind="wood"]');
+        if (!btn) return { ok: false, why: 'no Take button for wood' };
+        btn.click();
+        return { ok: true, why: null };
+    });
+    await sleep(1100);
+    await ensureNoPanel();
+    const drawn = await crateState();
+    check('CRATE 5 — the box gives back, and giving back makes room',
+        took.ok === true && drawn.carriedWood > 0 && drawn.wood < afterAll.wood,
+        `${took.why ?? 'took'} · stored ${afterAll.wood} -> ${drawn.wood} · carried 0 -> ${drawn.carriedWood}`);
+
+    // ---- BULK IS THE UNIT, AND THE DEVICE AGREES WITH THE BRAIN -------------------------
+    //  A crate of berries is not a crate of logs. Measured on the served build rather than
+    //  asserted from the table, because the whole point of a device check is that the thing
+    //  the player is using does what the brain says it does.
+    await ensureNoPanel();
+    await editSave(`
+        state.storage = { built: true, x: 6, y: 96, durability: 100, tier: 'crate', stored: {} };
+        state.inventory = { ...state.inventory, wood: 0, berries: 500 };
+    `);
+    await sleep(900);
+    await approach(6, 96, 25);
+    await faceNode(6, 96);
+    await sleep(300);
+    await tapWorld(6, 96, 55);
+    await sleep(1000);
+    const putBerries = await realTapDom('.panel.loadout .use-storage-btn');
+    await sleep(1200);
+    await ensureNoPanel();
+    const berries = await live();
+    const storedBerries = berries.storage.stored?.berries ?? 0;
+    check('CRATE 6 — BULK IS THE UNIT: the same box holds far more berries than logs',
+        putBerries.ok === true && storedBerries > afterAll.wood,
+        `${putBerries.why ?? 'stored'} · ${storedBerries} berries against ${afterAll.wood} logs in the same crate`);
+    await ensureNoPanel();
     }
 
 
