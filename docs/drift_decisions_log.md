@@ -85,7 +85,7 @@ The chapter's own summary line enumerates those seven categories — 88 + 226 + 
 
 ---
 
-*Witness:* pending — filed with the landed SHA and the clause (e) verification once this is on `main`.
+*Witness:* landed as `03226d4`. **Clause (e) ([[D-097]]) performed and passed:** the filed files were read back FROM GITHUB after the push — `gh api .../contents/...?ref=main`, the server’s own copy, not the local object store and not the push’s exit code. At origin: the chapter’s H1 reads **THE FIRST NIGHT — Crafting, Wreckfall and Island Industry** with **zero** occurrences of the old name, and all three laws are present verbatim (spot-checked on five load-bearing clauses including 239’s refinement and the anti-shortcut sentence); the workbook carries **zero** sheets with the old name, both title cells corrected, **all three `untrusted` condition notes intact**, and the Expansion Index at its full 425 rows — byte-identical to the corrected file produced here; the ledger carries D-192 with all three law headings and its **Class: DESIGN-BINDING**. Push success was not taken as evidence of anything.
 
 **Class: DESIGN-BINDING** — the trigger is named and the mechanisms are explicitly not-yet-live. Nothing in 239, 240 or 241 is implemented by this entry; all three bind the next system that touches absence, provenance or contamination, and 239's refinement binds every existing timed system against being softened. The filing itself (two documents into canon, name corrected, amendments appended, index built) is complete and verified at origin.
 
