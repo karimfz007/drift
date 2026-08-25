@@ -14,8 +14,8 @@
 Session 3 closes the gap without moving either end:
 
 ```
-swimming alone   44.7 energy out   ·   89.4 there and back      from a reserve of 100
-by boat          14.9 energy out   ·   29.7 there and back
+swimming alone   45.1 energy out   ·   90.2 there and back      from a reserve of 100
+by boat          14.6 energy out   ·   29.2 there and back
 ```
 
 Those are the LEGS’ OWN WORK — what the paddle and the swim charge, priced the same way for both rows so the comparison is one arithmetic. A body also pays its ordinary drain for the time either takes, which is why the lived figures are higher and why the device run is the number to trust: **out and back on real pixels is 100 → 58.7, against a labouring line at 35.**
@@ -38,9 +38,9 @@ Which is exactly why a crossing is a commitment and the line is not — the same
 **MEASURED, NOT ASSUMED.** The route is sampled against the real terrain, so the beach between her keel and the waterline is a DRAG rather than a paddle and is not charged as one:
 
 ```
-boat (14,100) ── 27.4 m beach ── deep water ── wreck (40,240)      142.4 m total
-open water to the wreck's centre  111.2 m   ·   arrival radius  14 m
-boat leg  75.2 m  (2.9 energy)    ·   swim leg  26.0 m  (12.0 energy)
+boat (14,100) ── 26.7 m beach ── deep water ── wreck (40,240)      142.4 m total
+open water to the wreck's centre  115.7 m   ·   arrival radius  14 m
+boat leg  75.2 m  (3.1 energy)    ·   swim leg  26.0 m  (11.5 energy)
 ```
 
 **2 · SHE STANDS OFF, AND THAT IS THE DROP-OFF POINT.**
@@ -108,9 +108,47 @@ The second is the sharper lesson. The terrain mesh is a square roughly 152 m fro
 
 **Caught only because the reachability rail was written on the FULL crossing rather than on each piece.** Every leg passed alone. The brain's round trip passed as a property test. `CROSS 10`/`CROSS 11` were the only two checks that asked a survivor standing in open water to reach the boat, and they were the only two that failed — red before these fixes, green after, with nothing else touched.
 
+---
+
+**6 · ONE STALE PREMISE, NINE PLACES — and the two found by accident were not the dangerous ones.**
+
+The frozen matrix and the missing pick branch were found because a single check happened to stand a survivor in open water. That is luck, not method, so the premise itself was swept for: **what else still believes she is furniture?** Five blind angles, every candidate then given to a skeptic told to refute it. Twenty-seven candidates, ten refuted, and the survivors were not comments.
+
+**THE THREE THAT BROKE THE RETURN TRIP** — each invisible from the beach, each biting only where the session had just made it possible to stand:
+
+```
+atBoat()            measured to the BOAT constant, so a survivor holding on to her at the
+                    wreck read as 102 m away — and "Look her over", the one verb the table
+                    ships as `available: true, reason: null` under the words "ALWAYS. Looking
+                    at a boat is never refused", was refused. Every readout behind it went too.
+
+ferryBlocker()      never asked where she was. "Take her out on the line" stayed offered and
+                    READY at the wreck, charged a flat 90 m of arms, and moved nothing. Two
+                    presses could put the survivor under the reserve the return needs, in open
+                    water, with the verb that brings them home newly refused. The render already
+                    knew better — `entities.ts` refuses to draw that tether out there, calling
+                    it "a rope to a shore 100 m away". The brain was still charging for it.
+
+crossingPlan()      priced the stand-off swim in BOTH directions. To press "Bring her home" you
+                    must be within `boatTapRadiusM` of her, so that swim is already behind you.
+                    The gate demanded reserve for water the survivor had crossed, and could
+                    refuse them the only act that brings them back.
+```
+
+**AND THE ONE THE COMPLETENESS CRITIC FOUND, which no angle had been pointed at.** `advanceWater` sets `raft.x = player.x` on every tick — *"the raft is under the survivor, so it goes where they go"*, which is what makes it a vehicle. A crossing teleports the survivor. So bringing the boat home **while aboard the raft** would set the raft down on dry sand beside the boat's keel, inland of the waterline, where nothing in the game can refloat it: **one irreversible loss of a built vessel, caused by using a different one correctly.** The crossing now refuses while aboard, and names the raft.
+
+Two more were state rather than play. `succession.ts` built the successor's boat from a whitelist that could not name a field which did not exist when it was written, so **a boat standing off the wreck teleported to her beach the moment a survivor died** — the hull moving itself, unwitnessed. And the harness's own `boat` readout reported the `BOAT` constant, so it answered *beach* for a boat at the wreck: **a harness that misreports position would have confirmed the very fault the crossing shipped.**
+
+**THE COMMENTS WERE NOT A SEPARATE CATEGORY.** `world.ts` said *"where she SITS never changes"*; `tune.ts` said *"the wreck is a B3 destination and a B2 hull has no business arriving there"*; `entities.ts` said the hull *"stays exactly where it is"*, sixty lines above the `update()` that moves it. That last sentence is not merely stale — **it is the premise that produced the frozen matrix**, sitting in the file the freeze broke. In a codebase where comments are load-bearing, a false one is a bug with a delay on it. All corrected in place, each naming what it used to claim.
+
+**AND THE PREMISE UNDER THE LAYOUT WAS CHECKED RATHER THAN ASSUMED.** `verbCircleLayout.ts` rests its whole rule on a measurement — *"the most that are ever available at once is FIVE"* — taken before an eleventh boat verb existed. It still holds, for a reason worth writing down: `board-boat` requires `!loadKnown` while `cross-boat` and `ferry-boat` both require it, so they can never be offered together. That is now a test rather than a sentence.
+
+**WHAT THIS COST AND WHAT IT BOUGHT.** Two full device sweeps were abandoned mid-run — the first when the fair-challenge gap surfaced, the second when this audit did — because certifying a build that is about to change is theatre. **11 new checks, every one red before its fix and green after.**
+
+
 *Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
 
-**Class: OPERATIVE** — shipped: `crossing.ts` (`crossingPlan`/`crossingNote`/`canCross`/`crossingBlocker`/`runCrossing`/`boatPosition`/`standOffPoint`/`waterMetresBetween`/`metresToArrival`/`hasArrivedAt`); `DESTINATIONS` and the `Destination`/`DestinationId` shape; `BoatState.at` with schema 40; `boatStandOffM` and `crossingRouteSamples`; the `cross-boat` verb, one verb reading its direction off where she is; and the boat's meshes, collider and tap target following her — the unfrozen hull chain in `island.ts` and the `boat` branch in `pickHitPoint`. Also `swimEnergyPerGameHourFor` and `swimPaceFractionFor` in `water.ts`, which the live tick and the crossing forecast now share.
+**Class: OPERATIVE** — shipped: `crossing.ts` (`crossingPlan`/`crossingNote`/`canCross`/`crossingBlocker`/`runCrossing`/`boatPosition`/`standOffPoint`/`waterMetresBetween`/`metresToArrival`/`hasArrivedAt`); `DESTINATIONS` and the `Destination`/`DestinationId` shape; `BoatState.at` with schema 40; `boatStandOffM` and `crossingRouteSamples`; the `cross-boat` verb, one verb reading its direction off where she is; and the boat's meshes, collider and tap target following her — the unfrozen hull chain in `island.ts` and the `boat` branch in `pickHitPoint`. Also `swimEnergyPerGameHourFor` and `swimPaceFractionFor` in `water.ts`, which the live tick and the crossing forecast now share. And the audit fixes: `atBoat` measuring to `boatPosition`, `at` gates on `ferryBlocker`/`moorBlocker`, the raft gate on `crossingBlocker`, `at` crossing succession, and the harness `boat` readout reporting where she is.
 
 *Status: standing. Joins [[D-121]]'s swim to [[D-190]]'s staged hull without moving either. Reaching the destination is the goal; landing and working on the far side remain out of scope. No new land was authored.* — C2
 

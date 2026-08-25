@@ -7,7 +7,7 @@
  * got control (the zero point for every trace timing).
  */
 
-import { SAVE_KEY, Session, airCapacityOf, atBoat, clarityNow, crashGone, crashSighting, crashWorkable, signalAtHour, timeOfDay, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
+import { SAVE_KEY, Session, airCapacityOf, atBoat, boatPosition, clarityNow, crashGone, crashSighting, crashWorkable, signalAtHour, timeOfDay, boatStage, boatUnderstanding, createSaveRepository, depthAt, diveStageOf, handsUnderstand, ladderFor, junkSites, manualUnderstands, salvageCandidatePoint, spawnSalvageNode, traceSites, type MorningReport } from '../brain';
 import { BOAT, CRASH_SITE, DIVE_SITE, FAR_ISLAND, MANUALS, POND, SIGNALS, isPlaceablePoint } from '../data/world';
 import { TUNE } from '../data/tune';
 import { RENDER } from './theme';
@@ -560,11 +560,18 @@ function installDebugHook(): void {
     //  what stage she is at, and which routes the survivor has actually taken. It does NOT
     //  inspect her: the harness walks a real survivor over and taps the hull with a finger,
     //  and everything the check reads afterwards comes off the screen, not off this hook.
+    //  SESSION 3 — "it answers where she is" became a claim this hook could get wrong. It
+    //  reported the `BOAT` constant, so it said `beach` for a boat standing off the wreck, and
+    //  a harness that misreports position is worse than no harness: a check written against it
+    //  would have confirmed the very fault the crossing shipped. `at` is exposed alongside, so
+    //  a check can read the fact rather than infer it from coordinates.
     boat: () => {
         const st = runtime.session?.state;
+        const where = st ? boatPosition(st) : { x: BOAT.x, y: BOAT.y };
         return {
-            x: BOAT.x,
-            y: BOAT.y,
+            x: where.x,
+            y: where.y,
+            at: st ? st.boat.at : 'shore',
             stage: st ? boatStage(st) : 'B0',
             bearingToFarIsland: Math.atan2(FAR_ISLAND.x - BOAT.x, FAR_ISLAND.y - BOAT.y),
             manualId: MANUALS[0]?.id ?? null,

@@ -15948,6 +15948,27 @@ async function main() {
     check('CROSS 10 — she is reachable from the water, and the verb has turned round',
         hi >= 0 && /home/i.test(homeWheel.labels[hi] ?? ''),
         `segs [${homeWheel.segs.join(' | ')}] · label "${homeWheel.labels[hi] ?? ''}"`);
+
+    //  ---- THE SHORE VERBS DO NOT FOLLOW HER OUT (Session 3 audit) --------------------
+    //  Three faults in one wheel, all from the same stale premise, all invisible from the
+    //  beach. The ferry rides a line ANCHORED TO THE SAND: it stayed offered and READY out
+    //  here, charged a flat 90 m of arms, and moved nothing — two presses could put the
+    //  survivor under the reserve the return needs, in open water. Mooring offered to make
+    //  her fast to 30 m of open sea. And `atBoat` measured to the beach, so "Look her over"
+    //  — the one verb the table ships as never refusable — was declined by a survivor who
+    //  was holding on to her.
+    const seg = (id) => homeWheel.segs.find((v) => v.startsWith(id)) ?? null;
+    const blocked = (id) => (seg(id) ?? '').endsWith(':blocked');
+    check('CROSS 13 — the beach’s own verbs refuse out here, and say why',
+        seg('inspect-boat') !== null && !blocked('inspect-boat')
+        && blocked('ferry-boat') && blocked('moor-boat'),
+        `inspect ${seg('inspect-boat')} · ferry ${seg('ferry-boat')} · moor ${seg('moor-boat')}`);
+    //  THE LAW 95 REASON IS ASSERTED BRAIN-SIDE, NOT HERE, and the distinction is the
+    //  layout's own: `CIRCLE_MIN_REASON_PX` drops the reason line whenever a segment is too
+    //  narrow to read it, which at four segments it always is — the text is carried by the hub
+    //  pip instead. A device check for it on this wheel could never pass, and a check that
+    //  cannot pass by design is a check that will one day be “fixed” by weakening it.
+    //  `crossing.test.ts` asserts `ferryBlocker` names the beach.
     const home = await page.evaluate(() => {
         const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
             .find((o) => o.dataset.verb === 'cross-boat');

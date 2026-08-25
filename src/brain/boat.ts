@@ -119,12 +119,12 @@
 
 import { TUNE, realSecondsPerGameHour } from '../data/tune';
 import { hasVessel } from './vessel';
-import { BOAT } from '../data/world';
+import { BOAT, DESTINATIONS } from '../data/world';
 import { ladderFor, rung, type LadderState } from './ladder';
 import type { Affordance } from './affordance';
 import { recordTrying } from './knowledge';
 import { rungForCompetence } from './heavyObjects';
-import type { BoatRepair, BoatState, GameState, OutboardPart, TeardownRung } from './types';
+import type { BoatRepair, BoatState, Destination, GameState, OutboardPart, TeardownRung } from './types';
 
 /**
  * THE STAGED CAPABILITY (Law 124). All three stages are reachable, each useful on its own:
@@ -190,9 +190,46 @@ export function stageNote(stage: BoatStage): string {
     }
 }
 
-/** Is the survivor close enough to look at her properly? */
+/** Where the boat actually is right now. Derived from `boat.at`, never stored as a position. */
+export function boatPosition(state: GameState): { x: number; y: number } {
+    const at = state.boat.at;
+    if (at === 'shore') return { x: BOAT.x, y: BOAT.y };
+    const dest = DESTINATIONS[at];
+    //  A destination that has been removed from the table leaves her at her beach rather than
+    //  at a coordinate nobody can name. Content can be withdrawn; a boat cannot be nowhere.
+    if (!dest) return { x: BOAT.x, y: BOAT.y };
+    return standOffPoint(dest);
+}
+
+/**
+ * THE POINT SHE STOPS AT — `standOffM` short of the destination, on the line in from her
+ * beach. Derived so that moving the beach or the destination moves this with them.
+ */
+export function standOffPoint(dest: Destination): { x: number; y: number } {
+    const dx = dest.x - BOAT.x;
+    const dy = dest.y - BOAT.y;
+    const total = Math.hypot(dx, dy);
+    if (total <= dest.standOffM) return { x: BOAT.x, y: BOAT.y };
+    const t = (total - dest.standOffM) / total;
+    return { x: BOAT.x + dx * t, y: BOAT.y + dy * t };
+}
+
+/**
+ * Is the survivor close enough to look at her properly?
+ *
+ * MEASURED TO WHERE SHE IS, not to where she was first seen. This asked the `BOAT` constant
+ * until Session 3, which was correct for four sessions and became a hard refusal the moment
+ * she could be somewhere else: a survivor standing ON her at the wreck read as 102 m away, and
+ * `doInspectBoat` declined "Look her over" — the one verb `boatVerbs` ships with
+ * `available: true, reason: null` under the words "ALWAYS. Looking at a boat is never refused."
+ *
+ * Every readout behind this gate went with it — her stage, the survey, the trial findings, the
+ * load note, the capability note — so the survivor who had just crossed to the wreck could
+ * learn nothing at all about the boat they were holding on to.
+ */
 export function atBoat(state: GameState): boolean {
-    return Math.hypot(state.player.x - BOAT.x, state.player.y - BOAT.y)
+    const at = boatPosition(state);
+    return Math.hypot(state.player.x - at.x, state.player.y - at.y)
         <= TUNE.interactRadiusM + TUNE.boatTapRadiusM;
 }
 
@@ -831,8 +868,14 @@ export function boardBlocker(state: GameState): string | null {
  *
  * SHE STAYS ON THE LINE, and that is the honest ceiling rather than an invisible wall.
  * `boatFerryDistanceM` is 90 m round trip against a wreck that lies ~115 m out — short of
- * it on purpose. A survivor can SEE how far short, which is a better refusal than any
- * sentence: the wreck is a B3 destination and this hull is not going there yet.
+ * it on purpose. A survivor can SEE how far short, which is a better refusal than any sentence.
+ *
+ * WHAT THAT USED TO SAY, and no longer can: "the wreck is a B3 destination and this hull is not
+ * going there yet." Session 3 gave this same B2 hull `cross-boat`, which spends the whole 90 m
+ * in ONE direction and reaches the wreck's stand-off. The ferry is unchanged and still a round
+ * trip on a shore line — but it is now the OTHER way to spend the budget rather than the only
+ * one, and `ferryBlocker` gates on `boat.at` so the line is not offered while she is away from
+ * the beach it is anchored to.
  *
  * AND SHE TAKES ON WATER DOING IT, through the same two weaknesses the float test reads.
  * The arithmetic is `floatTestForecast`’s, scaled by how much of a trial this is — so a
@@ -875,6 +918,18 @@ export function ferryForecast(state: GameState): FerryEffort {
 
 export function ferryBlocker(state: GameState): string | null {
     if (boatStage(state) !== 'B2') return 'She does not float yet. There is nothing to paddle.';
+    //  THE LINE IS ANCHORED TO THE BEACH, so there is no line to ride while she is away from it.
+    //
+    //  This gate did not exist and nothing else consulted `at`, so "Take her out on the line"
+    //  stayed offered and READY at the wreck. Pressing it charged a full 90 m of arms — the
+    //  flat `boatFerryDistanceM`, since `ferryForecast` never asks where she is — and moved
+    //  nothing at all. Two presses could put the survivor under the reserve `crossingBlocker`
+    //  needs, in open water, with the verb that brings them home newly refused.
+    //
+    //  The render already knew: `entities.ts` refuses to draw the tether anywhere but the shore,
+    //  on the grounds that it would be "a rope to a shore 100 m away". The brain was still
+    //  charging the survivor to paddle a line the screen would not draw.
+    if (state.boat.at !== 'shore') return 'Her line is back on the beach. Bring her home to ride it.';
     //  You do not take the paddle to a boat you have never sat in. Ordering, not difficulty.
     if (!state.boat.loadKnown) return 'Get into her first and feel what she does with weight in her.';
     if (state.energy <= TUNE.energyLowThreshold) return 'You have not the arms for it right now.';
@@ -927,6 +982,10 @@ export function ferryFindings(state: GameState): string[] {
 /** Tie her up, so she is where you left her. The last of B2's four capabilities. */
 export function moorBlocker(state: GameState): string | null {
     if (boatStage(state) !== 'B2') return 'There is nothing afloat to make fast.';
+    //  A PAINTER IS MADE FAST TO SOMETHING. `doMoorBoat` says so in as many words — a line round
+    //  a rock at the top of her beach — and there is no rock at the stand-off, only 30 m of water
+    //  under her. Mooring her to the open sea was offered, and printed the beach's own sentence.
+    if (state.boat.at !== 'shore') return 'Nothing out here to make her fast to.';
     if (state.boat.moored) return 'She is already made fast.';
     if (state.inventory.fiber < TUNE.boatMooringFiberCost) {
         return `You would need ${TUNE.boatMooringFiberCost - state.inventory.fiber} more fibre for a painter.`;

@@ -257,9 +257,11 @@ function constructionVerbs(state: GameState): VerbOption[] {
 /**
  * SESSION 2 — THE BOAT, B0 TO B2 (Laws 124 and 125).
  *
- * TEN VERBS AND FIVE SYSTEMS, and the ordering is the ladder itself: survey, prop, bail,
+ * ELEVEN VERBS AND FIVE SYSTEMS, and the ordering is the ladder itself: survey, prop, bail,
  * back the frames, pay the seams, float her, then the things floating is FOR: get in, take
- * her out on the line, make her fast. Every one of them is offered at every stage and
+ * her out on the line, TAKE HER ACROSS, make her fast. The eleventh is Session 3's crossing,
+ * and it is named here because a header that enumerates the ladder in full and then silently
+ * omits a rung is worse than one that never listed them. Every one of them is offered at every stage and
  * refuses with the one true reason when it is not her turn — which is what makes the ladder
  * legible from the boat rather than from a wiki.
  *

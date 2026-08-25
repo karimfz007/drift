@@ -14,7 +14,8 @@
  *      n= 7   centres  36.2 px apart   segment  68 px    overlap  32 px   (47% of the button)
  *      n=10   centres  24.1 px apart   segment  68 px    overlap  44 px   (65% of the button)
  *
- * So the boat's ten verbs are not a new class of problem — they are the same problem at a count
+ * So the boat's verbs (ten when this was measured, eleven since Session 3's crossing) are
+ * not a new class of problem — they are the same problem at a count
  * that finally made it undeniable. FOUR was already broken and was not even flagged crowded:
  * the class only arms at five, so four verbs draw at full width into 72 px of space.
  *
@@ -57,7 +58,11 @@
  *      its greyed `add-materials` because there was never a shortage of room to argue about.
  *   1. OTHERWISE THE ARC CARRIES WHAT YOU CAN DO. Available verbs, in the target's order, so a
  *      ladder still reads as a ladder. Measured across every target in the game, the most that
- *      are ever available at once is FIVE — the boat, afloat and aboard.
+ *      are ever available at once is FIVE — the boat, afloat and aboard. Session 3 added an
+ *      eleventh boat verb and the number held: `board-boat` needs `!loadKnown` while `cross-boat`
+ *      and `ferry-boat` both need it, so they cannot be offered together. That is now MEASURED
+ *      in `crossing.test.ts` rather than asserted here, because it is the premise this whole
+ *      module rests on and it had never been checked.
  *   2. UNLESS NOTHING IS AVAILABLE, in which case the arc carries the blocked ones, because
  *      that is precisely the case the flask argument is about: a wheel of things you cannot do
  *      is still telling you what this thing is FOR, and an empty wheel would be the silent

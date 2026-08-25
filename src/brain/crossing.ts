@@ -9,8 +9,8 @@
  *
  * This joins the two. The boat does not make the wreck NEARER — she makes it SURVIVABLE:
  *
- *      swimming alone   44.7 energy out, 89.4 there and back   (from a reserve of 100)
- *      by boat          14.9 energy out, 29.7 there and back
+ *      swimming alone   45.1 energy out, 90.2 there and back   (from a reserve of 100)
+ *      by boat          14.6 energy out, 29.2 there and back
  *
  * Three times cheaper, and — the part that matters — a round trip a survivor can actually
  * afford. The capability Session 3 adds is not reach. It is COMING BACK.
@@ -52,35 +52,12 @@
 
 import { TUNE } from '../data/tune';
 import { BOAT, waterDepthAt } from '../data/world';
-import { boatStage } from './boat';
+import { boatStage, standOffPoint } from './boat';
 import { realSecondsPerGameHour } from '../data/tune';
 import type { Destination, DestinationId, GameState } from './types';
 import { DESTINATIONS } from '../data/world';
 import { swimEnergyPerGameHourFor, swimPaceFractionFor } from './water';
 
-/** Where the boat actually is right now. Derived from `boat.at`, never stored as a position. */
-export function boatPosition(state: GameState): { x: number; y: number } {
-    const at = state.boat.at;
-    if (at === 'shore') return { x: BOAT.x, y: BOAT.y };
-    const dest = DESTINATIONS[at];
-    //  A destination that has been removed from the table leaves her at her beach rather than
-    //  at a coordinate nobody can name. Content can be withdrawn; a boat cannot be nowhere.
-    if (!dest) return { x: BOAT.x, y: BOAT.y };
-    return standOffPoint(dest);
-}
-
-/**
- * THE POINT SHE STOPS AT — `standOffM` short of the destination, on the line in from her
- * beach. Derived so that moving the beach or the destination moves this with them.
- */
-export function standOffPoint(dest: Destination): { x: number; y: number } {
-    const dx = dest.x - BOAT.x;
-    const dy = dest.y - BOAT.y;
-    const total = Math.hypot(dx, dy);
-    if (total <= dest.standOffM) return { x: BOAT.x, y: BOAT.y };
-    const t = (total - dest.standOffM) / total;
-    return { x: BOAT.x + dx * t, y: BOAT.y + dy * t };
-}
 
 /**
  * METRES OF WATER ON A ROUTE, sampled off the real terrain rather than assumed.
@@ -148,22 +125,43 @@ function legFor(metres: number, speedFraction: number, drainPerGameHour: number)
     return { metres, hours, energyCost: hours * drainPerGameHour };
 }
 
-export function crossingPlan(state: GameState, destId: DestinationId): CrossingPlan {
-    const dest = DESTINATIONS[destId];
-    const direction: 'out' | 'home' = state.boat.at === 'shore' ? 'out' : 'home';
-    const stand = standOffPoint(dest);
-    const beach = { x: BOAT.x, y: BOAT.y };
+/** Which way this crossing goes, derived from the only thing that records it. */
+function directionOf(state: GameState): 'out' | 'home' {
+    return state.boat.at === 'shore' ? 'out' : 'home';
+}
 
+/**
+ * THE LEGS OF ONE CROSSING, in the direction it is actually being made.
+ *
+ * ONE BODY, TWO CALLERS — the plan and the blocker's affordability probe. These were separate
+ * copies of the same arithmetic, and they had already drifted apart in the way copies always
+ * do. Session 3's own fair-challenge fix had just finished saying this about the swim's price;
+ * the shape repeats because the lesson does.
+ */
+function legsFor(state: GameState, dest: Destination, direction: 'out' | 'home') {
     //  THE BOAT'S LEG IS THE SAME WATER IN BOTH DIRECTIONS. Priced once so the trip home can
     //  never be cheaper than the trip out for any reason other than the survivor's own state.
-    const boatMetres = waterMetresBetween(beach, stand);
+    const boatMetres = waterMetresBetween({ x: BOAT.x, y: BOAT.y }, standOffPoint(dest));
     const boat = legFor(boatMetres, TUNE.boatPaddleSpeedFraction, TUNE.raftEnergyDrainPerGameHour);
 
-    //  ...AND THE SWIM IS ONLY ON THE WAY OUT. Coming home you swim BACK to a boat that is
-    //  already floating where you left her, which is the same water again — so the swim leg
-    //  is priced for both and simply named by the direction the plan is describing.
-    const swimMetres = Math.max(0, dest.standOffM - dest.arrivalRadiusM);
+    //  THE SWIM IS AHEAD OF YOU ONLY ON THE WAY OUT, and pricing it both ways was a stranding
+    //  waiting to happen.
+    //
+    //  To press "Bring her home" you must be within `boatTapRadiusM` of her — which means you
+    //  have ALREADY swum the stand-off, under your own arms, before the verb was reachable at
+    //  all. Charging it again asked the survivor to hold reserve for water that is behind them,
+    //  and since the same number feeds `affordable`, the gate could refuse a survivor floating
+    //  in open water the one act that brings them back. A forecast may be pessimistic about the
+    //  sea. It may not invent a leg that does not exist and then lock the boat over it.
+    const swimMetres = direction === 'out' ? Math.max(0, dest.standOffM - dest.arrivalRadiusM) : 0;
     const swim = legFor(swimMetres, swimPaceFractionFor(state), swimEnergyPerGameHourFor(state));
+    return { boat, swim, boatMetres };
+}
+
+export function crossingPlan(state: GameState, destId: DestinationId): CrossingPlan {
+    const dest = DESTINATIONS[destId];
+    const direction = directionOf(state);
+    const { boat, swim, boatMetres } = legsFor(state, dest, direction);
 
     const totalEnergy = boat.energyCost + swim.energyCost;
     const energyOnArrival = state.energy - totalEnergy;
@@ -196,6 +194,13 @@ export function crossingBlocker(state: GameState, destId: DestinationId): string
         return `${dest.label} is further than she will go. Her arms are good for about`
             + ` ${Math.round(TUNE.boatFerryDistanceM)} metres of water and that is ${Math.round(boatMetres)}.`;
     }
+    //  YOU CANNOT TAKE ONE BOAT WHILE STANDING ON ANOTHER, and the reason is not fastidiousness.
+    //  `advanceWater` puts the raft wherever the survivor is on every tick — "the raft is under
+    //  the survivor, so it goes where they go", which is what makes it a vehicle. A crossing
+    //  teleports the survivor, so crossing home while aboard would set the raft down on the sand
+    //  beside the boat's keel, inland of the waterline, where nothing in the game can refloat it.
+    //  One irreversible loss of a built vessel, caused by using a different one correctly.
+    if (state.raft.aboard) return 'Step off the raft first. You cannot take her out from another boat.';
     const plan = planWithoutBlocker(state, dest);
     if (!plan.affordable) {
         return 'You have not the reserve for the crossing and the swim at the other end.';
@@ -203,13 +208,14 @@ export function crossingBlocker(state: GameState, destId: DestinationId): string
     return null;
 }
 
-/** The plan's arithmetic without its blocker, so `crossingBlocker` can consult it safely. */
+/**
+ * The plan's affordability without its blocker, so `crossingBlocker` can consult it safely.
+ *
+ * This exists only to break the recursion between plan and blocker — it must NOT be a second
+ * copy of the arithmetic, which is exactly what it was. `legsFor` is the one body.
+ */
 function planWithoutBlocker(state: GameState, dest: Destination): { affordable: boolean } {
-    const stand = standOffPoint(dest);
-    const boatMetres = waterMetresBetween({ x: BOAT.x, y: BOAT.y }, stand);
-    const boat = legFor(boatMetres, TUNE.boatPaddleSpeedFraction, TUNE.raftEnergyDrainPerGameHour);
-    const swimMetres = Math.max(0, dest.standOffM - dest.arrivalRadiusM);
-    const swim = legFor(swimMetres, swimPaceFractionFor(state), swimEnergyPerGameHourFor(state));
+    const { boat, swim } = legsFor(state, dest, directionOf(state));
     return { affordable: state.energy - (boat.energyCost + swim.energyCost) > TUNE.swimLabouringEnergy };
 }
 

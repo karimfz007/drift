@@ -197,6 +197,12 @@ export function closeSurvivor(state: GameState, cause: string): {
             seal: state.boat.seal
                 ? { ...state.boat.seal, usedParts: [...state.boat.seal.usedParts], usedMaterials: { ...state.boat.seal.usedMaterials } }
                 : null,
+            //  WHERE SHE IS IS MATTER, not knowledge, so it crosses like every other physical
+            //  fact in this block. Omitting it teleported a boat standing off the wreck back to
+            //  her beach the instant a survivor died — the hull moving itself, unwitnessed,
+            //  because a whitelist written when she could not move had no reason to name a
+            //  field that did not exist. The successor inherits the sea state they were left.
+            at: state.boat.at,
             moored: state.boat.moored,
         },
         //  TRACES ARE NOT LISTED HERE, and that absence is the decision. Having READ a

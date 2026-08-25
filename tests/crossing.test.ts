@@ -36,6 +36,11 @@ import {
     swimEnergyPerGameHourFor,
     swimPaceFractionFor,
     loadEnergyMultiplierOf,
+    atBoat,
+    canFerry,
+    ferryBlocker,
+    canMoor,
+    moorBlocker,
     waterZoneOf,
     type Destination,
     type GameState,
@@ -43,6 +48,7 @@ import {
 import { BOAT, DESTINATIONS, FAR_ISLAND, WRECK } from '../src/data/world';
 import { TUNE, realSecondsPerGameHour } from '../src/data/tune';
 import { fullBody } from './_baseline';
+import { closeSurvivor } from '../src/brain/succession';
 
 const NOW = 1_770_000_000_000;
 
@@ -394,5 +400,189 @@ describe('FAIR CHALLENGE — the forecast is priced for THIS body, not a baselin
         }
         expect(found, 'no reserve exists where load changes the answer — load is not in the gate')
             .toBe(true);
+    });
+});
+
+describe('SHE IS NOT FURNITURE — everything that still measured from her beach', () => {
+    /**
+     * ONE STALE PREMISE, SIX PLACES. For four sessions the boat could not move, so code all
+     * over the project measured from the `BOAT` constant, gated on nothing, or asserted in
+     * comments that she stays put. Session 3 made every one of those false at once, and the
+     * two that were found by accident (a frozen world matrix, a missing pick branch) were
+     * found only because a single check happened to stand a survivor in open water.
+     *
+     * These are the rest, each pinned by the behaviour it breaks rather than by the constant
+     * it reads — so a future author who moves her somewhere else again gets a red, not a
+     * silent one-way trip.
+     */
+
+    /** Her, standing off the wreck, with the survivor alongside in the water. */
+    function atTheWreck(): GameState {
+        const s = ready();
+        s.boat = { ...s.boat, at: 'wreck' };
+        const stand = standOffPoint(DESTINATIONS.wreck);
+        s.player = { x: stand.x, y: stand.y };
+        return s;
+    }
+
+    it('LOOK HER OVER IS NEVER REFUSED — including when she is at the wreck', () => {
+        //  `boatVerbs` ships inspect with `available: true, reason: null` under the words
+        //  "ALWAYS. Looking at a boat is never refused." `atBoat` measured to the beach, so
+        //  a survivor holding on to her 100 m out was told "Too far to see much."
+        const s = atTheWreck();
+        expect(Math.hypot(s.player.x - BOAT.x, s.player.y - BOAT.y), 'fixture is not actually away')
+            .toBeGreaterThan(90);
+        expect(atBoat(s), 'the survivor is ON her and reads as too far to look at her').toBe(true);
+    });
+
+    it('...and she is still out of reach from the beach she is no longer on', () => {
+        //  The other half, so the fix is a MEASUREMENT and not a constant `true`.
+        const s = atTheWreck();
+        s.player = { x: BOAT.x, y: BOAT.y };
+        expect(atBoat(s)).toBe(false);
+    });
+
+    it('THE LINE IS ON THE BEACH — the ferry is not offered to a boat that is not on it', () => {
+        //  Each press charged a flat 90 m of arms and moved nothing, and two of them could put
+        //  the survivor under the reserve the return needs. The render already refused to draw
+        //  the tether out here; the brain was still charging for it.
+        const home = ready();
+        expect(canFerry(home), 'the ferry should work at her beach').toBe(true);
+
+        const away = atTheWreck();
+        expect(canFerry(away)).toBe(false);
+        expect(ferryBlocker(away)).toMatch(/beach/i);
+    });
+
+    it('NOTHING TO MAKE HER FAST TO — mooring is not offered over 30 m of water', () => {
+        const away = atTheWreck();
+        away.inventory.fiber = 99;
+        expect(canMoor(away)).toBe(false);
+        expect(moorBlocker(away)).toMatch(/nothing out here/i);
+    });
+
+    it('A SUCCESSOR INHERITS THE SEA STATE THEY WERE LEFT — she does not sail herself home', () => {
+        //  Where she is is matter, and this block's own rule is that matter crosses. The
+        //  whitelist could not name a field that did not exist when it was written.
+        const s = atTheWreck();
+        const { next } = closeSurvivor(s, 'exposure');
+        expect(next.boat.at, 'the hull moved itself, unwitnessed, because a survivor died')
+            .toBe('wreck');
+    });
+
+    it('YOU CANNOT TAKE ONE BOAT FROM ANOTHER — the raft would be beached and lost', () => {
+        //  `advanceWater` sets `raft.x = player.x` every tick, so a crossing that teleports the
+        //  survivor sets the raft down wherever they land. Coming home, that is dry sand beside
+        //  the boat's keel, inland of the waterline, with nothing in the game able to refloat it.
+        const s = atTheWreck();
+        s.raft = { ...s.raft, aboard: true };
+        expect(canCross(s, 'wreck')).toBe(false);
+        expect(crossingBlocker(s, 'wreck')).toMatch(/raft/i);
+    });
+});
+
+describe('THE WAY HOME IS NOT PRICED FOR WATER ALREADY BEHIND YOU', () => {
+    function atTheWreck(energy: number): GameState {
+        const s = ready();
+        s.boat = { ...s.boat, at: 'wreck' };
+        const stand = standOffPoint(DESTINATIONS.wreck);
+        s.player = { x: stand.x, y: stand.y };
+        s.energy = energy;
+        return s;
+    }
+
+    it('the home plan has NO swim leg — you swam it to reach her', () => {
+        //  To press "Bring her home" you must be inside `boatTapRadiusM` of her, which means the
+        //  stand-off swim is already done. The plan charged it anyway, in both directions.
+        const out = crossingPlan(ready(), 'wreck');
+        const home = crossingPlan(atTheWreck(100), 'wreck');
+        expect(out.direction).toBe('out');
+        expect(home.direction).toBe('home');
+        expect(out.swim.metres).toBeGreaterThan(0);
+        expect(home.swim.metres, 'the way home is charged for a swim that is behind you').toBe(0);
+        expect(home.swim.energyCost).toBe(0);
+        //  The boat's own leg is the same water either way, and is NOT discounted.
+        expect(home.boat.energyCost).toBeCloseTo(out.boat.energyCost, 9);
+    });
+
+    it('AND SO A SURVIVOR IS NOT STRANDED BY A LEG THAT DOES NOT EXIST', () => {
+        //  The failure this pins: a reserve that comfortably covers the paddle home, refused
+        //  because the gate demanded reserve for the swim as well. In open water, with the
+        //  return verb dead and no way to recover — the worst outcome the session can produce.
+        const home = crossingPlan(atTheWreck(42), 'wreck');
+        expect(home.boat.energyCost, 'the paddle home is not cheap enough for this to be the test')
+            .toBeLessThan(10);
+        expect(home.affordable, 'refused the only act that brings her home').toBe(true);
+        expect(crossingBlocker(atTheWreck(42), 'wreck')).toBeNull();
+    });
+
+    it('...but the gate has NOT been made toothless — a spent survivor is still refused', () => {
+        //  `affordable` still answers, so the fix removed a phantom leg rather than the rule.
+        const spent = crossingPlan(atTheWreck(TUNE.swimLabouringEnergy), 'wreck');
+        expect(spent.affordable).toBe(false);
+        expect(crossingBlocker(atTheWreck(TUNE.swimLabouringEnergy), 'wreck')).not.toBeNull();
+    });
+
+    it('ONE BODY PRICES BOTH — the blocker and the plan cannot disagree', () => {
+        //  These were separate copies and had already drifted: the blocker's copy priced the
+        //  swim in both directions while the plan named a direction. Same arithmetic now.
+        for (const e of [36, 45, 60, 100]) {
+            for (const at of ['shore', 'wreck'] as const) {
+                const s = ready();
+                s.boat = { ...s.boat, at };
+                if (at === 'wreck') {
+                    const stand = standOffPoint(DESTINATIONS.wreck);
+                    s.player = { x: stand.x, y: stand.y };
+                }
+                s.energy = e;
+                const plan = crossingPlan(s, 'wreck');
+                const refusedForReserve = /reserve/i.test(crossingBlocker(s, 'wreck') ?? '');
+                expect(refusedForReserve, `plan and blocker disagree at ${at}/${e}`)
+                    .toBe(!plan.affordable);
+            }
+        }
+    });
+});
+
+describe('THE WHEEL STILL FITS WHAT SHE CAN DO', () => {
+    /**
+     * `verbCircleLayout.ts` states its whole premise as a MEASUREMENT: *"Measured across every
+     * target in the game, the most that are ever available at once is FIVE — the boat, afloat
+     * and aboard."* That measurement was taken before `cross-boat` existed, and an eleventh
+     * verb on the busiest target in the game is exactly the thing that could invalidate it.
+     *
+     * The layout itself is general — what does not fit goes to a hub pip and nothing overlaps
+     * by construction — so this is not a crash waiting to happen. It is a stated premise that
+     * nothing checked, on the module whose entire job is knowing how many will fit. So it is
+     * checked here, at the target that produced the number, rather than left as prose.
+     */
+    it('counts the most verbs the boat can offer at once, and it is still five', () => {
+        let most = 0;
+        let worst: string[] = [];
+        for (const at of ['shore', 'wreck'] as const) {
+            for (const moored of [true, false]) {
+                for (const loadKnown of [true, false]) {
+                    for (const ferried of [true, false]) {
+                        for (const fiber of [0, 99]) {
+                            for (const energy of [100, 60, 40]) {
+                                const s = ready();
+                                s.boat = { ...s.boat, at, moored, loadKnown, ferried };
+                                s.inventory.fiber = fiber;
+                                s.energy = energy;
+                                if (at === 'wreck') {
+                                    const stand = standOffPoint(DESTINATIONS.wreck);
+                                    s.player = { x: stand.x, y: stand.y };
+                                }
+                                const open = verbsFor(s, 'boat')
+                                    .filter((v) => v.shown !== false && v.available)
+                                    .map((v) => v.id);
+                                if (open.length > most) { most = open.length; worst = open; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        expect(most, `the busiest wheel is now [${worst.join(' | ')}]`).toBeLessThanOrEqual(5);
     });
 });

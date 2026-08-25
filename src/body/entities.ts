@@ -32,7 +32,7 @@ import { boatStage, defectStage, siteProgress } from '../brain';
 import { BOAT, FAR_ISLAND, WORLD, surfaceHeightAt } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
-import { boatPosition } from '../brain/crossing';
+import { boatPosition } from '../brain/boat';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
 
@@ -1172,8 +1172,12 @@ export class ConstructionView {
  * same silhouette, and the difference lives in the record and in how she behaves in the water —
  * but that the work was DONE is written on her hull where anyone can see it.
  *
- * The hull itself is built once in `island.ts` with a frozen world matrix and stays exactly
- * where it is; these are additions to her rather than a second copy of her.
+ * The hull itself is built once in `island.ts`; these are additions to her rather than a second
+ * copy of her. It USED to say "with a frozen world matrix and stays exactly where it is", and
+ * that sentence was true for four sessions and then load-bearing in the wrong direction: the
+ * freeze it described silently discarded her new position in both the render and the collider,
+ * and this class's own `update()` sixty lines below is what falsified the claim. She moves now,
+ * so everything here positions off `boatPosition` absolutely rather than nudging from a constant.
  */
 export class BoatWorkView {
     private props: Mesh;

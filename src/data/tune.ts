@@ -1498,9 +1498,17 @@ export const TUNE = {
      *
      *  BASIS, AND IT IS A CEILING RATHER THAN A DISTANCE. The wreck lies ~115 m off this
      *  shore — the number `swimEnergyDrainPerGameHour` is balanced against and counted in.
-     *  90 m round trip is 45 m out, comfortably short of it, and short ON PURPOSE: the wreck
-     *  is a B3 destination and a B2 hull has no business arriving there. The tether is the
-     *  honest reason a survivor cannot simply paddle away, and this is its length as a number. */
+     *  90 m round trip is 45 m out, comfortably short of it, and short ON PURPOSE.
+     *
+     *  SESSION 3 SPENDS THE SAME BUDGET A SECOND WAY, and did NOT raise it. On the line it is
+     *  a round trip and she brings you home; on a crossing it is all of it in one direction and
+     *  she does not — which is exactly why a crossing is a commitment and the line is not. What
+     *  is no longer true is the sentence that used to close this note: "the wreck is a B3
+     *  destination and a B2 hull has no business arriving there. The tether is the honest reason
+     *  a survivor cannot simply paddle away." A B2 hull is now the one thing that can arrive
+     *  there, she is off the tether while she does it, and the honest reason she cannot go
+     *  further is this number itself — a destination whose open water exceeds it is refused by
+     *  name rather than quietly brought nearer. */
     boatFerryDistanceM: 90,
     // ---- THE CROSSING (Session 3) ------------------------------------------------
     /** [TUNE] How far off a destination the boat stops, in metres. She does not go

@@ -466,9 +466,15 @@ export const JUNK_SITES: readonly TraceSite[] = [
  * THE FISHING BOAT — "THE PULL: THE WAY HOME, VISIBLE" (Laws 124–125).
  *
  * SHE ARRIVES AT B0: beached, hull holed, engineless. She does not STAY there — the ladder to
- * B1 and B2 lives in `boat.ts`, and a survivor can walk her all the way to floating. But where
- * she SITS never changes, and that is what this file decides: she is worked on exactly where
- * she was first seen, so the horizon below is the same horizon over the shoulder of every repair.
+ * B1 and B2 lives in `boat.ts`, and a survivor can walk her all the way to floating. This file
+ * decides WHERE SHE IS WORKED ON: every repair happens exactly where she was first seen, so the
+ * horizon below is the same horizon over the shoulder of all of it.
+ *
+ * IT USED TO SAY "where she SITS never changes", and Session 3 made that false — she crosses to
+ * a destination now and `boatPosition` derives her point from `boat.at`. That sentence is the
+ * exact premise that produced a frozen world matrix and an unpickable hull, so it is corrected
+ * here rather than left to be inherited: this constant is her BEACH, her home and her workshop,
+ * and it is no longer the only place she can be.
  *
  * ---------------------------------------------------------------------------------------
  * THE VISUAL SENTENCE, which is the reason the coordinates are what they are.
