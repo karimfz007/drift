@@ -1502,6 +1502,23 @@ export const TUNE = {
      *  is a B3 destination and a B2 hull has no business arriving there. The tether is the
      *  honest reason a survivor cannot simply paddle away, and this is its length as a number. */
     boatFerryDistanceM: 90,
+    // ---- THE CROSSING (Session 3) ------------------------------------------------
+    /** [TUNE] How far off a destination the boat stops, in metres. She does not go
+     *  alongside: a patched hull beside a listing steel wreck that shifts every time it
+     *  is worked ([[D-124]]) is how you lose the hull. So this distance is the DROP-OFF,
+     *  and minus `wreckArrivalRadiusM` it is the swim at the far end.
+     *
+     *  BASIS FOR 40. The open water from her beach to the wreck’s centre is ~111 m. At 40
+     *  she covers ~71 m of it — comfortably inside the 90 m her arms are good for, with
+     *  real margin left so the range is a ceiling rather than a coincidence — and leaves
+     *  26 m to swim, which costs about 12 of a reserve of 100. Enough to be a swim with
+     *  the sea’s own five stages under it; not enough to make the boat pointless. */
+    boatStandOffM: 40,
+    /** [TUNE] How finely a crossing route is sampled when measuring how much of it is
+     *  water. Basis: the shortest leg that matters is ~26 m, so 64 samples put a step at
+     *  well under a metre on every route the game has — finer than the terrain changes,
+     *  and cheap enough to run inside a forecast the player reads before every crossing. */
+    crossingRouteSamples: 64,
 
     // ---- RAIN & WET ESCALATION — the second hazard family --------------------
     //

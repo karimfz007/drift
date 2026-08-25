@@ -201,6 +201,9 @@ import {
     ferryNote,
     ferryFindings,
     boardBlocker,
+    boatPosition,
+    crossingBlocker,
+    runCrossing,
     moorBoat,
     moorBlocker,
     masteryDomainForNodeKind,
@@ -269,7 +272,7 @@ import {
     type GameState
 } from '../brain';
 import { TUNE, fireLoudnessAt } from '../data/tune';
-import { BOAT, COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, isPlaceablePoint, surfaceHeightAt } from '../data/world';
+import { COLD_OPEN, CRASH_SITE, POND, WORLD, isOnPondWater, isPlaceablePoint, surfaceHeightAt } from '../data/world';
 import { CUES, Cues, type CueKey } from './audio';
 import { BoarsView } from './boarView';
 import { Controls } from './controls';
@@ -1765,6 +1768,24 @@ export class Game {
             const pos = outboardPosition(session().state);
             return { x: pos.x, z: pos.y, unexpectedMesh: null };
         }
+        //  SESSION 3 — a tap on her hull aims at THE BOAT, wherever she is floating.
+        //
+        //  This branch was missing for the same reason the freeze in `island.ts` was wrong: she
+        //  never moved, so proximity to the sand she sat on always found her and nobody needed
+        //  the direct hit. The crossing broke that in the one place it is fatal. The terrain mesh
+        //  is a square about 152 m from origin to edge; she stands off the wreck at ~204 m, in
+        //  open water where `sea.isPickable` is false and no terrain exists to strike. Her hull
+        //  is then the ONLY pickable thing under the ray — and with no branch here it fell
+        //  through to `unexpectedMesh`, which `onHold` declines outright.
+        //
+        //  So the crossing worked and the return did not: the survivor could be carried out,
+        //  swim in, and then find that the boat they arrived on could not be touched. The exact
+        //  one-way trip Session 3 exists to end, reintroduced one layer below the one it was
+        //  fixed in. `raft` and `outboard` above are the same branch for the same reason.
+        if (hit?.hit && hit.pickedMesh?.metadata?.boat) {
+            const at = boatPosition(session().state);
+            return { x: at.x, z: at.y, unexpectedMesh: null };
+        }
         if (hit?.hit && hit.pickedMesh?.metadata?.shoreItemId) {
             const id = hit.pickedMesh.metadata.shoreItemId as string;
             const it = session().state.shore.items.find((x) => x.id === id);
@@ -1842,7 +1863,11 @@ export class Game {
             //  DROP 4 — the broken fishing boat. Always a candidate: unlike the fire, the
             //  shelter and the crate, she is not built and cannot be absent. She has been on
             //  that beach since before the survivor washed up.
-            const d = distance(point.x, point.z, BOAT.x, BOAT.y);
+            //  WHEREVER SHE IS. She was a constant while she could not move; a crossing
+            //  puts her at a stand-off in open water, and a survivor swimming back to her
+            //  has to be able to reach her circle to get home again.
+            const boatAt = boatPosition(s);
+            const d = distance(point.x, point.z, boatAt.x, boatAt.y);
             if (d <= TUNE.boatTapRadiusM) candidates.push({ kind: 'boat', d });
         }
         if (s.fire.built) {
@@ -2375,6 +2400,7 @@ export class Game {
             case 'float-test': this.doFloatTest(); break;
             case 'board-boat': this.doBoardBoat(); break;
             case 'ferry-boat': this.doFerryBoat(); break;
+            case 'cross-boat': this.doCrossBoat(); break;
             case 'moor-boat': this.doMoorBoat(); break;
             case 'make-cup': this.doMakeShellCup(); break;
             case 'fish': this.explain('You cast, and wait. Nothing yet.'); break;
@@ -2475,10 +2501,14 @@ export class Game {
             if (view.node.kind === 'fishingspot') return { x: view.node.x, z: view.node.y };
             return view.node.available ? { x: view.node.x, z: view.node.y } : null;
         }
-        //  DROP 4 — she does not move and she is never absent, so her point is a constant.
-        //  The raft above returns null when unbuilt; the boat has no such state. She was on
-        //  that beach before the survivor washed up and she will be there at the end of it.
-        if (this.pending.kind === 'boat') return { x: BOAT.x, z: BOAT.y };
+        //  SESSION 3 — she is never absent, but she is no longer fixed: a crossing leaves
+        //  her standing off a destination until she is brought home. The comment this
+        //  replaces said "she does not move and she is never absent, so her point is a
+        //  constant" — true for four sessions and made false by the crossing.
+        if (this.pending.kind === 'boat') {
+            const at = boatPosition(session().state);
+            return { x: at.x, z: at.y };
+        }
         //  DROP 3B(i) — the site does not move, and is only ever a target while it is there.
         if (this.pending.kind === 'crash') return { x: CRASH_SITE.x, z: CRASH_SITE.y };
 
@@ -3506,6 +3536,42 @@ export class Game {
             //  repair" applies hardest to the verb that feels most like leaving.
             boatCapabilityNote(s),
         ].join('  ·  '));
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
+    /**
+     * SESSION 3 — THE CROSSING. She carries you most of the way and you swim the rest.
+     *
+     * ATOMIC, which is the whole [[D-011]] answer: one act moves her, moves the survivor
+     * with her, and charges the arms. What exists afterwards is a survivor in the water
+     * beside a moored boat — two situations this game protected long before the crossing,
+     * so there is no half-crossed state for an absence to spoil.
+     *
+     * NO TIME IS SPENT THROUGH `spendGameHours`, deliberately. The paddle’s cost is arms,
+     * not hours, and it is charged in one go exactly as the line-ferry charges its own —
+     * running the world forward mid-crossing is what would create the mid-state this
+     * design exists to not have.
+     */
+    private doCrossBoat(): void {
+        const s = session().state;
+        const blocked = crossingBlocker(s, 'wreck');
+        if (blocked) { this.explain(blocked); return; }
+        const before = s.energy;
+        const plan = runCrossing(s, 'wreck');
+        if (!plan) { this.explain(crossingBlocker(s, 'wreck') ?? 'She will not go.'); return; }
+        this.cues.play(CUES.target);
+        this.floatText(plan.direction === 'out' ? 'across' : 'home');
+        //  WHAT IS LEFT TO DO, said on arrival at the stand-off — the survivor is in the
+        //  water now and needs to know the crossing is not over.
+        if (plan.direction === 'out') {
+            this.showHint(`She will go no closer. ${Math.round(plan.swim.metres)} metres of open`
+                + ` water between you and ${plan.destination.label} — and she is here when you`
+                + ' come back.');
+        } else {
+            this.showHint('Her keel is on the sand again.');
+        }
+        void before;
         session().persist(now());
         this.lastActivityAt = now();
     }

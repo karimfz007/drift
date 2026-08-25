@@ -421,7 +421,16 @@ export class Island {
         transom.isPickable = true;
         transom.metadata = { boat: true };
 
-        for (const m of [hull, rail, hole, transom]) m.freezeWorldMatrix();
+        //  SHE IS NOT FURNITURE ANY MORE (Session 3). This chain was frozen because for four
+        //  sessions she genuinely never moved: a frozen world matrix is the correct call for a
+        //  hull that sits on one patch of sand forever. The crossing made that false, and the
+        //  freeze then hid the change in BOTH layers at once — she was still drawn on the beach
+        //  while the survivor trod water 100 m out, AND her collider stayed behind on the sand,
+        //  so the ray that should have struck her passed through empty air. A survivor who had
+        //  crossed could not open her circle to come home.
+        //
+        //  Four boxes recomputing a matrix per frame is not a cost worth a one-way crossing.
+        for (const m of [hull, rail, hole, transom]) m.alwaysSelectAsActiveMesh = true;
     }
 
     /**

@@ -12,7 +12,7 @@
  * tuning: numbers that shape *feel* live in tune.ts.
  */
 
-import type { NodeKind, WoodNode } from '../brain/types';
+import type { Destination, DestinationId, NodeKind, WoodNode } from '../brain/types';
 import { TUNE } from './tune';
 
 /** The island slice: a disc of land in an endless sea. ~250 m across (D-036/A6 scale). */
@@ -218,6 +218,28 @@ export const DIVE_PARTS: ReadonlyArray<readonly [number, number]> = [
  * a real waterline, a real wading band and real walkable ground with no new rules — the whole
  * of the Maritime Slice applies to it the moment the terrain exists.
  */
+/**
+ * WHERE A BOAT MAY BE TAKEN. The crossing system reads this and nothing else — no
+ * function in `crossing.ts` mentions the wreck by name — so a second place is a row here
+ * and no call-site change anywhere.
+ *
+ * THE FAR ISLAND IS NOT IN IT, on purpose. Its terrain exists below and its waterline
+ * comes free from `waterDepthAt`, but it sits ~323 m out against a hull whose arms are
+ * good for 90 m of water: adding the row would ship a destination she cannot reach and a
+ * promise nobody authored. `crossing.test.ts` adds it as a row IN A TEST and drives every
+ * crossing function against it, which proves the seam without shipping the content.
+ */
+export const DESTINATIONS: Record<DestinationId, Destination> = {
+    wreck: {
+        id: 'wreck',
+        label: 'the wreck',
+        x: WRECK.x,
+        y: WRECK.y,
+        arrivalRadiusM: TUNE.wreckArrivalRadiusM,
+        standOffM: TUNE.boatStandOffM,
+    },
+};
+
 export const FAR_ISLAND = {
     x: 60,
     y: 420,

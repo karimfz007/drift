@@ -131,6 +131,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 36) current = migrateV36toV37(current);
     if (current.schemaVersion === 37) current = migrateV37toV38(current);
     if (current.schemaVersion === 38) current = migrateV38toV39(current);
+    if (current.schemaVersion === 39) current = migrateV39toV40(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -991,6 +992,23 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * (see `ConstructionSite`), so a finished shelter stays finished and is not re-opened as a
  * frame to be fed. That is the whole reason completeness was NOT added as a flag beside it.
  */
+/**
+ * v39 → v40 (THE CROSSING). `boat` gains `at` — where she is — seeded to `'shore'`.
+ *
+ * EVERY EXISTING BOAT IS ON HER BEACH, which is the only honest answer: no save written
+ * before this version could have crossed anywhere, because there was nowhere to cross to
+ * and no verb to do it with. Seeding `'shore'` states a fact rather than inventing one.
+ *
+ * NOTHING ELSE ABOUT HER MOVES. The repairs, the float test, the load and the mooring are
+ * carried through untouched: a survivor mid-ladder resumes exactly where they were, and a
+ * B2 hull is a B2 hull that can now be taken somewhere.
+ */
+function migrateV39toV40(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    const boat = { ...old.boat, at: (old.boat?.at ?? 'shore') as GameState['boat']['at'] };
+    return { ...envelope, schemaVersion: 40, state: { ...old, boat } };
+}
+
 /**
  * v38 → v39 (VESSELS PLURAL, AND THE BOX GETS A TIER). `water: { vessel, rawSips,
  * cleanSips }` becomes `water: { vessels: Vessel[] }`, and `storage` gains the `tier` that

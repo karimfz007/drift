@@ -32,6 +32,7 @@ import { boatStage, defectStage, siteProgress } from '../brain';
 import { BOAT, FAR_ISLAND, WORLD, surfaceHeightAt } from '../data/world';
 import { PALETTE, RENDER } from './theme';
 import type { Obstacle } from './island';
+import { boatPosition } from '../brain/crossing';
 
 const colour = (c: readonly number[]) => new Color3(c[0], c[1], c[2]);
 
@@ -1179,8 +1180,11 @@ export class BoatWorkView {
     private patch: Mesh;
     private caulk: Mesh;
     private tether: Mesh;
+    private scene: Scene;
+    private hull: Mesh | null = null;
 
     constructor(scene: Scene) {
+        this.scene = scene;
         const y = surfaceHeightAt(BOAT.x, BOAT.y);
         const bearing = Math.atan2(FAR_ISLAND.x - BOAT.x, FAR_ISLAND.y - BOAT.y);
 
@@ -1218,6 +1222,40 @@ export class BoatWorkView {
     }
 
     update(state: GameState): void {
+        //  SHE MOVES NOW (Session 3). Every mesh was pinned to the `BOAT` constant because
+        //  she had nowhere to go; a crossing takes her to a stand-off in open water, and a
+        //  hull drawn on the beach while the survivor is treading water beside her at
+        //  200 m out would be the render telling a different story from the state.
+        //  `boatPosition` is the one answer both the world and the target reader use.
+        const at = boatPosition(state);
+        const surf = surfaceHeightAt(at.x, at.y);
+        //  SET ABSOLUTELY FROM HER CENTRE, each mesh keeping the offset it was built
+        //  with — the patch on her port side, the caulk down her garboard, the tether
+        //  off her quarter. Accumulating deltas instead would drift by a float every
+        //  frame and eventually take her apart.
+        this.props.position.set(at.x, surf + 0.12, at.y);
+        this.patch.position.set(at.x - 1.42, surf + 0.3, at.y - 1.5);
+        this.caulk.position.set(at.x, surf + 0.02, at.y);
+        this.tether.position.set(at.x + 1.6, surf + 1.1, at.y - 3.2);
+        //  ...AND HER HULL, which lives in `island.ts` with the rest of the static scenery and
+        //  is the ONE mesh of hers that is pickable — `metadata: { boat: true }`, with her rail,
+        //  hole and transom parented to it.
+        //
+        //  THIS IS THE GAP THE DEVICE FOUND, and it was not cosmetic. The terrain mesh is a
+        //  square ~152 m half-span; the wreck is 243 m out and the stand-off 204 m. Off the
+        //  mesh a tap hits NOTHING, so target resolution by proximity to a struck ground point
+        //  cannot work out there — which is exactly why the wreck’s own parts are pickable. Her
+        //  hull was pickable too and simply never moved, so a survivor who crossed could not
+        //  open her circle to come home. A one-way crossing, in the session built to end one.
+        if (!this.hull) this.hull = this.scene.getMeshByName('boat_hull') as Mesh | null;
+        if (this.hull) {
+            this.hull.position.set(at.x, surf + 0.58, at.y);
+            //  She lies over on the sand and floats upright. The list is a fact about being
+            //  aground, not about being this boat.
+            const aground = state.boat.at === 'shore';
+            this.hull.rotation.z = aground ? 0.22 : 0;
+            this.hull.rotation.x = aground ? -0.06 : 0;
+        }
         const b = state.boat;
         //  EACH SURFACE READS ITS OWN SYSTEM. No surface is driven by the stage, because the
         //  stage is derived from the systems and driving the render off it would put a second
@@ -1225,7 +1263,10 @@ export class BoatWorkView {
         this.props.setEnabled(b.supports);
         this.patch.setEnabled(b.structural !== null);
         this.caulk.setEnabled(b.seal !== null);
-        this.tether.setEnabled(boatStage(state) === 'B2');
+        //  THE TETHER IS A CLAIM ABOUT WHERE SHE IS, not only about her stage. B2 means she
+        //  floats on a line; a boat standing off the wreck is not on that line, and drawing
+        //  it there would draw a rope to a shore 100 m away.
+        this.tether.setEnabled(boatStage(state) === 'B2' && state.boat.at === 'shore');
     }
 }
 

@@ -3,6 +3,102 @@
 
 ---
 
+**D-193 · 2026-08-25 — SESSION 3, THE CROSSING. She carries you most of the way, you swim the rest, and — for the first time — she brings you home.**
+
+---
+
+**WHAT THIS SESSION ACTUALLY ADDS, and it is not reach.**
+
+[[D-121]] built the crossing as a swim and tuned it so *"a full reserve gets you there and not back."* That has been a one-way decision ever since. [[D-187]]–[[D-190]] built a boat and stopped her at the end of a line, and her own forecast has been saying so out loud: *"the line is the length of it; the wreck is further than that."* Two systems, each finished, with a gap between them that the game itself narrated.
+
+Session 3 closes the gap without moving either end:
+
+```
+swimming alone   44.7 energy out   ·   89.4 there and back      from a reserve of 100
+by boat          14.9 energy out   ·   29.7 there and back
+```
+
+**Three times cheaper, and — the part that matters — a round trip a survivor can afford.** The capability is COMING BACK. The wreck stops being a place you can reach once and starts being a place you can work.
+
+---
+
+**1 · HER RANGE IS NOT STRETCHED. It is spent differently.**
+
+`boatFerryDistanceM` is 90 m and is untouched: that is the water her arms are good for, and it is now one budget spent two ways.
+
+```
+on the line     out and back, 90 m covered, and she brings you home
+on a crossing   all of it one way, and she does not
+```
+
+Which is exactly why a crossing is a commitment and the line is not — the same constant, the same price, one honest meaning. **A destination whose open water exceeds that budget is out of range and says so** rather than being quietly brought nearer: *"the far island is further than she will go. Her arms are good for about 90 metres of water and that is 323."*
+
+**MEASURED, NOT ASSUMED.** The route is sampled against the real terrain, so the beach between her keel and the waterline is a DRAG rather than a paddle and is not charged as one:
+
+```
+boat (14,100) ── 27.4 m beach ── deep water ── wreck (40,240)      142.4 m total
+open water to the wreck's centre  111.2 m   ·   arrival radius  14 m
+boat leg  75.2 m  (2.9 energy)    ·   swim leg  26.0 m  (12.0 energy)
+```
+
+**2 · SHE STANDS OFF, AND THAT IS THE DROP-OFF POINT.**
+
+The hand-off is not a system boundary dressed as fiction. A patched hull does not go alongside a listing steel wreck that shifts every time it is worked ([[D-124]]'s instability model) — she stands off `boatStandOffM` and you go in from there. **The stand-off is the reason the swim exists**, and minus the arrival radius it IS the swim: 40 − 14 = 26 m.
+
+The survivor goes **over the side**, in the water rather than on a deck, with the last stretch still to do. No new locomotion: that stretch is [[D-121]]'s swimming, the same five stages and the same two spoken warnings, covered exactly as it would have been covered before there was a boat.
+
+**3 · [[D-011]], AND THE ANSWER IS STRUCTURAL RATHER THAN A CHECK.**
+
+**The crossing has no mid-state of its own.** The boat leg is ATOMIC — one act moves her, moves the survivor with her, and charges the arms. What exists afterwards is a survivor in the water beside a moored boat: two situations this game protected long before this file. `reconcile` has no crossing term because **there is nothing in flight to have a term about**, and `boat.at` is only ever a place she IS — never a place she is between.
+
+That is Law 239’s protected absence ([[D-192]]) obtained by construction rather than by a guard: there is no property in flight to lose. Proved as a property over both her states and five absences from a minute to a year, and again on device across six hours away.
+
+**4 · FAIR CHALLENGE — ONE SENTENCE FOR BOTH LEGS.**
+
+A survivor deciding whether to go needs one number for boat-plus-swim, not two to add while standing in the surf:
+
+> *"About 75 metres of water under the paddle out to the wreck, then 26 to swim from where she stands off. It would cost you about 15 of your reserve, and leave you around 85."*
+
+**AFFORDABLE MEANS ARRIVING ABOVE THE WATER'S OWN FIRST WARNING**, not merely arriving alive. `swimLabouringEnergy` is where the sea starts telling you the shore is a long way back; a forecast calling it affordable to arrive below that would be promising a crossing that ends in the stage before drowning. Fail-then-pass: making affordability ignore the swim leg reds the check by name.
+
+**AND SHE MUST HAVE BEEN OUT ON THE LINE FIRST.** `ferried` gates the crossing — [[D-192]]'s anti-shortcut clause applied to the boat: good fortune shortens the work, it never skips the proof. A hull that floats and has never been moved is not a boat you take into open water.
+
+---
+
+**5 · A SECOND DESTINATION IS ONE ROW, and the seam is PROVED rather than claimed.**
+
+`DESTINATIONS` is a table; **no function in `crossing.ts` names the wreck** — asserted against the module's own source, so a function reaching for `WRECK` directly would red the test rather than quietly making the seam a fiction. Adding a place to cross to is a row.
+
+**THE PROOF USES A DESTINATION THAT ALREADY EXISTS AND IS DELIBERATELY NOT SHIPPED.** The far island is real terrain at (60, 420) with a waterline `waterDepthAt` gives it for free. `crossing.test.ts` constructs it as a row and drives every function in the module against it — geometry, stand-off, water measurement, range — and the range rule **bites on it without a line of new code**. The shipped table still has exactly one row, asserted, because whether a second visible promise exists is a content call and not a builder's ([[D-121]]'s own standing note).
+
+---
+
+**Schema 39 → 40.** `boat` gains `at`, seeded `'shore'`. Every existing boat is on her beach, which is the only honest answer: no save written before this version could have crossed anywhere, because there was nowhere to cross to and no verb to do it with. **Her position is DERIVED from `at`** rather than stored as coordinates that could drift out of agreement with the place they describe — the same reason `boatStage` is computed from the work done.
+
+**SHE MOVES NOW, AND SHE WAS AUTHORED AS FURNITURE IN THREE LAYERS.** `game.ts` said *"she does not move and she is never absent, so her point is a constant."* That was true for four sessions and every layer had built on it. The brain was the easy layer: her meshes and her tap target now follow `boatPosition`, and **the tether is drawn only while she is on it**, because a rope to a shore 100 m away is a claim about where she is and not only about her stage.
+
+**THE OTHER TWO LAYERS SHIPPED A ONE-WAY CROSSING, one level below the one this session existed to fix.** Both only bite in open water, so both passed every check that started from the beach:
+
+```
+island.ts   her hull chain was freezeWorldMatrix()'d — correct for a hull that
+            never moves, and it silently discarded the new position in BOTH the
+            render and the collider
+game.ts     pickHitPoint had a branch for raft, outboard and dropped — every object
+            that moves — and none for boat, because she was not one
+```
+
+The second is the sharper lesson. The terrain mesh is a square roughly 152 m from origin to edge; **she stands off the wreck at about 204 m, past its edge, where `sea.isPickable` is false and there is no ground to strike.** Proximity-to-struck-ground had always found her because the sand under her was pickable. Out there her own hull is the only thing under the ray — and an unrecognised pickable mesh falls through to `unexpectedMesh`, which `onHold` declines outright. So a survivor could be carried out, swim in, arrive — and find the boat they arrived on could not be touched.
+
+**Caught only because the reachability rail was written on the FULL crossing rather than on each piece.** Every leg passed alone. The brain's round trip passed as a property test. `CROSS 10`/`CROSS 11` were the only two checks that asked a survivor standing in open water to reach the boat, and they were the only two that failed — red before these fixes, green after, with nothing else touched.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `crossing.ts` (`crossingPlan`/`crossingNote`/`canCross`/`crossingBlocker`/`runCrossing`/`boatPosition`/`standOffPoint`/`waterMetresBetween`/`metresToArrival`/`hasArrivedAt`); `DESTINATIONS` and the `Destination`/`DestinationId` shape; `BoatState.at` with schema 40; `boatStandOffM` and `crossingRouteSamples`; the `cross-boat` verb, one verb reading its direction off where she is; and the boat's meshes, collider and tap target following her — the unfrozen hull chain in `island.ts` and the `boat` branch in `pickHitPoint`.
+
+*Status: standing. Joins [[D-121]]'s swim to [[D-190]]'s staged hull without moving either. Reaching the destination is the goal; landing and working on the far side remain out of scope. No new land was authored.* — C2
+
+---
+
 **D-192 · 2026-08-25 — FILING: THE CRAFTING, WRECKFALL AND ISLAND INDUSTRY CHAPTER (v2.9), ITS QUARANTINE LIFTED BY THREE NEW LAWS — 239 PROTECTED ABSENCE, 240 FINITE PROVENANCE, 241 HARM BY CONTACT.**
 
 ---

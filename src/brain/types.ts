@@ -81,7 +81,7 @@
  *      relation nobody pegged together would be the migration inventing capability rather
  *      than declining to invent history.
  */
-export const SCHEMA_VERSION = 39;
+export const SCHEMA_VERSION = 40;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -1004,6 +1004,36 @@ export interface BoatRepair {
  * Nothing here floods back in, rots, silts up or settles while the game is closed. A hull
  * shored and half-sealed is exactly as shored and half-sealed tomorrow.
  */
+/**
+ * SOMEWHERE THE BOAT CAN GO. One row is one destination, and adding a row is the whole
+ * of adding a place to cross to — the same "one row, no call-site changes" seam
+ * `WorkspaceTier` and `storageCapacityBulk` already use.
+ *
+ * NOTHING HERE IS AUTHORED CONTENT. The table lives in `world.ts` beside the terrain it
+ * describes; this is only its shape.
+ */
+export interface Destination {
+    id: DestinationId;
+    /** How the game says its name in a sentence. "the wreck", lower case, no article games. */
+    label: string;
+    x: number;
+    y: number;
+    /** Close enough to count as arrived. */
+    arrivalRadiusM: number;
+    /**
+     * How far off the boat stops. She does not go alongside — see `crossing.ts` — and
+     * this distance IS the swim at the far end, minus the arrival radius.
+     */
+    standOffM: number;
+}
+
+/**
+ * THE PLACES THAT EXIST. One today. The far island is real terrain at (60, 420) and is
+ * deliberately NOT here: whether a second visible promise exists is a content call, and
+ * `crossing.test.ts` proves the seam by adding it as a row in a test rather than shipping it.
+ */
+export type DestinationId = 'wreck';
+
 export interface BoatState {
     /** The hull survey (B0→B1 entry): what is actually wrong, learned rather than assumed. */
     surveyed: boolean;
@@ -1025,6 +1055,15 @@ export interface BoatState {
      *  was actually exercised — not a sixth system, which is why it stores a fact rather
      *  than a quality: what it gates is the readout, and what it cost was paid in arms. */
     ferried: boolean;
+    /**
+     * WHERE SHE IS — her beach, or standing off a destination she was taken to.
+     *
+     * A DESTINATION ID RATHER THAN A COORDINATE, so her position is DERIVED
+     * (`boatPosition`) from a fact about the world rather than stored as two numbers that
+     * can drift out of agreement with the place they are supposed to describe — the same
+     * reason `boatStage` is computed from the work done rather than kept in a field.
+     */
+    at: DestinationId | 'shore';
 }
 
 export interface OutboardState {

@@ -15774,6 +15774,202 @@ async function main() {
     }
 
 
+    if (section('SESSION 3 — THE CROSSING: she carries you out, you swim the rest, she brings you home')) {
+
+    /**
+     * THE WHOLE CROSSING ON REAL PIXELS — boat, water, swim, arrival, and home again.
+     *
+     * The brief asked for reachability proved on the ACTUAL full crossing rather than on each
+     * piece in isolation, and that is the only interesting question: two systems that each
+     * work alone can still fail at the seam between them. This drives the seam.
+     *
+     * WHAT THE SEAM IS. [[D-121]] built the crossing as a swim tuned so a full reserve
+     * *"gets you there and not back."* [[D-187]]–[[D-190]] built a boat and stopped her at the
+     * end of a line — *"the line is the length of it; the wreck is further than that."* Session
+     * 3 joins them: she covers ~75 m of open water, stands off, and the survivor goes over the
+     * side for the last 26 m. What the boat adds is not reach. It is COMING BACK.
+     */
+    const CROSS_BOAT = { x: 14, y: 100 };
+    const dropWheel = async () => {
+        await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (el) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        });
+        await sleep(400);
+        await ensureNoPanel();
+    };
+    /** Where she is drawn, and where the survivor is, read off the live build. */
+    const scene = async () => {
+        const s = await live();
+        const drawn = await page.evaluate(() => window.__drift?.meshInfo?.('boatProps') ?? null);
+        return {
+            at: s.boat.at,
+            player: { x: s.player.x, y: s.player.y },
+            energy: s.energy,
+            drawn,
+        };
+    };
+    /** Open her circle wherever she happens to be floating. */
+    const boatWheel = async (x, y) => {
+        await dropWheel();
+        //  ONLY CLOSE THE DISTANCE IF THERE IS ONE. Swimming 6 m off her to “approach” put the
+        //  survivor outside her tap radius and opened no circle at all — which read as the boat
+        //  being unreachable from the water when it was the harness rowing away from her.
+        const here = await live();
+        if (Math.hypot(here.player.x - x, here.player.y - y) > 4) await approach(x, y - 4, 60);
+        await faceNode(x, y);
+        await sleep(280);
+        const at = await screenOf(x, y);
+        if (!at) return { segs: [], reasons: [], why: 'no pixel' };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        return page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            return {
+                segs: segs.map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')),
+                labels: segs.map((o) => (o.querySelector('.verb-label')?.textContent ?? '').trim()),
+                reasons: segs.map((o) => (o.querySelector('.verb-reason')?.textContent ?? '').trim()),
+                why: null,
+            };
+        });
+    };
+
+    // ---- 1. A HULL THAT FLOATS, HAS BEEN LOADED, AND HAS BEEN PADDLED -------------------
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: 14, y: 94 };
+        state.energy = 100; state.health = 100; state.warmth = 80;
+        state.hunger = 90; state.thirst = 90; state.fatigue = 0;
+        state.boat = { surveyed: true, supports: true, dewatered: true,
+            structural: { rung: "competent", usedParts: [], usedMaterials: { wood: 5 } },
+            seal: { rung: "competent", usedParts: [], usedMaterials: { fiber: 6 } },
+            floatTest: { attempted: true, held: true, tookOnWater: 0.2 },
+            loadKnown: true, moored: false, ferried: true, at: "shore" };
+    `);
+    await sleep(900);
+    const start = await scene();
+    check('CROSS 1 — setup: she floats, she has been paddled, and she is on her beach',
+        start.at === 'shore' && start.drawn !== null,
+        `at ${String(start.at)} · drawn ${JSON.stringify(start.drawn?.screen ?? start.drawn)}`);
+
+    // ---- 2. FAIR CHALLENGE, ON THE SCREEN ------------------------------------------------
+    //  The rail by name: the survivor must be able to tell BEFORE committing whether the
+    //  reserve covers boat-plus-swim. Not two numbers to add in the surf — one sentence.
+    const wheel = await boatWheel(CROSS_BOAT.x, CROSS_BOAT.y);
+    const i = wheel.segs.findIndex((v) => v.startsWith('cross-boat'));
+    const label = wheel.labels[i] ?? '';
+    check('CROSS 2 — the crossing is offered at her, and named for where it goes',
+        i >= 0 && !wheel.segs[i].endsWith(':blocked') && /out to the wreck/i.test(label),
+        `segs [${wheel.segs.join(' | ')}] · label "${label}"`);
+    //  The note lives on the hint surface the moment it is pressed; the arc carries the label.
+    //  What must be true here is that the wheel is not crowded past the point of saying it.
+    check('CROSS 3 — ...and her wheel still fits the arc: a fifth verb did not crowd it out',
+        wheel.segs.length <= 4,
+        `${wheel.segs.length} segment(s): [${wheel.segs.join(' | ')}]`);
+
+    // ---- 3. SHE CARRIES YOU OUT, AND PUTS YOU IN THE WATER -------------------------------
+    const pressed = await page.evaluate(() => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .find((o) => o.dataset.verb === 'cross-boat');
+        if (!seg) return { ok: false, why: 'no cross-boat segment' };
+        if (!seg.classList.contains('ready')) return { ok: false, why: 'blocked' };
+        seg.click();
+        return { ok: true, why: null };
+    });
+    await sleep(1600);
+    await ensureNoPanel();
+    const out = await scene();
+    const zone = await page.evaluate(() => window.__drift?.state?.() ? null : null);
+    void zone;
+    const swimLeft = Math.hypot(out.player.x - 40, out.player.y - 240) - TUNE.wreckArrivalRadiusM;
+    check('CROSS 4 — SHE CARRIES YOU OUT: the boat is at the wreck and so is the survivor',
+        pressed.ok === true && out.at === 'wreck'
+        && Math.hypot(out.player.x - start.player.x, out.player.y - start.player.y) > 50,
+        `${pressed.why ?? 'pressed'} · at ${String(out.at)} · player (${out.player.x.toFixed(0)}, ${out.player.y.toFixed(0)})`);
+    //  THE HAND-OFF. Over the side, not onto a deck — with the last stretch still to swim.
+    check('CROSS 5 — ...and drops you IN THE WATER, short of it, with a real swim left',
+        swimLeft > 10 && swimLeft < 40,
+        `${swimLeft.toFixed(1)} m of open water still between the survivor and the wreck`);
+    //  AND SHE IS DRAWN WHERE SHE IS. A hull rendered on the beach while the survivor treads
+    //  water 100 m out is the render telling a different story from the state.
+    //  `meshInfo` reports no screen point for this mesh, but it reports the HEIGHT it is drawn
+    //  at — and that is the witness: she sat on a beach 2.2 m above the sea and she is now
+    //  floating on it. A hull still drawn at beach height would be the render disagreeing with
+    //  a state that says she is 100 m out.
+    check('CROSS 6 — RENDER: she is drawn where she actually is, not left on the sand',
+        out.drawn !== null && start.drawn !== null
+        && Math.abs((out.drawn.y ?? 0) - (start.drawn.y ?? 0)) > 0.5,
+        `drawn at y ${start.drawn?.y?.toFixed(2)} on the beach -> ${out.drawn?.y?.toFixed(2)} standing off`);
+
+    // ---- 4. THE SWIM, THROUGH THE SHIPPED MECHANICS --------------------------------------
+    //  No new locomotion: this is [[D-121]]'s swimming, and the survivor covers the last
+    //  stretch the same way they would have covered all of it before there was a boat.
+    //  A TIME BUDGET, NOT A RADIUS — `approach(x, z, budget)`. The first cut passed the arrival
+    //  radius as the third argument, which bought the swim TWELVE SECONDS and left the survivor
+    //  30 m short with the check blaming the swim. 25 m at a swimmer's ~1 m/s needs real time.
+    await approach(40, 240, 120);
+    await sleep(600);
+    const atWreck = await scene();
+    const gap = Math.hypot(atWreck.player.x - 40, atWreck.player.y - 240);
+    check('CROSS 7 — THE SWIM CLOSES IT: the survivor reaches the wreck under their own arms',
+        gap <= TUNE.wreckArrivalRadiusM,
+        `${gap.toFixed(1)} m from the wreck, arrival radius ${TUNE.wreckArrivalRadiusM} · energy ${atWreck.energy.toFixed(1)}`);
+    check('CROSS 8 — ...and it cost something, but left a reserve to get back on',
+        atWreck.energy < 100 && atWreck.energy > TUNE.swimLabouringEnergy,
+        `arrived with ${atWreck.energy.toFixed(1)} of 100 (labouring at ${TUNE.swimLabouringEnergy})`);
+
+    // ---- 5. D-011 ON DEVICE, MID-CROSSING ------------------------------------------------
+    //  The survivor is at the wreck and the boat is standing off. Nothing about that may move
+    //  while the tab is shut — and the strong form is that there is no half-crossed state to
+    //  move at all: she is at a place, or at her beach.
+    const beforeAway = await scene();
+    await editSave(`state.lastSeenMs = Date.now() - ${6 * 60 * 60 * 1000};`);
+    await sleep(1400);
+    const afterAway = await scene();
+    check('CROSS 9 — D-011: six hours away move neither the boat nor the survivor',
+        afterAway.at === beforeAway.at
+        && Math.abs(afterAway.player.x - beforeAway.player.x) < 0.5
+        && Math.abs(afterAway.player.y - beforeAway.player.y) < 0.5,
+        `at ${beforeAway.at} -> ${afterAway.at} · player (${beforeAway.player.x.toFixed(1)}, ${beforeAway.player.y.toFixed(1)})`
+        + ` -> (${afterAway.player.x.toFixed(1)}, ${afterAway.player.y.toFixed(1)})`);
+
+    // ---- 6. AND HOME. The capability this session actually adds --------------------------
+    const stand = await page.evaluate(() => {
+        const s = window.__drift.state();
+        return s.boat.at;
+    });
+    void stand;
+    await editSave(`state.player = { x: ${out.player.x}, y: ${out.player.y} };`);
+    await sleep(900);
+    const homeWheel = await boatWheel(out.player.x, out.player.y);
+    const hi = homeWheel.segs.findIndex((v) => v.startsWith('cross-boat'));
+    check('CROSS 10 — she is reachable from the water, and the verb has turned round',
+        hi >= 0 && /home/i.test(homeWheel.labels[hi] ?? ''),
+        `segs [${homeWheel.segs.join(' | ')}] · label "${homeWheel.labels[hi] ?? ''}"`);
+    const home = await page.evaluate(() => {
+        const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'))
+            .find((o) => o.dataset.verb === 'cross-boat');
+        if (!seg || !seg.classList.contains('ready')) return { ok: false, why: seg ? 'blocked' : 'no segment' };
+        seg.click();
+        return { ok: true, why: null };
+    });
+    await sleep(1600);
+    await ensureNoPanel();
+    const back = await scene();
+    check('CROSS 11 — SHE BRINGS YOU HOME, which is the whole capability Session 3 adds',
+        home.ok === true && back.at === 'shore'
+        && Math.hypot(back.player.x - 14, back.player.y - 100) < 6,
+        `${home.why ?? 'pressed'} · at ${String(back.at)} · player (${back.player.x.toFixed(0)}, ${back.player.y.toFixed(0)})`
+        + ` · home with ${back.energy.toFixed(1)} energy`);
+    check('CROSS 12 — ...and the round trip was affordable, which swimming alone never was',
+        back.energy > TUNE.swimLabouringEnergy,
+        `${back.energy.toFixed(1)} left of 100 after out, swim, and back (labouring at ${TUNE.swimLabouringEnergy})`);
+    await dropWheel();
+    }
+
+
     // ---- END OF RUN — hygiene and the bench profile, AFTER every section --------------
     //
     //  Moved here from the middle of the file, where they could not see the last eleven

@@ -28,6 +28,7 @@ export * from './build';
 export * from './readout';
 export * from './staged';
 export * from './boat';
+export * from './crossing';
 export * from './illness';
 export * from './cooking';
 export * from './confidence';

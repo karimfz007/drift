@@ -145,6 +145,8 @@ export function freshBoat(): BoatState {
         loadKnown: false,
         moored: false,
         ferried: false,
+        //  Her beach. She has not been anywhere.
+        at: 'shore',
     };
 }
 

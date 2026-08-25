@@ -29,6 +29,8 @@ import {
     canFloatTest, floatTestBlocker, canBoardBoat, boardBlocker, canMoor, moorBlocker,
     canFerry, ferryBlocker,
 } from './boat';
+import { canCross, crossingBlocker } from './crossing';
+import { DESTINATIONS } from '../data/world';
 import { benchHasRacked, canBoardRaft, canFeedFire, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
@@ -379,6 +381,26 @@ function boatVerbs(state: GameState): VerbOption[] {
             available: canBoardBoat(state),
             reason: boardBlocker(state),
             shown: afloat && !b.loadKnown,
+        },
+        {
+            //  THE CROSSING (Session 3). The line-ferry above proves she answers a paddle;
+            //  this spends the same budget of arms in one direction and does not bring you
+            //  back — which is the difference between exercising a boat and going somewhere.
+            //
+            //  ONE VERB, TWO DIRECTIONS, read off where she is. A second `bring-her-home`
+            //  id would be a separate verb that could acquire separate rules, and there is
+            //  only one act here: take her across the water she is not currently across.
+            //
+            //  SHOWN ONLY ONCE SHE HAS BEEN OUT ON THE LINE. `ferried` is the evidence that
+            //  manual propulsion was actually exercised, and crossing open water on a hull
+            //  nobody has ever paddled is the shortcut Session 3’s own brief forbids.
+            id: 'cross-boat',
+            label: b.at === 'shore'
+                ? `Take her out to ${DESTINATIONS.wreck.label}`
+                : 'Bring her home',
+            available: canCross(state, 'wreck'),
+            reason: crossingBlocker(state, 'wreck'),
+            shown: afloat && b.loadKnown && (b.ferried || b.at !== 'shore'),
         },
         {
             //  MANUAL PROPULSION (Law 125). Not offered until she is ALREADY SAILING — a way

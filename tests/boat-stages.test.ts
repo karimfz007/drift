@@ -852,6 +852,7 @@ describe('D-011 — by property, not by fixture', () => {
                         seal: seam ? { rung: seam, usedParts: [], usedMaterials: { fiber: 6 } } : null,
                         floatTest: hull && seam ? { attempted: true, held: flags % 2 === 0, tookOnWater: 0.2 } : null,
                         loadKnown: (flags & 1) !== 0,
+                        at: 'shore',
                         moored: (flags & 2) !== 0,
                         ferried: (flags & 4) !== 0,
                     };
