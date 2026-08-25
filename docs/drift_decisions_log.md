@@ -65,7 +65,7 @@ A realistic mid-game base stock — 25 wood, 30 stone, 20 fibre, 10 coconut, 20 
 
 **AND ONE OF MY OWN TESTS WAS WRONG IN A WAY WORTH KEEPING.** It compared a survivor holding four husks against the same survivor holding the four cups made from them and expected the load to rise. It did not move at all — which is correct, and is now asserted on purpose: the husk IS the cup, so the conversion is mass-neutral by construction.
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed as `7ee9e42` and confirmed three ways — local HEAD, `origin/main` and the served `drift-build` meta all read **7ee9e42** (built 2026-08-25T12:36:19Z), with both CI workflows green. Verified on device before landing: `THE CUP CANNOT OUTGROW ITSELF` 6/6 (three cups holding **6 of 6**, per cup `[2, 2, 2]`, pack chip reading `Cup x3 · 6 sip(s), some boiled`) and `THE CRATE HAS A CEILING` 15/15 (**60 logs or 500 berries** in the same crate; 60 stored of 500 offered, 440 still in the pack). Unit suite 93 files / 1780 tests.
 
 **Class: OPERATIVE** — shipped: `WaterState.vessels` with per-vessel ceilings and `hasVessel`/`vesselCount`/`rawSips`/`cleanSips`/`totalCapacity` reading across the set; `vesselsMassKg`/`vesselsBulk` putting carried vessels and their water into the load system for the first time; `StorageTier` and `storageCapacityBulk`/`storedBulk`/`storageRoomBulk`/`storageFitsFor`/`storageFullBlocker`, with `depositToStorage` and `moveOneKind` honouring the ceiling; `bulkPerUnit`'s floor; and schema 39.
 
