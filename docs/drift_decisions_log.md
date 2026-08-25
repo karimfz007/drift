@@ -18,6 +18,8 @@ swimming alone   44.7 energy out   ·   89.4 there and back      from a reserve 
 by boat          14.9 energy out   ·   29.7 there and back
 ```
 
+Those are the LEGS’ OWN WORK — what the paddle and the swim charge, priced the same way for both rows so the comparison is one arithmetic. A body also pays its ordinary drain for the time either takes, which is why the lived figures are higher and why the device run is the number to trust: **out and back on real pixels is 100 → 58.7, against a labouring line at 35.**
+
 **Three times cheaper, and — the part that matters — a round trip a survivor can afford.** The capability is COMING BACK. The wreck stops being a place you can reach once and starts being a place you can work.
 
 ---
@@ -61,6 +63,21 @@ A survivor deciding whether to go needs one number for boat-plus-swim, not two t
 
 **AFFORDABLE MEANS ARRIVING ABOVE THE WATER'S OWN FIRST WARNING**, not merely arriving alive. `swimLabouringEnergy` is where the sea starts telling you the shore is a long way back; a forecast calling it affordable to arrive below that would be promising a crossing that ends in the stage before drowning. Fail-then-pass: making affordability ignore the swim leg reds the check by name.
 
+**THE FORECAST WAS QUOTING THE WRONG BODY, and it shipped that way for most of this session.** The swim leg was priced straight off `TUNE.swimEnergyDrainPerGameHour`. The swim a survivor actually swims is charged through `waterCostsFor`, which multiplies that same constant by load and by practice. **Two formulas, one of them a copy, agreeing only for an empty-handed beginner** — which is a fair challenge in the shape of the law and not in fact.
+
+```
+forecast   hours * TUNE.swimEnergyDrainPerGameHour
+actual     TUNE.swimEnergyDrainPerGameHour
+             * loadEnergyMultiplierOf(state)      <- missing
+             * swimEfficiencyOf(state.capacities) <- missing
+```
+
+Practice only ever made the quote PESSIMISTIC, which is survivable. **Load did not.** And the body a wreck crossing is never about is the empty-handed one: you cross to bring things back, so the survivor on the return leg is carrying salvage and was being quoted the empty-handed price for the leg they are heaviest on. `affordable` could call that crossing safe and land them under the water's own first warning — **exactly the promise this rail exists to forbid.**
+
+The fix is not a second formula kept in step by hand. `swimEnergyPerGameHourFor` and `swimPaceFractionFor` are one body each with two callers — the live tick and the forecast — which is what `waterCostsFor`'s own note had already asked for in Ch.6's words: **REUSED RATHER THAN RE-DERIVED**. A price with one caller can drift; a price with two callers and one body cannot. Fail-then-pass: reverting the swim leg to the bare constants reds four of the five new checks by name, and making affordability ignore the swim leg entirely reds the fifth.
+
+**THE RAIL EARNED ITS PLACE HERE.** Every leg was correct in isolation, the round trip passed as a property, and the device crossed and came home. What was wrong was the sentence the survivor reads before committing — and only a rail written about the FORECAST rather than the ACT would ever have looked at it.
+
 **AND SHE MUST HAVE BEEN OUT ON THE LINE FIRST.** `ferried` gates the crossing — [[D-192]]'s anti-shortcut clause applied to the boat: good fortune shortens the work, it never skips the proof. A hull that floats and has never been moved is not a boat you take into open water.
 
 ---
@@ -93,7 +110,7 @@ The second is the sharper lesson. The terrain mesh is a square roughly 152 m fro
 
 *Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
 
-**Class: OPERATIVE** — shipped: `crossing.ts` (`crossingPlan`/`crossingNote`/`canCross`/`crossingBlocker`/`runCrossing`/`boatPosition`/`standOffPoint`/`waterMetresBetween`/`metresToArrival`/`hasArrivedAt`); `DESTINATIONS` and the `Destination`/`DestinationId` shape; `BoatState.at` with schema 40; `boatStandOffM` and `crossingRouteSamples`; the `cross-boat` verb, one verb reading its direction off where she is; and the boat's meshes, collider and tap target following her — the unfrozen hull chain in `island.ts` and the `boat` branch in `pickHitPoint`.
+**Class: OPERATIVE** — shipped: `crossing.ts` (`crossingPlan`/`crossingNote`/`canCross`/`crossingBlocker`/`runCrossing`/`boatPosition`/`standOffPoint`/`waterMetresBetween`/`metresToArrival`/`hasArrivedAt`); `DESTINATIONS` and the `Destination`/`DestinationId` shape; `BoatState.at` with schema 40; `boatStandOffM` and `crossingRouteSamples`; the `cross-boat` verb, one verb reading its direction off where she is; and the boat's meshes, collider and tap target following her — the unfrozen hull chain in `island.ts` and the `boat` branch in `pickHitPoint`. Also `swimEnergyPerGameHourFor` and `swimPaceFractionFor` in `water.ts`, which the live tick and the crossing forecast now share.
 
 *Status: standing. Joins [[D-121]]'s swim to [[D-190]]'s staged hull without moving either. Reaching the destination is the goal; landing and working on the far side remain out of scope. No new land was authored.* — C2
 

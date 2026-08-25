@@ -151,6 +151,45 @@ export function swimSpeedEaseOf(capacities: CapacityScores): number {
     return capacityEaseOf(capacities.breathWaterConfidence ?? 0, TUNE.swimConfidenceSpeedGainMax);
 }
 
+/**
+ * WHAT SWIMMING COSTS THIS SURVIVOR, per game hour, asked from anywhere — including dry land.
+ *
+ * `waterCostsFor` below answers "what is the water charging me RIGHT NOW", which is exactly
+ * right for the live tick and useless to a survivor standing on the beach deciding whether to
+ * go: it returns 0 for `ashore`. A forecast needs the price of a swim NOT YET BEING SWUM.
+ *
+ * SESSION 3 FOUND THIS THE EXPENSIVE WAY. `crossing.ts` quoted the swim leg by re-deriving it
+ * from `TUNE.swimEnergyDrainPerGameHour` alone, and so quoted every survivor the EMPTY-HANDED
+ * price. Load was missing. The survivor a wreck crossing exists for is the one coming home
+ * carrying salvage, so the single most mis-quoted body in the game was the one the feature was
+ * built for — told a crossing was affordable and landed below the water's own first warning.
+ *
+ * The fix is not a second formula kept in step by hand. It is this function, called by both the
+ * tick and the forecast, which is what `waterCostsFor`'s own note already asked for in Ch.6's
+ * words: REUSED RATHER THAN RE-DERIVED. A price with one caller can drift; a price with two
+ * callers and one body cannot.
+ */
+export function swimEnergyPerGameHourFor(state: GameState): number {
+    return TUNE.swimEnergyDrainPerGameHour
+        * loadEnergyMultiplierOf(state)
+        * swimEfficiencyOf(state.capacities);
+}
+
+/**
+ * The pace of an ordinary, unspent swim for this survivor, as a fraction of walking.
+ *
+ * Same reasoning as `swimEnergyPerGameHourFor`, for the other half of a leg: metres and a pace
+ * make hours, and hours and a drain make energy, so a forecast that got the pace from a bare
+ * constant would mis-time the swim for every practised swimmer even after the drain was fixed.
+ *
+ * This is the HEALTHY pace deliberately — the `spent`/`going-under` penalty is not priced into
+ * a plan, because a crossing that arrives spent is one the plan should have refused. That is
+ * `affordable`'s job in `crossing.ts`, and it is guarded there rather than smuggled in here.
+ */
+export function swimPaceFractionFor(state: GameState): number {
+    return TUNE.swimSpeedMultiplier * swimSpeedEaseOf(state.capacities);
+}
+
 export interface WaterCosts {
     /** Energy per game hour. Positive is a DRAIN — the caller subtracts. */
     energyPerGameHour: number;
@@ -184,9 +223,7 @@ export function waterCostsFor(state: GameState): WaterCosts {
             stage,
         };
     }
-    const work = TUNE.swimEnergyDrainPerGameHour
-        * loadEnergyMultiplierOf(state)
-        * swimEfficiencyOf(state.capacities);
+    const work = swimEnergyPerGameHourFor(state);
     return {
         energyPerGameHour: work,
         healthPerGameHour: isDrowning(stage) ? TUNE.swimGoingUnderHealthPerGameHour : 0,
@@ -207,7 +244,9 @@ export function waterSpeedMultiplierOf(state: GameState): number {
     //  developed by, and paying out a swimmer's practice on a raft would make the growth
     //  unreadable at exactly the moment it should be clearest. `ashore` returns a bare 1 for the
     //  same reason it always did: on dry land there is no water term at all.
-    const ease = swimSpeedEaseOf(state.capacities);
+    //  The practice term now lives in `swimPaceFractionFor` so the crossing forecast and this
+    //  tick read the same pace off one body. `spent` multiplies that pace down rather than
+    //  rebuilding it, which is why the penalty cannot fall out of step with the base.
     switch (stage) {
         case 'ashore': return 1;
         case 'wading': return TUNE.wadeSpeedMultiplier;
@@ -215,8 +254,8 @@ export function waterSpeedMultiplierOf(state: GameState): number {
         case 'going-under':
             //  Still helps when you are spent — a confident swimmer in trouble is better off
             //  than a beginner in trouble, which is the whole reason the capacity exists.
-            return TUNE.swimSpeedMultiplier * TUNE.swimSpentSpeedMultiplier * ease;
-        default: return TUNE.swimSpeedMultiplier * ease;
+            return swimPaceFractionFor(state) * TUNE.swimSpentSpeedMultiplier;
+        default: return swimPaceFractionFor(state);
     }
 }
 

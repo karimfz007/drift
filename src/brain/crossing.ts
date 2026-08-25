@@ -56,6 +56,7 @@ import { boatStage } from './boat';
 import { realSecondsPerGameHour } from '../data/tune';
 import type { Destination, DestinationId, GameState } from './types';
 import { DESTINATIONS } from '../data/world';
+import { swimEnergyPerGameHourFor, swimPaceFractionFor } from './water';
 
 /** Where the boat actually is right now. Derived from `boat.at`, never stored as a position. */
 export function boatPosition(state: GameState): { x: number; y: number } {
@@ -162,7 +163,7 @@ export function crossingPlan(state: GameState, destId: DestinationId): CrossingP
     //  already floating where you left her, which is the same water again — so the swim leg
     //  is priced for both and simply named by the direction the plan is describing.
     const swimMetres = Math.max(0, dest.standOffM - dest.arrivalRadiusM);
-    const swim = legFor(swimMetres, TUNE.swimSpeedMultiplier, TUNE.swimEnergyDrainPerGameHour);
+    const swim = legFor(swimMetres, swimPaceFractionFor(state), swimEnergyPerGameHourFor(state));
 
     const totalEnergy = boat.energyCost + swim.energyCost;
     const energyOnArrival = state.energy - totalEnergy;
@@ -208,7 +209,7 @@ function planWithoutBlocker(state: GameState, dest: Destination): { affordable: 
     const boatMetres = waterMetresBetween({ x: BOAT.x, y: BOAT.y }, stand);
     const boat = legFor(boatMetres, TUNE.boatPaddleSpeedFraction, TUNE.raftEnergyDrainPerGameHour);
     const swimMetres = Math.max(0, dest.standOffM - dest.arrivalRadiusM);
-    const swim = legFor(swimMetres, TUNE.swimSpeedMultiplier, TUNE.swimEnergyDrainPerGameHour);
+    const swim = legFor(swimMetres, swimPaceFractionFor(state), swimEnergyPerGameHourFor(state));
     return { affordable: state.energy - (boat.energyCost + swim.energyCost) > TUNE.swimLabouringEnergy };
 }
 

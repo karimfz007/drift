@@ -31,6 +31,11 @@ import {
     standOffPoint,
     swimStageOf,
     waterMetresBetween,
+    waterCostsFor,
+    waterSpeedMultiplierOf,
+    swimEnergyPerGameHourFor,
+    swimPaceFractionFor,
+    loadEnergyMultiplierOf,
     waterZoneOf,
     type Destination,
     type GameState,
@@ -298,5 +303,96 @@ describe('A SECOND DESTINATION IS ONE ROW — the seam, proved rather than claim
         const src = readFileSync('src/brain/crossing.ts', 'utf8');
         const body = src.slice(src.indexOf('export function boatPosition'));
         expect(body, 'crossing.ts reaches for the wreck by name').not.toMatch(/\bWRECK\b/);
+    });
+});
+
+describe('FAIR CHALLENGE — the forecast is priced for THIS body, not a baseline one', () => {
+    /**
+     * THE BUG THIS PAIR EXISTS FOR, and it was shipped for most of Session 3.
+     *
+     * The swim leg was quoted straight off `TUNE.swimEnergyDrainPerGameHour`, while the swim
+     * the survivor actually swims is charged through `waterCostsFor`, which multiplies that
+     * same constant by load and by practice. Two formulas, one of them a copy, and they agreed
+     * only for an empty-handed beginner.
+     *
+     * WHICH IS THE ONE BODY A WRECK CROSSING IS NEVER ABOUT. You cross to a wreck to bring
+     * things back, so the survivor on the return leg is carrying salvage — quoted the
+     * empty-handed price for the leg they are most loaded on. `affordable` could call that
+     * crossing safe and land them under the water's own first warning, which is precisely the
+     * promise the fair-challenge rail exists to forbid.
+     */
+    it('A LOADED SURVIVOR IS QUOTED THE LOADED PRICE — the swim leg tracks what they carry', () => {
+        const light = ready();
+        const heavy = ready();
+        heavy.inventory.stone = 12;
+        heavy.inventory.wood = 12;
+
+        const lm = loadEnergyMultiplierOf(light);
+        const hm = loadEnergyMultiplierOf(heavy);
+        expect(hm, 'the fixture did not actually load anyone').toBeGreaterThan(lm);
+
+        const lp = crossingPlan(light, 'wreck');
+        const hp = crossingPlan(heavy, 'wreck');
+        //  The whole claim: the quote moved, and it moved by exactly the shipped multiplier.
+        expect(hp.swim.energyCost, 'a loaded swim is quoted at the empty-handed price')
+            .toBeGreaterThan(lp.swim.energyCost);
+        expect(hp.swim.energyCost / lp.swim.energyCost).toBeCloseTo(hm / lm, 6);
+    });
+
+    it('...and the quote IS the charge: one function answers the tick and the forecast', () => {
+        //  Not "the numbers happen to match" — the same body produced both. A survivor mid-swim
+        //  and the same survivor forecasting that swim read one expression.
+        const s = ready();
+        s.inventory.stone = 9;
+        const quoted = swimEnergyPerGameHourFor(s);
+
+        //  Put them in the water and ask what it is charging them right now.
+        s.player = { x: standOffPoint(DESTINATIONS.wreck).x, y: standOffPoint(DESTINATIONS.wreck).y };
+        expect(swimStageOf(s), 'the fixture did not get the survivor swimming').not.toBe('ashore');
+        expect(waterCostsFor(s).energyPerGameHour).toBeCloseTo(quoted, 9);
+
+        //  ...and the plan's swim leg is that same rate over its own hours.
+        const p = crossingPlan(ready(), 'wreck');
+        const base = ready();
+        expect(p.swim.energyCost).toBeCloseTo(p.swim.hours * swimEnergyPerGameHourFor(base), 9);
+    });
+
+    it('PRACTICE IS PRICED TOO — a confident swimmer is quoted a cheaper, faster swim', () => {
+        const green = ready();
+        const salt = ready();
+        salt.capacities.breathWaterConfidence = 100;
+
+        const gp = crossingPlan(green, 'wreck');
+        const sp = crossingPlan(salt, 'wreck');
+        expect(sp.swim.hours, 'practice did not reach the forecast pace').toBeLessThan(gp.swim.hours);
+        expect(sp.swim.energyCost, 'practice did not reach the forecast price')
+            .toBeLessThan(gp.swim.energyCost);
+        //  Bounded, per §12: the sea never becomes free.
+        expect(sp.swim.energyCost).toBeGreaterThan(0);
+    });
+
+    it('the pace the forecast uses is the pace the water actually grants', () => {
+        const s = ready();
+        s.capacities.breathWaterConfidence = 64;
+        s.player = { x: standOffPoint(DESTINATIONS.wreck).x, y: standOffPoint(DESTINATIONS.wreck).y };
+        expect(swimStageOf(s)).toBe('swimming');
+        expect(waterSpeedMultiplierOf(s)).toBeCloseTo(swimPaceFractionFor(s), 9);
+    });
+
+    it('AFFORDABILITY ANSWERS FOR THE LOADED BODY — the gate moved with the price', () => {
+        //  The failure mode named: a reserve that is enough empty-handed and not enough loaded
+        //  must not be called affordable. Binary-search the reserve where the two disagree.
+        const probe = (kg: boolean, energy: number) => {
+            const s = ready();
+            if (kg) { s.inventory.stone = 14; s.inventory.wood = 14; }
+            s.energy = energy;
+            return crossingPlan(s, 'wreck').affordable;
+        };
+        let found = false;
+        for (let e = 36; e <= 100; e += 0.25) {
+            if (probe(false, e) && !probe(true, e)) { found = true; break; }
+        }
+        expect(found, 'no reserve exists where load changes the answer — load is not in the gate')
+            .toBe(true);
     });
 });
