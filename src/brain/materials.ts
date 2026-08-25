@@ -64,6 +64,7 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     //  DROP 1 — meat is food and nothing else: no tag lets it be built with, so it can
     //  never be lashed into a shelter by a Try-Combining accident.
     meat: { primary: 'organic', tags: ['food'] },
+    cookedMeat: { primary: 'organic', tags: ['food'] },
     //  FISHING — food and nothing else, for meat's exact reason. Worth saying out loud: a
     //  fish is the most obviously useful-looking organic thing on this island and therefore
     //  the most tempting to give a structural tag to. It gets none. The one law this schema

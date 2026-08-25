@@ -29,6 +29,7 @@ export * from './readout';
 export * from './staged';
 export * from './boat';
 export * from './illness';
+export * from './cooking';
 export * from './confidence';
 export * from './growth';
 export * from './matter';

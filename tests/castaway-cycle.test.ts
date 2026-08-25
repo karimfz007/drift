@@ -95,12 +95,44 @@ describe('REACHABILITY — every step is offered by the circle, not just callabl
     });
 
     it('the fire keeps its old verbs — the new ones displaced nothing', () => {
-        //  The frequent-verb-slowdown rule, checked directly. Adding two verbs to the fire
-        //  must not have taxed feeding it, which is what a survivor is there to do.
+        //  The frequent-verb-slowdown rule, checked directly. Adding verbs to the fire must
+        //  not have taxed feeding it, which is what a survivor is mostly there to do.
+        //
+        //  THE FIXTURE USED TO SEED `fuel: 12`, WHICH IS `fireMaxFuel` EXACTLY, and this
+        //  assertion passed anyway — because `feed-fire`'s `available` asked only "is there a
+        //  fire, and have I any wood" and never `canFeedFire`, which is what actually decides.
+        //  So the check was green on a fire that could not be fed, and the survivor pressing
+        //  that green segment was told *"No wood to add"* while holding ten. Fed from below
+        //  the cap now, which is what the assertion always meant to describe.
         const s = atTheFire();
+        s.fire = { ...s.fire, fuel: TUNE.fireMaxFuel - 1 };
         expect(idsAt(s, 'fire')).toContain('feed-fire');
         s.torch = { owned: true, lit: false, fuelGameHoursRemaining: 3, grade: 'crude' };
         expect(idsAt(s, 'fire')).toContain('light-torch');
+    });
+
+    it('...and A FULL PIT SAYS SO, rather than offering and then refusing', () => {
+        //  ITEM 4 — *"the fire won't accept more wood past ~24 hours."* It will not, and that
+        //  is DELIBERATE: `fireMaxFuel` (12) x `fireBurnGameHoursPerWood` (2) is a full day of
+        //  fire, and the constant's own tuning comment says why — "so the pit can't be turned
+        //  into a silo". The cap is not the defect. How it presented was.
+        const full = atTheFire();
+        full.fire = { ...full.fire, fuel: TUNE.fireMaxFuel };
+        expect(full.inventory.wood, 'the fixture must be holding wood for this to mean anything')
+            .toBeGreaterThan(0);
+        expect(idsAt(full, 'fire'), 'a full pit still offered to be fed').not.toContain('feed-fire');
+
+        //  LISTED BUT REFUSED, not hidden — the survivor must still be able to see that
+        //  feeding is a thing this object does, and read why it is not available now.
+        const shown = verbsFor(full, 'fire').find((v) => v.id === 'feed-fire');
+        expect(shown, 'feeding vanished from the fire entirely').toBeDefined();
+        expect(shown!.available).toBe(false);
+        expect(shown!.reason, 'a full pit gave no reason at all').toBeTruthy();
+        //  ...AND IT NAMES THE PIT, NOT THE PACK (Law 95: the ONE true enabler). The old
+        //  message was "No wood to add. Fell a tree or gather more." — said to a survivor
+        //  visibly carrying ten wood, which is simply false.
+        expect(shown!.reason, 'the refusal blamed the wood, which she has').not.toMatch(/no wood|gather more/i);
+        expect(shown!.reason).toMatch(/banked|burn down/i);
     });
 });
 

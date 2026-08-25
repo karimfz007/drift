@@ -545,27 +545,133 @@ describe('B2 — what a floating hull is actually FOR', () => {
     });
 });
 
-describe('REACHABILITY (D-090) — every new verb is offered at the boat', () => {
-    it('ALL TEN ARE ON HER CIRCLE, and nowhere else', () => {
-        //  The title used to say seven and the body listed nine of the ten `boatVerbs`
-        //  returns — so `ferry-boat` was reachable by no assertion in the repo, and a
-        //  build that dropped it would have passed. Counted from the source now.
-        const s = repaired();
-        const ids = verbsFor(s, 'boat').map((v) => v.id);
+describe('REACHABILITY (D-090) — every verb is offered at the boat, at the rung it belongs to', () => {
+    it('ALL TEN ARE REACHABLE ACROSS HER LADDER, and nowhere else', () => {
+        //  THIS USED TO ASSERT ALL TEN ON ONE CIRCLE, and that is no longer the law — but
+        //  D-090's actual question is unchanged and this still answers it. "Is every verb
+        //  reachable?" was previously answered by looking at a single stage, because every
+        //  stage showed everything; a survivor at B0 met `moor-boat` ("there is nothing
+        //  afloat to make fast") before she had been told the hull was even holed.
+        //
+        //  So the union over the LADDER is what has to be complete now, and that is a
+        //  strictly stronger check than the old one: it fails both if a verb is dropped
+        //  from the source AND if the staging strands one at a rung nothing can reach.
         const EVERY_BOAT_VERB = ['inspect-boat', 'survey-hull', 'shore-up-boat', 'dewater-boat',
             'repair-frames', 'seal-seams', 'float-test', 'board-boat', 'ferry-boat', 'moor-boat'];
+
+        const s = capable();
+        const seen = new Set<string>();
+        const sweep = () => verbsFor(s, 'boat').forEach((v) => seen.add(v.id));
+
+        sweep();                                        //  B0, untouched
+        expect(surveyHull(s)).toBe(true); sweep();      //  B0, surveyed
+        expect(shoreUpBoat(s)).toBe(true); sweep();     //  B0, propped
+        expect(dewaterBoat(s)).toBe(true); sweep();     //  B1, bailed
+        expect(repairHullStructure(s)).not.toBeNull(); sweep();
+        expect(sealHull(s)).not.toBeNull(); sweep();    //  B1, both systems worked
+        expect(runFloatTest(s)).not.toBeNull(); sweep();//  B2, afloat
+        expect(learnLoad(s)).toBe(true); sweep();       //  B2, boarded
+        expect(moorBoat(s)).toBe(true); sweep();        //  B2, made fast
+
         for (const verb of EVERY_BOAT_VERB) {
-            expect(ids, `${verb} is unreachable`).toContain(verb);
+            expect([...seen], `${verb} is unreachable at every rung of the ladder`).toContain(verb);
         }
-        expect(ids.length, 'a verb exists that no reachability check names').toBe(EVERY_BOAT_VERB.length);
+        expect(seen.size, 'a verb exists that no reachability check names').toBe(EVERY_BOAT_VERB.length);
         expect(holdOpensCircle(s, 'boat'), 'the boat has no circle to offer them from').toBe(true);
-        for (const t of ['pond', 'shelter', 'fire', 'ground', 'construction'] as const) {
-            const other = verbsFor(s, t).map((v) => v.id);
+
+        //  ...AND NO RUNG IS EMPTY OF EVERYTHING BUT LOOKING. Hiding a verb is only honest
+        //  while there is always some other thing on the wheel; a stage that staged its way
+        //  down to `inspect-boat` alone would be a dead end wearing a tidy wheel.
+        const t = capable();
+        const steps: Array<() => void> = [
+            () => { surveyHull(t); }, () => { shoreUpBoat(t); }, () => { dewaterBoat(t); },
+            () => { repairHullStructure(t); }, () => { sealHull(t); }, () => { runFloatTest(t); },
+            () => { learnLoad(t); }, () => { moorBoat(t); },
+        ];
+        for (let i = 0; i <= steps.length; i++) {
+            const ids = verbsFor(t, 'boat').map((v) => v.id);
+            expect(ids.length, `rung ${i} offers nothing but looking: [${ids.join(', ')}]`)
+                .toBeGreaterThan(1);
+            expect(ids[0], `rung ${i} does not lead with looking`).toBe('inspect-boat');
+            if (i < steps.length) steps[i]();
+        }
+
+        for (const target of ['pond', 'shelter', 'fire', 'ground', 'construction'] as const) {
+            const other = verbsFor(s, target).map((v) => v.id);
             for (const verb of EVERY_BOAT_VERB) {
                 if (verb === 'inspect-boat') continue;
-                expect(other, `${t} offered ${verb}`).not.toContain(verb);
+                expect(other, `${target} offered ${verb}`).not.toContain(verb);
             }
         }
+    });
+
+    it('AND NO RUNG OF THE LADDER OVERFLOWS THE WHEEL — four is what the arc holds', () => {
+        //  THE DEFECT THIS CLOSES, reported from a device: "23 wood, 8 fibre, axe in hand,
+        //  long-press the boat, only Look her over is active." Ten verbs on an arc that
+        //  carries four drew FOUR segments at 71px — too narrow to print a refusal under a
+        //  label — and sent six to the pip. The gate that was actually stopping her
+        //  (`survey-hull` wants seamanship 14; a fresh survivor has 5) could not say so.
+        //
+        //  Bounded HERE, in the brain, rather than only in the device harness: the layout can
+        //  prove a wheel of four is drawable, but only this can prove the boat never asks it
+        //  to draw more on the way up.
+        const t = capable();
+        const steps: Array<() => void> = [
+            () => { surveyHull(t); }, () => { shoreUpBoat(t); }, () => { dewaterBoat(t); },
+            () => { repairHullStructure(t); }, () => { sealHull(t); }, () => { runFloatTest(t); },
+            () => { learnLoad(t); }, () => { moorBoat(t); },
+        ];
+        for (let i = 0; i <= steps.length; i++) {
+            const ids = verbsFor(t, 'boat').map((v) => v.id);
+            expect(ids.length, `rung ${i} wants ${ids.length} segments: [${ids.join(', ')}]`)
+                .toBeLessThanOrEqual(4);
+            if (i < steps.length) steps[i]();
+        }
+    });
+
+    it('...and the ONE state that does exceed it is named rather than claimed away', () => {
+        //  HONESTY ABOUT THE BOUND. Walking the ladder never wants more than four, and it
+        //  would be easy to state that as "the boat never overflows" — but there is exactly
+        //  one reachable state where it does, and a claim that quietly excluded it would be
+        //  this session's own recurring defect: a sentence whose subject drifted out from
+        //  under it.
+        //
+        //  THE STATE IS: floated, then GOT BETTER AT HULLS. Both repairs become improvable
+        //  again (`canRepairStructure2`/`canSealHull` read `couldImprove`), and if she has not
+        //  yet been boarded or made fast those one-shots are still pending too — five things
+        //  worth doing at once, on an arc that carries four.
+        //
+        //  IT IS LEFT AT FIVE DELIBERATELY. The alternative was to hide a repair she is now
+        //  good enough to better, which would delete a real capability — `boatCapacityKg`
+        //  reads the repair rung — to protect a tidier number. The pip exists for exactly
+        //  this, and [[D-188]] made it carry the COMPLETE surface with every reason in full.
+        const s = capable();
+        surveyHull(s); shoreUpBoat(s); dewaterBoat(s);
+        repairHullStructure(s); sealHull(s); runFloatTest(s);
+        expect(boatStage(s), 'the fixture did not reach B2').toBe('B2');
+        const walked = verbsFor(s, 'boat').map((v) => v.id);
+        expect(walked.length, `afloat as repaired: [${walked.join(', ')}]`).toBeLessThanOrEqual(4);
+
+        s.knowledge.domains.navigationSeamanship.technique = 95;
+        s.knowledge.domains.navigationSeamanship.understanding = 90;
+        const better = verbsFor(s, 'boat');
+        const ids = better.map((v) => v.id);
+        expect(ids, 'better hands did not reopen the frames').toContain('repair-frames');
+        expect(ids, 'better hands did not reopen the seams').toContain('seal-seams');
+        expect(ids.length, `the improvement corner: [${ids.join(', ')}]`).toBe(5);
+        //  ...AND THE FIFTH IS NOT LOST, which is the only thing that makes five acceptable.
+        //  Every one of them is live, so the arc carries four and the pip carries the rest —
+        //  nothing here is a refusal a survivor cannot read.
+        expect(better.every((v) => v.available), `something in the corner is dead: `
+            + better.filter((v) => !v.available).map((v) => v.id).join(', ')).toBe(true);
+
+        //  AND IT CLOSES ITSELF AS SHE USES IT: board her and moor her, and the one-shots
+        //  retire, taking it back under the arc's capacity without anything being hidden.
+        learnLoad(s);
+        moorBoat(s);
+        const settled = verbsFor(s, 'boat').map((v) => v.id);
+        expect(settled.length, `after the one-shots retire: [${settled.join(', ')}]`)
+            .toBeLessThanOrEqual(4);
     });
 
     it('THERE IS ALWAYS SOMETHING TO DO AT HER BESIDES LOOK, at every stage', () => {

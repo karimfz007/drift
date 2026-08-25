@@ -97,7 +97,7 @@ export function applyDrink(thirst: number): number {
  * It lives HERE, beside the values, rather than in state.ts where it started: the module
  * that knows what a food is worth is the module that should say what a food is.
  */
-export type Food = 'berries' | 'coconut' | 'shellfish' | 'meat' | 'fish';
+export type Food = 'berries' | 'coconut' | 'shellfish' | 'meat' | 'cookedMeat' | 'fish';
 
 /** What eating one unit of a food restores. */
 export interface FoodValue {
@@ -117,6 +117,11 @@ export function foodValue(food: Food): FoodValue {
         //  defect this closes — the number existed from the day the boar shipped.
         case 'meat':
             return { hunger: TUNE.meatHungerRestore, thirst: 0 };
+        //  COOKING — the best meal on the island, and the only one that had to be made
+        //  rather than found. The gap to raw (30 against 18) is the thing `meatHungerRestore`
+        //  has described as “the reason to learn fire-cooking later” since Drop 1.
+        case 'cookedMeat':
+            return { hunger: TUNE.cookedMeatHungerRestore, thirst: 0 };
         //  FISHING — the best forage on the island, and still not a meal that ends hunger.
         case 'fish':
             return { hunger: TUNE.fishHungerValue, thirst: 0 };

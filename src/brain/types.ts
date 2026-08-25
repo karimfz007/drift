@@ -81,7 +81,7 @@
  *      relation nobody pegged together would be the migration inventing capability rather
  *      than declining to invent history.
  */
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 export type ControlMode = 'tap' | 'joystick';
 
@@ -179,8 +179,16 @@ export interface Inventory {
     /** FISHING — one fish. Perishable (see `freshUntil`) and structurally inert. */
     fish: number;
     sharpblade: number;
-    /** DROP 1 — raw meat from a killed boar. Spoils fast; cooking is the NEXT discovery. */
+    /** DROP 1 — raw meat from a killed boar. Spoils fast (48 game hours); cook it and see `cookedMeat`. */
     meat: number;
+    /**
+     * COOKING — raw meat put over a lit fire for an hour. Worth more hunger than raw
+     * (30 against 18) and keeps far longer (72–168 game hours against 48, by the cook’s
+     * own rung). A SEPARATE kind rather than a flag on `meat`, because the two hold
+     * different clocks in `freshUntil` and a survivor can carry both at once — which is
+     * the whole tension of a hunt: cook it now, or carry it and hope.
+     */
+    cookedMeat: number;
 
     /**
      * THE COCONUT SHELL — what is LEFT when a coconut is drunk.

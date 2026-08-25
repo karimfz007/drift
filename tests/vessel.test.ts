@@ -268,3 +268,72 @@ describe('D-011 — an absence neither fills, boils, nor empties', () => {
         expect(after.water.rawSips).toBe(0);
     });
 });
+
+/**
+ * THE CUP HOLDS WHAT A CUP HOLDS — raw and boiled together.
+ *
+ * REPORTED AS "four cups of boiled water" out of one two-sip cup, in a precise sequence: fill,
+ * boil, fill again, boil again. It was not a duplicated vessel and not a duplicated shell. It
+ * was the capacity guard reading the wrong quantity: `canFillVessel` compared `rawSips` alone
+ * against the capacity, and `boil` moves water from `rawSips` to `cleanSips` — emptying the raw
+ * slot. So every boil made the cup fillable again and treated water accumulated with no
+ * ceiling at all: a two-sip cup reached TEN clean sips in five pond-to-fire trips, and would
+ * have gone on for as long as somebody kept walking.
+ *
+ * That is the water economy undone — boiling is the whole cost of clean water, and the cup was
+ * a free multiplier on it.
+ */
+describe('a vessel cannot hold more than a vessel holds', () => {
+    const filled = (): GameState => {
+        const s = createInitialState(1_770_000_000_000);
+        s.inventory.coconut = 1;
+        s.inventory.sharpblade = 1;
+        s.fire = { built: true, fuel: 10, x: 0, y: 92 };
+        s.player = { x: -22, y: 8 };
+        expect(makeShellCup(s)).toBe(true);
+        return s;
+    };
+
+    it('FILL, BOIL, FILL AGAIN — the second fill is refused, and the cup stays at its capacity', () => {
+        const s = filled();
+        const cap = vesselCapacity(s.water.vessel!);
+        expect(canFillVessel(s)).toBe(true);
+        fillVessel(s);
+        expect(boil(s)).toBe(cap);
+        expect(s.water.cleanSips).toBe(cap);
+        //  The raw slot is empty and the cup is FULL. Reading only `rawSips` said otherwise.
+        expect(s.water.rawSips).toBe(0);
+        expect(canFillVessel(s), 'a full cup accepted more water').toBe(false);
+    });
+
+    it('...and ten trips to the pond cannot beat it', () => {
+        const s = filled();
+        const cap = vesselCapacity(s.water.vessel!);
+        for (let i = 0; i < 10; i++) { fillVessel(s); boil(s); }
+        expect(s.water.rawSips + s.water.cleanSips, 'the cup outgrew itself').toBeLessThanOrEqual(cap);
+    });
+
+    it('drinking makes room again, which is the only thing that should', () => {
+        const s = filled();
+        const cap = vesselCapacity(s.water.vessel!);
+        fillVessel(s); boil(s);
+        expect(canFillVessel(s)).toBe(false);
+        s.thirst = 10;
+        expect(drinkClean(s)).toBe(true);
+        expect(s.water.cleanSips).toBe(cap - 1);
+        expect(canFillVessel(s), 'space that opened up was not usable').toBe(true);
+        //  ...and topping up fills only the room there is, never past the brim.
+        fillVessel(s);
+        expect(s.water.rawSips + s.water.cleanSips).toBe(cap);
+    });
+
+    it('A SECOND CUP IS STILL REFUSED while one is held, however many husks are to hand', () => {
+        //  The other half of the report: pulling shells OUT of storage and making more cups.
+        const s = filled();
+        s.inventory.shell = 5;
+        expect(canMakeShellCup(s), 'a second cup was allowed').toBe(false);
+        expect(makeShellCup(s)).toBe(false);
+        expect(s.inventory.shell, 'a refused cup still ate a husk').toBe(5);
+        expect(shellCupBlocker(s)).toMatch(/already have/i);
+    });
+});

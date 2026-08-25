@@ -129,6 +129,7 @@ export function migrate(envelope: SaveEnvelope): SaveEnvelope | null {
     if (current.schemaVersion === 34) current = migrateV34toV35(current);
     if (current.schemaVersion === 35) current = migrateV35toV36(current);
     if (current.schemaVersion === 36) current = migrateV36toV37(current);
+    if (current.schemaVersion === 37) current = migrateV37toV38(current);
 
     return current.schemaVersion === SCHEMA_VERSION ? current : null;
 }
@@ -989,6 +990,29 @@ function migrateV27toV28(envelope: SaveEnvelope): SaveEnvelope {
  * (see `ConstructionSite`), so a finished shelter stays finished and is not re-opened as a
  * frame to be fed. That is the whole reason completeness was NOT added as a flag beside it.
  */
+/**
+ * v37 → v38 (COOKING). Adds `inventory.cookedMeat`, at ZERO.
+ *
+ * NOBODY IS HANDED A MEAL THEY DID NOT COOK, which is this file’s standing rule:
+ * possession is proof, and no save that predates the verb can have used it. A survivor
+ * mid-hunt migrates in holding exactly the raw meat she was holding, on exactly the
+ * clock it was already on — `freshUntil.meat` is untouched — and she can now walk it to
+ * a fire, which is the whole of what changes for her.
+ *
+ * AND NO `freshUntil.cookedMeat` KEY IS SEEDED. `isSpoiled` reads `left !== undefined`,
+ * so writing a key here for a stack that does not exist would start a clock ticking on
+ * nothing, and `perishOnTick` would count it down forever. The key is written by
+ * `cookMeat` at the moment there is something for it to be about, and by nothing else.
+ */
+function migrateV37toV38(envelope: SaveEnvelope): SaveEnvelope {
+    const old = envelope.state as unknown as GameState;
+    return {
+        ...envelope,
+        schemaVersion: 38,
+        state: { ...old, inventory: { ...old.inventory, cookedMeat: old.inventory?.cookedMeat ?? 0 } },
+    };
+}
+
 /**
  * v36 → v37 (SESSION 2, the boat B0-B2). The hull migrates in UNTOUCHED — `freshBoat()`, which
  * is B0 and is exactly where every existing save already stands.

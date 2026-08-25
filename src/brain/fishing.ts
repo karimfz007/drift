@@ -54,6 +54,7 @@
 import { TUNE } from '../data/tune';
 import { waterDepthAt } from '../data/world';
 import type { GameState, WoodNode } from './types';
+import { addPerishable } from './matter';
 
 export type FishingMethod = 'handline' | 'net' | 'spear';
 
@@ -368,7 +369,9 @@ export function spearFish(state: GameState, roll: number): StrikeResult {
 export function gainFish(state: GameState, amount: number): void {
     if (!(amount > 0)) return;
     state.inventory.fish += amount;
-    state.freshUntil = { ...state.freshUntil, fish: TUNE.fishFreshGameHours };
+    //  Same rule the meat and the cooked meat keep — see `addPerishable`. A fresh catch
+    //  does not un-age the one that has been in the pack since yesterday.
+    addPerishable(state, 'fish', TUNE.fishFreshGameHours);
 }
 
 /** Fresh state for a new castaway: no line in the water, no net set. */

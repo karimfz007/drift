@@ -79,6 +79,11 @@ const TUNE = new Proxy({
     healthOfflineFloor: 25,
     woodPerFire: 5,
     fireBurnGameHoursPerWood: 2,
+    //  [[D-190]] — the cup’s capacity, mirrored because `THE CUP CANNOT OUTGROW ITSELF`
+    //  compares the sips held against it rather than against a literal 2. The bug it exists
+    //  to catch was a CEILING that was not applied; a check that hardcoded the ceiling would
+    //  keep passing if the constant were retuned and the guard left behind.
+    shellCupSips: 2,
     realSecondsPerGameHour: 150,
     //  SESSION 2 — the line-ferry’s cost, mirrored because the check RECOMPUTES it rather
     //  than asserting "energy went down". The first cut asserted the direction alone and
@@ -5902,7 +5907,13 @@ async function main() {
     //  point the camera can actually see, instead of a point I assumed it could.
     const fireAt = await findHoldableSite(5);
     if (fireAt) {
-        await editSave(`state.fire = { built: true, fuel: 12, x: ${fireAt.x.toFixed(2)}, y: ${fireAt.y.toFixed(2)} };`);
+        //  BURNING, NOT BANKED TO THE BRIM. This seeded `fuel: 12` — `fireMaxFuel` exactly —
+        //  and then asserted feeding it was READY, which it was, because `feed-fire` never
+        //  consulted `canFeedFire`. The check was green on a fire that could not be fed, and
+        //  [[D-190]] made the verb honest, so the fixture has to be honest too. What this check
+        //  is actually about is that the journal did not displace feeding — not that a full
+        //  pit accepts wood.
+        await editSave(`state.fire = { built: true, fuel: 8, x: ${fireAt.x.toFixed(2)}, y: ${fireAt.y.toFixed(2)} };`);
         const fireHold = await holdWorld(fireAt.x, fireAt.y, 60);
         //  A hold sets an INTENTION; the circle opens on ARRIVAL. `findHoldableSite` returns
         //  ground with clearance — which by definition is not where the survivor is standing
@@ -14223,25 +14234,50 @@ async function main() {
     //  This used to assert `shore-up-boat:blocked` and `float-test:blocked` on the wheel. They
     //  were there, and they taught nothing: `.crowded .verb-reason { display: none }` armed at
     //  five options, so from five onward a blocked segment was an unlabelled grey lump. Ten of
-    //  them sat at 24px centres under a 68px button. The wheel now carries what a survivor can
-    //  DO and the rest is one press away WITH the reason — so the same two verbs are asserted,
-    //  in the place they can actually be read.
-    const b0More = await page.evaluate(() => {
-        const more = document.querySelector('.panel.verb-circle .verb-more');
-        if (!more) return { opened: false, rows: [] };
-        more.click();
-        return { opened: true };
-    });
-    await sleep(700);
-    const b0Withheld = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-list .verb-row')).map((r) => ({
-        label: (r.querySelector('.verb-row-label')?.textContent ?? '').trim(),
-        reason: (r.querySelector('.verb-row-reason')?.textContent ?? '').trim(),
+    //  WHAT SHE CANNOT DO YET, AND WHY — the same question, re-asked of a staged wheel.
+    //
+    //  THIS CHECK USED TO OPEN THE PIP AND LOOK FOR `Prop and crib her` AND `Float her on a
+    //  line` sitting refused in the overflow list. Both assertions were true and both are now
+    //  wrong, because [[D-190]] changed the law they were written against: a fresh boat offers
+    //  the rung you are ON and the one you are REACHING FOR, and nothing else. Propping her is
+    //  two rungs out at B0 and floating her is five, so neither is drawn at all.
+    //
+    //  THE PROPERTY IS UNCHANGED AND IS STILL WORTH HOLDING: a survivor stopped at B0 must be
+    //  able to learn WHAT is stopping her, in words, without guessing. What changed is that
+    //  the answer got BETTER rather than smaller — it used to be a greyed lump in a pip behind
+    //  a "6 more" count, and it is now printed under the verb itself at the wheel's full 116px,
+    //  because two options leave room for it. That is the whole of the director's report:
+    //  *"only Look her over is active"* was ten verbs crushed to 71px with their reasons
+    //  suppressed. So this now asserts the reason is ON THE WHEEL, which is a stronger claim
+    //  than the one it replaces.
+    const b0Reasons = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).map((o) => ({
+        verb: o.dataset.verb,
+        blocked: !o.classList.contains('ready'),
+        label: (o.querySelector('.verb-label')?.textContent ?? '').trim(),
+        reason: (o.querySelector('.verb-reason')?.textContent ?? '').trim(),
     })));
-    check('BOAT B0 — ...and the work that is not her turn yet is refused WITH ITS REASON, not hidden',
-        b0More.opened === true
-        && b0Withheld.some((r) => /prop and crib/i.test(r.label) && /go over her first/i.test(r.reason))
-        && b0Withheld.some((r) => /float her/i.test(r.label) && r.reason.length > 8),
-        `${b0Withheld.length} withheld · ${b0Withheld.map((r) => `${r.label}: "${r.reason.slice(0, 40)}"`).join(' | ').slice(0, 300)}`);
+    const b0Next = b0Reasons.find((r) => r.verb === 'survey-hull');
+    //  AND THIS FIXTURE’S SURVIVOR CAN ALREADY READ A HULL — `BOAT_FIXTURE` seeds
+    //  seamanship 40 against a gate of 14, because the rest of this section has to WALK
+    //  the ladder and cannot do that from behind a wall. So at B0 she is shown two things
+    //  and both are LIVE: there is nothing here she cannot do, and nothing drawn grey to
+    //  tell her so. That is the staged wheel behaving correctly for a capable pair of
+    //  hands, and it is a different claim from the refusal case.
+    //
+    //  THE REFUSAL CASE IS PROVED WHERE IT BELONGS: `LADDER 3` runs the director’s own kit
+    //  — a fresh survivor at technique 5 — and reads the blocked `survey-hull` reason off
+    //  the wheel at its full 116px, and `CIRCLE 5` measures the width that makes it fit.
+    //  Asserting it HERE too would have meant crippling this fixture’s survivor and losing
+    //  the ladder walk that is this section’s whole purpose.
+    check('BOAT B0 — ...and both of them are LIVE: a capable survivor is shown no dead ends',
+        b0Reasons.length === 2 && b0Reasons.every((r) => r.blocked === false),
+        `${b0Reasons.length} shown · ${b0Reasons.map((r) => `${r.verb}${r.blocked ? ' (refused)' : ' (live)'}`).join(' | ')}`);
+    //  ...AND NOTHING FURTHER OUT IS DRAWN, which is the other half of the same ruling. A
+    //  survivor who has not been over her plank by plank is not shown a paddle.
+    check('BOAT B0 — ...and no rung beyond the next one is on the wheel at all',
+        !b0Reasons.some((r) => ['shore-up-boat', 'dewater-boat', 'repair-frames', 'seal-seams',
+            'float-test', 'board-boat', 'ferry-boat', 'moor-boat'].includes(r.verb)),
+        `[${b0Reasons.map((r) => r.verb).join(', ')}]`);
     await ensureNoPanel();
     await closeVerbCircle();
     await ensureNoPanel();
@@ -14497,7 +14533,7 @@ async function main() {
     await ensureNoPanel();
     }
 
-    if (section('THE VERB CIRCLE SCALES — ten verbs on one target, and nothing overlapping')) {
+    if (section('THE VERB CIRCLE SCALES — a crowded target, a roomy one, nothing overlapping')) {
 
     /**
      * THE DEFECT, MEASURED ON REAL PIXELS RATHER THAN DESCRIBED.
@@ -14536,14 +14572,14 @@ async function main() {
 
     //  OPEN THE WHEEL AND READ ITS GEOMETRY. The boxes are what this section is about, so
     //  they come back with the ids rather than being inspected inside a check.
-    const readCircle = async () => {
+    const readCircle = async (target = CIRCLE_AT) => {
         await page.waitForFunction(
             () => (typeof window.__drift?.panelOpen === 'function' ? window.__drift.panelOpen() : false) === false,
             { timeout: 8_000 },
         ).catch(() => {});
-        await faceNode(CIRCLE_AT.x, CIRCLE_AT.y);
+        await faceNode(target.x, target.y);
         await sleep(260);
-        const at = await screenOf(CIRCLE_AT.x, CIRCLE_AT.y);
+        const at = await screenOf(target.x, target.y);
         if (!at) return { ok: false, why: 'no pixel on screen', segs: [], boxes: [], more: null };
         await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
         await page.waitForFunction(
@@ -14622,9 +14658,22 @@ async function main() {
         full.segs.length > 0 && full.segs.every((v) => !/:blocked$/.test(v)) && full.segs.length <= 6,
         `circle [${full.segs.join(', ')}]`);
     //  ...AND WHAT IT WITHHELD IS ANNOUNCED, not silently dropped.
-    check('CIRCLE 3 — ...and the rest is announced at the hub, with a count',
-        full.more !== null && /\d+\s+more/i.test(full.more ?? ''),
-        `pip ${JSON.stringify(full.more)}`);
+    //
+    //  NO LONGER ASKED OF THE BOAT, and the reason is the whole of [[D-190]] item 3. When this
+    //  section was written she was the fullest target in the game: ten verbs at every stage,
+    //  five live, six behind a pip. She is now staged to the rung you are on, so at her busiest
+    //  she wants four and at B2 aboard she wants three — she does not overflow any more, and a
+    //  check that demanded a pip from her would be demanding the defect back.
+    //
+    //  THE FIRE IS THE CROWDED TARGET NOW, and genuinely so: six verbs of its own, plus the
+    //  universal `Move`, plus `cook-meat` the moment a survivor is carrying a kill. EIGHT on an
+    //  arc that holds four — more than the boat ever had — so the overflow rule is proved where
+    //  overflow actually happens, rather than kept alive against a target that outgrew it.
+    check('CIRCLE 3 — a wheel that FITS announces nothing: the staged boat has no pip to show',
+        full.more === null,
+        `pip ${JSON.stringify(full.more)} · circle [${full.segs.join(', ')}]`);
+    await dismissCircle();
+    await ensureNoPanel();
 
     //  ---- HIT-TESTING: the symptom, not the cause ----------------------------------
     //  An overlapping segment is only a defect because the press lands on the wrong one.
@@ -14646,24 +14695,40 @@ async function main() {
     await editSave(circleFixture(`
         state.boat = { surveyed: false, supports: false, dewatered: false, structural: null,
                        seal: null, floatTest: null, loadKnown: false, moored: false,
-                       ferried: false };`));
+                       ferried: false };
+        //  THE DIRECTOR’S OWN SURVIVOR, not this section’s capable one. The shared fixture
+        //  seeds seamanship well past the survey gate so the rest of the section can drive a
+        //  full boat; at B0 that would leave the survey LIVE and no refusal to read at all.
+        //  The REPORTED screen was a FRESH survivor — technique 5 against a gate of 14 — so
+        //  the wall is seeded here deliberately. It is the whole point of the check: the
+        //  refusal is real, and at two segments there is finally room to print it.
+        //  (No backticks in this comment: it lives INSIDE a template literal, and one would
+        //  close it — which is exactly how the first cut of this edit broke the parse.)
+        state.knowledge.domains.navigationSeamanship.technique = 5;
+        state.knowledge.domains.navigationSeamanship.understanding = 0;`));
     await sleep(900);
     const b0 = await readCircle();
-    //  THE ARC FILLS, AND AVAILABILITY ORDERS IT. At B0 the survivor can look her over and
-    //  survey her; the next two rungs follow, greyed. The first cut of this drew only the
-    //  two available and left two slots empty — caught at the fire, three segments into
-    //  room for four — which is withholding something while the space to show it sits
-    //  unused.
-    check('CIRCLE 5 — at B0 the arc FILLS: what she can do first, then the next rungs greyed',
-        b0.ok && b0.segs.length === 4 && overlaps(b0.boxes).length === 0
-        && !/:blocked$/.test(b0.segs[0]) && !/:blocked$/.test(b0.segs[1])
-        && /:blocked$/.test(b0.segs[2]) && /:blocked$/.test(b0.segs[3]),
-        `circle [${b0.segs.join(', ')}] · widths [${b0.boxes.map((x) => x.w.toFixed(0)).join(', ')}]`);
-    //  AND EVERY SEGMENT IS A REAL TARGET. 71px on this arc — narrower than the 116px two
-    //  segments would get, and comfortably over the 48px a thumb needs, which is what the
-    //  old 68px-at-24px-centres never was.
+    //  THE WHEEL IS TWO, AND BOTH DRAW WITH THEIR REASONS. This asserted FOUR segments — two
+    //  live, two greyed — because at the time every rung of the ladder was listed at every
+    //  stage and the arc filled itself from a pool of ten. [[D-190]] staged the boat, so a
+    //  fresh hull offers exactly what she is and what she needs next: look her over, and
+    //  survey her.
+    //
+    //  AND THAT IS THE FIX FOR THE REPORTED DEFECT, measured here rather than asserted. Four
+    //  segments draw at 71px, which is below the 96px it takes to print a refusal under a
+    //  label — so the old wheel showed a survivor three greyed verbs with no text and no way
+    //  to learn what any of them wanted. Two segments draw at the full 116px, and the reason
+    //  prints. The number that matters is the WIDTH, not the count.
+    check('CIRCLE 5 — at B0 the wheel is TWO, and roomy enough to say why the second is refused',
+        b0.ok && b0.segs.length === 2 && overlaps(b0.boxes).length === 0
+        && !/:blocked$/.test(b0.segs[0]) && /:blocked$/.test(b0.segs[1])
+        && b0.boxes.every((x) => x.w >= 96),
+        `circle [${b0.segs.join(', ')}] · widths [${b0.boxes.map((x) => x.w.toFixed(0)).join(', ')}] against the 96px reasons need`);
+    //  AND EVERY SEGMENT IS A REAL TARGET — the property that outlived the count. 116px here,
+    //  71px on a full four-segment arc, and never the 68px-at-24px-centres the old wheel drew.
     check('CIRCLE 6 — ...and every segment is still a real thumb target, none overlapping',
-        b0.boxes.length === 4 && b0.boxes.every((x) => x.w >= 48)
+        b0.boxes.length === b0.segs.length && b0.boxes.length > 0
+        && b0.boxes.every((x) => x.w >= 48)
         && (b0.hits ?? []).every((h) => h.want === h.got),
         `widths [${b0.boxes.map((x) => x.w.toFixed(0)).join(', ')}] against the 48px minimum · hits ${(b0.hits ?? []).filter((h) => h.want !== h.got).length} wrong`);
 
@@ -14673,29 +14738,63 @@ async function main() {
     //  `CUP 3` caught: `{"ready":false,"reason":""}` where "there is nothing in it" belonged.
     //  So the list is every verb this target has: the ones you can do, pressable, and the
     //  ones you cannot with the sentence that says why.
-    const listed = await page.evaluate(() => {
+    //
+    //  ASKED OF THE FIRE, because the boat no longer overflows. This check used to demand the
+    //  pip open ALL TEN of her verbs — the exact shape [[D-190]] item 3 was asked to end. The
+    //  fire holding a kill has EIGHT (six of its own, `Move`, and `cook-meat`), which is more
+    //  than she ever carried, so the rule is proved where it now applies. A pip that opened a
+    //  partial list would be the original defect wearing a different target.
+    await dismissCircle();
+    await ensureNoPanel();
+    await editSave(`state.player = { x: 0, y: 94 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.fire = { built: true, fuel: 6, x: 0, y: 92 };
+        state.water = { vessel: null, rawSips: 0, cleanSips: 0 };
+        state.inventory = { ...state.inventory, meat: 3, wood: 4 };
+        state.freshUntil = { meat: 48 };`);
+    await sleep(900);
+    await approach(0, 94, 26);
+    await faceNode(0, 92);
+    await sleep(280);
+    const fireFull = await readCircle({ x: 0, y: 92 });
+    check('CIRCLE 7a — the FIRE is the crowded target now: eight verbs, and the hub says so',
+        fireFull.ok && fireFull.more !== null && /\d+\s+more/i.test(fireFull.more ?? '')
+        && overlaps(fireFull.boxes).length === 0,
+        `circle [${fireFull.segs.join(', ')}] · pip ${JSON.stringify(fireFull.more)} · overlaps [${overlaps(fireFull.boxes).join(' | ')}]`);
+    const fireListed = await page.evaluate(() => {
         const more = document.querySelector('.panel.verb-circle .verb-more');
         if (!more) return { opened: false, why: 'no pip' };
         more.click();
         return { opened: true };
     });
     await sleep(700);
-    const listRows = await page.evaluate(() => {
+    const fireRows = await page.evaluate(() => {
         const rows = Array.from(document.querySelectorAll('.panel.verb-list .verb-row'));
         return {
             count: rows.length,
+            verbs: rows.map((r) => r.dataset.verb),
             pressable: rows.filter((r) => r.querySelector('.verb-row-btn') !== null).length,
             blocked: rows.filter((r) => r.classList.contains('blocked')).length,
             blockedWithReason: rows.filter((r) => r.classList.contains('blocked')
                 && (r.querySelector('.verb-row-reason')?.textContent ?? '').trim().length > 8).length,
-            first: (rows[0]?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 90),
         };
     });
-    check('CIRCLE 7 — NOTHING IS HIDDEN: the pip opens ALL ten, and every refusal carries its why',
-        listed.opened === true && listRows.count === 10
-        && listRows.pressable === 2 && listRows.blocked === 8
-        && listRows.blockedWithReason === 8,
-        `${listRows.count} row(s) · ${listRows.pressable} pressable · ${listRows.blocked} refused, ${listRows.blockedWithReason} of them with a real reason · first: "${listRows.first}"`);
+    //  EVERY VERB, AND EVERY REFUSAL WITH ITS WHY. The counts are derived from the list itself
+    //  rather than written down: a fixed 10/2/8 was what tied the old check to a boat that has
+    //  since changed shape, and the property was never about the number.
+    check('CIRCLE 7 — NOTHING IS HIDDEN: the pip opens the COMPLETE list, every refusal with its why',
+        fireListed.opened === true
+        && fireRows.count >= 7
+        && fireRows.pressable + fireRows.blocked === fireRows.count
+        && fireRows.blockedWithReason === fireRows.blocked,
+        `${fireRows.count} row(s) · ${fireRows.pressable} pressable · ${fireRows.blocked} refused,`
+        + ` ${fireRows.blockedWithReason} of them with a real reason · [${fireRows.verbs.join(', ')}]`);
+    //  ...AND COOKING IS IN IT. The verb this batch added must be reachable from the crowded
+    //  wheel it helped crowd — otherwise item 5 shipped a verb that item 3's arc can swallow.
+    check('CIRCLE 7b — ...and the newest verb is reachable from the pip, not lost behind it',
+        fireRows.verbs.includes('cook-meat'),
+        `[${fireRows.verbs.join(', ')}]`);
     await ensureNoPanel();
 
     // ---- IT IS NOT ABOUT BOATS: the fire is the second-most-crowded target -----------
@@ -14880,6 +14979,619 @@ async function main() {
         `vessel ${String(afterCycles.vessel)} · held ${afterCycles.held} · stored ${afterCycles.stored}`);
     await ensureNoPanel();
     }
+
+    if (section('THE BOAT SHOWS ONE RUNG — the director’s own kit, and the ladder staged')) {
+
+    /**
+     * *"23 wood, 8 fibre, axe in hand. Long-press the boat: only 'Look her over' is active.
+     * This is blocking all testing of Session 2’s actual content."*
+     *
+     * THE EXACT KIT, ON REAL PIXELS, NOT A FIXTURE — which is what the report asks for by
+     * name. A fresh survivor, those three things, held on the boat.
+     *
+     * WHAT THE REPORT IS ACTUALLY DESCRIBING, and it is two faults stacked rather than one:
+     *
+     *   1. THE GATE IS REAL AND CORRECT. `survey-hull` wants seamanship technique 14 and a
+     *      fresh survivor has 5. That is Law 124 doing its job — she cannot read a hull yet.
+     *   2. THE GATE COULD NOT SAY SO. Ten verbs on one target overflows an arc that holds
+     *      four, so the wheel drew FOUR segments at 71px — below the 96px it takes to print a
+     *      reason under a label — and sent the other six to the pip. A survivor saw one live
+     *      verb, three grey ones with no text, and no way to learn what any of them wanted.
+     *      "Only Look her over is active" is precisely that screen.
+     *
+     * Fault 2 is what made fault 1 look like a bug, and staging the verbs answers both: two
+     * options at B0 draw at the full 116px, which is where the refusal PRINTS.
+     */
+    const LADDER_AT = { x: 14, y: 100 };
+    const dropCircle = async () => {
+        await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (el) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        });
+        await sleep(420);
+        await ensureNoPanel();
+    };
+    //  WHAT THE WHEEL SAYS, in full: every segment, whether it is live, and the reason text
+    //  actually rendered under it — because "the reason exists in the brain" and "the reason
+    //  is on the screen" are the two different things this section exists to separate.
+    const wheel = async () => {
+        await dropCircle();
+        await approach(LADDER_AT.x, LADDER_AT.y - 6, 30);
+        await faceNode(LADDER_AT.x, LADDER_AT.y);
+        await sleep(300);
+        const at = await screenOf(LADDER_AT.x, LADDER_AT.y);
+        if (!at) return { segs: [], reasons: [], width: null, terse: null, pip: null };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        return page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            return {
+                segs: segs.map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')),
+                reasons: segs.map((o) => (o.querySelector('.verb-reason')?.textContent ?? '').trim()),
+                width: segs.length ? Math.round(segs[0].getBoundingClientRect().width) : null,
+                terse: el ? el.classList.contains('terse') : null,
+                pip: document.querySelector('.panel.verb-circle .verb-more')?.textContent?.trim() ?? null,
+            };
+        });
+    };
+
+    // ---- THE REPORTED SCREEN, EXACTLY ---------------------------------------------------
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: 14, y: 94 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 80; state.fatigue = 0;
+        state.boat = { surveyed: false, supports: false, dewatered: false, structural: null,
+                       seal: null, floatTest: null, loadKnown: false, moored: false,
+                       ferried: false };
+        state.inventory = { ...state.inventory, wood: 23, fiber: 8 };
+        state.tools = { ...state.tools, axe: true };
+        //  PINNED, NOT INHERITED. The reported survivor is FRESH — seamanship at its innate
+        //  floor, technique 5 against a gate of 14. editSave MERGES into the live save rather
+        //  than resetting it, so a preceding section’s capable survivor carried straight into
+        //  this fixture and quietly deleted the wall this whole section is about. It passed
+        //  alone and failed in a sweep, which is the worst way for a check to be wrong.
+        //  (No backticks in this comment — it lives inside a template literal.)
+        state.knowledge.domains.navigationSeamanship.technique = 5;
+        state.knowledge.domains.navigationSeamanship.understanding = 0;
+    `);
+    await sleep(900);
+    const kit = await wheel();
+    check('LADDER 1 — the director’s exact kit: the boat offers TWO things, not ten',
+        kit.segs.length === 2 && kit.segs[0] === 'inspect-boat',
+        `${kit.segs.length} segs [${kit.segs.join(' | ')}] · pip ${String(kit.pip)}`);
+    check('LADDER 2 — ...and no pip: at two options there is nothing hidden behind one',
+        kit.pip === null,
+        `pip ${String(kit.pip)} · segs [${kit.segs.join(' | ')}]`);
+    //  THE HEART OF THE REPORT. `survey-hull` is refused — correctly, she cannot read a hull
+    //  at technique 5 — and at two segments the wheel is 116px wide, which is where the
+    //  refusal fits. At ten it was 71px and the same true refusal rendered as nothing at all.
+    check('LADDER 3 — THE REFUSAL IS ON THE SCREEN: the blocked verb says what it wants',
+        kit.segs.includes('survey-hull:blocked') && kit.reasons.some((r) => r.length > 12),
+        `width ${kit.width}px · terse ${String(kit.terse)} · reasons ${JSON.stringify(kit.reasons)}`);
+    check('LADDER 4 — ...and it is legible because it is WIDE: 116px, not the crowded 71px',
+        kit.width !== null && kit.width >= 96 && kit.terse === false,
+        `width ${kit.width}px · terse ${String(kit.terse)}`);
+
+    // ---- THE WALL IS A KNOWLEDGE GATE, AND IT OPENS -------------------------------------
+    //  The other half: prove the refusal is a rung rather than a dead end. Same kit, same
+    //  boat, seamanship raised past the gate — and the same verb goes live.
+    await dropCircle();
+    await editSave(`state.knowledge.domains.navigationSeamanship.technique = 40;`);
+    await sleep(900);
+    const taught = await wheel();
+    check('LADDER 5 — the wall is a RUNG: teach her hulls and the same verb goes live',
+        taught.segs.includes('survey-hull'),
+        `[${taught.segs.join(' | ')}]`);
+
+    // ---- THE LADDER, RUNG BY RUNG ------------------------------------------------------
+    //  Every stage of the boat, counted on the screen. The rule under test is that the wheel
+    //  never carries more than the arc holds — so the boat never reaches a pip, at any stage,
+    //  on the narrowest phone this harness runs.
+    const rungs = [];
+    const KIT = `state.tools = { ...state.tools, flask: true, axe: true };
+        state.inventory = { ...state.inventory, wood: 60, fiber: 60 };
+        state.knowledge.domains.navigationSeamanship.technique = 50;
+        state.knowledge.domains.navigationSeamanship.understanding = 30;`;
+    const rung = async (label, boat) => {
+        //  THE COMPOSED PATCH IS KEPT, because `LADDER 8` re-drives any rung that showed a pip
+        //  in order to look inside it, and re-driving needs the exact same seed.
+        const patch = `${KIT}
+            state.boat = { surveyed: false, supports: false, dewatered: false, structural: null,
+                seal: null, floatTest: null, loadKnown: false, moored: false, ferried: false,
+                ...(${boat}) };`;
+        await dropCircle();
+        await editSave(patch);
+        await sleep(800);
+        const w = await wheel();
+        rungs.push({ label, n: w.segs.length, segs: w.segs, pip: w.pip, patch });
+    };
+    const DRY = `surveyed: true, supports: true, dewatered: true`;
+    //  THE REAL SHAPES, not shorthand. The first cut wrote `structural: "competent"` — a bare
+    //  string where the game stores `{ rung, usedParts, usedMaterials }` — and a bare string
+    //  has no `.rung`, so `couldImprove` compared “competent” against `undefined`, decided the
+    //  repairs were always improvable, and drew both of them at B2 where they belong only when
+    //  better hands could better the work. `LADDER 8` caught it as a pip that should not exist.
+    //  The unit suite builds this state through `repairHullStructure`/`sealHull` and never saw
+    //  it: a fixture that writes a shape the product does not use is a fixture testing itself.
+    const FIXED = `${DRY},
+        structural: { rung: "competent", usedParts: [], usedMaterials: { wood: 5 } },
+        seal: { rung: "competent", usedParts: [], usedMaterials: { fiber: 6 } }`;
+    const AFLOAT = `${FIXED}, floatTest: { attempted: true, held: true, tookOnWater: 0.24 }`;
+
+    await rung('B0 untouched', `{}`);
+    await rung('B0 surveyed', `{ surveyed: true }`);
+    await rung('B0 propped', `{ surveyed: true, supports: true }`);
+    await rung('B1 bailed', `{ ${DRY} }`);
+    await rung('B1 frames', `{ ${DRY}, structural: "competent" }`);
+    await rung('B1 payed', `{ ${FIXED} }`);
+    await rung('B2 afloat', `{ ${AFLOAT} }`);
+    await rung('B2 load known', `{ ${AFLOAT}, loadKnown: true }`);
+    await rung('B2 moored', `{ ${AFLOAT}, loadKnown: true, moored: true }`);
+
+    const worst = rungs.reduce((a, b) => (b.n > a.n ? b : a), rungs[0]);
+    const shape = rungs.map((r) => `${r.label}:${r.n}`).join(' · ');
+    check('LADDER 6 — every rung was drawable: nine stages, a wheel at each',
+        rungs.length === 9 && rungs.every((r) => r.n > 0),
+        shape);
+    //  FOUR IS THE ARC’S CAPACITY on a landscape phone (radius clamped to its 96px floor).
+    //  Ten verbs at every stage meant six in the pip at EVERY stage; staged, the busiest rung
+    //  of the walk exactly fills the arc.
+    //
+    //  SCOPED TO THE LADDER AS A SURVIVOR WALKS IT, which is what these nine rungs are. There
+    //  is exactly one reachable state that wants FIVE — floated, then got better at hulls, with
+    //  both repairs reopened and the one-shots still pending — and it is left at five on
+    //  purpose rather than hidden. `boat-stages.test.ts` names and pins it; saying “never” here
+    //  would be a claim reaching past what these nine rungs actually measure.
+    check('LADDER 7 — NO RUNG OF THE WALK OVERFLOWS THE ARC: the busiest fits in four',
+        worst.n <= 4,
+        `worst ${worst.label} at ${worst.n} — [${worst.segs.join(' | ')}] · ${shape}`);
+    //  THE PIP MEANS TWO DIFFERENT THINGS and this check has now conflated them twice.
+    //  `unsaid = overflow.length + mute`: a verb PUSHED OFF the arc, or a verb ON the arc
+    //  whose refusal had no room to print. Only the first is a verb a survivor cannot
+    //  reach; the second is a reason relocated to where it fits, which is the pip doing
+    //  its job. Asserting `pip === null` conflated them — correct while every rung of the
+    //  walk happened to be all-live, and wrong the moment the fixture was corrected and
+    //  `B1 payed` drew two properly-blocked repairs at 71px.
+    //
+    //  SO IT IS ASKED PROPERLY NOW: where a pip appears, open it and prove the list holds
+    //  nothing the arc was not already showing. That is the invariant worth having — NO
+    //  VERB IS EVER HIDDEN FROM THE WHEEL — and it is indifferent to how many reasons had
+    //  to move.
+    const hiddenAt = [];
+    for (const r of rungs) {
+        if (r.pip === null) continue;
+        await dropCircle();
+        await editSave(r.patch);
+        await sleep(700);
+        await wheel();
+        const extra = await page.evaluate(() => {
+            const more = document.querySelector('.panel.verb-circle .verb-more');
+            if (!more) return null;
+            more.click();
+            return null;
+        });
+        void extra;
+        await sleep(650);
+        const rows = await page.evaluate(() => Array.from(document.querySelectorAll('.panel.verb-list .verb-row')).map((o) => o.dataset.verb));
+        const onArc = new Set(r.segs.map((s) => s.split(':')[0]));
+        const pushed = rows.filter((v) => !onArc.has(v));
+        if (pushed.length > 0) hiddenAt.push(`${r.label}: ${pushed.join(', ')}`);
+        await ensureNoPanel();
+    }
+    check('LADDER 8 — no verb is ever pushed off the wheel: every pip carries reasons, not verbs',
+        hiddenAt.length === 0,
+        hiddenAt.join(' · ') || `${rungs.filter((r) => r.pip !== null).length} rung(s) showed a pip, and every one of them carried only reasons`);
+
+    // ---- WHAT THE STAGING PROMISES ------------------------------------------------------
+    //  Two rules the director set by hand, checked as rules rather than as counts.
+    const before = rungs.slice(0, 6);
+    const has = (r, id) => r.segs.some((s) => s.split(':')[0] === id);
+    check('LADDER 9 — GET IN is not offered until she has actually swum',
+        before.every((r) => !has(r, 'board-boat')) && has(rungs[6], 'board-boat'),
+        `before [${before.map((r) => r.label + ':' + (has(r, 'board-boat') ? 'shown' : '-')).join(' ')}] · afloat [${rungs[6].segs.join(' | ')}]`);
+    //  The speed verb is `ferry-boat` — a paddle is how this hull goes faster than drifting.
+    //  The speed verb is `ferry-boat` — a paddle is how this hull goes faster than drifting.
+    //  Its milestone is BOARDING rather than floating, because that is where its own refusal
+    //  stops: *"Get into her first and feel what she does with weight in her."*
+    check('LADDER 10 — the way to go FASTER arrives at its own milestone, not before',
+        rungs.slice(0, 7).every((r) => !has(r, 'ferry-boat'))
+        && rungs.slice(7).every((r) => has(r, 'ferry-boat')),
+        `${rungs.map((r) => r.label + ':' + (has(r, 'ferry-boat') ? 'shown' : '-')).join(' · ')}`);
+    //  LOOKING IS NEVER TAKEN AWAY. Whatever else the staging hides, the survivor can always
+    //  ask the boat what she is — which is a good part of what pays for hiding the rest.
+    check('LADDER 11 — examine survives every cut: nine rungs, nine live Look her overs',
+        rungs.every((r) => r.segs[0] === 'inspect-boat'),
+        rungs.map((r) => `${r.label}:${r.segs[0]}`).join(' · '));
+    //  AND A ONE-SHOT RETIRES. `survey-hull` after the survey, `board-boat` once the load is
+    //  known, `moor-boat` once she is fast — the principle that keeps the count down.
+    check('LADDER 12 — one-shot verbs retire: survey, board and moor leave when done',
+        !has(rungs[1], 'survey-hull') && !has(rungs[7], 'board-boat') && !has(rungs[8], 'moor-boat'),
+        `surveyed [${rungs[1].segs.join(' | ')}] · load known [${rungs[7].segs.join(' | ')}] · moored [${rungs[8].segs.join(' | ')}]`);
+    await dropCircle();
+    }
+
+
+    if (section('THE FIRE COOKS — raw meat over the coals, and what the hour buys')) {
+
+    /**
+     * *"Meat cannot be cooked."* It could not, and it never could: `fireVerbs` had six
+     * entries and not one of them touched `inventory.meat`. A survivor could stalk a boar,
+     * survive its charges, kill it, carry four units of meat to a lit fire, stand there, and
+     * find nothing on the wheel that would do anything with it. Then it went off in her hands.
+     *
+     * SO THIS DRIVES THE WHOLE JOURNEY ON REAL PIXELS: arrive at a lit fire holding a kill,
+     * find the verb, press it, and count what came back — the meat, the clock on it, the hour
+     * it cost, and the meal it makes.
+     *
+     * WHAT THE NUMBERS HAVE TO SHOW, because "cooking exists" is not the claim worth checking:
+     * cooked meat must be worth MORE than raw and must KEEP longer than raw. Those two are not
+     * design preferences — they are the sentences `meatHungerRestore` and `meatSpoilGameHours`
+     * have carried in their own tuning comments since Drop 1, describing a file that did not
+     * exist until now. If either fails, the raw numbers were priced against a promise.
+     */
+    const FIRE_AT = { x: 0, y: 92 };
+    const dropWheel = async () => {
+        await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (el) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        });
+        await sleep(400);
+        await ensureNoPanel();
+    };
+    const fireWheel = async () => {
+        await dropWheel();
+        await approach(FIRE_AT.x, FIRE_AT.y - 4, 30);
+        await faceNode(FIRE_AT.x, FIRE_AT.y);
+        await sleep(280);
+        const at = await screenOf(FIRE_AT.x, FIRE_AT.y);
+        if (!at) return { segs: [], reasons: [], pip: null };
+        await tapAt(at.x, at.y, TUNE.tapMaxMs + 260);
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        return page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            const rows = Array.from(document.querySelectorAll('.panel.verb-list .verb-row-btn'));
+            return {
+                segs: segs.map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')),
+                reasons: segs.map((o) => (o.querySelector('.verb-reason')?.textContent ?? '').trim()),
+                pip: document.querySelector('.panel.verb-circle .verb-more')?.textContent?.trim() ?? null,
+                rows: rows.map((o) => o.dataset.verb),
+            };
+        });
+    };
+    //  PRESS IT WHEREVER THE WHEEL PUT IT — arc or pip. The fire is the busiest target in the
+    //  game and a harness that only knew the arc would report an overflow as a refusal.
+    const pressFireVerb = async (verb) => {
+        const hit = await page.evaluate((v) => {
+            const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+            if (seg) {
+                if (!seg.classList.contains('ready')) {
+                    return { ok: false, why: 'blocked: ' + (seg.querySelector('.verb-reason')?.textContent?.trim() ?? '(no reason drawn)') };
+                }
+                seg.click();
+                return { ok: true, via: 'arc' };
+            }
+            const more = document.querySelector('.panel.verb-circle .verb-more');
+            if (!more) return { ok: false, why: 'no ' + v + ' segment and no pip' };
+            more.click();
+            return { ok: false, via: 'pip' };
+        }, verb);
+        if (hit.via === 'pip') {
+            await sleep(650);
+            const row = await page.evaluate((v) => {
+                const btn = document.querySelector(`.panel.verb-list .verb-row-btn[data-verb="${v}"]`);
+                if (!btn) return { ok: false, why: 'no ' + v + ' in the overflow list either' };
+                if (btn.disabled) return { ok: false, why: 'blocked in the list' };
+                btn.click();
+                return { ok: true, via: 'pip' };
+            }, verb);
+            Object.assign(hit, row);
+        }
+        await sleep(1400);
+        await ensureNoPanel();
+        return hit;
+    };
+
+    /**
+     * WHAT THE GAME SAYS ABOUT A VERB IT IS REFUSING — wherever it put it.
+     *
+     * THE FIRE IS THE BUSIEST TARGET IN THE GAME and this is why the pip exists. Holding
+     * meat it has EIGHT verbs (six of its own, plus cooking, plus the universal `Move`) on
+     * an arc that carries four. When cooking is AVAILABLE it sorts to the front and lands
+     * on the wheel — `COOK 2` measures exactly that. When it is REFUSED it sorts behind
+     * every live verb and goes to the overflow, which is correct and is the whole design:
+     * the arc carries what you can do, and the pip carries the complete surface.
+     *
+     * So a check that only looked at the arc would read a correct refusal as a MISSING
+     * verb — which is what the first cut of `COOK 9` and `COOK 11` did. This follows it.
+     */
+    const refusalFor = async (verb) => {
+        const onArc = await page.evaluate((v) => {
+            const seg = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg')).find((o) => o.dataset.verb === v);
+            if (!seg) return null;
+            return {
+                where: 'arc',
+                blocked: !seg.classList.contains('ready'),
+                reason: (seg.querySelector('.verb-reason')?.textContent ?? '').trim(),
+            };
+        }, verb);
+        if (onArc) return onArc;
+        //  CLICKED IN-PAGE, not with a synthetic touch. The pip sits at the hub of the arc,
+        //  under the segments’ own stacking context, so a real tap at its centre point can
+        //  land on a segment instead — `realTapDom` read “no pip to open” on a wheel that was
+        //  plainly showing one. `doBoatVerb` already drives the pip this way for the same reason.
+        const opened = await page.evaluate(() => {
+            const more = document.querySelector('.panel.verb-circle .verb-more');
+            if (!more) return false;
+            more.click();
+            return true;
+        });
+        if (!opened) return { where: 'nowhere', blocked: null, reason: '', why: 'no pip on the wheel' };
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-list .verb-row') !== null, { timeout: 8_000 },
+        ).catch(() => {});
+        const inList = await page.evaluate((v) => {
+            const row = document.querySelector(`.panel.verb-list .verb-row[data-verb="${v}"]`);
+            if (!row) return { where: 'nowhere', blocked: null, reason: '', why: 'not in the list either' };
+            return {
+                where: 'pip',
+                blocked: row.classList.contains('blocked'),
+                reason: (row.querySelector('.verb-row-reason')?.textContent ?? '').trim(),
+            };
+        }, verb);
+        await ensureNoPanel();
+        return inList;
+    };
+
+    // ---- 1. THE VERB IS NOT THERE WHEN THERE IS NOTHING TO COOK -------------------------
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: 0, y: 88 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 60; state.thirst = 80; state.fatigue = 0;
+        state.fire = { built: true, fuel: 10, x: 0, y: 92 };
+        state.inventory = { ...state.inventory, meat: 0, cookedMeat: 0 };
+        state.freshUntil = {};
+    `);
+    await sleep(900);
+    const empty = await fireWheel();
+    check('COOK 1 — empty-handed, the fire does not offer to cook: the verb arrives with the kill',
+        !empty.segs.some((s) => s.startsWith('cook-meat')) && !(empty.rows ?? []).includes('cook-meat'),
+        `segs [${empty.segs.join(' | ')}] · pip ${String(empty.pip)}`);
+
+    // ---- 2. ...AND IT IS THERE THE MOMENT SHE IS CARRYING ONE ---------------------------
+    await dropWheel();
+    await editSave(`state.inventory = { ...state.inventory, meat: 4 };
+        state.freshUntil = { meat: 48 };`);
+    await sleep(900);
+    const carrying = await fireWheel();
+    const onWheel = carrying.segs.some((s) => s.startsWith('cook-meat'));
+    const inPip = (carrying.rows ?? []).includes('cook-meat');
+    check('COOK 2 — carrying a kill, the fire offers to cook it — and offers it LIVE',
+        (onWheel || inPip) && !carrying.segs.includes('cook-meat:blocked'),
+        `segs [${carrying.segs.join(' | ')}] · pip ${String(carrying.pip)} · rows [${(carrying.rows ?? []).join(', ')}]`);
+
+    // ---- 3. PRESS IT ---------------------------------------------------------------------
+    const beforeCook = await live();
+    const pressed = await pressFireVerb('cook-meat');
+    const afterCook = await live();
+    check('COOK 3 — THE MEAT COOKS: four raw off the hands, four cooked into them',
+        pressed.ok === true
+        && afterCook.inventory.meat === 0
+        && afterCook.inventory.cookedMeat === beforeCook.inventory.meat,
+        `${pressed.why ?? 'pressed via ' + (pressed.via ?? '?')} · raw ${beforeCook.inventory.meat} -> ${afterCook.inventory.meat}`
+        + ` · cooked ${beforeCook.inventory.cookedMeat} -> ${afterCook.inventory.cookedMeat}`);
+
+    //  THE HOUR IS REAL, and it is the whole cost. There is no fuel deduction — the fire's
+    //  fuel is spent by BURNING, and it burns during this hour like it burns during any other.
+    check('COOK 4 — ...and it cost an hour of the world, down the same path writing costs one',
+        afterCook.gameHoursElapsed > beforeCook.gameHoursElapsed,
+        `elapsed ${beforeCook.gameHoursElapsed?.toFixed(2)} -> ${afterCook.gameHoursElapsed?.toFixed(2)}`
+        + ` · fire fuel ${beforeCook.fire.fuel} -> ${afterCook.fire.fuel}`);
+
+    // ---- 4. WHAT THE HOUR BOUGHT ---------------------------------------------------------
+    //  The two promises Drop 1's own tuning comments made about a file that did not exist.
+    check('COOK 5 — IT KEEPS LONGER THAN RAW, which is what `meatSpoilGameHours` promised',
+        (afterCook.freshUntil?.cookedMeat ?? 0) > 48,
+        `cooked keeps ${afterCook.freshUntil?.cookedMeat} game hours against raw's 48`);
+    //  ...and the raw clock went with the raw meat rather than ticking on over an empty slot.
+    check('COOK 6 — ...and the raw clock retired with the raw meat',
+        afterCook.freshUntil?.meat === undefined,
+        `freshUntil ${JSON.stringify(afterCook.freshUntil)}`);
+
+    // ---- 5. IT IS A MEAL, EATEN WITH A REAL THUMB ----------------------------------------
+    await ensureNoPanel();
+    await editSave(`state.hunger = 30;`);
+    await sleep(700);
+    const beforeMeal = await live();
+    const cookedChip = await realTapDom('[data-food="cookedMeat"]');
+    await sleep(800);
+    const afterMeal = await live();
+    const cookedGain = afterMeal.hunger - beforeMeal.hunger;
+    check('COOK 7 — a cooked chip is in the pack and a real tap eats one',
+        cookedChip.ok === true
+        && afterMeal.inventory.cookedMeat === beforeMeal.inventory.cookedMeat - 1
+        && cookedGain > 0,
+        `tap ${cookedChip.ok} · cooked ${beforeMeal.inventory.cookedMeat} -> ${afterMeal.inventory.cookedMeat}`
+        + ` · hunger ${beforeMeal.hunger.toFixed(1)} -> ${afterMeal.hunger.toFixed(1)}`);
+
+    //  THE GAP, MEASURED. Raw against cooked, same survivor, same hunger, one tap each.
+    await editSave(`state.inventory = { ...state.inventory, meat: 1 };
+        state.hunger = 30;`);
+    await sleep(700);
+    const beforeRaw = await live();
+    await realTapDom('[data-food="meat"]');
+    await sleep(800);
+    const afterRaw = await live();
+    const rawGain = afterRaw.hunger - beforeRaw.hunger;
+    check('COOK 8 — COOKED IS WORTH MORE THAN RAW, which is why raw was priced low in Drop 1',
+        cookedGain > rawGain,
+        `cooked +${cookedGain.toFixed(1)} hunger against raw +${rawGain.toFixed(1)}`);
+
+    // ---- 6. WHAT IT REFUSES, AND WHETHER THE REFUSAL IS ON THE SCREEN --------------------
+    //  You cannot un-rot meat, and the game must say so rather than let an hour be spent
+    //  learning it. This is also the one refusal a survivor can walk into by waiting too long.
+    await dropWheel();
+    await editSave(`state.inventory = { ...state.inventory, meat: 3, cookedMeat: 0 };
+        state.freshUntil = { meat: 0 };`);
+    await sleep(900);
+    const turned = await fireWheel();
+    const turnedSaid = await refusalFor('cook-meat');
+    check('COOK 9 — spoiled meat is REFUSED rather than silently cooked into a good meal',
+        turnedSaid.blocked === true,
+        `${turnedSaid.where}: blocked ${String(turnedSaid.blocked)} · ${turnedSaid.why ?? ''} · segs [${turned.segs.join(' | ')}]`);
+    //  AND THE REASON IS SOMEWHERE A PLAYER CAN READ IT, which is the half a boolean
+    //  cannot give. `CUP 3` found a blocked verb whose refusal rendered nowhere at all;
+    //  this asks the same question of the surface the refusal actually landed on.
+    check('COOK 9b — ...and it says WHY, in words, on the surface it was sent to',
+        /turned|bring it back/i.test(turnedSaid.reason),
+        `${turnedSaid.where}: "${turnedSaid.reason}"`);
+    const spoiled = await live();
+    check('COOK 10 — ...and the refusal changed nothing: the meat is still there, still raw',
+        spoiled.inventory.meat === 3 && spoiled.inventory.cookedMeat === 0,
+        `meat ${spoiled.inventory.meat} · cooked ${spoiled.inventory.cookedMeat}`);
+
+    //  AND A COLD FIRE REFUSES TOO, naming the fire rather than the meat (Law 95: ONE enabler,
+    //  and the nearest true one).
+    await dropWheel();
+    await editSave(`state.fire = { ...state.fire, fuel: 0 };
+        state.freshUntil = { meat: 48 };`);
+    await sleep(900);
+    const cold = await fireWheel();
+    const coldSaid = await refusalFor('cook-meat');
+    check('COOK 11 — a cold fire refuses, and names the FIRE rather than the meat',
+        coldSaid.blocked === true && /fire is out/i.test(coldSaid.reason),
+        `${coldSaid.where}: "${coldSaid.reason}" · segs [${cold.segs.join(' | ')}]`);
+    await dropWheel();
+    }
+
+
+    if (section('THE CUP CANNOT OUTGROW ITSELF — the director’s exact sequence, counted')) {
+
+    /**
+     * THE REPORTED SEQUENCE, VERBATIM AND IN ORDER: cut a coconut, make a cup at the pond,
+     * fill it, boil it, do NOT drink, store everything, take the shells back out, fill those
+     * too, boil that water too — *"result: FOUR cups of boiled water."*
+     *
+     * AND THERE WAS A REAL BUG UNDER IT, though not the one the sequence describes. No second
+     * cup is ever made — `canMakeShellCup` refuses outright while a vessel is held, and pulling
+     * a husk out of a crate does not change that ([[D-189]] counted the shells and they are
+     * conserved). What the sequence actually does is FILL AND BOIL THE SAME CUP TWICE, and
+     * that was unbounded:
+     *
+     *     `canFillVessel` compared `water.rawSips` alone against the capacity, and `boil`
+     *     moves water from `rawSips` to `cleanSips` — emptying the raw slot. So every boil
+     *     made the cup fillable again and treated water accumulated with NO CEILING:
+     *     2, 4, 6, 8, 10 ... sips in a TWO-sip cup.
+     *
+     * Two passes of that loop is exactly "four cups of boiled water", held in one cup. So the
+     * director was reading a true number off a broken counter, and the duplication was of
+     * WATER rather than of shells.
+     *
+     * THIS SECTION DRIVES THE LOOP TEN TIMES ON REAL PIXELS AND COUNTS THE SIPS. The fix
+     * bounds raw + clean together against the capacity, so the tenth pass has to be refused
+     * for the same reason the second one is.
+     */
+    const POND_AT = { x: -22, y: 8 };
+    const FIRE2_AT = { x: 0, y: 92 };
+    const water = async () => {
+        const s = await live();
+        return {
+            vessel: s.water.vessel,
+            raw: s.water.rawSips,
+            clean: s.water.cleanSips,
+            held: s.water.rawSips + s.water.cleanSips,
+        };
+    };
+    const closeWheel = async () => {
+        await page.evaluate(() => {
+            const el = document.querySelector('.panel.verb-circle');
+            if (el) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        });
+        await sleep(380);
+        await ensureNoPanel();
+    };
+    const doAt = async (at, verb) => {
+        await closeWheel();
+        await approach(at.x, at.y + 4, 26);
+        await faceNode(at.x, at.y);
+        await sleep(260);
+        const open = await openCircleAt(at.x, at.y);
+        if (!open.ok) return { ok: false, why: open.why, segs: [] };
+        const hit = await pressCircleSeg(verb);
+        await sleep(1000);
+        await ensureNoPanel();
+        return { ...hit, segs: open.segs };
+    };
+
+    // ---- MAKE THE CUP, THE WAY A PLAYER DOES ---------------------------------------------
+    await ensureNoPanel();
+    await editSave(`
+        state.player = { x: -22, y: 12 };
+        state.energy = 100; state.health = 100; state.warmth = 70;
+        state.hunger = 90; state.thirst = 40; state.fatigue = 0;
+        state.fire = { built: true, fuel: 20, x: 0, y: 92 };
+        state.water = { vessel: null, rawSips: 0, cleanSips: 0 };
+        state.inventory = { ...state.inventory, coconut: 3, sharpblade: 1, shell: 2 };
+    `);
+    await sleep(900);
+    const made = await doAt(POND_AT, 'make-cup');
+    const cup = await water();
+    check('CUP CAP 1 — a cup is made at the pond, and it starts empty',
+        made.ok === true && cup.vessel !== null && cup.held === 0,
+        `${made.why ?? 'made'} · ${JSON.stringify(cup)}`);
+
+    // ---- THE LOOP: FILL, BOIL, TRY TO FILL AGAIN -----------------------------------------
+    //  Six passes — three times the two that produced the report. On the pre-fix build this
+    //  reaches TWELVE sips in a two-sip cup; the number in the failure line is the whole
+    //  finding, so the per-pass trace is printed rather than summarised.
+    const trace = [];
+    let refusals = 0;
+    for (let pass = 1; pass <= 6; pass++) {
+        const fill = await doAt(POND_AT, 'fill-vessel');
+        if (!fill.ok) refusals++;
+        const atPond = await water();
+        await editSave(`state.player = { x: 0, y: 88 };`);
+        await sleep(700);
+        const boiled = await doAt(FIRE2_AT, 'boil-water');
+        const atFire = await water();
+        trace.push(`p${pass} raw ${atPond.raw}/clean ${atPond.clean} -> raw ${atFire.raw}/clean ${atFire.clean}`
+            + `${fill.ok ? '' : ' (fill REFUSED)'}${boiled.ok ? '' : ' (boil refused)'}`);
+        await editSave(`state.player = { x: -22, y: 12 };`);
+        await sleep(700);
+    }
+    const after = await water();
+
+    check('CUP CAP 2 — SIX FILL/BOIL PASSES CANNOT OUTGROW A TWO-SIP CUP',
+        after.held <= TUNE.shellCupSips,
+        `${after.held} sip(s) in a ${TUNE.shellCupSips}-sip cup · raw ${after.raw} clean ${after.clean}`
+        + ` · ${trace.join(' | ')}`);
+    //  ...AND THE REFUSAL IS THE MECHANISM, not a happy accident of the loop's timing. A run
+    //  where every fill succeeded and the total still came out low would be measuring luck.
+    check('CUP CAP 3 — ...because the fill is REFUSED once it is full, boiled or not',
+        refusals > 0,
+        `${refusals} of 6 fills refused · ${JSON.stringify(after)}`);
+
+    // ---- AND NO SECOND CUP, FROM A STORED HUSK OR ANY OTHER ------------------------------
+    //  The other half of the report: whether pulling a shell out of the crate bypasses the
+    //  one-vessel check. It does not — `canMakeShellCup` refuses on the VESSEL being held,
+    //  and a husk's provenance is not part of that question.
+    await closeWheel();
+    await editSave(`state.inventory = { ...state.inventory, shell: 4, coconut: 4 };`);
+    await sleep(800);
+    const second = await doAt(POND_AT, 'make-cup');
+    const afterSecond = await water();
+    check('CUP CAP 4 — a SECOND cup is refused while one is held, whatever the husk came from',
+        second.ok === false && afterSecond.vessel !== null,
+        `${second.why ?? 'made a second one'} · segs [${(second.segs ?? []).join(' | ')}]`);
+    await closeWheel();
+    }
+
 
     // ---- END OF RUN — hygiene and the bench profile, AFTER every section --------------
     //

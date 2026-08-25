@@ -3,6 +3,145 @@
 
 ---
 
+**D-190 · 2026-08-25 — FIVE ITEMS: THE CUP THAT COULD OUTGROW ITSELF, THE BOAT'S TWO STACKED FAULTS, TEN VERBS DOWN TO FOUR, A CAP THAT LIED ABOUT ITSELF, AND COOKING, BUILT.**
+
+---
+
+**1 · THE CUP SEQUENCE WAS A REAL BUG, and it duplicated WATER rather than shells.**
+
+Driven verbatim on device. The shells are exactly where [[D-189]] left them — conserved to the unit, no second cup, `canMakeShellCup` refuses on the VESSEL being held and a husk's provenance is not part of that question. **What the sequence actually does is fill and boil the same cup twice, and that was unbounded:**
+
+```
+canFillVessel compared water.rawSips ALONE against the capacity,
+and boil() moves raw -> clean, emptying the raw slot.
+
+    pass 1: raw 0 clean 2      pass 4: raw 0 clean  8
+    pass 2: raw 0 clean 4      pass 5: raw 0 clean 10
+    pass 3: raw 0 clean 6      ...   in a TWO-sip cup
+```
+
+So every boil made the cup fillable again and treated water accumulated with **no ceiling whatsoever**. Two passes of that loop is exactly *"four cups of boiled water"* — the director was reading a true number off a broken counter. Unlimited treated water for the price of walking pond to fire, which is the whole water economy undone.
+
+`heldSips` and `roomLeft` now bound **raw + clean together** against the vessel, and `fillVessel` tops up by the room left instead of setting raw to the capacity outright — which was the second half of the same defect, and would have put three sips in a two-sip cup even had the guard been right. Fail-then-pass reads *"the cup outgrew itself: expected 20 to be less than or equal to 2."*
+
+---
+
+**2 · THE BOAT WAS TWO FAULTS STACKED, and the second is what made the first look like a bug.**
+
+Confirmed on device with the director's exact kit — a fresh survivor, 23 wood, 8 fibre, an axe, no fixture.
+
+1. **THE GATE IS REAL AND CORRECT.** `survey-hull` wants seamanship technique 14; a fresh survivor has 5. Law 124 doing its job — she cannot read a hull yet.
+2. **THE GATE COULD NOT SAY SO.** Ten verbs on an arc that carries four drew **four segments at 71px** — below the 96px it takes to print a reason under a label — and sent the other six to the pip. One live verb, three grey ones with no text, and no way to learn what any of them wanted. *"Only Look her over is active"* is precisely that screen.
+
+Staging the verbs answers both at once, because two options at B0 draw at the full **116px**, which is where the refusal prints:
+
+```
+LADDER 3  width 116px · terse false
+          "You can see she is holed, but not what holds her together.
+           Work more boats, or find someone who wrote it down."
+LADDER 5  teach her hulls -> the same verb goes live
+```
+
+**Not a progression gate that needed opening — a legibility failure standing in front of a correct one.**
+
+---
+
+**3 · TEN VERBS AT EVERY STAGE, DOWN TO TWO-TO-FOUR AT THE RUNG YOU ARE ON.**
+
+Nothing was cut from the source. Each option carries a `shown` predicate — a **second gate, and not `available`**: a verb SHOWN AND REFUSED teaches (it names a capability this object has), and a verb for a rung three stages away teaches nothing and costs a slot on a wheel that holds four.
+
+```
+B0 untouched 2 · B0 surveyed 2 · B0 propped 2 · B1 bailed 3 · B1 frames 3
+B1 payed 4 · B2 afloat 3 · B2 load known 3 · B2 moored 2
+```
+
+**What retires when it is done** (the one-shot principle `survey-hull` already used): survey after the survey, board once the load is known, moor once she is fast, float-test once she has actually swum, and both repairs once she is afloat.
+
+**What arrives at its own milestone**, which is the director's rule: `board-boat` only once she has ACTUALLY SWUM — not on the strength of knowing about her. `ferry-boat` — the way to go faster — only once she has been sat in, which is `ferryBlocker`'s own first gate: *"Get into her first and feel what she does with weight in her."* Ordering, by that refusal's own comment, not difficulty; a verb whose ONLY blocker is "do the other thing on this same wheel first" teaches nothing drawn grey beside the very thing it waits for.
+
+**Nothing merged that a law says must stay separate.** `repair-frames` and `seal-seams` stay two verbs (Law 124 forbids one repair recipe by name); `shore-up` and `dewater` stay two (different enablers, and merging produces a compound refusal that Law 95 dislikes). **Examine survives every cut** — nine rungs, nine live *Look her overs*, which is a good part of what pays for hiding the rest.
+
+**The busiest rung of the walk is now exactly four, which is the arc's capacity — so walking her from beach to mooring never reaches a pip.** The repair verbs deliberately stay visible through a FAILED float test, because the post-trial inspection names the weaker system by hand and the verb that answers it has to be on the wheel to be answered.
+
+**AND ONE REACHABLE STATE WANTS FIVE, which is named rather than claimed away.** Float her, then get better at hulls: both repairs reopen (`canRepairStructure2` reads `couldImprove`), and if she has not yet been boarded or made fast those one-shots are pending too. It is **left** at five. The alternative was hiding a repair she is now good enough to better — and `boatCapacityKg` reads the repair rung, so that would delete a real capability to protect a tidier number. All five are LIVE, the pip carries the fifth with its full label, and boarding and mooring retire it straight back under four. A first cut of both the unit test and the device check said “never”, which was true of the nine rungs they walk and false of the boat — the same shape as item 4 below, caught on my own work this time. Both claims are now scoped to what they measure, and the corner has a test of its own.
+
+The old reachability test asserted all ten on one circle. It now asserts the union across the **whole ladder** covers all ten, that no rung offers nothing but looking, and that no rung wants more than four — strictly stronger than what it replaced, because it fails both if a verb is dropped from the source AND if the staging strands one where nothing can reach it.
+
+---
+
+**4 · THE FIRE'S 24-HOUR CAP IS DELIBERATE. THE WAY IT REFUSED WAS A GENUINE BUG.**
+
+The cap, with the numbers:
+
+```
+fireMaxFuel 12  x  fireBurnGameHoursPerWood 2  =  24 game hours
+```
+
+and `fireMaxFuel`'s own tuning comment says why: *"so the pit can't be turned into a silo."* **Not a bug, and unchanged.**
+
+**But it could not say so, and said something false instead.** `feed-fire`'s `available` asked only *"is there a fire, and have I any wood"* — never `canFeedFire`, which is what actually decides. So at the cap with an armful of wood the segment drew **LIVE and green**, the press was refused, and the game said:
+
+> *"No wood to add. Fell a tree or gather more."*
+
+— to a survivor visibly carrying ten wood. A verb that says yes and then refuses breaks Law 26; a refusal naming the wrong enabler breaks Law 95; and telling someone holding wood that they have none is simply a lie the game had no reason to tell. Both surfaces now name the pit: *"It is banked as high as it will take. Let it burn down first."*
+
+**AND A TEST HAD BEEN GREEN ON THAT LIE FOR AS LONG AS IT EXISTED.** `castaway-cycle`'s fixture seeds `fuel: 12` — `fireMaxFuel` exactly — with ten wood in the pack, and asserted `feed-fire` was available. It was, because nothing ever asked. That is this session's recurring shape again: **a claim whose subject drifted out from under it.**
+
+---
+
+**5 · COOKING IS BUILT. It was never broken, because it was never there.**
+
+Four places in the codebase said so in the same words — *"the NEXT discovery, deliberately not built"* — in `types.ts` twice, `state.ts`, and `tune.ts`. **Two of Drop 1's tuned constants were written as promises about a file that did not exist:**
+
+> `meatHungerRestore: 18` — *"Deliberately modest: raw is worse than COOKED WILL BE, and the gap is the reason to learn fire-cooking later."*
+> `meatSpoilGameHours: 48` — *"Fast enough that meat is an event rather than a stockpile, which is what makes COOKING worth wanting."*
+
+So the shape was specified before it was built, and `src/brain/cooking.ts` is that shape rather than a new invention.
+
+**ONE CONVERSION, ONE COST, ONE THING SKILL MOVES.** All raw meat in hand becomes cooked meat one for one; it costs an hour at a lit fire through `spendGameHours`, the same hour writing and brewing already cost, so the world moves while you cook — the fire burns down, hunger falls, the boars keep walking. There is no separate fuel deduction: the fire's fuel is spent by BURNING, and it burns during that hour like any other.
+
+**SKILL MOVES HOW LONG IT KEEPS, and nothing else** — exactly one functional stat, which is the rule `ItemGrade` already states for made things. `rungForCompetence` is reused rather than a second ladder grown, reading `survivalcraft`, with a banked fire playing the workholding part a cleared bench plays at the workspace (Law 219 onto a hearth):
+
+```
+novice 72h · basic 96h · competent 120h · skilled 144h · expert 168h   against raw's 48
+```
+
+**A yield fraction was considered and rejected**: cook one unit at a time and rounding hands a novice a perfect score. The clock cannot be gamed by batching, because a new batch takes the **minimum** of its own keeping and the pile's — a survivor cannot launder an old pile by adding one good piece, which would otherwise defeat spoilage entirely by drip-feeding it.
+
+Measured on device, end to end:
+
+```
+COOK 3   raw 4 -> 0 · cooked 0 -> 4
+COOK 4   elapsed 0.94 -> 1.95 game hours
+COOK 5   cooked keeps 72 game hours against raw's 48
+COOK 8   cooked +30.0 hunger against raw +18.0
+COOK 9b  "It has already turned. Fire will not bring it back."
+COOK 11  "The fire is out. Cooking needs a real one."
+```
+
+**THE ONE STAGED VERB ON THE FIRE, and the exception is argued rather than assumed.** Every other fire verb is always listed, because every other one answers something a survivor walks over INTENDING to do. Cooking is different in kind: it is the only fire verb whose SUBJECT must already be in your hands, and arriving with a kill IS the discovery — the exact moment it is worth knowing about.
+
+Spoiled meat is refused rather than quietly rendered into a good meal, and **`freshUntil.meat` retires with the raw meat** so nothing counts down over a stack nobody holds. Cooked meat still spoils, only slower, and still harms only a survivor who CHOOSES to eat it. `SCHEMA_VERSION` 37 → 38; the migration seeds `cookedMeat: 0` and deliberately writes **no** `freshUntil` key, because `isSpoiled` reads `left !== undefined` and a key for a stack that does not exist would start a clock ticking on nothing.
+
+**AND IT TURNED UP A HOLE IN THE FOOD THE GAME ALREADY HAD, which was found rather than reported.** `cookMeat` needed a rule for what happens when stock is added to stock, and `freshUntil` holds ONE number per material. Writing that rule inside cooking alone would have left the game giving two different answers to one question — so it is `addPerishable`, shared, and the other two writers were setting the clock OUTRIGHT:
+
+```
+thrustSpear   state.freshUntil = { ...state.freshUntil, meat: 48 }   <- the whole pile
+gainFish      state.freshUntil = { ...state.freshUntil, fish: 24 }   <- the whole pile
+```
+
+So a survivor carrying one nearly-rotten unit who killed a second boar had **the old unit refreshed to a full 48 hours along with the new**. Kill something every other day, or land one fish, and nothing you carry ever goes off — spoilage defeated by drip-feeding it, which is the same shape as item 1’s cup refilling past its own brim. All three writers now take the MINIMUM, and `retirePerishable` drops a clock when the last unit is spent so nothing counts down over an empty slot. Fail-then-pass: reverting the minimum reds three tests across two files.
+
+**AND IT CONFIRMED [[D-189]]'S SPOILAGE FINDING EMPIRICALLY** rather than by reading: driven through `reconcile` — the real absence path — a year away ages neither raw nor cooked meat. Food does not spoil while the tab is shut, which is [[D-011]] applied to the pack.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `heldSips`/`roomLeft` bounding the vessel; `shown` staging on `boatVerbs` and one verb of `fireVerbs`; `canFeedFire` reaching the verb that needs it and a full-pit refusal on both surfaces; `src/brain/cooking.ts` with `cookedMeat`, schema 38, and the fire's `cook-meat`; `data-verb` on overflow rows so a refused verb's reason is addressable at all. Item 4's cap is a finding and is unchanged.
+
+*Status: standing. Fixes what [[D-189]] item 1 could not find by counting shells — the duplicate was water. Answers [[D-188]]'s disclosed narrow-wheel limitation at the boat by giving it fewer verbs rather than more room. Builds the discovery Drop 1's own tuning comments have described since the boar shipped.* — C2
+
+---
+
 **D-189 · 2026-08-25 — FOUR ITEMS: THE SHELL DUPLICATE THAT ISN'T, MOVE'S ONE REAL CASE, THE SPOILAGE CLOCKS AS THEY STAND, AND A VERB THE BOAT COULD LOSE.**
 
 ---

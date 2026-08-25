@@ -20,6 +20,7 @@
  */
 import { TUNE } from '../data/tune';
 import { canBrewRemedy, isIll } from './illness';
+import { canCookMeat, cookBlocker } from './cooking';
 import type { GameState } from './types';
 import { contributionAvailable, siteIsComplete, siteShortfallNote } from './build';
 import {
@@ -28,7 +29,7 @@ import {
     canFloatTest, floatTestBlocker, canBoardBoat, boardBlocker, canMoor, moorBlocker,
     canFerry, ferryBlocker,
 } from './boat';
-import { benchHasRacked, canBoardRaft, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
+import { benchHasRacked, canBoardRaft, canFeedFire, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
 import { boilRefusalFor, canBoil, canFillVessel, canMakeShellCup, shellCupBlocker } from './vessel';
@@ -272,39 +273,77 @@ function constructionVerbs(state: GameState): VerbOption[] {
 function boatVerbs(state: GameState): VerbOption[] {
     const stage = boatStage(state);
     const b = state.boat;
-    return [
+    const afloat = stage === 'B2';
+
+    //  THE RUNG YOU ARE ON, AND THE ONE YOU ARE REACHING FOR — nothing else.
+    //
+    //  `shown` is the second gate and it is not `available`. A verb that is SHOWN AND REFUSED
+    //  teaches (it names a capability this object has); a verb for a rung three stages away
+    //  teaches nothing and costs a slot on a wheel that holds four. All ten used to be listed
+    //  at every stage, so a survivor at B0 met `moor-boat` — "there is nothing afloat to make
+    //  fast" — before she had been surveyed.
+    //
+    //  A one-shot verb also RETIRES ITSELF once it is done rather than sitting greyed for the
+    //  rest of the game: `survey-hull` after the survey, `board-boat` once what she carries is
+    //  known, `moor-boat` once she is made fast.
+    //
+    //  WHAT PAYS FOR THE HIDING is that the boat narrates her own ladder. Every stage note
+    //  says what she IS and what she is NOT, and the survey findings and the post-trial
+    //  inspection name the next piece of work by hand. The flask argument — a greyed verb is
+    //  the only thing telling you a capability exists — holds for the NEXT rung and stops
+    //  holding three rungs out, where the label is a spoiler for content the survivor cannot
+    //  reach and cannot act on.
+    const options: Array<VerbOption & { shown: boolean }> = [
         {
-            //  ALWAYS AVAILABLE, at every stage. Looking at a boat is never refused.
+            //  ALWAYS. Looking at a boat is never refused and never hidden.
             id: 'inspect-boat',
             label: stage === 'B0' ? 'Look her over' : `Look her over (${stage})`,
             available: true,
             reason: null,
+            shown: true,
         },
         {
             id: 'survey-hull',
             label: 'Survey the hull',
             available: canSurveyHull(state),
             reason: surveyBlocker(state),
+            //  Retires itself: once you have been over her plank by plank, you have.
+            shown: !b.surveyed,
         },
         {
             id: 'shore-up-boat',
             label: `Prop and crib her`,
             available: canShoreUp(state),
             reason: shoreUpBlocker(state),
+            shown: b.surveyed && !b.supports,
         },
         {
             id: 'dewater-boat',
             label: 'Bail her out',
             available: canDewater(state),
             reason: dewaterBlocker(state),
+            shown: b.supports && !b.dewatered,
         },
         {
             //  HULL INTEGRITY. Named for the job rather than for the stage, so the survivor
-            //  learns the boat rather than the ladder.
+            //  learns the boat rather than the ladder. Stays visible after it is done, because
+            //  better hands can better the work — see `couldImprove`.
             id: 'repair-frames',
             label: b.structural ? 'Back the frames again' : 'Back the frames',
             available: canRepairStructure2(state),
             reason: structuralBlocker(state),
+            //  VISIBLE THROUGH A FAILED TRIAL, which is the point: the post-trial inspection
+            //  names the weaker system by hand, and the verb that answers it has to be on the
+            //  wheel to be answered. So while she is NOT yet afloat, this is always offered.
+            //
+            //  ONCE SHE SWIMS IT NARROWS TO WHEN IT WOULD DO SOMETHING. A first cut retired it
+            //  at B2 outright and that quietly deleted a real capability: `boatCapacityKg` reads
+            //  the repair RUNG, so a survivor who rushed the work, floated her, and later got
+            //  better at hulls could never go back and better it. `canRepairStructure2` already
+            //  answers exactly that question — `couldImprove` is inside it — so the verb returns
+            //  to the wheel precisely when there is a better job to be done, and stays away when
+            //  pressing it would only re-do the same work at the same rung.
+            shown: b.dewatered && (!afloat || canRepairStructure2(state)),
         },
         {
             //  WATERTIGHTNESS — a different system, a different verb, a different cost.
@@ -312,6 +351,9 @@ function boatVerbs(state: GameState): VerbOption[] {
             label: b.seal ? 'Pay the seams again' : 'Pay the seams',
             available: canSealHull(state),
             reason: sealBlocker(state),
+            //  Same rule, the other system: always at B1, and at B2 only when better hands
+            //  could actually pay them better than they are payed now.
+            shown: b.dewatered && (!afloat || canSealHull(state)),
         },
         {
             //  THE GATE, and the consequence is readable before committing — though NOT from
@@ -322,29 +364,50 @@ function boatVerbs(state: GameState): VerbOption[] {
             label: b.floatTest?.held ? 'Float her again' : 'Float her on a line',
             available: canFloatTest(state),
             reason: floatTestBlocker(state),
+            //  Both systems have had work in them: the trial is the next real thing to do — and
+            //  it retires once she has actually swum, because re-proving a boat that floats is
+            //  not a thing to want.
+            shown: b.structural !== null && b.seal !== null && b.floatTest?.held !== true,
         },
         {
+            //  SHE MUST ACTUALLY FLOAT FIRST, which is the director’s own rule: boarding is
+            //  not offered on the strength of knowing about her, only on her being seaworthy
+            //  enough to have swum on a line. And it retires once she has told you what she
+            //  carries — after that it re-reports what the inspection already says.
             id: 'board-boat',
             label: 'Get in',
             available: canBoardBoat(state),
             reason: boardBlocker(state),
+            shown: afloat && !b.loadKnown,
         },
         {
-            //  MANUAL PROPULSION (Law 125) — the third of the source’s three B2 capabilities,
-            //  after tethered flotation and the platform. A boat that cannot be moved is not a
-            //  boat, and this is the verb that stops B2 being a diorama.
+            //  MANUAL PROPULSION (Law 125). Not offered until she is ALREADY SAILING — a way
+            //  of going faster is meaningless to a hull on the sand, and listing it there is
+            //  the "all at once from B0" shape this staging exists to end.
+            //
+            //  AND NOT UNTIL SHE HAS BEEN SAT IN, which is `ferryBlocker`’s own first gate:
+            //  *"Get into her first and feel what she does with weight in her"* — ordering,
+            //  by that refusal’s own comment, not difficulty. A verb whose ONLY blocker is
+            //  "do the other thing on this same wheel first" teaches nothing by being drawn
+            //  grey beside the very thing it is waiting for. This is also what takes the
+            //  busiest afloat rung from four options to three — and three is the width at
+            //  which the other refusals on that wheel can print their reasons at all.
             id: 'ferry-boat',
             label: b.ferried ? 'Take her out again' : 'Take her out on the line',
             available: canFerry(state),
             reason: ferryBlocker(state),
+            shown: afloat && b.loadKnown,
         },
         {
             id: 'moor-boat',
             label: 'Make her fast',
             available: canMoor(state),
             reason: moorBlocker(state),
+            shown: afloat && !b.moored,
         },
     ];
+
+    return options.filter((o) => o.shown).map(({ shown, ...verb }) => { void shown; return verb; });
 }
 
 /**
@@ -854,7 +917,11 @@ function fireVerbs(state: GameState): VerbOption[] {
     const built = state.fire.built;
     const notBuilt = built ? null : 'There is no fire here yet.';
     const lit = state.fire.fuel > 0;
-    return [
+    //  `shown` is a second gate and it is NOT `available` — see `boatVerbs`, which argues it
+    //  at length. On this wheel it is used exactly once, and everything else is `true`: the
+    //  fire's verbs are things you walk over INTENDING to do, and a greyed one is how you
+    //  learn the fire can do them at all.
+    const options: Array<VerbOption & { shown: boolean }> = [
         {
             //  WAVE 0 / W2a — THE BOIL. On the fire's own circle, because the model's
             //  prerequisite is "Fire + viable vessel + observed boil" and the fire is the part
@@ -864,12 +931,31 @@ function fireVerbs(state: GameState): VerbOption[] {
             label: 'Boil water',
             available: canBoil(state),
             reason: boilRefusalFor(state),
+            shown: true,
         },
         {
             id: 'feed-fire',
             label: 'Feed',
-            available: built && state.inventory.wood > 0,
-            reason: notBuilt ?? (state.inventory.wood <= 0 ? 'You have no wood to feed it.' : null),
+            //  THE PIT HAS A CEILING and this verb used to hide it. `available` asked only
+            //  “is there a fire, and have I any wood” — never `canFeedFire`, which is what
+            //  actually decides. So at `fireMaxFuel` with an armful of wood the segment drew
+            //  LIVE and green, the press was refused by `canFeedFire`, and `deniedFire` said
+            //  *"No wood to add. Fell a tree or gather more."* to a survivor visibly holding
+            //  wood. A verb that says yes and then refuses breaks Law 26; a refusal that
+            //  names the wrong enabler breaks Law 95; and saying "you have none" to someone
+            //  holding some is simply a lie the game had no reason to tell.
+            //
+            //  THE CAP ITSELF IS DELIBERATE AND UNCHANGED — 12 wood at 2 game hours each is
+            //  a full day of fire, and `fireMaxFuel` says why in its own tuning comment: so
+            //  the pit cannot be turned into a silo. It is a fire, not a woodshed. All that
+            //  changes here is that it now SAYS so.
+            available: canFeedFire(state),
+            reason: notBuilt
+                ?? (state.inventory.wood <= 0 ? 'You have no wood to feed it.'
+                    : state.fire.fuel >= TUNE.fireMaxFuel
+                        ? 'It is banked as high as it will take. Let it burn down first.'
+                        : null),
+            shown: true,
         },
         {
             id: 'light-torch',
@@ -880,6 +966,26 @@ function fireVerbs(state: GameState): VerbOption[] {
                     ? 'You have no torch to light.'
                     : !lit ? 'The fire is out.'
                         : state.torch.lit ? 'Your torch is already lit.' : null),
+            shown: true,
+        },
+        {
+            //  COOKING — the discovery Drop 1 wrote two of its own constants around and then
+            //  did not build. On the fire for the same reason the journal and the remedy are:
+            //  it needs a PLACE and an hour, not a menu entry.
+            //
+            //  THE ONE STAGED VERB ON THIS WHEEL, and the exception is argued rather than
+            //  assumed. Every other fire verb answers something a survivor might come to the
+            //  fire INTENDING — you walk over to boil, to feed it, to write. Cooking is
+            //  different in kind: it is the only fire verb whose SUBJECT you must already be
+            //  carrying, and it is discovered by arriving with a kill in your hands, which is
+            //  the exact moment it is worth knowing about. Listing it permanently would also
+            //  take the fire to seven of its own verbs plus `Move`, on an arc that holds four
+            //  — so the cost of a spoiler here would be paid by every other verb on the wheel.
+            id: 'cook-meat',
+            label: state.inventory.meat > 1 ? 'Cook the meat' : 'Cook it',
+            available: canCookMeat(state),
+            reason: cookBlocker(state),
+            shown: state.inventory.meat > 0,
         },
         {
             //  MAKING one is a fire act too: the charcoal to write with comes out of it.
@@ -892,6 +998,7 @@ function fireVerbs(state: GameState): VerbOption[] {
             reason: notBuilt ?? (!lit ? 'The fire is out — no charcoal to write with.'
                 : state.journal.exists ? 'You already have one.'
                     : shortfallReason(journalShortfall(state))),
+            shown: true,
         },
         //  THE JOURNAL ([[D-068]]) LIVES ON THE FIRE, and nowhere else.
         //
@@ -907,6 +1014,7 @@ function fireVerbs(state: GameState): VerbOption[] {
             //  The journal's own reader already computes the ONE truest obstacle in D-068's
             //  order; re-deriving it here would be a second opinion that eventually disagrees.
             reason: notBuilt ?? (!lit ? 'The fire is out. You cannot write in the dark.' : readWrite(state).reason),
+            shown: true,
         },
         {
             //  DROP 3 — THE REMEDY, on the fire for the same reason the journal is: it has
@@ -919,8 +1027,11 @@ function fireVerbs(state: GameState): VerbOption[] {
             reason: notBuilt ?? (!lit ? 'The fire is out — nothing to steep it over.'
                 : !isIll(state.illness) ? 'You are well. Nothing to treat.'
                     : `You need ${TUNE.remedyFiberCost} fibre and ${TUNE.remedyBerryCost} berries.`),
+            shown: true,
         },
     ];
+
+    return options.filter((o) => o.shown).map(({ shown, ...verb }) => { void shown; return verb; });
 }
 
 /**

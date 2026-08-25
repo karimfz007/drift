@@ -62,7 +62,7 @@ export interface HudView {
      *  a soft debuff rather than an urgent pressure. */
     energy: number;
     sheltered: boolean;
-    inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number; meat: number; fish: number };
+    inventory: { wood: number; stone: number; fiber: number; berries: number; coconut: number; shellfish: number; meat: number; cookedMeat: number; fish: number };
     tools: { axe: boolean; flask: boolean; flaskSips: number };
     /**
      * THE VESSEL YOU MADE, WHERE YOU LOOK FOR IT (item 3, this batch).
@@ -207,6 +207,9 @@ export class Hud {
             //  FISHING — meat and fish are chips because they are FOOD, and until now the
             //  meat had no chip because it had no eat path at all. See `Food` in vitals.ts.
             ['meat', v.inventory.meat],
+            //  COOKING — a chip of its own rather than a variant of the meat chip, because
+            //  a survivor can hold both at once and they are worth different things.
+            ['cookedMeat', v.inventory.cookedMeat],
             ['fish', v.inventory.fish],
             ['axe', v.tools.axe],
             ['flask', v.tools.flask ? (v.tools.flaskSips > 0 ? 'full' : 'empty') : false],
@@ -225,9 +228,9 @@ export class Hud {
 
         const label: Record<string, string> = {
             wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
-            coconut: 'Coconut', shellfish: 'Shellfish', meat: 'Meat', fish: 'Fish'
+            coconut: 'Coconut', shellfish: 'Shellfish', meat: 'Raw meat', cookedMeat: 'Cooked meat', fish: 'Fish'
         };
-        const edible = new Set(['berries', 'coconut', 'shellfish', 'meat', 'fish']);
+        const edible = new Set(['berries', 'coconut', 'shellfish', 'meat', 'cookedMeat', 'fish']);
         const chips: string[] = [];
         for (const [name, val] of items) {
             if (name === 'axe') {
@@ -663,9 +666,13 @@ export const MATERIAL_LABEL: Record<string, string> = {
     wood: 'Wood', stone: 'Stone', fiber: 'Fibre', berries: 'Berries',
     coconut: 'Coconut', shellfish: 'Shellfish', sharpblade: 'Sharp blade',
     //  THE WRECK SLICE. Named as a survivor would name them, not as cargo manifest entries.
-    metal: 'Hull plate', wiring: 'Cable', glass: 'Glass', medicine: 'Medical store', meat: 'Meat',
+    metal: 'Hull plate', wiring: 'Cable', glass: 'Glass', medicine: 'Medical store', meat: 'Raw meat',
     //  What a drunk coconut leaves behind. Named for the object, not the recipe it might feed.
     shell: 'Coconut shell', fish: 'Fish',
+    //  COOKING. "Raw" is now said out loud on the other one, because the two sit beside
+    //  each other in the pack and a survivor choosing between them must be able to tell
+    //  which is which — the same legibility [[D-183]] gave the husk and the cup.
+    cookedMeat: 'Cooked meat',
     //  ITEM 3 (this batch) — the stone hammer, now a real combine chip like anything else.
     stonehammer: 'Stone hammer'
 };
@@ -1630,7 +1637,7 @@ function showVerbList(
 ): void {
     const el = panel(overlay, 'verb-list');
     const rows = options.map((o) => `
-        <div class="verb-row ${o.available ? 'ready' : 'blocked'}">
+        <div class="verb-row ${o.available ? 'ready' : 'blocked'}" data-verb="${o.id}">
             ${o.available
                 ? `<button class="quiet verb-row-btn" data-verb="${o.id}" type="button">${o.label}</button>`
                 : `<strong class="verb-row-label">${o.label}</strong>`}

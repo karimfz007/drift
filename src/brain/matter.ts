@@ -81,6 +81,10 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     medicine: 'contaminated',
     //  DROP 1 — a failed attempt on meat spoils it. Matter comes out CHANGED (Law 128).
     meat: 'contaminated',
+    //  COOKING does not make meat immortal, only slower. Cooked meat left too long is
+    //  still spoiled food, and eating it still risks the same illness — same transform,
+    //  same `onsetFrom('spoiled-food')` path, a longer clock in front of it.
+    cookedMeat: 'contaminated',
     //  FISHING — a fish fails the way meat does, and it is the same word on purpose: `eat`
     //  already treats `contaminated` as the food that can make you ill, so the fish joins
     //  that rule by HAVING the property rather than by a second branch checking its name.
@@ -188,6 +192,47 @@ export function isSpoiled(state: GameState, kind: MaterialKind): boolean {
     return left !== undefined && left <= 0;
 }
 
+/**
+ * ADD PERISHABLE STOCK, AND LET THE PILE BEHAVE LIKE A PILE.
+ *
+ * `freshUntil` holds ONE number per material, so a stack of a kind is a stack — there is
+ * no per-unit ledger and there should not be one, because the alternative is a bag of
+ * timestamps for something a survivor experiences as "the meat". The question this
+ * answers is what that one number should be when stock is ADDED to stock.
+ *
+ * THE WORST OF WHAT IS IN IT, and the alternative was a real hole. Every writer used to
+ * set the clock outright — `thrustSpear`, `gainFish`, and (nearly) `cookMeat`. So a
+ * survivor carrying one nearly-rotten unit who killed a second boar had the WHOLE pile
+ * refreshed to a full 48 hours, including the unit that was an hour from turning. Kill
+ * something every other day, or land one fish, and nothing you carry ever goes off:
+ * spoilage defeated by drip-feeding it, which is the same shape as [[D-190]]’s cup
+ * refilling itself past its own brim.
+ *
+ * FOUND WHILE BUILDING COOKING rather than reported. `cookMeat` needed this rule for its
+ * own stack, and writing it there alone would have left the game applying two different
+ * answers to one question — so it lives here, once, and all three writers call it.
+ */
+export function addPerishable(state: GameState, kind: MaterialKind, freshGameHours: number): void {
+    const existing = state.freshUntil[kind];
+    //  Nothing held, or nothing on a clock: this stock sets it. Otherwise the oldest
+    //  thing in the pile is what the pile is worth.
+    const left = existing === undefined ? freshGameHours : Math.min(existing, freshGameHours);
+    state.freshUntil = { ...state.freshUntil, [kind]: left };
+}
+
+/**
+ * ...and the other half: a clock for a stack nobody holds is a clock counting down over
+ * nothing. `isSpoiled` reads `left !== undefined`, and `perishOnTick` walks every entry,
+ * so a key left behind after the last unit is spent is a slow leak in both.
+ */
+export function retirePerishable(state: GameState, kind: MaterialKind): void {
+    if (state.inventory[kind] > 0) return;
+    if (state.freshUntil[kind] === undefined) return;
+    const next = { ...state.freshUntil };
+    delete next[kind];
+    state.freshUntil = next;
+}
+
 /** Game hours of freshness left, or null when this material does not perish. */
 export function freshnessLeft(state: GameState, kind: MaterialKind): number | null {
     return state.freshUntil[kind] ?? null;
@@ -201,7 +246,7 @@ export function isNearlySpent(state: GameState, material: MaterialKind): boolean
 const LABEL: Record<MaterialKind, string> = {
     wood: 'The wood', stone: 'The stone', fiber: 'The fibre', sharpblade: 'The blade',
     coconut: 'The coconut', shell: 'The shell', shellfish: 'The shell', berries: 'The berries',
-    meat: 'The meat', fish: 'The fish',
+    meat: 'The meat', cookedMeat: 'The cooked meat', fish: 'The fish',
     metal: 'The plate', wiring: 'The cable', glass: 'The glass', medicine: 'The medicine',
     //  ITEM 3 (this batch) — practically unreachable, same reason `TRANSFORM`'s entry above is.
     stonehammer: 'The hammer',

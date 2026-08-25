@@ -128,15 +128,49 @@ export function makeFoundPan(state: GameState): boolean {
 // Filling, and what may never be boiled.
 // ---------------------------------------------------------------------------
 
+/**
+ * HOW MUCH WATER IS IN IT AT ALL — raw and treated together, because a cup holds water and
+ * does not care whether it has been boiled.
+ *
+ * THE BUG THIS EXISTS TO CLOSE, reported as *"four cups of boiled water"* from one cup.
+ * `canFillVessel` compared `rawSips` alone against the capacity, and `boil` moves the water
+ * from `rawSips` to `cleanSips` — emptying the raw slot. So every boil made the cup fillable
+ * again, and clean water accumulated with no ceiling whatsoever:
+ *
+ *      pass 1: raw 0 clean 2      pass 4: raw 0 clean  8
+ *      pass 2: raw 0 clean 4      pass 5: raw 0 clean 10
+ *      pass 3: raw 0 clean 6      ...  in a TWO-sip cup
+ *
+ * Unlimited treated water for the cost of walking pond to fire, which is the whole of the
+ * water economy undone. The director’s report is exactly two passes of that loop.
+ */
+export function heldSips(state: GameState): number {
+    return state.water.rawSips + state.water.cleanSips;
+}
+
+/** Room left in the vessel, in sips. Zero when it is full of anything. */
+export function roomLeft(state: GameState): number {
+    if (state.water.vessel === null) return 0;
+    return Math.max(0, vesselCapacity(state.water.vessel) - heldSips(state));
+}
+
 export function canFillVessel(state: GameState): boolean {
     return state.water.vessel !== null
         && isAtPond(state)
-        && state.water.rawSips < vesselCapacity(state.water.vessel);
+        //  ROOM FOR WATER, not room for RAW water. See `heldSips`.
+        && roomLeft(state) > 0;
 }
 
+/**
+ * FILL IT TO THE BRIM, and the brim counts what is already in there.
+ *
+ * This used to set `rawSips` to the full capacity outright, which was the second half of the
+ * same defect: even had the guard above been right, filling a cup holding one boiled sip
+ * would have set raw to two and made three sips fit in a two-sip cup.
+ */
 export function fillVessel(state: GameState): boolean {
     if (!canFillVessel(state)) return false;
-    state.water = { ...state.water, rawSips: vesselCapacity(state.water.vessel!) };
+    state.water = { ...state.water, rawSips: state.water.rawSips + roomLeft(state) };
     return true;
 }
 

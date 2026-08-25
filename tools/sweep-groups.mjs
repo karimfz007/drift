@@ -85,10 +85,18 @@ const OUT_DIR = fileURLToPath(new URL('../.smoke/', import.meta.url));
  * split on — the bench profile could not produce one, because it was written from the middle
  * of the file and never saw these sections at all. It does now, so the split is a measurement
  * away rather than a proxy away, and the next completed run is what places it.
+ *
+ * G13 — [[D-190]]’s three sections: the boat’s staged ladder, the fire’s cook verb, and the
+ * cup-capacity loop. Its OWN group rather than G12’s tail, on the same measured basis G12
+ * itself was split off for. All three are `editSave`-and-walk sections rather than assertion
+ * sweeps: the ladder re-seeds and re-opens the wheel at nine separate rungs, the cook section
+ * measured 276s driving a full journey plus two refusals, and the cup loop walks pond-to-fire
+ * six times over. Folding them onto G12 — already the watched group — would have pushed it
+ * well past its own target for the second time in three batches.
  */
 const GROUPS = [
     [0, 7], [8, 8], [9, 14], [15, 19], [20, 21], [22, 29],
-    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 69],
+    [30, 34], [35, 38], [39, 44], [45, 49], [50, 57], [58, 69], [70, 72],
 ];
 
 const names = [...readFileSync(SMOKE, 'utf8').matchAll(/^ {4}if \(section\((["'])(.*?)\1\)\) \{\s*$/gm)]

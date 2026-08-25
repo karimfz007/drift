@@ -26,7 +26,7 @@ import { freshIllness, onsetFrom } from './illness';
 import { TUNE } from '../data/tune';
 import { freshCapacities } from './capacities';
 import { freshConfidence } from './confidence';
-import { freshMatterWear, isSpoiled, transformationFor } from './matter';
+import { addPerishable, freshMatterWear, isSpoiled, transformationFor } from './matter';
 import {
     CAVE_SITE, SPAWN, SURF_LINE_RADIUS, WALKABLE_RADIUS, WORLD,
     createNodes, isDryLand, isOnPondWater, isPlaceablePoint, waterDepthAt
@@ -177,7 +177,7 @@ export function freshJournal(): JournalState {
 
 export function emptyInventory(): Inventory {
     return {
-        wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, fish: 0,
+        wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, cookedMeat: 0, fish: 0,
         shell: 0,
         //  THE WRECK SLICE. Zero, and a fresh castaway can never gain one on the island —
         //  every gram of these exists 115 m offshore.
@@ -1585,7 +1585,9 @@ export function thrustSpear(state: GameState, boarId: string): { ok: boolean; ki
         //  FISHING retired `meatFreshUntilGameHours`. Meat now uses the same countdown
         //  every perishable does — see `perishOnTick`. Nothing about the boar changed except
         //  that its meat no longer rots while the game is closed.
-        state.freshUntil = { ...state.freshUntil, meat: TUNE.meatSpoilGameHours };
+        //  THE PILE TAKES THE WORST OF WHAT IS IN IT — see `addPerishable`. This used to
+        //  set the clock outright, so a second kill refreshed the first kill’s meat.
+        addPerishable(state, 'meat', TUNE.meatSpoilGameHours);
         recordTrying(state, 'survivalcraft');
         return { ok: true, killed: true, meat: TUNE.boarMeatYield };
     }

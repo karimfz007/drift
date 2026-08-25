@@ -822,6 +822,36 @@ export const TUNE = {
     /** [TUNE] Drop 1 — hunger restored by raw meat. Deliberately modest: raw is worse than
      *  cooked will be, and the gap is the reason to learn fire-cooking later. */
     meatHungerRestore: 18,
+    // ---- COOKING (the discovery Drop 1 promised) ---------------------------------
+    //  Every number here is answerable to two sentences written above, which are the
+    //  only reason raw meat is priced as low as it is: raw is "worse than cooked WILL
+    //  be", and meat spoils fast so that cooking is "worth wanting". If cooked meat
+    //  were not clearly better on both axes, those two constants would be lies.
+    /** [TUNE] Hunger restored by one unit of COOKED meat. Basis: it must beat every
+     *  other food in the game, because it is the only one that costs an hour, a lit
+     *  fire and a discovery. The forage ladder it has to sit above is berries 12,
+     *  coconut 14, raw meat 18, fish 20, shellfish 22 — so 30 is a clear best meal
+     *  without being a meal that ENDS hunger, which nothing in this game is. */
+    cookedMeatHungerRestore: 30,
+    /** [TUNE] Game hours a COMPETENTLY cooked batch keeps. Basis: raw is 48 (~2 game
+     *  days), so this is the same food turned from an event into something you can
+     *  actually plan around — five days — without becoming a stockpile that retires
+     *  hunger as a concern. The other four rungs are this ± the step below. */
+    cookedMeatSpoilGameHours: 120,
+    /** [TUNE] What one rung of cooking skill is worth, in game hours of keeping. Basis:
+     *  a whole game day per rung, so the ladder runs novice 72 → expert 168 and even
+     *  the worst cook beats raw meat's 48. A discovery that could make food go off
+     *  FASTER at some rung would not be worth discovering. */
+    cookedMeatRungStepGameHours: 24,
+    /** [TUNE] Fuel below which the fire is guttering rather than cooking, and the
+     *  steady-fire bonus is withheld. Basis: `fireBurnGameHoursPerWood` is 2, so this
+     *  is "enough fire left to still be a fire when the hour is up" — Law 219's
+     *  workholding, read onto a hearth. */
+    cookSteadyFireFuel: 4,
+    /** [TUNE] Hours at the fire to cook a batch. Basis: exactly the hour writing and
+     *  brewing already cost, down the same `spendGameHours` path, because all three
+     *  are "stand at the fire and do the thing" and should not be priced differently. */
+    cookGameHours: 1,
     // ---- THE ONE BODY RESOLVER (Part 3) -------------------------------------------------
     //  §13's terms that are read from the BODY rather than declared by the activity. Each is
     //  a multiplier on the one workload line, and each is bounded on purpose: an impaired
@@ -2088,6 +2118,10 @@ export const TUNE = {
         //  DROP 1 — a unit of boar meat. Between shellfish (0.3) and coconut (1.4): heavy
         //  enough that carrying a whole kill home is a real load decision.
         meat: 0.5,
+        //  COOKING drives the water out of it, so a cooked unit is LIGHTER than the raw
+        //  unit it came from. A small, honest reward for the hour: a whole boar carried
+        //  home cooked is a lighter load than the same boar carried home raw.
+        cookedMeat: 0.4,
         //  THE WRECK SLICE. Metal is the heaviest thing in the game — heavier per unit than
         //  stone — and that is the point: a full haul off the wreck is a real load to paddle
         //  home, so what you take is a decision made 115 m out with a load band watching.
@@ -2203,6 +2237,8 @@ export const TUNE = {
         sharpblade: 0.2,
         //  DROP 1 — bulky for its weight, the way meat is.
         meat: 0.9,
+        //  ...and it packs down with the water: less awkward than the raw cut.
+        cookedMeat: 0.7,
         //  THE WRECK SLICE. Cable is the BULKIEST thing here without being the heaviest —
         //  a coil eats a pack. Metal plate is dense but stacks flat, which is the honest
         //  inversion: the heavy thing and the awkward thing are not the same thing.

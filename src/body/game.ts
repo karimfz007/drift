@@ -81,6 +81,10 @@ import {
     illnessStage,
     canBrewRemedy,
     brewRemedy,
+    cookBlocker,
+    cookMeat,
+    cookRung,
+    keepingHoursFor,
     canTakeMedicine,
     medicineBlocker,
     takeMedicine,
@@ -2387,6 +2391,7 @@ export class Game {
             case 'pick-up': this.doPickUpDropped(); break;
             case 'make-journal': this.doMakeJournal(); break;
             case 'brew-remedy': this.doBrewRemedy(); break;
+            case 'cook-meat': this.doCookMeat(); break;
             //  ---- FISHING — three methods, five verbs, one dispatcher ----
             case 'cast-line': this.doCastLine(); break;
             case 'reel-in': this.doReelIn(); break;
@@ -4019,6 +4024,43 @@ export class Game {
         this.lastActivityAt = now();
     }
 
+    /**
+     * COOKING — an hour at the fire, down the same `spendGameHours` path writing and
+     * brewing already use, because all three are "stand at the fire and do the thing".
+     *
+     * THE WORLD MOVES WHILE IT COOKS, and that is the cost. The fire burns down under it,
+     * hunger and thirst fall, the night gets later, and the boars keep walking — so a
+     * survivor who cooks at the wrong moment pays for it in the way this game always
+     * charges. There is no separate fuel deduction, deliberately: the fire’s fuel is spent
+     * by BURNING, and it burns during the hour like it burns during any other.
+     *
+     * THE RUNG IS READ BEFORE THE HOUR IS SPENT, inside `cookMeat`. Spending the hour
+     * first would let the tick’s own learning change the answer the forecast promised,
+     * which is the "forecast and attempt must share one arithmetic path" rule.
+     */
+    private doCookMeat(): void {
+        const s = session().state;
+        const blocker = cookBlocker(s);
+        //  NAME THE ENABLER (Law 95) rather than saying "you cannot" — `cookBlocker` has
+        //  already worked out which ONE thing is nearest, so this never invents a second
+        //  opinion about why.
+        if (blocker) { this.explain(blocker); return; }
+        const rung = cookRung(s);
+        const cooked = cookMeat(s);
+        if (cooked <= 0) { this.explain(cookBlocker(s) ?? 'Nothing goes on the fire.'); return; }
+        session().spendGameHours(TUNE.cookGameHours, now());
+        this.cues.play(CUES.craft);
+        this.floatText(`+${cooked} cooked`);
+        //  WHAT THE HOUR BOUGHT, in the survivor’s own terms — not a rung name, which is a
+        //  developer’s word. She learns she is a better cook by the meat lasting longer.
+        const days = Math.round(keepingHoursFor(rung) / 24);
+        const raw = Math.round(TUNE.meatSpoilGameHours / 24);
+        this.explain(`It comes off the coals dark and firm. ${cooked} of it, and it should keep`
+            + ` something like ${days} days now instead of ${raw}.`);
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
+
     private doThrust(): void {
         const s = session().state;
         const target = nearestBoar(s.boars, s.player.x, s.player.y);
@@ -4086,7 +4128,13 @@ export class Game {
         const s = session().state;
         this.cues.play(CUES.denied);
         const short = Math.max(0, TUNE.woodPerFire - s.inventory.wood);
-        this.showHint(s.fire.built ? 'No wood to add. Fell a tree or gather more.' : `Not enough wood — ${short} more for a fire.`);
+        //  THE SAME THREE CASES THE VERB’S OWN `reason` NAMES, in the same order, because a
+        //  survivor who reaches the fire by tapping rather than by the wheel must not get a
+        //  different account of why. The full-pit case was missing entirely and fell through
+        //  to "no wood to add" — said to someone holding wood.
+        if (!s.fire.built) { this.showHint(`Not enough wood — ${short} more for a fire.`); return; }
+        if (s.inventory.wood <= 0) { this.showHint('No wood to add. Fell a tree or gather more.'); return; }
+        this.showHint('It is banked as high as it will take. Let it burn down first.');
     }
 
     private onEatFood(food: Food): void {
