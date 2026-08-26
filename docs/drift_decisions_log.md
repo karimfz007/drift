@@ -89,7 +89,7 @@ POST-GATE, and therefore unable to help you reach it                  surveyHull
 - **`knowledge.ts` says fishing trains Survivalcraft *"through `recordTrying` at each method's own call site"*. `fishing.ts` contains no `recordTrying` at all.** `tune.ts` says the opposite and is right. Two comments, one false.
 - **`tune.ts`'s basis note undercounts its own producers** — it says four; there are ten. `boardRaft` predates the count and the five boat verbs postdate it, so the arithmetic that justified the value 14 no longer describes the game.
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed on `main` as **`7b1e66f`**, and confirmed three ways rather than assumed — local `HEAD`, `origin/main` and the served `<meta name="drift-build">` all read `7b1e66f`, served build `2026-08-26T09:49:33Z`. CI green on both jobs (`done-checks` 1m16s, `deploy` 1m24s). Device, targeted: `LADDER` 21/21 with the corrected refusal on screen at 116px, `PLAYTEST FIXES` 23/23 with the seven domain rows drawn and the capacity count still eight, `THE PULL` green. 1826 unit checks.
 
 **Class: OPERATIVE** — shipped: the survey refusal and the understanding note; the boat's class-wide refusal sweep; `DomainLine`/`domainLines`/`domainStandingOf`/`DOMAIN_LABEL`/`DOMAIN_LABEL_SHORT`/`DORMANT_DOMAINS` in `growth.ts`; `domains` on `GrowthReport`; the knowledge-scale recalibration of `handsReading` and its third sentence; the `.domain-item` rows and their styling. **DESIGN-BINDING** for §3: the candidate trainers and the three defects are named and unwired, pending the director's call.
 
