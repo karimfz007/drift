@@ -64,7 +64,7 @@ the pip appears when a sentence was cut, and says "read it in full" rather than 
 
 **A COMPENSATION WAS TRIED AND BACKED OUT.** Restoring the reserve before the return leg moved 25.1 to 26.7 and no further, which located the drain INSIDE `boatWheel` rather than before it — so the patch was treating a symptom in the wrong place, and a weakened check bought nothing. Removed. The honest fix is to stop the clock or to price the leg from a known state at the moment of the press, and it belongs to whoever next owns that section rather than to a one-item display fix.
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed on `main` as **`30cbc35`**, confirmed three ways — local `HEAD`, `origin/main` and the served `<meta name="drift-build">` all read `30cbc35`, served build `2026-08-26T12:19:23Z`. CI green on both jobs (`done-checks` 1m11s, `deploy` 1m32s). Device, targeted: `LADDER` 24/24 including the new invariant, `THE VERB CIRCLE SCALES` 20/20 and `ROUND` 43/43 — the other wheel-bearing sections, because the clamp is on every verb circle in the game and not only the boat’s.
 
 **Class: OPERATIVE** — shipped: `.verb-reason`'s clamp and `.verb-seg.with-reason`'s one-line label in `index.html`; the `with-reason` class and the measured `clipped` pip trigger in `hud.ts`; `wheel()`'s clip readout and `LADDER 2`/`4b`/`4c`/`4d` in the harness.
 
