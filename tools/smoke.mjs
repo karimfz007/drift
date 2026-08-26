@@ -8352,9 +8352,9 @@ async function main() {
     //  repair verb — was the only one never told where she stands. Both beats, for both people.
     //  The second beat was `boatWorkBlocker`’s retired sentence; it is now the capability note.
     check('BOAT 5b — ...and the informed survivor is told BOTH: which route taught them, and where she stands',
-        /dry-bag book|handled enough boats|read it and you have done it/i.test(informed)
+        /dry-bag book|time on the water|read it and you have done it/i.test(informed)
         && /will not float/i.test(informed),
-        `route named ${/dry-bag book|handled enough boats|read it and you have done it/i.test(informed)},`
+        `route named ${/dry-bag book|time on the water|read it and you have done it/i.test(informed)},`
         + ` ceiling present ${/will not float/i.test(informed)}`);
 
     // ---- 6. LOOKING IS NOT DOING -----------------------------------------------

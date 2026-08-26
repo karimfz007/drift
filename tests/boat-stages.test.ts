@@ -40,6 +40,7 @@ import {
     postTrialFindings, weaknessOf, boatCapacityKg, learnLoad, loadNote,
     canBoardBoat, boardBlocker, canMoor, moorBlocker, moorBoat,
     canFerry, ferryBlocker, ferryForecast, runFerry, ferryFindings, ferryNote,
+    boatUnderstandingNote,
 } from '../src/brain/boat';
 import { canReassemble, OUTBOARD_PARTS } from '../src/brain/heavyObjects';
 import { verbsFor, availableVerbs, holdOpensCircle } from '../src/brain/verbs';
@@ -142,7 +143,13 @@ describe('B0 — the secured wreck, and the ladder up from it', () => {
         const blind = createInitialState(NOW);
         blind.player = { x: 14, y: 100 };
         expect(canSurveyHull(blind), 'a survivor who knows nothing surveyed a hull').toBe(false);
-        expect(surveyBlocker(blind)).toMatch(/work more boats|wrote it down/i);
+        //  IT NAMES THE REAL GAP. The refusal used to say “Work more boats, or find someone
+        //  who wrote it down” — two things this world does not contain, offered to a player
+        //  who would then go looking for them. What is actually missing is seamanship.
+        const why = surveyBlocker(blind) ?? '';
+        expect(why, 'the refusal does not say what is actually missing').toMatch(/hull work/i);
+        expect(why, 'the refusal promises a second boat').not.toMatch(/boats/i);
+        expect(why, 'the refusal promises another person').not.toMatch(/someone|somebody|anyone/i);
 
         const s = ready();
         expect(canSurveyHull(s)).toBe(true);
@@ -971,5 +978,87 @@ describe('D-011 — absence cannot reach her hull', () => {
         expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
         expect(migrated.state.boat).toEqual(freshBoat());
         expect(boatStage(migrated.state), 'the migration handed back a stage nobody earned').toBe('B0');
+    });
+});
+
+describe('A REFUSAL MAY NOT NAME AN ENABLER THIS WORLD DOES NOT CONTAIN', () => {
+    /**
+     * THE DEFECT CLASS, generalised from the one that shipped.
+     *
+     * `surveyBlocker` told a survivor to "Work more boats, or find someone who wrote it down"
+     * — offering a second boat and another person to a solitary castaway on an island that has
+     * exactly one hull and no people. Law 95 requires a refusal to name its enabler; an enabler
+     * that does not exist defeats the law with its own sentence, and it reads to a player as a
+     * malformed string rather than as advice. Worse than silence: it sends them hunting for
+     * content nobody ever authored.
+     *
+     * So this sweeps what the boat can ACTUALLY say — every reason on every verb the wheel
+     * offers, across the whole ladder — rather than pinning one string. A future author who
+     * writes the same kind of sentence gets a red naming the verb that said it.
+     */
+    it('sweeps every reason the boat can give, at every rung, for impossible advice', () => {
+        const states: Array<[string, GameState]> = [];
+
+        const blind = createInitialState(NOW);
+        blind.player = { x: 14, y: 100 };
+        states.push(['fresh castaway', blind]);
+
+        const surveyed = ready();
+        surveyHull(surveyed);
+        states.push(['ready', ready()], ['surveyed', surveyed]);
+
+        const broke = ready();
+        broke.inventory.wood = 0; broke.inventory.fiber = 0; broke.inventory.stone = 0;
+        broke.energy = 12;
+        states.push(['empty-handed and spent', broke]);
+
+        //  Every sentence the player could be shown at the boat, in one bag.
+        const said: Array<{ where: string; text: string }> = [];
+        for (const [name, s] of states) {
+            for (const v of verbsFor(s, 'boat')) {
+                if (v.reason) said.push({ where: `${name}/${v.id}`, text: v.reason });
+                said.push({ where: `${name}/${v.id}/label`, text: v.label });
+            }
+            const note = boatUnderstandingNote(s);
+            if (note) said.push({ where: `${name}/understanding-note`, text: note });
+        }
+        expect(said.length, 'the sweep collected nothing, so it proves nothing')
+            .toBeGreaterThan(8);
+
+        //  A SECOND BOAT. There is one hull in the game and it is this one.
+        const fleet = said.filter((x) => /\bboats\b/i.test(x.text));
+        expect(fleet.map((x) => `${x.where}: "${x.text}"`), 'promises a boat that does not exist')
+            .toEqual([]);
+
+        //  ANOTHER PERSON. The survivor is alone; `succession` replaces them, it does not
+        //  accompany them. "someone who wrote it down" is the manual, and it should say so.
+        const people = said.filter((x) => /\b(someone|somebody|anyone|another person|somebody else)\b/i.test(x.text));
+        expect(people.map((x) => `${x.where}: "${x.text}"`), 'promises a person who does not exist')
+            .toEqual([]);
+    });
+
+    it('...and the survey refusal now names the gap that is actually there', () => {
+        const blind = createInitialState(NOW);
+        blind.player = { x: 14, y: 100 };
+        const why = surveyBlocker(blind) ?? '';
+        //  The situation, in the player's language: an experience gap, not a missing thing.
+        expect(why).toMatch(/hull work/i);
+        //  ...and BOTH routes Law 125 requires to exist, each one real on this island.
+        expect(why, 'the hands route is not named').toMatch(/raft|crossing|wreck/i);
+        expect(why, 'the manual route is not named').toMatch(/dry-bag|book/i);
+    });
+
+    it('the gap it describes is the one the code actually enforces', () => {
+        //  The sentence claims seamanship is what is short. Prove that is the real gate, so the
+        //  words and the rule cannot drift apart the way the old ones had.
+        const blind = createInitialState(NOW);
+        blind.player = { x: 14, y: 100 };
+        expect(canSurveyHull(blind)).toBe(false);
+
+        const taught = createInitialState(NOW);
+        taught.player = { x: 14, y: 100 };
+        taught.knowledge.domains.navigationSeamanship.technique = TUNE.boatSeamanshipTechnique;
+        expect(canSurveyHull(taught), 'seamanship alone did not open the survey').toBe(true);
+        expect(surveyBlocker(taught)).toBeNull();
     });
 });

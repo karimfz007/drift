@@ -343,7 +343,10 @@ export function boatUnderstandingNote(state: GameState): string | null {
     const byHands = handsUnderstand(state);
     if (byManual && byHands) return 'You have read it and you have done it. She makes sense to you.';
     if (byManual) return 'The dry-bag book told you where to start.';
-    if (byHands) return 'You have handled enough boats to see where to start.';
+    //  "handled enough boatS" was the same slip in the affirmative: it credited the survivor
+    //  with a fleet they never had. What they actually did is the maritime work this island
+    //  contains, so that is what it says.
+    if (byHands) return 'You have spent enough time on the water to see where to start.';
     return null;
 }
 
@@ -377,7 +380,24 @@ export function canSurveyHull(state: GameState): boolean {
 export function surveyBlocker(state: GameState): string | null {
     if (state.boat.surveyed) return 'You have already been over her, plank by plank.';
     if (rung(boatUnderstanding(state)) < rung('conceptually-suspected')) {
-        return 'You can see she is holed, but not what holds her together. Work more boats, or find someone who wrote it down.';
+        //  IT NAMES THE GAP AND THE TWO REAL ROUTES TO CLOSING IT, and it used to name
+        //  neither. The old sentence ended "Work more boats, or find someone who wrote it
+        //  down", which offered a survivor two things this world does not contain: a second
+        //  boat, and another person. Advice that cannot be taken is worse than no advice —
+        //  it reads as a bug, and a player who tries to follow it is hunting for content that
+        //  was never authored. Law 95 asks a refusal to name its enabler; an enabler that
+        //  does not exist is the law defeated by its own sentence.
+        //
+        //  WHAT IS ACTUALLY TRUE is an experience gap and nothing else: `handsUnderstand`
+        //  wants `navigationSeamanship` technique at `boatSeamanshipTechnique` (14) and a
+        //  fresh castaway starts at `knowledgeInnateFloor` (5). No tool is missing and no
+        //  person is missing. So the sentence says so, and then names the routes THIS island
+        //  really has — the three acts `tune.ts` counted when it set that 14 (the raft, the
+        //  crossing, the wreck), and the dry-bag book, which is the manual route Law 125
+        //  requires to exist beside the hands one.
+        return 'You can see she is holed, but not what holds her together.'
+            + ' You do not know hull work well enough yet — it comes from the raft, the'
+            + ' crossing and the wreck, or from the book in the dry-bag.';
     }
     return null;
 }
