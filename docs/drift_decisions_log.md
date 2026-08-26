@@ -3,6 +3,75 @@
 
 ---
 
+**D-195 · 2026-08-26 — NO REFUSAL IS EVER HALF-SAID. [[D-188]]'s law, broken by LENGTH instead of by COUNT.**
+
+---
+
+**THE REPORT.** A long-press on the boat showed *"Look her over"* and a second option reading **"hull work well enough yet - it comes from the raft. from getting"** — sliced mid-sentence.
+
+**IT IS SEGMENT-LEVEL TEXT TRUNCATION, and it is a real layout bug — but [[D-194]]'s sentence did not cause it.**
+
+```
+.verb-seg    { height: 48px; overflow: hidden; }      fixed box, hard clip
+.verb-label  { -webkit-line-clamp: 2; }               clamped  -> ellipsis
+.verb-reason { font-size: 11px; line-height: 1.2; }   NO clamp, NO ellipsis
+```
+
+The label was clamped when the box stopped growing. **The reason never was.** So a long sentence wrapped to as many lines as it liked and was then sliced at a pixel boundary by the parent's `overflow: hidden` — mid-word, with no ellipsis, because nothing told it to ellipsise. Not a template bug, not a wrapping failure: a missing clamp.
+
+**THE BOX CANNOT SIMPLY GROW.** `CIRCLE_SEGMENT_HEIGHT_PX` is 48 and the non-overlap proof in `verbCircleLayout.ts` is computed against it — that module states outright that *"a box whose height depends on how a word wrapped cannot be reasoned about here"*, and its first version certified a layout the device then measured four overlapping pairs in. The height is load-bearing, so the arithmetic decides the rest:
+
+```
+content height   48 - 8 padding    = 40px
+label, 1 line    19.2  + 1px gap
+reason, 1 line   13.2              = 33.4   fits
+reason, 2 lines  26.4              = 46.6   does not
+```
+
+**THE WHEEL CARRIES EXACTLY ONE LINE**, and a reason only prints at all above `CIRCLE_REASON_MIN_WIDTH_PX` (96), so that line holds roughly sixteen to twenty characters.
+
+---
+
+**THE SCALE, WHICH IS THE REAL FINDING. 115 of 120 refusal strings in the game exceed one line.**
+
+Only five can complete: *"The fire is out."*, *"You have no net."*, *"You have no raft."*, *"One hand holds it."*, *"It is already full."* **The refusal surface has been ~96% clipped since the box became fixed height.** [[D-194]]'s 205-character sentence is simply double the next-longest, so it made a standing bug impossible to miss rather than creating one.
+
+The boat ladder is the epicentre — 28 strings, 12 of the 23 worst — and not by accident of prose style: `boatVerbs` is the only target staging ten verbs behind `shown` gates, so its refusals do ORDERING work, and ordering needs a clause.
+
+---
+
+**THE FIX, AND IT IS [[D-188]]'S OWN MECHANISM.**
+
+The pip's existing note says it appears for TWO reasons — verbs withheld, or the wheel too NARROW to print a reason — and calls both *"the wheel cannot say everything"*. **There is a third, and it is this one:** `showReasons` is TRUE, so the wheel begins a sentence it has no room to finish, then offers no way to reach the rest. At two options there was no pip at all, so the clause naming the enabler was **unreachable** — a silent refusal wearing a visible one's clothes ([[D-042]]), and Law 95 defeated by a stylesheet.
+
+```
+the reason is clamped to one line, so truncation ellipsises instead of slicing
+a segment that prints a reason drops its label to one line, so the pair cannot exceed the box
+the pip appears when a sentence was cut, and says "read it in full" rather than "N more"
+```
+
+**MEASURED, NOT ESTIMATED.** Whether a given sentence fits depends on the font the device resolved, the width the plan chose, and where the words break — three things this layer can read off the DOM and none it should predict. `scrollHeight > clientHeight` is the browser's own answer to *"did this get clipped"*, so the rule holds for any refusal any future author writes, at any length, on any width.
+
+**THE SENTENCE WAS NOT SHORTENED**, per the brief. The wheel carries a teaser with an honest ellipsis; the full text lives one press away in the list D-188 already built for exactly this.
+
+**LADDER 2's PREMISE CHANGED AND THE CHECK SAYS SO.** It asserted `pip === null` at two options because *"there is nothing hidden behind one"*. True of VERBS, false of the sentence. It now asserts no verb is hidden while allowing the pip that carries the text.
+
+**THE INVARIANT, in its general form:** `LADDER 4c` — **if a sentence is cut, there is a way to read it.** `4b` witnesses the clipping is real, `4d` opens the pip and finds the enabler clause. Fail-then-pass: disabling the pip injection reds 4c and 4d while 4b still passes.
+
+---
+
+**A PRE-EXISTING RED, NAMED RATHER THAN QUIETLY CARRIED.** `CROSS 11`/`CROSS 12` fail on this bench. **Bisected: they fail identically at `1b3d811`, before a line of this fix, at 22.2 energy against this build's 26.7** — so this change did not cause them and slightly improves them. The cause is wall-clock: the survivor treads deep water at the stand-off at **0.47 energy per REAL second** while the harness runs an absence probe, two saves, a wheel open and three assertions. On a fast bench that is ~30 s and the reserve survives; on a loaded one it is 90+ and the return verb blocks before it can be pressed. The checks passed at 53–63 energy earlier the same day on the same code.
+
+**A COMPENSATION WAS TRIED AND BACKED OUT.** Restoring the reserve before the return leg moved 25.1 to 26.7 and no further, which located the drain INSIDE `boatWheel` rather than before it — so the patch was treating a symptom in the wrong place, and a weakened check bought nothing. Removed. The honest fix is to stop the clock or to price the leg from a known state at the moment of the press, and it belongs to whoever next owns that section rather than to a one-item display fix.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `.verb-reason`'s clamp and `.verb-seg.with-reason`'s one-line label in `index.html`; the `with-reason` class and the measured `clipped` pip trigger in `hud.ts`; `wheel()`'s clip readout and `LADDER 2`/`4b`/`4c`/`4d` in the harness.
+
+*Status: standing. The 115 over-long strings are not shortened and do not need to be — the mechanism now carries them.* — C2
+
+---
+
 **D-194 · 2026-08-26 — THE REFUSAL THAT ASKED FOR A SECOND BOAT, THE SEVEN DOMAINS NOBODY COULD SEE, AND WHAT ACTUALLY TRAINS SEAMANSHIP.**
 
 ---

@@ -15068,6 +15068,11 @@ async function main() {
                 width: segs.length ? Math.round(segs[0].getBoundingClientRect().width) : null,
                 terse: el ? el.classList.contains('terse') : null,
                 pip: document.querySelector('.panel.verb-circle .verb-more')?.textContent?.trim() ?? null,
+                //  DID ANY SENTENCE GET CUT? The browser's own answer, not an estimate.
+                clipped: segs.filter((o) => {
+                    const r = o.querySelector('.verb-reason');
+                    return r && (r.scrollHeight > r.clientHeight + 1 || r.scrollWidth > r.clientWidth + 1);
+                }).length,
             };
         });
     };
@@ -15097,8 +15102,14 @@ async function main() {
     check('LADDER 1 — the director’s exact kit: the boat offers TWO things, not ten',
         kit.segs.length === 2 && kit.segs[0] === 'inspect-boat',
         `${kit.segs.length} segs [${kit.segs.join(' | ')}] · pip ${String(kit.pip)}`);
-    check('LADDER 2 — ...and no pip: at two options there is nothing hidden behind one',
-        kit.pip === null,
+    //  LADDER 2 USED TO ASSERT `pip === null` HERE, on the grounds that at two options there
+    //  is nothing hidden behind one. That premise was true about VERBS and false about the
+    //  sentence: the refusal below is 205 characters and the segment is a fixed 48px box that
+    //  holds ONE 11px line, so the wheel was showing about a fifth of it and hard-clipping the
+    //  rest mid-word — no ellipsis, and at two options no pip either, so the clause naming the
+    //  way past the refusal was unreachable. Something IS hidden; the pip is now correct.
+    check('LADDER 2 — no VERB is hidden at two options: the pip is about the sentence, not the wheel',
+        kit.segs.length === 2 && (kit.pip === null || /full/i.test(kit.pip)),
         `pip ${String(kit.pip)} · segs [${kit.segs.join(' | ')}]`);
     //  THE HEART OF THE REPORT. `survey-hull` is refused — correctly, she cannot read a hull
     //  at technique 5 — and at two segments the wheel is 116px wide, which is where the
@@ -15109,6 +15120,41 @@ async function main() {
     check('LADDER 4 — ...and it is legible because it is WIDE: 116px, not the crowded 71px',
         kit.width !== null && kit.width >= 96 && kit.terse === false,
         `width ${kit.width}px · terse ${String(kit.terse)}`);
+    // ---- NO REFUSAL IS EVER HALF-SAID (the reported bug, as an invariant) ---------------
+    //
+    //  [[D-188]] fixed “no refusal is ever MUTE” for crowded wheels: too many verbs made the
+    //  segment too NARROW to print a reason, and the pip was the answer. This is the same law
+    //  broken by LENGTH rather than by count. The box is a fixed 48px and holds one 11px line,
+    //  so a 205-character sentence rendered as a fragment and was hard-clipped mid-word — no
+    //  ellipsis, and with only two verbs on the wheel there was no pip to carry the rest. The
+    //  half that got cut was the half naming the enabler, which is Law 95 defeated by a
+    //  stylesheet.
+    //
+    //  THE INVARIANT, and it is the general form rather than this one string: IF A SENTENCE IS
+    //  CUT, THERE IS A WAY TO READ IT. Measured off the live DOM, so it holds for any refusal
+    //  any future author writes, at any length, on any width.
+    check('LADDER 4b — the long refusal really is too big for the box (the bug, witnessed)',
+        kit.clipped > 0,
+        `${kit.clipped} clipped reason(s) at ${kit.width}px · shown "${kit.reasons.filter(Boolean)[0] ?? ''}"`);
+    check('LADDER 4c — INVARIANT: a cut sentence always has a way to be read in full',
+        kit.clipped === 0 || kit.pip !== null,
+        `${kit.clipped} clipped · pip ${String(kit.pip)}`);
+    //  ...AND THE ROUTE ACTUALLY ARRIVES. A pip that opens a list missing the sentence would
+    //  pass the invariant above and still leave the survivor without the enabler.
+    const full = await page.evaluate(async () => {
+        const pip = document.querySelector('.panel.verb-circle .verb-more');
+        if (!pip) return { opened: false, text: '' };
+        pip.click();
+        await new Promise((r) => setTimeout(r, 700));
+        const list = document.querySelector('.panel.verb-list');
+        return { opened: Boolean(list), text: list ? list.textContent : '' };
+    });
+    check('LADDER 4d — ...and the full sentence, enabler and all, is there when it opens',
+        full.opened && /dry-bag/i.test(full.text) && /getting out to the wreck/i.test(full.text),
+        `opened ${full.opened} · names the book ${/dry-bag/i.test(full.text)}`
+        + ` · names the wreck route ${/getting out to the wreck/i.test(full.text)}`);
+    await ensureNoPanel();
+
 
     // ---- THE WALL IS A KNOWLEDGE GATE, AND IT OPENS -------------------------------------
     //  The other half: prove the refusal is a rung rather than a dead end. Same kit, same

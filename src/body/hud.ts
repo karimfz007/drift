@@ -1718,12 +1718,17 @@ export function showVerbCircle(
         //  WIDTH IS DRAWN FROM THE PLAN, not from a class. The margin keeps the segment
         //  centred on its own point, which is what the overlap arithmetic assumes.
         const box = `width:${w.toFixed(1)}px; margin-left:${(-w / 2).toFixed(1)}px;`;
+        //  `with-reason` lets the CSS drop the label to one line for exactly the segments that
+        //  also print a reason, so label-plus-reason can never exceed the fixed 48px box. It is
+        //  a class rather than `:has()` because the markup is ours and a selector nobody has to
+        //  reason about is worth more than a clever one.
+        const showsReason = Boolean(o.reason) && plan.showReasons;
         return `
-            <button class="verb-seg ${o.available ? 'ready' : 'blocked'}" type="button"
+            <button class="verb-seg ${o.available ? 'ready' : 'blocked'}${showsReason ? ' with-reason' : ''}" type="button"
                     data-verb="${o.id}" ${o.available ? '' : 'disabled'}
                     style="${box} transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">
                 <span class="verb-label">${o.label}</span>
-                ${o.reason && plan.showReasons ? `<span class="verb-reason">${o.reason}</span>` : ''}
+                ${showsReason ? `<span class="verb-reason">${o.reason}</span>` : ''}
             </button>`;
     }).join('');
 
@@ -1757,6 +1762,36 @@ export function showVerbCircle(
             fade(el, () => { if (id) onPick(id); });
         });
     }
+    //  ---- THE THIRD REASON THE PIP APPEARS: A SENTENCE THAT DID NOT FIT -------------------
+    //
+    //  The note above says the pip appears for TWO reasons and calls both of them "the wheel
+    //  cannot say everything". There is a third, and it is the one that shipped a refusal cut
+    //  off mid-word: `showReasons` is TRUE — there IS room to begin a reason — and the sentence
+    //  is simply longer than the one line the box can hold. The wheel then printed a fragment
+    //  and offered no way to reach the rest, which is a silent refusal wearing a visible one's
+    //  clothes ([[D-042]]), and Law 95's enabler goes unnamed because the clause naming it was
+    //  the part that got cut.
+    //
+    //  MEASURED, NOT ESTIMATED. Whether a given sentence fits depends on the font the device
+    //  actually resolved, the segment width the plan chose, and where the words happen to
+    //  break — three things this layer can read off the DOM and none it should try to predict.
+    //  `scrollHeight > clientHeight` is the browser's own answer to "did this get clipped".
+    const clipped = Array.from(el.querySelectorAll<HTMLElement>('.verb-reason'))
+        .filter((r) => r.scrollHeight > r.clientHeight + 1 || r.scrollWidth > r.clientWidth + 1)
+        .length;
+    const hub = el.querySelector('.verb-hub');
+    if (clipped > 0 && !el.querySelector('.verb-more') && hub) {
+        //  NOT "N more", which counts verbs the arc is not showing. Nothing is being withheld
+        //  here — every verb is on the wheel — so the pip says what it actually offers.
+        const rest = document.createElement('button');
+        rest.className = 'verb-more';
+        rest.type = 'button';
+        rest.dataset.more = String(clipped);
+        rest.dataset.clipped = String(clipped);
+        rest.textContent = 'read it in full';
+        hub.appendChild(rest);
+    }
+
     const more = el.querySelector<HTMLButtonElement>('.verb-more');
     if (more) {
         //  STOP THE DISMISS. The circle closes on a `pointerdown` anywhere on itself, which is
