@@ -468,6 +468,7 @@ export interface CombineSlateView {
 /** Mirrors `GrowthReport` from the brain. This layer renders it and derives nothing. */
 export interface GrowthReportView {
     capacities: Array<{ label: string; standing: string; where: string; how: string }>;
+    domains: Array<{ label: string; standing: string; where: string; how: string; dormant: boolean }>;
     crossings: Array<{ title: string; note: string; achieved: boolean; missing: string | null }>;
     summary: string;
 }
@@ -1477,6 +1478,25 @@ function growthBody(report: GrowthReportView, skills?: Skills, readout?: Readout
             <p class="growth-how">Comes from ${c.how}.</p>
         </div>`).join('');
 
+    //  CH.2'S SEVEN DOMAINS — what the survivor has LEARNED, as opposed to what the island
+    //  has done to their body. They shipped with producers, gates and mastery multipliers and
+    //  no reading layer at all: the only way to find out where a domain stood was to walk into
+    //  a refusal and be told. That is exactly how this batch's item 1 happened.
+    //
+    //  `domain-item`, NOT `growth-item`. The harness counts `.growth-item` to assert §12's
+    //  EIGHT capacities, and the note above records that class being borrowed twice and caught
+    //  twice — [[D-113]] once, the readout rows again. Seven more would have been the third.
+    //
+    //  A DORMANT DOMAIN SHOWS NO BAND. Printing "as you landed" beside a thing the island
+    //  cannot teach reads as a score of zero on a stat sheet; the row says plainly that
+    //  nothing here has asked this of you, which is true and is not a failure.
+    const domainRows = report.domains.map((d) => `
+        <div class="domain-item standing-${d.standing.replace(/\s+/g, '-')}${d.dormant ? ' dormant' : ''}">
+            <div class="build-head"><strong>${d.label}</strong>${d.dormant ? '' : `<span class="standing-chip">${d.standing}</span>`}</div>
+            <p class="subtitle">${d.where}</p>
+            <p class="growth-how">Comes from ${d.how}.</p>
+        </div>`).join('');
+
     //  The crossings sit BELOW the capacities, because they are about what two things
     //  together buy — you cannot read them first and have them mean anything.
     const crossRows = report.crossings.map((x) => `
@@ -1514,7 +1534,10 @@ function growthBody(report: GrowthReportView, skills?: Skills, readout?: Readout
         ${readoutRowsHtml}
         <p class="subtitle growth-summary">${report.summary}</p>
         <div class="build-list">
-            ${skillRows ? `<div class="growth-divider">What you are practising</div>${skillRows}<div class="growth-divider">What it has made of you</div>` : ''}
+            ${skillRows ? `<div class="growth-divider">What you are practising</div>${skillRows}` : ''}
+            <div class="growth-divider">What you have learned</div>
+            ${domainRows}
+            <div class="growth-divider">What it has made of you</div>
             ${capacityRows}
             <div class="growth-divider">Where two things meet</div>
             ${crossRows}

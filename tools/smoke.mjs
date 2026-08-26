@@ -2130,6 +2130,11 @@ async function main() {
             //  depth-dial test. A screen that says where you are and not how to move is
             //  a readout, not a system.
             hows: document.querySelectorAll('.growth-how').length,
+            //  CH.2’S SEVEN DOMAINS — their own class, because this count is why.
+            domainRows: document.querySelectorAll('.domain-item').length,
+            domainNames: Array.from(document.querySelectorAll('.domain-item strong')).map((n) => n.textContent.trim()),
+            dormantRows: document.querySelectorAll('.domain-item.dormant').length,
+            domainsVisible: Array.from(document.querySelectorAll('.domain-item')).every((n) => n.getBoundingClientRect().height > 0),
             allVisible: rows.every((n) => n.getBoundingClientRect().height > 0),
             text,
         };
@@ -2142,6 +2147,27 @@ async function main() {
         `standings: ${growth.standings.join(', ')}`);
     check('FIX 1 — INFLUENCE: every row says what would move it',
         growth.hows >= 8, `${growth.hows} "comes from" lines`);
+    //  ---- THE SEVEN DOMAINS, which had no reading layer at all ----------------------
+    //  They shipped with producers, gates and mastery multipliers and no way in: the only way
+    //  to learn where one stood was to walk into a refusal. That is how the boat’s “you do not
+    //  know hull work well enough yet” became a dead end for a player who did not know
+    //  seamanship existed.
+    check('SKILLS 1 — all seven knowledge domains are on the screen, and drawn',
+        growth.domainRows === 7 && growth.domainsVisible,
+        `${growth.domainRows} domain row(s), drawn ${growth.domainsVisible}: [${growth.domainNames.join(' | ')}]`);
+    check('SKILLS 2 — ...and Navigation & seamanship is one of them, named in full',
+        growth.domainNames.some((n) => /seamanship/i.test(n)),
+        `names: [${growth.domainNames.join(' | ')}]`);
+    //  A domain nothing on this island trains says so, rather than showing a band that would
+    //  read as a zero on a stat sheet.
+    check('SKILLS 3 — a dormant domain is marked as such rather than scored',
+        growth.dormantRows === 1,
+        `${growth.dormantRows} dormant row(s)`);
+    //  AND THE CAPACITY COUNT IS UNDISTURBED, which is the whole reason these rows carry
+    //  their own class: `.growth-item` has been borrowed twice before and caught twice.
+    check('SKILLS 4 — the eight capacities are still eight: the new rows did not join that count',
+        growth.capacityRows === 8,
+        `${growth.capacityRows} capacities beside ${growth.domainRows} domains`);
     //  NO NUMBERS. A castaway does not know they are at 78, and the state above deliberately
     //  sets scores that would be conspicuous if any of them leaked to the screen.
     //  Guarded three times, and the third correction is the check learning what it meant.

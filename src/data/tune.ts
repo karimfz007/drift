@@ -2132,6 +2132,26 @@ export const TUNE = {
      *  Electrical & radio, or Navigation & seamanship this pass), and that is correct, not
      *  a gap to fill artificially. */
     knowledgeInnateFloor: 5,
+    /** [TUNE] The two bands a DOMAIN's standing is read in, for the skills surface.
+     *
+     *  SEPARATE FROM `standingStrongerAt`/`standingPractisedAt`, which band the CAPACITIES,
+     *  and separate on purpose: those sit on a scale whose floor is `capacityInnateFloor`
+     *  (10), and a domain's floor is 5. Reusing them would call a domain that had genuinely
+     *  moved — 8, say — "as you landed", which is the screen quietly disagreeing with the
+     *  hands. Two scales, two calibrations.
+     *
+     *  BASIS, COUNTED AGAINST THE REAL PRODUCERS rather than picked. `boatSeamanshipTechnique`
+     *  already did this arithmetic for one domain and it holds generally: technique gains
+     *  decay with headroom, so twelve events — every maritime thing the game contains, done
+     *  once — reach 19.3, and the boat's own gate sits at 14.
+     *
+     *  So 12 is "you have done this enough times to have a feel for it", and it puts the one
+     *  threshold the game already enforces (14) inside the band that says you know your way
+     *  around. 25 is well past everything-once and is where a player who has genuinely
+     *  ground a domain lands. Above that the curve flattens so hard that a fourth band would
+     *  be a number wearing a word, which is the trap `standingOf` names. */
+    domainStandingAroundAt: 12,
+    domainStandingPractisedAt: 25,
     /** [TUNE] Ch.2 — the evaluator's per-event ceiling for a Technique/Understanding delta
      *  (`evaluateLearningEvent` in knowledge.ts). First-pass numbers; revisit at the next
      *  TUNE feedback pass, the same as every other freshly introduced system this project

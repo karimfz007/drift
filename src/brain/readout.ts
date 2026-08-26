@@ -35,7 +35,7 @@
  */
 import { TUNE, realSecondsPerGameHour } from '../data/tune';
 import { airCapacityOf } from './dive';
-import { standingOf, type Standing } from './growth';
+import { domainStandingOf, standingOf, type Standing } from './growth';
 import { masteryFor } from './knowledge';
 import type { CapacityScores } from './capacities';
 import type { GameState, KnowledgeDomain } from './types';
@@ -80,7 +80,15 @@ export function handsReading(state: GameState, domain: KnowledgeDomain, secondsI
     const dayOne = speedMultiplier > 0 ? secondsItCost / speedMultiplier : secondsItCost;
     const saved = Math.max(0, dayOne - secondsItCost);
     const technique = state.knowledge?.domains?.[domain]?.technique ?? 0;
-    const standing = standingOf(technique);
+    //  BANDED ON THE KNOWLEDGE SCALE, not the capacity one. This read `standingOf`, whose
+    //  thresholds belong to capacities — floor 10, stronger at 40, practised at 70 — while a
+    //  domain starts at 5 and climbs with decaying headroom, reaching about 19 after twelve
+    //  events. So these two rows sat at "as you landed" or "finding it easier" essentially
+    //  forever, and a survivor who had felled a forest was told the axe felt no different.
+    //  The screen was disagreeing with the hands, which is the one thing this file exists to
+    //  prevent — its own header calls the first disagreement between two versions of a
+    //  reading "a confident lie".
+    const standing = domainStandingOf(technique);
     return {
         //  THE BRANCH IS ON WHAT WOULD BE PRINTED, not on whether the number is above zero.
         //  Branching on `saved <= 0` let a saving of 0.02 s through, which `secs` rounded to
@@ -88,11 +96,24 @@ export function handsReading(state: GameState, domain: KnowledgeDomain, secondsI
         //  band reading "as you landed": a sentence contradicting itself and its own chip. The
         //  unit suite missed it because a truly fresh survivor saves EXACTLY zero; the full
         //  sweep printed it off the rendered panel.
-        sentence: secs(saved) === '0'
-            ? 'No steadier than the day you washed ashore.'
-            : `${secs(saved)} seconds faster than your first — steadier with it now.`,
+        //  ...AND THE SENTENCE MUST NOT ARGUE WITH THE BAND, which is the same rule stated
+        //  above, now with a third case in it. Banding on the knowledge scale means a survivor
+        //  with a hair of technique reads "finding it easier" — correctly, they have learned
+        //  something — while the time saved still rounds to zero. "No steadier than the day
+        //  you washed ashore" beside that chip is the original defect wearing the other face.
+        //  So there are three honest states, not two: nothing yet, something the clock cannot
+        //  see, and something it can.
+        sentence: secs(saved) !== '0'
+            ? `${secs(saved)} seconds faster than your first — steadier with it now.`
+            : standing === 'as you landed'
+                ? 'No steadier than the day you washed ashore.'
+                : 'Not enough to show in the time yet, but it is starting to come.',
         standing,
-        progress: Math.min(1, Math.max(0, (technique - TUNE.capacityInnateFloor) / Math.max(1, 100 - TUNE.capacityInnateFloor))),
+        //  ...and measured from the KNOWLEDGE floor for the same reason. Dividing from
+        //  `capacityInnateFloor` (10) made the first five points of every domain register as
+        //  zero progress — a bar that cannot leave the left edge until a survivor is already
+        //  a third of the way to the boat’s own gate.
+        progress: Math.min(1, Math.max(0, (technique - TUNE.knowledgeInnateFloor) / Math.max(1, TUNE.knowledgeScoreMax - TUNE.knowledgeInnateFloor))),
         noticeable: saved >= TUNE.readoutNoticeableSeconds,
     };
 }

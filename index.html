@@ -704,6 +704,19 @@
         .growth-item.standing-practised { border-color: var(--good); }
         .growth-item.cross-item { border-style: dashed; }
         .growth-item.cross-item.crossed { border-style: solid; border-color: var(--good); }
+        /*  CH.2'S SEVEN DOMAINS. Deliberately the same box as a capacity — they sit in one
+            list and a player should not have to learn two visual languages to read one tab —
+            but its OWN class, because the harness counts `.growth-item` to assert §12's eight
+            capacities and this file has already been caught twice by that count.
+            A dormant domain is dimmed further and carries no band: nothing on this island
+            trains it yet, and a chip reading "as you landed" beside it would be a zero on a
+            stat sheet rather than the honest sentence in the row.  */
+        .domain-item { border: 1px solid var(--edge); border-radius: 10px; padding: 10px 14px; }
+        .domain-item .build-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+        .domain-item .growth-how { font-size: 11px; opacity: 0.7; margin: 6px 0 0; font-style: italic; }
+        .domain-item.standing-as-you-landed { opacity: 0.72; }
+        .domain-item.standing-practised { border-color: var(--good); }
+        .domain-item.dormant { opacity: 0.45; border-style: dashed; }
         .growth-divider { font-size: 12px; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.08em; margin: 6px 0 -2px; }
         .growth-summary { font-style: italic; }
         .growth-btn { width: 100%; margin: 4px 0 2px; }

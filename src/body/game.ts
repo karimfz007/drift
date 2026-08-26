@@ -114,6 +114,7 @@ import {
     tryCombine,
     ALL_MATERIAL_KINDS,
     growthReport,
+    DOMAIN_LABEL_SHORT,
     previewAt,
     siteIsViable,
     type MovableKind,
@@ -398,16 +399,10 @@ const KIND_LABEL: Partial<Record<NodeKind, string>> = {
     salvage: 'Beach find'
 };
 
-/** Plain names for the knowledge domains, for anything the player actually reads. */
-const DOMAIN_LABEL: Record<string, string> = {
-    survivalcraft: 'Survivalcraft',
-    foragingMedicine: 'Foraging',
-    harvestingFabrication: 'Harvesting',
-    construction: 'Construction',
-    mechanicalSystems: 'Mechanics',
-    electricalRadio: 'Electrics',
-    navigationSeamanship: 'Seamanship'
-};
+//  The local DOMAIN_LABEL map stood here. It was the SECOND label map for one set of seven
+//  things — the skills surface needed long names and this had short ones — and two maps for
+//  one vocabulary is how a screen comes to call a domain by a name no other screen uses.
+//  Both registers now live in `growth.ts` beside the rows that read them.
 
 export class Game {
     private engine: Engine;
@@ -3061,7 +3056,7 @@ export class Game {
         //  noise, and a number that ticks constantly stops being read.
         if (result.learned) {
             const crossed = Math.floor(result.learned.techniqueAfter) > Math.floor(result.learned.techniqueBefore);
-            if (crossed) this.floatText(`${DOMAIN_LABEL[result.learned.domain] ?? 'skill'} sharpens`);
+            if (crossed) this.floatText(`${DOMAIN_LABEL_SHORT[result.learned.domain] ?? 'skill'} sharpens`);
         }
         //  DROP 6 — THE READOUT, world first (Law 26). "Skill sharpens" says something HAPPENED
         //  and nothing about WHAT; this says what the hands actually bought, in the seconds the
