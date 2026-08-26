@@ -573,8 +573,13 @@ describe('THE WHEEL STILL FITS WHAT SHE CAN DO', () => {
                                     const stand = standOffPoint(DESTINATIONS.wreck);
                                     s.player = { x: stand.x, y: stand.y };
                                 }
+                                //  `verbsFor` already drops what is not SHOWN and strips the
+                                //  field, so what comes back is the wheel's own list. Filtering
+                                //  on `v.shown` here was both redundant and a type error — and
+                                //  it reached CI because a grep on the gate's output hid the
+                                //  typecheck red from the run that was supposed to catch it.
                                 const open = verbsFor(s, 'boat')
-                                    .filter((v) => v.shown !== false && v.available)
+                                    .filter((v) => v.available)
                                     .map((v) => v.id);
                                 if (open.length > most) { most = open.length; worst = open; }
                             }
