@@ -1044,7 +1044,14 @@ describe('A REFUSAL MAY NOT NAME AN ENABLER THIS WORLD DOES NOT CONTAIN', () => 
         //  The situation, in the player's language: an experience gap, not a missing thing.
         expect(why).toMatch(/hull work/i);
         //  ...and BOTH routes Law 125 requires to exist, each one real on this island.
-        expect(why, 'the hands route is not named').toMatch(/raft|crossing|wreck/i);
+        expect(why, 'the hands route is not named').toMatch(/raft/i);
+        expect(why, 'the wreck is not named').toMatch(/wreck/i);
+        //  AND IT MAY NOT NAME THE BOAT CROSSING, which trains nothing. `runCrossing` records
+        //  no learning event, so listing it here would be the same defect this whole test
+        //  exists for — an act the player can do forever without moving the thing the
+        //  sentence says it moves. If the crossing is ever wired to `recordTrying`, this
+        //  assertion should be deleted in the same commit, deliberately.
+        expect(why, 'names the boat crossing, which trains no seamanship').not.toMatch(/crossing/i);
         expect(why, 'the manual route is not named').toMatch(/dry-bag|book/i);
     });
 

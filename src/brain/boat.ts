@@ -395,9 +395,16 @@ export function surveyBlocker(state: GameState): string | null {
         //  really has — the three acts `tune.ts` counted when it set that 14 (the raft, the
         //  crossing, the wreck), and the dry-bag book, which is the manual route Law 125
         //  requires to exist beside the hands one.
+        //  EVERY CLAUSE IS A PRODUCER THAT ACTUALLY FIRES, checked against the call sites
+        //  rather than against the story. The first draft of this sentence said "the raft, the
+        //  crossing and the wreck" — and `runCrossing`, the boat crossing Session 3 had just
+        //  built, records no learning event at all. Naming it would have been this same bug
+        //  again, one revision later: advice that cannot be taken, in the very sentence
+        //  written to stop giving it. The raft is `craftRaft`/`boardRaft`, getting out to the
+        //  wreck is `markWreckIfReached`, and working it is the wreck and dive parts.
         return 'You can see she is holed, but not what holds her together.'
-            + ' You do not know hull work well enough yet — it comes from the raft, the'
-            + ' crossing and the wreck, or from the book in the dry-bag.';
+            + ' You do not know hull work well enough yet — it comes from the raft, from'
+            + ' getting out to the wreck and working it, or from the book in the dry-bag.';
     }
     return null;
 }

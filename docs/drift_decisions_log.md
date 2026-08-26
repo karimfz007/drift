@@ -3,6 +3,100 @@
 
 ---
 
+**D-194 · 2026-08-26 — THE REFUSAL THAT ASKED FOR A SECOND BOAT, THE SEVEN DOMAINS NOBODY COULD SEE, AND WHAT ACTUALLY TRAINS SEAMANSHIP.**
+
+---
+
+**1 · A REFUSAL MAY NOT NAME AN ENABLER THIS WORLD DOES NOT CONTAIN.**
+
+The boat's survey gate said, to every fresh survivor who touched her:
+
+> *"You can see she is holed, but not what holds her together. Work more boats, or find someone who wrote it down."*
+
+**Not a template bug — a hand-written literal**, and the director's instinct that it read like one is the finding. It offered two things this world does not have: **a second boat, and another person.** Law 95 requires a refusal to name its enabler; **an enabler that does not exist defeats the law with its own sentence.** Worse than silence, because a player who tries to follow it goes hunting for content nobody authored.
+
+What is actually true is an experience gap and nothing else. `handsUnderstand` wants `navigationSeamanship` technique at `boatSeamanshipTechnique` (14); a fresh castaway starts at `knowledgeInnateFloor` (5). No tool is missing. No person is missing.
+
+> *"You can see she is holed, but not what holds her together. You do not know hull work well enough yet — it comes from the raft, from getting out to the wreck and working it, or from the book in the dry-bag."*
+
+The same slip lived in the affirmative one function away — *"You have handled enough boats"* credited a survivor with a fleet — and is now *"spent enough time on the water"*.
+
+**EVERY CLAUSE IS A PRODUCER THAT ACTUALLY FIRES**, checked against the call sites rather than the story. The first draft of the replacement said *"the raft, the crossing and the wreck"* — and [[D-193]]'s boat crossing **records no learning event at all.** That would have been this same bug one revision later: advice that cannot be taken, inside the sentence written to stop giving it. Caught before it shipped, and the test now forbids naming the crossing until `runCrossing` earns it.
+
+**GUARDED AS A CLASS, NOT A STRING.** A sweep over every reason and label the boat can show, across four states and the whole ladder, asserting none promises a second boat or another person. Reverting the wording reds three checks and the sweep names four offending strings.
+
+---
+
+**2 · THE SEVEN DOMAINS WERE THE FOURTH SYSTEM BUILT WITH NO ENTRY POINT.**
+
+The real, current list — confirmed rather than assumed — is **seven**, each carrying three axes:
+
+```
+survivalcraft · foragingMedicine · harvestingFabrication · construction
+mechanicalSystems · electricalRadio · navigationSeamanship
+```
+
+There is no bare `seamanship`; it is `navigationSeamanship`. A Skills tab already existed and showed readout rows, two legacy skills, eight capacities and three crossings — **and not one of the seven.** `growth.ts`'s own header calls the capacities *"the third time this project has built a whole system with no entry point"*. The domains are the fourth, and item 1 is what that costs: a survivor met a refusal about seamanship with no way to learn that seamanship was a thing they had.
+
+**AND THE TWO ROWS THAT DID EXIST WERE FLAT-LINED.** `handsReading` banded knowledge technique with `standingOf` — thresholds belonging to capacities, floor 10, stronger at 40, practised at 70 — and divided progress from `capacityInnateFloor` on a scale whose floor is 5.
+
+```
+technique climbs   1.35 × (1 − t/100) per event
+twelve events      every maritime act the game contains, done once  ->  ~19
+capacity bands     "noticeably stronger" at 40 · "practised" at 70
+```
+
+So **every domain read as barely-moved forever**, and the first five points of every one registered as zero progress. A survivor who had felled a forest was told the axe felt no different — the screen disagreeing with the hands, which `readout.ts`'s own header calls *"a confident lie"*.
+
+`domainStandingOf` is calibrated for knowledge (12 / 25, counted the way `boatSeamanshipTechnique` was), and progress divides from the knowledge floor. **Same four band words** — a fifth vocabulary on a screen that already has four would be its own defect. A third sentence was needed too: a survivor whose band has moved but whose saving still rounds to zero is no longer told they are *"no steadier"*, which the existing readout test caught the moment the calibration changed.
+
+**NO NUMBERS**, per the panel's own law — *"a survivor knows what they can DO, not what integer sits behind it"*. A **dormant** domain (`electricalRadio`, which nothing trains) says so plainly and carries no band, because a chip reading "as you landed" beside a thing this island cannot teach is a zero on a stat sheet. **That claim is asserted against the shipped source**, so the day something feeds it, the panel's honesty fails rather than quietly lying.
+
+**TECHNIQUE IS THE AXIS SHOWN, and `adaptation` is why that is not a compromise:** it has no producer anywhere in `src/`. Three columns would have meant a permanently frozen one for all seven domains.
+
+**ADDITIVE TO LAW 234, NOT A REPLACEMENT.** The growth is still felt without opening anything — mastery speeds the work, the gate opens, the refusal changes its sentence. This answers the different question a player asks afterwards: *where do I stand, and what moves this?*
+
+---
+
+**3 · WHAT TRAINS SEAMANSHIP — REPORTED, NOT WIRED.**
+
+The complete current producer list, by call site:
+
+```
+PRE-GATE, and therefore the only things that can open the boat        craftRaft · boardRaft
+                                                                     markWreckIfReached (once)
+                                                                     6 wreckpart · 4 divepart nodes
+POST-GATE, and therefore unable to help you reach it                  surveyHull · repairHullStructure
+                                                                     sealHull · runFloatTest · runFerry
+```
+
+**The boat's own work cannot open the boat's gate** — all five of those sit downstream of a survey that already demands the understanding. And **`developFromPaddling` feeds capacities only**; it takes and returns `CapacityScores` and never sees `GameState`, so it structurally cannot touch a knowledge domain. Paddling a raft for an hour trains no seamanship at all.
+
+**THE GRAMMAR THAT CONSTRAINS ANY NEW TRAINER IS PROSE, NOT CODE.** `swimTrainingContext`'s three legs govern **capacities only**; `recordTrying` has no context, no veto, no cooldown and no per-act gate. Its only anti-grind is headroom decay, which never refuses a cheap act. So a candidate cannot violate the grammar literally — only the principle, and the binding sentence is `water.ts`'s: *"crediting it would make the cheapest, safest act the best trainer, which is the shape of every grind this project has refused."*
+
+**CANDIDATES, in order, all one-shot or hard-costed so none opens a grind:**
+
+1. **`runCrossing`** — the most seamanship-shaped act in the game, and it records nothing while the far weaker tethered ferry does. This is a gap in [[D-193]], my own work.
+2. **`learnLoad`** (board-boat) — one-shot; feeling a hull's trim under weight.
+3. **`moorBoat`** — one-shot and costed; a painter made fast is marlinespike seamanship by name.
+4. **`dewaterBoat` / `shoreUpBoat`** — the two boat verbs the domain's own header silently omits.
+
+**AVOID:** swimming and diving, which would double-credit spans already training two capacities each and whose §12 columns do not mention seamanship; and per-tick raft paddling, which is the grind shape by construction.
+
+**THREE DEFECTS FOUND IN PASSING, REPORTED RATHER THAN FIXED:**
+
+- **`boardRaft` is a free, uncosted, unlimited-repeat seamanship producer.** Step on, step off, repeat: **eight boardings crosses `boatSeamanshipTechnique`** without ever leaving the beach. The cheapest, safest act is currently the best trainer — the exact shape `water.ts` refuses.
+- **`knowledge.ts` says fishing trains Survivalcraft *"through `recordTrying` at each method's own call site"*. `fishing.ts` contains no `recordTrying` at all.** `tune.ts` says the opposite and is right. Two comments, one false.
+- **`tune.ts`'s basis note undercounts its own producers** — it says four; there are ten. `boardRaft` predates the count and the five boat verbs postdate it, so the arithmetic that justified the value 14 no longer describes the game.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: the survey refusal and the understanding note; the boat's class-wide refusal sweep; `DomainLine`/`domainLines`/`domainStandingOf`/`DOMAIN_LABEL`/`DOMAIN_LABEL_SHORT`/`DORMANT_DOMAINS` in `growth.ts`; `domains` on `GrowthReport`; the knowledge-scale recalibration of `handsReading` and its third sentence; the `.domain-item` rows and their styling. **DESIGN-BINDING** for §3: the candidate trainers and the three defects are named and unwired, pending the director's call.
+
+*Status: standing. Item 3 is investigation only, per the brief.* — C2
+
+---
+
 **D-193 · 2026-08-25 — SESSION 3, THE CROSSING. She carries you most of the way, you swim the rest, and — for the first time — she brings you home.**
 
 ---
