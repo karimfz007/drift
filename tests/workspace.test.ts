@@ -26,6 +26,7 @@ import { describe, expect, it } from 'vitest';
 import {
     buildWorkbench, buildWorkmat, canBuildWorkbench, canBuildWorkmat, benchHasRacked,
     createInitialState, wearBenchJoints,
+    buildShelter, buildStorage, makerBlocker, repairStructure,
 } from '../src/brain/state';
 import { atWorkspace, canExperimentWith, combineSlate, recipeDisplayName, relationsFor } from '../src/brain/experiment';
 import { allRecipes } from '../src/brain/recipes';
@@ -42,6 +43,13 @@ function ready(): GameState {
     s.player = { x: 0, y: 0 };
     s.inventory.wood = 40; s.inventory.stone = 40; s.inventory.fiber = 40;
     s.inventory.sharpblade = 5; s.inventory.stonehammer = 1;
+    //  SESSION 4 — AND THE HANDS TO FRAME WITH. The bench asks for `construction` technique
+    //  now, not only for timber, so a fixture that stocked a pack and nothing else described a
+    //  survivor who could not build the thing this file is about. Seeded rather than ground out
+    //  through four real builds, because every test below is about the LADDER and not about how
+    //  the joinery was earned — `the gate is real` and `it is reachable by ordinary building`
+    //  below prove that half directly, through the shipped builders and nothing else.
+    s.knowledge.domains.construction.technique = TUNE.benchJoineryTechnique;
     return s;
 }
 
@@ -293,7 +301,11 @@ describe('REACHABILITY — the gate and its enabler shipped together (D-090/D-09
     });
 
     it('a survivor who lands with nothing can reach the third relation through real builders', () => {
-        //  End to end, through the shipped functions and nothing else: gather, lay, frame.
+        //  End to end, through the shipped functions and nothing else: gather, lay, raise,
+        //  store, frame. SESSION 4 ADDED TWO RUNGS TO THIS WALK and the law is unchanged — the
+        //  bench now asks for `construction` technique as well as timber, so the proof has to
+        //  show a survivor EARNING it rather than being handed it. Every builder used here
+        //  works bare-handed or on the ground, which is why the gate cannot lock itself.
         const s = createInitialState(NOW);
         s.player = { x: 0, y: 0 };
         expect(relationsFor(s)).toBe(TUNE.relationsAtW0);
@@ -303,9 +315,21 @@ describe('REACHABILITY — the gate and its enabler shipped together (D-090/D-09
         expect(canBuildWorkmat(s)).toBe(true);
         expect(buildWorkmat(s, 0, 0)).toBe(true);
 
+        //  ...and a survivor who has laid one mat has not yet framed anything square.
         s.inventory.wood = TUNE.workbenchWoodCost;
         s.inventory.stonehammer = 1;
-        expect(canBuildWorkbench(s)).toBe(true);
+        expect(canBuildWorkbench(s), 'a single mat framed a bench').toBe(false);
+
+        //  The other two things there are to build, both reachable with the hands they landed
+        //  with: a shelter rests on the ground, a crate is two materials.
+        s.inventory.wood += TUNE.shelterWoodCost + TUNE.storageWoodCost;
+        s.inventory.stone += TUNE.shelterStoneCost + TUNE.storageStoneCost;
+        s.inventory.fiber += TUNE.shelterFiberCost;
+        expect(buildShelter(s, 6, 0), 'the shelter refused a stocked survivor').toBe(true);
+        expect(buildStorage(s, -6, 0), 'the crate refused a stocked survivor').toBe(true);
+
+        s.player = { x: 0, y: 0 };
+        expect(canBuildWorkbench(s), 'three real builds did not earn the joinery').toBe(true);
         expect(buildWorkbench(s)).toBe(true);
         expect(relationsFor(s)).toBe(TUNE.relationsAtBench);
     });
@@ -333,5 +357,114 @@ describe('save — a v34 save migrates to v35 with no workspace', () => {
         s.workspace.jointWear = 0.5;
         const round = deserialize(serialize(s, NOW));
         expect(round!.state.workspace).toEqual(s.workspace);
+    });
+});
+
+describe('SESSION 4 — THE BENCH ASKS FOR HANDS, NOT ONLY TIMBER', () => {
+    /**
+     * A bench is the first thing on this island that is JOINED rather than piled, lashed or
+     * propped — legs framed square to a surface and pegged true enough to hold work steady.
+     * Six timber and a hammer never said that: it is what a lean-to costs, and a survivor who
+     * had built nothing could frame a cabinetmaker's bench on their first afternoon.
+     */
+    it('THE GATE IS REAL: a stocked survivor who has built nothing cannot frame one', () => {
+        const s = ready();
+        s.knowledge.domains.construction.technique = TUNE.knowledgeInnateFloor;
+        expect(buildWorkmat(s, 0, 0)).toBe(true);
+        expect(canBuildWorkbench(s), 'timber alone framed a bench').toBe(false);
+        expect(buildWorkbench(s), 'and it built one anyway').toBe(false);
+        //  ...and it took nothing on the way out. A refusal that spent six wood is a trap.
+        expect(s.inventory.wood).toBe(40 - TUNE.workmatFiberCost * 0);
+        expect(s.workspace.tier).toBe('mat');
+    });
+
+    it('...and the refusal names the real gap, and only work that exists here', () => {
+        const s = ready();
+        s.knowledge.domains.construction.technique = TUNE.knowledgeInnateFloor;
+        buildWorkmat(s, 0, 0);
+        const why = makerBlocker(s, 'workbench') ?? '';
+        //  It says what is short — the hands, not the timber.
+        expect(why).toMatch(/finer work|framed square/i);
+        //  ...and names acts this island really contains and that really train `construction`.
+        expect(why, 'names no real way to close the gap').toMatch(/shelter|store|mend/i);
+        //  D-194's law: no enabler that does not exist. There is one survivor and one island.
+        expect(why).not.toMatch(/\b(someone|somebody|anyone|practise|practice)\b/i);
+    });
+
+    it('IT IS REACHABLE BY ORDINARY BUILDING — no deadlock, through real builders only', () => {
+        //  THE SEQUENCING PROOF. Every producer of `construction` used here works bare-handed
+        //  or on the ground, before any bench exists — so the bench can never be locked behind
+        //  itself. Technique climbs 1.35 x (1 - t/100) from a floor of 5: 6.28, 7.55, 8.80,
+        //  which is why the threshold is the THIRD build.
+        const s = ready();
+        s.knowledge.domains.construction.technique = TUNE.knowledgeInnateFloor;
+        s.player = { x: 0, y: 0 };
+
+        expect(buildWorkmat(s, 0, 0), 'the mat refused').toBe(true);            // 1
+        s.player = { x: 0, y: 0 };
+        expect(canBuildWorkbench(s), 'one build opened it').toBe(false);
+        expect(buildShelter(s, 6, 0), 'the shelter refused').toBe(true);        // 2
+        s.player = { x: 0, y: 0 };
+        expect(canBuildWorkbench(s), 'two builds opened it').toBe(false);
+        expect(buildStorage(s, -6, 0), 'the store refused').toBe(true);         // 3
+
+        expect(s.knowledge.domains.construction.technique)
+            .toBeGreaterThanOrEqual(TUNE.benchJoineryTechnique);
+        s.player = { x: 0, y: 0 };
+        expect(canBuildWorkbench(s), 'three real builds did not open the bench').toBe(true);
+        expect(buildWorkbench(s)).toBe(true);
+        expect(s.workspace.tier).toBe('bench');
+    });
+});
+
+describe('SESSION 4 — THE SUCCESSOR CASE, which is where the gate bites hardest', () => {
+    /**
+     * `succession.ts` is explicit: **knowledge does not transfer.** A new survivor starts every
+     * domain at the innate floor and inherits the island's structures STANDING — so the body
+     * most likely to meet the joinery refusal is one holding a hammer beside a shelter and a
+     * store they cannot build, because both already exist and both builders refuse a second.
+     *
+     * That is the exact shape [[D-194]] was written for: advice that cannot be taken. It is
+     * also the exact shape a deadlock would take, so both halves are asserted here.
+     */
+    function inheritor(): GameState {
+        const s = ready();
+        //  The island as it was left, and hands as new as the day they washed up.
+        expect(buildShelter(s, 6, 0)).toBe(true);
+        expect(buildStorage(s, -6, 0)).toBe(true);
+        s.knowledge.domains.construction.technique = TUNE.knowledgeInnateFloor;
+        s.player = { x: 0, y: 0 };
+        return s;
+    }
+
+    it('the refusal does not tell them to build what is already standing', () => {
+        const s = inheritor();
+        buildWorkmat(s, 0, 0);
+        const why = makerBlocker(s, 'workbench') ?? '';
+        expect(why, 'still says what is short').toMatch(/finer work/i);
+        //  IMPOSSIBLE ADVICE, by name: both of these refuse for this survivor.
+        expect(why, 'told a successor to raise a shelter that is already up').not.toMatch(/raise a shelter/i);
+        expect(why, 'told a successor to build a store that is already built').not.toMatch(/build a store/i);
+        //  ...and it names the one thing that IS open to them.
+        expect(why).toMatch(/mend/i);
+    });
+
+    it('...and they are not deadlocked: mending is repeatable and decay always supplies it', () => {
+        const s = inheritor();
+        expect(buildWorkmat(s, 0, 0)).toBe(true);
+        expect(canBuildWorkbench(s), 'a fresh successor framed a bench').toBe(false);
+
+        //  Weather does this on its own — `reconcile` decays durability every game hour. Done
+        //  directly here so the test asserts the RECOVERY and not the clock.
+        for (let i = 0; i < 12 && !canBuildWorkbench(s); i++) {
+            s.shelter.durability = TUNE.structureDurabilityMax - 5;
+            s.storage.durability = TUNE.structureDurabilityMax - 5;
+            s.player = { x: s.shelter.x, y: s.shelter.y };
+            repairStructure(s, 'shelter');
+            s.player = { x: s.storage.x, y: s.storage.y };
+            repairStructure(s, 'storage');
+            s.player = { x: 0, y: 0 };
+        }
+        expect(canBuildWorkbench(s), 'a successor could never reframe the bench').toBe(true);
     });
 });

@@ -78,7 +78,7 @@ describe('what Combine charges is what the maker charges', () => {
         //  Not built here: `canCraftRaft` needs a shore, which is a body-side fact. The cost
         //  table is still asserted, because `drawIntoHands` uses it before the maker runs.
         const cost = recipeCost('raft');
-        expect(cost.map((c) => c.kind).sort()).toEqual(['coconut', 'fiber', 'wood']);
+        expect(cost.map((c) => c.kind).sort()).toEqual(['fiber', 'pontoon', 'wood']);
         for (const c of cost) expect(c.amount).toBeGreaterThan(0);
     });
 

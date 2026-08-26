@@ -157,6 +157,7 @@ import {
     boardRaft,
     canBoardRaft,
     craftRaft,
+    craftPontoon,
     leaveRaft,
     leaveRaftIsIntoWater,
     raftBlocker,
@@ -1344,6 +1345,11 @@ export class Game {
         //  the blade; without it the slate would show "Knapped blade" as attemptable and
         //  tapping Combine would silently do nothing.
         knap: knapSharpblade,
+        //  SESSION 4 — THE PONTOON. A hand-held maker like the rest: `craftPontoon` spends its
+        //  own timber, fibre and blade and leaves the hammer alone. No bench check here or in
+        //  the maker — four staged materials cannot be assembled anywhere but a bench, so
+        //  `canExperimentWith` has already made that decision before this map is reached.
+        pontoon: craftPontoon,
         //  SESSION 1 — THE BENCH IS A MAKER, NOT A SITING, and that is the whole of [[D-165]]'s
         //  "upgrade in place" applied to the workspace ladder. `workmat` is absent from this
         //  map on purpose: it is sited (it is where the work will happen, so the survivor

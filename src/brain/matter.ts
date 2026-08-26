@@ -79,6 +79,9 @@ const TRANSFORM: Record<MaterialKind, Transformation> = {
     wiring: 'loosened',
     glass: 'cracked',
     medicine: 'contaminated',
+    //  SESSION 4 — a float that fails a combine SPLITS, which is what a hollowed log does when
+    //  it is worked wrong: the wall is thin by design and there is not much left to give.
+    pontoon: 'cracked',
     //  DROP 1 — a failed attempt on meat spoils it. Matter comes out CHANGED (Law 128).
     meat: 'contaminated',
     //  COOKING does not make meat immortal, only slower. Cooked meat left too long is
@@ -250,6 +253,8 @@ const LABEL: Record<MaterialKind, string> = {
     metal: 'The plate', wiring: 'The cable', glass: 'The glass', medicine: 'The medicine',
     //  ITEM 3 (this batch) — practically unreachable, same reason `TRANSFORM`'s entry above is.
     stonehammer: 'The hammer',
+    //  SESSION 4 — a float. It is timber, so it fails the way timber fails.
+    pontoon: 'The float',
 };
 
 const VERB: Record<Transformation, string> = {

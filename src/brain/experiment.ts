@@ -520,7 +520,13 @@ export function recipeCost(recipeId: string): Array<{ kind: MaterialKind; amount
         case 'raft': return [
             { kind: 'wood', amount: TUNE.raftWoodCost },
             { kind: 'fiber', amount: TUNE.raftFiberCost },
-            { kind: 'coconut', amount: TUNE.raftCoconutCost }];
+            { kind: 'pontoon', amount: TUNE.raftFloatCost }];
+        //  THE PONTOON lists its TIMBER, FIBRE AND BLADE and not its hammer — the same catalyst
+        //  reasoning the bench above already carries. Four slots, three costs.
+        case 'pontoon': return [
+            { kind: 'wood', amount: TUNE.pontoonWoodCost },
+            { kind: 'fiber', amount: TUNE.pontoonFiberCost },
+            { kind: 'sharpblade', amount: TUNE.pontoonSharpbladeCost }];
         case 'fishingline': return [
             { kind: 'fiber', amount: TUNE.fishingLineFiberCost },
             { kind: 'sharpblade', amount: TUNE.fishingLineBladeCost }];
@@ -1359,6 +1365,10 @@ function blueprintNameFor(recipeId: string): string {
         case 'storage': return 'Storage crate';
         case 'stonehammer': return 'Stone hammer';
         case 'knap': return 'Knapped blade';
+        //  SESSION 4 — named for what it physically IS, like every entry here. Not
+        //  "Raft float": it is a hollowed log before it is anything else, and it is the raft
+        //  that needs IT rather than the other way round.
+        case 'pontoon': return 'Hollowed float';
         //  SESSION 1 — the two rungs of the workspace ladder that are built. Named for what
         //  they physically ARE, never for the capability they carry: "Workbench", never
         //  "Workbench (3 slots)". Law 219/167 is explicit that a bench opens operations and

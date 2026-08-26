@@ -53,11 +53,29 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     //
     //  So the property gets named. `food` stays structurally inert exactly as it was, and the
     //  raft's signature ({woodwork, textile, buoyant}) is unique because the tag is.
-    coconut: { primary: 'organic', tags: ['food', 'buoyant'] },
+    //  SESSION 4 — `buoyant` IS GONE FROM THE FRUIT, and this is not a retraction of the note
+    //  above. That note is still right about WHY the tag exists: buoyancy is a property of a
+    //  material and not of the recipe that wants it, and `food` had to stay structurally inert.
+    //  What was wrong was the CONTENT, not the model — a whole coconut is something you drink,
+    //  and lashing four of them under a deck read as a placeholder because it was one.
+    //
+    //  The float slot now has a thing built for it (`pontoon`), so the fruit goes back to being
+    //  fruit. Nothing else in the game read `buoyant`: `raft-float` was its only consumer, so
+    //  this is contained to the one slot it was invented for.
+    coconut: { primary: 'organic', tags: ['food'] },
     //  THE EMPTIED HUSK. Organic and buoyant like the whole nut, and NOT food — the food was
     //  the part that got drunk. No craft tag yet: it is a by-product, and what it becomes is a
     //  later question than this one.
-    shell: { primary: 'organic', tags: ['buoyant'] },
+    //  AND THE HUSK LOSES IT TOO, which is the harder half of the same call and is worth being
+    //  honest about: an emptied husk really does float, so this tag was TRUE. It is removed
+    //  anyway, because leaving it would have made the pontoon optional — a survivor could drink
+    //  two coconuts and float a raft on the husks, and the bench gate the raft is supposed to
+    //  sit behind would open for anyone with a thirst. A gate with a free bypass is decoration.
+    //
+    //  What the husk keeps is everything it already was: a cup ([[D-190]]/[[D-191]] read it
+    //  through `vessel.ts`, which never asked the tag system anything), a by-product, and no
+    //  craft tag — exactly the state its own note describes.
+    shell: { primary: 'organic', tags: [] },
     shellfish: { primary: 'organic', tags: ['food'] },
     /** Knapped from raw stone (Ch.1 v3) — a refined material, not gathered directly. */
     sharpblade: { primary: 'mineral', tags: ['blade'] },
@@ -103,7 +121,19 @@ export const MATERIAL_PROFILE: Record<MaterialKind, MaterialProfile> = {
     //  here on purpose: nothing asks a slot for `family: 'mineral'` and means "any mineral
     //  OR the hammer", the way `masonry` genuinely is shared. `tool` is the tag every recipe
     //  that wants this specific catalyst asks for, and today only knap's does.
-    stonehammer: { primary: 'mineral', tags: ['tool'] }
+    stonehammer: { primary: 'mineral', tags: ['tool'] },
+    /**
+     * THE PONTOON — `buoyant` AND NOTHING ELSE, and the omission is the design.
+     *
+     * It is made of timber, so `woodwork` is the tempting second tag and it would be a real
+     * defect. A pontoon that counted as woodwork could fill the raft's own DECK slot, or the
+     * torch's handle, or the backpack's frame — a survivor would be able to build a raft out of
+     * two floats and no deck, and the wheel would start offering a torch made of boat parts.
+     * The tag says what a thing is FOR in a recipe, not what it was cut from.
+     *
+     * `shell` is the precedent and it carried exactly one tag for exactly this reason.
+     */
+    pontoon: { primary: 'organic', tags: ['buoyant'] }
 };
 
 /** What a recipe slot requires: a family, a tag, or both (either one satisfies it). */

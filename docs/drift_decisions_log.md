@@ -3,6 +3,83 @@
 
 ---
 
+**D-196 · 2026-08-26 — THE PONTOON: THE BENCH'S FIRST FOUR-PART JOB, THE FRUIT GOES BACK TO BEING FRUIT, AND THE BENCH ASKS FOR HANDS.**
+
+---
+
+**1 · THE RAFT WAS FLOATED ON FOOD, AND THAT WAS A PLACEHOLDER.**
+
+`raft-float` wanted `{ tag: 'buoyant' }`, and the only things carrying it were a coconut and its emptied husk. The tag itself was right — [[D-066]]'s own note explains why buoyancy is a property of a MATERIAL and not of the recipe that wants it, after a first cut using `food` let wood + fibre + berries resolve to a raft. **What was wrong was the content, not the model.**
+
+**THE PONTOON IS THE ONLY FOUR-SLOT RECIPE IN THE GAME, and that is the mechanism rather than a flourish.**
+
+```
+pontoon-log     { tag: 'woodwork' }  4 wood        the log
+pontoon-caulk   { tag: 'textile'  }  2 fibre       plugs at both ends
+pontoon-hollow  { tag: 'blade'    }  1 sharpblade  CONSUMED, as the axe consumes its own
+pontoon-driver  { tag: 'tool'     }  1 hammer      CATALYST, never spent
+```
+
+**FOUR SLOTS IS THE ONLY LEGAL WAY TO REQUIRE THE BENCH.** `relationsFor` gives 2 bare-handed, 3 at a mat, 4 at a sound bench, and `canExperimentWith` refuses a pile bigger than that — so a four-material recipe cannot be staged anywhere else. Law 167/219 forbids every alternative outright: *a workbench opens operations, never recipes*, which rules out a `station` field on `Recipe`, a `makerBlocker` case, and a bench-side verb alike. **Arity is not a trick for gating; arity IS the gate.** There is deliberately no bench check inside `craftPontoon` — that would be the forbidden shape wearing a helper's clothes.
+
+**AND IT PAYS A DEBT [[D-182]] NAMED AND LEFT OPEN**, in its own words: *"after this change the workbench unlocks nothing that exists today — it is headroom, not a payoff… the bench needs a four-part job to be worth framing, and inventing one is a design call for the director, not a builder's patch."* This is that job, and it is the bench's first and only payoff.
+
+**COSTS ANCHORED, NOT PICKED.** The axe is the game's other blade-and-binding job at 3 wood / 1 blade / 2 fibre; a pontoon is that plus a log's worth of timber, so 4 / 2 / 1 sits one notch above it and well below the shelter (8 / 4 / 3). **Four husks became two pontoons**: four floats would have put the raft at 30 wood before the deck, and two also reads correctly — a float under each side is what a raft with pontoons looks like. `pontoon` carries **`buoyant` and nothing else**; adding `woodwork` because it is made of timber would let a float fill the raft's own deck slot, or a torch handle.
+
+---
+
+**2 · FULL REPLACE, AND THE HUSK WAS THE HARD HALF.**
+
+```
+coconut   ['food', 'buoyant']  ->  ['food']       a whole nut is something you drink
+shell     ['buoyant']          ->  []             unchanged in every other respect
+pontoon                        ->  ['buoyant']    built for it
+```
+
+Stripping the fruit is easy to justify. **Stripping the husk is the call worth defending, because that tag was TRUE** — an emptied husk really does float. It goes anyway: leaving it would have made the pontoon optional, a survivor could drink two coconuts and float a raft on the husks, and **the bench gate the raft now sits behind would open for anyone with a thirst. A gate with a free bypass is decoration.**
+
+Fully contained: `raft-float` was `buoyant`'s only consumer in the game, and the shell-cup path reads `vessel.ts`, which never asked the tag system anything. **Every recipe slot in the game is now disjoint** — `materials.test.ts`'s named two-material exception is gone.
+
+---
+
+**3 · THE BENCH ASKS FOR HANDS, NOT ONLY TIMBER.**
+
+Six timber and a hammer is what a lean-to costs, and it was the whole price of the first thing on this island that is JOINED rather than piled, lashed or propped. A survivor who had built nothing could frame a cabinetmaker's bench on their first afternoon.
+
+**THE DOMAIN IS `construction`, NOT `mechanicalSystems`, and three independent things say so:**
+
+- **The act already trains it.** `buildWorkbench` calls `recordTrying(state, recipeDomain('workbench'))` and that recipe declares `construction`. Gating on another domain would make it the only act in the game gated on something it does not train — the boat's own gate is the opposite shape, `surveyHull` training and gating on `navigationSeamanship`.
+- **The codebase already settled the semantics.** `boat.ts`: *"`competenceFor` reads `mechanicalSystems`, which is right for stripping an outboard and WRONG for sistering frames and driving oakum."* Framing legs to a surface is joinery.
+- **`construction` cannot be ground.** No node kind trains it and no mastery path reads it — the only domain among the candidates with zero gather-loop exposure. `harvestingFabrication` has two unbounded pre-bench faucets: a 55-tap quarry and an inexhaustible boulder→knap loop.
+
+**THE THRESHOLD IS 8, COUNTED THE WAY `boatSeamanshipTechnique` WAS COUNTED.** Technique climbs `1.35 × (1 − t/100)` from a floor of 5 — 6.28, 7.55, 8.80 — so **8 is the third build**:
+
+```
+lay the work mat     1   required anyway; a bench is framed onto one
+raise the shelter    2   GROUND_WORK, so no workspace needed
+build the store      3   two slots, bare hands
+```
+
+**IT WAS 10 FOR MOST OF THIS SESSION, AND 10 WAS WRONG.** Ten is the fourth event, and there are only three construction builds in the game — a fourth would have to be a REPAIR, which needs damage, which needs weather. A survivor who had built all three things there are to build would have stood at a finished mat holding timber and a hammer and been told to wait for rain. Two builds (7.55) still correctly refuse.
+
+**NO DEADLOCK, TRACED RATHER THAN ASSUMED.** Not one producer of this domain requires the bench, the axe, the raft or the boat. Asserted end to end through the shipped builders only.
+
+**AND THE REFUSAL BRANCHES, BECAUSE OF WHO ACTUALLY MEETS IT.** [[D-194]]'s law is that a refusal may not name an enabler this world does not contain — and the body most likely to meet this one is a **successor**. `succession.ts` is explicit that *"knowledge does not transfer"*: a new survivor starts every domain at the innate floor and inherits the island's structures STANDING, so *"raise a shelter, build a store"* names two acts that refuse for exactly the survivor who needs the advice. When both already stand it says **mend them** instead, which genuinely remains — structures decay continuously, so there is always something to put right. Both the wording and the non-deadlock are asserted.
+
+---
+
+**NO SCHEMA BUMP, AND THAT IS A FINDING RATHER THAN AN OMISSION.** `deserialize` returns through `hydrate` on its single exit, and `hydrate` merges inventory over a fresh base — `inventory: { ...base.inventory, ...state.inventory }` — so a save written before `pontoon` existed is backfilled to 0 on load. Nothing else persisted is touched: `MATERIAL_PROFILE` is static data, recipe ids are unchanged, and a survivor who already knows `raft` still knows it. A version bump here would have been ritual.
+
+**LAW 237 — THE MANUFACTURE GRAPH, ENTERED IN FULL.** The typechecker enumerated the checklist and every entry was answered deliberately rather than defaulted: `Inventory`, `MATERIAL_PROFILE`, `materialMassKg` (3.5 kg — a hollowed log weighs less than the stock it came from), `materialBulk` (**9, the bulkiest thing in the game** — it does not pack, which is why floats are carried straight to the water), `TRANSFORM`, `LABEL`, `evidence.ts`'s observable properties, `recipeCost`, `Game.MAKERS`, the display name, and a `DISCOVERY_ROUTES` entry that names a problem and never the product.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `pontoon` as an `Inventory`/`MaterialKind` entry and every map Law 237 requires; the four-slot `pontoon` recipe, `canCraftPontoon`/`craftPontoon`, and its discovery route; `pontoonWoodCost`/`pontoonFiberCost`/`pontoonSharpbladeCost`; `raftFloatCost` (2, from `raftCoconutCost` 4) and the raft's rewired float slot; `buoyant` removed from `coconut` and `shell`; `hasBenchJoinery`, `benchJoineryTechnique` (8), the gate on `canBuildWorkbench` and its branching refusal.
+
+*Status: standing. The raft is genuinely behind the bench, and the bench is genuinely behind having built.* — C2
+
+---
+
 **D-195 · 2026-08-26 — NO REFUSAL IS EVER HALF-SAID. [[D-188]]'s law, broken by LENGTH instead of by COUNT.**
 
 ---

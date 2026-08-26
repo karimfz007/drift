@@ -179,6 +179,8 @@ export function emptyInventory(): Inventory {
     return {
         wood: 0, stone: 0, fiber: 0, berries: 0, coconut: 0, shellfish: 0, sharpblade: 0, meat: 0, cookedMeat: 0, fish: 0,
         shell: 0,
+        //  SESSION 4 — built, never found. A castaway lands with nothing that floats on purpose.
+        pontoon: 0,
         //  THE WRECK SLICE. Zero, and a fresh castaway can never gain one on the island —
         //  every gram of these exists 115 m offshore.
         metal: 0, wiring: 0, glass: 0, medicine: 0,
@@ -1405,17 +1407,17 @@ export function raftBlocker(state: GameState): string | null {
     const missing: string[] = [];
     if (state.inventory.wood < TUNE.raftWoodCost) missing.push(`${TUNE.raftWoodCost - state.inventory.wood} more wood`);
     if (state.inventory.fiber < TUNE.raftFiberCost) missing.push(`${TUNE.raftFiberCost - state.inventory.fiber} more fibre`);
-    if (state.inventory.coconut < TUNE.raftCoconutCost) missing.push(`${TUNE.raftCoconutCost - state.inventory.coconut} more coconut`);
+    if (state.inventory.pontoon < TUNE.raftFloatCost) missing.push(`${TUNE.raftFloatCost - state.inventory.pontoon} more float${TUNE.raftFloatCost - state.inventory.pontoon === 1 ? '' : 's'}`);
     if (missing.length > 0) return `Not enough to build with — you need ${missing.join(', ')}.`;
     if (!nearShoreForRaft(state)) return 'Too far from the water. A raft has to be built where it can float.';
     return null;
 }
 
-export function raftShortfall(state: GameState): { wood: number; fiber: number; coconut: number } {
+export function raftShortfall(state: GameState): { wood: number; fiber: number; pontoon: number } {
     return {
         wood: Math.max(0, TUNE.raftWoodCost - state.inventory.wood),
         fiber: Math.max(0, TUNE.raftFiberCost - state.inventory.fiber),
-        coconut: Math.max(0, TUNE.raftCoconutCost - state.inventory.coconut)
+        pontoon: Math.max(0, TUNE.raftFloatCost - state.inventory.pontoon)
     };
 }
 
@@ -1432,7 +1434,7 @@ export function craftRaft(state: GameState): boolean {
     if (!canCraftRaft(state)) return false;
     state.inventory.wood -= TUNE.raftWoodCost;
     state.inventory.fiber -= TUNE.raftFiberCost;
-    state.inventory.coconut -= TUNE.raftCoconutCost;
+    state.inventory.pontoon -= TUNE.raftFloatCost;
 
     const r = Math.hypot(state.player.x, state.player.y);
     //  A survivor standing exactly on the island's centre has no bearing to push along. It
@@ -1657,6 +1659,41 @@ export function knapSharpblade(state: GameState): boolean {
     state.inventory.stone -= TUNE.knapStoneCost;
     state.inventory.sharpblade += TUNE.knapSharpbladeYield;
     recordTrying(state, recipeDomain('knap'));
+    return true;
+}
+
+// ---- THE PONTOON (Session 4) — the bench's first four-part job -------------------------
+//
+//  wood + fibre + a blade, held together by a hammer that is never spent -> one hollowed,
+//  plugged float. `knapSharpblade` above is the shape this follows: spend the stock, gain the
+//  worked thing, train the recipe's own domain through the shipped channel.
+//
+//  THERE IS NO BENCH CHECK IN HERE, and its absence is the design rather than an omission.
+//  The bench is required by ARITY — four staged materials, and `relationsFor` only returns 4
+//  at a sound bench you are standing at — so `canExperimentWith` has already refused this
+//  combine anywhere else before a maker is ever reached. Law 167/219 is explicit that a
+//  workbench opens OPERATIONS and never recipes, so a `state.workspace.tier === 'bench'` line
+//  here would be the forbidden shape wearing a helper's clothes: the same gate, asserted twice,
+//  in the one place that would make it a recipe prerequisite.
+
+export function canCraftPontoon(state: GameState): boolean {
+    return state.inventory.stonehammer > 0
+        && state.inventory.wood >= TUNE.pontoonWoodCost
+        && state.inventory.fiber >= TUNE.pontoonFiberCost
+        && state.inventory.sharpblade >= TUNE.pontoonSharpbladeCost;
+}
+
+/** Hollow a log, plug and caulk the ends. The hammer drives the plugs and is not spent. */
+export function craftPontoon(state: GameState): boolean {
+    if (!canCraftPontoon(state)) return false;
+    state.inventory.wood -= TUNE.pontoonWoodCost;
+    state.inventory.fiber -= TUNE.pontoonFiberCost;
+    //  THE BLADE IS CONSUMED, exactly as `axeSharpbladeCost` is consumed by the axe — an edge
+    //  driven the length of a log is spent on that log. The hammer beside it is NOT, which is
+    //  the whole difference between the `blade` slot and the `tool` slot.
+    state.inventory.sharpblade -= TUNE.pontoonSharpbladeCost;
+    state.inventory.pontoon += 1;
+    recordTrying(state, recipeDomain('pontoon'));
     return true;
 }
 
@@ -1936,10 +1973,30 @@ export function buildWorkmat(state: GameState, x: number, y: number): boolean {
  * The hammer is checked for OWNERSHIP and never spent — `spendFromReach`'s catalyst rule,
  * the same one knapping uses. It is the thing driving the pegs, not a thing consumed by them.
  */
+/** Has this survivor framed enough to frame a bench? The joinery half of `canBuildWorkbench`. */
+export function hasBenchJoinery(state: GameState): boolean {
+    return state.knowledge.domains.construction.technique >= TUNE.benchJoineryTechnique;
+}
+
+/**
+ * SESSION 4 — AND IT ASKS FOR EXPERIENCE NOW, not only for timber.
+ *
+ * A bench is the first thing on this island that is JOINED rather than piled, lashed or
+ * propped: legs framed square to a surface, pegged, and true enough to hold work steady. The
+ * materials never said that — six timber and a hammer is what a lean-to costs — so a survivor
+ * who had built nothing could frame a cabinetmaker's bench on their first afternoon.
+ *
+ * `construction` IS THE DOMAIN THIS ACT ALREADY TRAINS (`recordTrying(state,
+ * recipeDomain('workbench'))`, and that recipe declares it), which is the same shape the boat
+ * uses: `surveyHull` trains `navigationSeamanship` and is gated on it. See
+ * `benchJoineryTechnique` for why it is not `mechanicalSystems` — that domain is machinery,
+ * and `boat.ts` already says so about this exact distinction.
+ */
 export function canBuildWorkbench(state: GameState): boolean {
     return state.workspace.built
         && state.workspace.tier === 'mat'
         && standingAtWorkspace(state)
+        && hasBenchJoinery(state)
         && state.inventory.stonehammer > 0
         && state.inventory.wood >= TUNE.workbenchWoodCost;
 }
@@ -2574,6 +2631,33 @@ export function makerBlocker(state: GameState, recipeId: string): string | null 
         case 'workbench':
             if (!state.workspace.built) return 'Lay a work mat first — a bench is framed onto one.';
             if (state.workspace.tier === 'bench') return 'The bench is already framed.';
+            //  THE JOINERY GAP, NAMED HONESTLY — [[D-194]]'s discipline applied to a new
+            //  refusal. It says what is actually short (the hands, not the timber) and names
+            //  only work that EXISTS on this island and trains this exact domain: raising a
+            //  shelter, building a store, mending either. It does not say "practise" — advice
+            //  with nothing behind it is the defect D-194 was written for — and it does not
+            //  send anyone to a bench they cannot yet frame.
+            if (!hasBenchJoinery(state)) {
+                //  IT NAMES WHAT IS AVAILABLE TO *THIS* SURVIVOR, which is the whole of
+                //  [[D-194]]'s law and the reason this sentence branches.
+                //
+                //  THE CASE THAT FORCED IT is a SUCCESSOR. `succession.ts` is explicit that
+                //  "knowledge does not transfer" — a new survivor starts every domain at the
+                //  innate floor — and they inherit the island's structures standing. So the
+                //  one body most likely to meet this refusal is holding a hammer beside a
+                //  shelter and a store they CANNOT build, because both already exist and both
+                //  builders refuse a second one. "Raise a shelter" would have been impossible
+                //  advice for exactly the survivor who needed it most.
+                //
+                //  Mending is what remains, and it genuinely remains: structures decay by
+                //  `structureDurabilityDecayPerGameHour` continuously, so there is always
+                //  something to put right before long.
+                const canStillBuild = !state.shelter.built || !state.storage.built;
+                return 'Legs framed square to a surface is finer work than you have done yet.'
+                    + (canStillBuild
+                        ? ' Raise a shelter, build a store — that is where it comes from.'
+                        : ' Keep your shelter and your store mended — that is where it comes from.');
+            }
             return standingAtWorkspace(state) ? null : 'You have to be at your work mat to frame it.';
         default:
             return null;

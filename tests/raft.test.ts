@@ -46,7 +46,7 @@ function fresh(): GameState {
 function stocked(s: GameState): GameState {
     s.inventory.wood = TUNE.raftWoodCost;
     s.inventory.fiber = TUNE.raftFiberCost;
-    s.inventory.coconut = TUNE.raftCoconutCost;
+    s.inventory.pontoon = TUNE.raftFloatCost;
     return s;
 }
 
@@ -94,15 +94,20 @@ describe('the raft is discovered by its OWN gesture, not by a third go at wood +
          */
         const raftSlots = allRecipes().find((r) => r.id === 'raft')!.slots;
         const float = raftSlots.find((sl) => sl.id === 'raft-float')!;
-        expect(materialSatisfies('coconut', float.require)).toBe(true);
-        for (const inert of ['berries', 'shellfish', 'meat'] as const) {
+        //  SESSION 4 — THE FLOAT IS A BUILT THING NOW. `buoyant` came off the coconut and its
+        //  husk both: the fruit because floating a raft on food read as the placeholder it was,
+        //  and the husk because leaving it would have made the pontoon optional and the bench
+        //  gate a formality. The law this test encodes is unchanged and now stricter — a slot
+        //  names a property, and exactly one material has it.
+        expect(materialSatisfies('pontoon', float.require)).toBe(true);
+        for (const inert of ['berries', 'shellfish', 'meat', 'coconut', 'shell'] as const) {
             expect(materialSatisfies(inert, float.require), `${inert} must not float a raft`).toBe(false);
         }
     });
 
     it('staging deck + lashing + float resolves to the raft and nothing else', () => {
         const s = stocked(fresh());
-        expect(resolveRecipe(s, ['wood', 'fiber', 'coconut'])?.id).toBe('raft');
+        expect(resolveRecipe(s, ['wood', 'fiber', 'pontoon'])?.id).toBe('raft');
     });
 
     it('...and wood + fibre alone is still the torch/backpack gesture, untouched', () => {
@@ -137,11 +142,11 @@ describe('the raft is discovered by its OWN gesture, not by a third go at wood +
     it('and a real attempt can reach it — discovery, not a hardcoded row', () => {
         const s = stocked(fresh());
         s.capacities.breathWaterConfidence = TUNE.capacityInnateFloor + 5;
-        s.inventory.wood = 50; s.inventory.fiber = 50; s.inventory.coconut = 50;
+        s.inventory.wood = 50; s.inventory.fiber = 50; s.inventory.pontoon = 50;
         let reached = false;
         for (let i = 0; i < 200 && !reached; i++) {
             s.energy = 100; s.hunger = 100; s.thirst = 100;
-            attemptConfirmed(s, ['wood', 'fiber', 'coconut']);
+            attemptConfirmed(s, ['wood', 'fiber', 'pontoon']);
             reached = s.blueprints.some((b) => b.recipeId === 'raft');
         }
         expect(reached).toBe(true);
@@ -160,7 +165,7 @@ describe('the site IS the decision — and it is stated before the wood is spent
         //  refusal that took it anyway would be a trap rather than a rule.
         expect(s.inventory.wood).toBe(TUNE.raftWoodCost);
         expect(s.inventory.fiber).toBe(TUNE.raftFiberCost);
-        expect(s.inventory.coconut).toBe(TUNE.raftCoconutCost);
+        expect(s.inventory.pontoon).toBe(TUNE.raftFloatCost);
         expect(s.raft.built).toBe(false);
     });
 
@@ -173,7 +178,7 @@ describe('the site IS the decision — and it is stated before the wood is spent
 
     it('short of materials, the blocker names the SHORTFALL first — the thing to go fix', () => {
         const s = atShore(fresh());
-        s.inventory.wood = 1; s.inventory.fiber = 0; s.inventory.coconut = 0;
+        s.inventory.wood = 1; s.inventory.fiber = 0; s.inventory.pontoon = 0;
         const why = raftBlocker(s) ?? '';
         expect(why.toLowerCase()).toContain('wood');
         expect(raftShortfall(s).wood).toBe(TUNE.raftWoodCost - 1);
@@ -184,7 +189,7 @@ describe('the site IS the decision — and it is stated before the wood is spent
         expect(craftRaft(s)).toBe(true);
         expect(s.inventory.wood).toBe(0);
         expect(s.inventory.fiber).toBe(0);
-        expect(s.inventory.coconut).toBe(0);
+        expect(s.inventory.pontoon).toBe(0);
         expect(s.raft.built).toBe(true);
         //  Moored on water, not on the sand it was assembled on — `steerRaft` refuses dry
         //  ground, so a raft born ashore would be un-steerable the moment it was made.

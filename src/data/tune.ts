@@ -238,6 +238,39 @@ export const TUNE = {
      *  audit does not catch). v2.8 §9.2's own escape hatch is "split log/slab **or lashed
      *  poles**", so the bench is built from timber driven together with the hammer. */
     workbenchWoodCost: 6,
+    /** [TUNE] Session 4 — the `construction` technique it takes to frame a mat into a bench.
+     *
+     *  THE DOMAIN IS `construction`, NOT `mechanicalSystems`, and the codebase had already
+     *  settled the question in another file: `boat.ts` says `competenceFor` "reads
+     *  `mechanicalSystems`, which is right for stripping an outboard and WRONG for sistering
+     *  frames and driving oakum". Framing legs onto a work surface is joinery, not machinery.
+     *  It is also the domain this very act already TRAINS — `buildWorkbench` calls
+     *  `recordTrying(state, recipeDomain('workbench'))` and that recipe declares
+     *  `construction` — and the boat's own gate is the same shape: `surveyHull` trains
+     *  `navigationSeamanship` and is gated on it. A gate on a domain the act does not train
+     *  would be the only one of its kind in the game.
+     *
+     *  COUNTED AGAINST REAL PRODUCERS, the method `boatSeamanshipTechnique` used. Technique
+     *  climbs 1.35 x (1 - t/100) per event from a floor of 5, so the sequence is
+     *  6.28, 7.55, 8.80, ... and 8 is THE THIRD BUILD. Everything that reaches it is available
+     *  with bare hands or on the ground, before any bench exists:
+     *
+     *      lay the work mat        1   required anyway - a bench is framed onto one
+     *      raise the shelter       2   `GROUND_WORK`, so no workspace needed
+     *      build the store         3   two slots, bare hands
+     *      mend either of them     +   one wood, repeatable, whenever weather has damaged one
+     *
+     *  EIGHT AND NOT TEN, and the difference is a wait nobody should have to serve. Ten is the
+     *  FOURTH event, and there are only three construction builds in the game: the fourth would
+     *  have to be a REPAIR, which needs something to be damaged first, which needs weather. A
+     *  survivor who had built all three things there are to build would have stood at a
+     *  finished mat with six timber and a hammer and been told to wait for rain. Eight is the
+     *  third build — mat, shelter, store — all of them immediate, none of them optional in
+     *  practice, and still comfortably above a floor of 5 that two builds (7.55) do not clear.
+     *
+     *  NO DEADLOCK: not one producer of this domain needs the bench, the axe, the raft or the
+     *  boat. Asserted end to end in `workspace.test.ts` through the shipped builders only. */
+    benchJoineryTechnique: 8,
     /** [TUNE] How much joint slack ONE bench-assisted combine puts into the frame. Per USE,
      *  never per hour — Law 181 forbids a universal repair meter, and a use-driven number is
      *  also what makes this D-011-safe by construction rather than by a check. */
@@ -1135,6 +1168,27 @@ export const TUNE = {
      *  run — a long-term capacity, developed the way §12 says it is developed. */
     swimBoutGameHours: 0.15,
 
+    // ---- THE PONTOON (Session 4) — the bench's first four-part job ----------
+    //
+    //  ANCHORED AGAINST THE AXE, which is the game's other blade-and-binding job: 3 wood,
+    //  1 sharpblade, 2 fibre. A pontoon is that plus a log's worth of timber — you are
+    //  hollowing a section of trunk rather than shaping a haft — so 4 / 2 / 1 sits one notch
+    //  above the axe and well below the shelter (8 wood, 4 stone, 3 fibre).
+    //
+    //  THE HAMMER IS NOT PRICED HERE, deliberately, and `recipeCost` has no entry for it. It
+    //  is the `tool` slot: staged, never spent, exactly as `knap` and the bench itself already
+    //  treat it (`spendFromReach`'s catalyst exception). Pricing a catalyst would draw it into
+    //  hands and then decrement nothing, which is the one invariant that table exists to hold.
+    /** [TUNE] Session 4 — timber for one hollowed float. */
+    pontoonWoodCost: 4,
+    /** [TUNE] Session 4 — fibre to caulk the plugs at each end. */
+    pontoonFiberCost: 2,
+    /** [TUNE] Session 4 — one worked edge to hollow it. Consumed, as the axe consumes its own
+     *  (`axeSharpbladeCost`) — a blade driven into a log is spent on that log. Two pontoons is
+     *  therefore two blades, which is 4 stone through `knapStoneCost`: real, and nowhere near
+     *  the four blades a four-pontoon raft would have wanted. */
+    pontoonSharpbladeCost: 1,
+
     // ---- THE RAFT (the Maritime Slice) -------------------------------------
     /** [TUNE] Maritime — logs for a deck. Basis: the largest wood cost in the game by some
      *  way (the shelter's is 8), because a raft is the largest thing anyone has built here
@@ -1143,12 +1197,19 @@ export const TUNE = {
     /** [TUNE] Maritime — coir to lash it. Basis: proportional to the deck; a raft is mostly
      *  rope by count of hands' work. */
     raftFiberCost: 10,
-    /** [TUNE] Maritime — coconut husks lashed underneath for buoyancy. Basis: this is also
-     *  what gives the recipe its OWN tag signature ({woodwork, textile, food}), so the raft
-     *  is discovered by its own gesture instead of becoming a third contender for the
-     *  wood+fibre one ([[D-114]]: sharing a signature costs an attempt, never access — but
-     *  three recipes on one gesture is a lottery, and a lottery is not a discovery). */
-    raftCoconutCost: 4,
+    /** [TUNE] Maritime — floats lashed underneath. Basis: this is also what gives the recipe
+     *  its OWN tag signature ({woodwork, textile, buoyant}), so the raft is discovered by its
+     *  own gesture instead of becoming a third contender for the wood+fibre one ([[D-114]]:
+     *  sharing a signature costs an attempt, never access — but three recipes on one gesture
+     *  is a lottery, and a lottery is not a discovery).
+     *
+     *  FOUR HUSKS BECAME TWO PONTOONS, and the number moved because the thing did. Four was
+     *  right for coconuts: a husk is small, and four of them under a deck is a plausible
+     *  amount of fruit. A pontoon is a hollowed log that costs 4 wood, 2 fibre and a blade
+     *  each, and four of those would put the raft at 30 wood before the deck — heavier than
+     *  every other build in the game combined. Two also reads correctly: a float under each
+     *  side is what a raft with pontoons actually looks like. */
+    raftFloatCost: 2,
     /** [TUNE] Maritime — fraction of `walkSpeedMps` a paddled raft makes. Basis: 3.5 × 0.46
      *  = 1.61 m/s, comfortably above a swim (1.02) and well below a walk. The ~115 m open
      *  crossing is then ~71 real seconds each way: long enough to be a passage, short enough
@@ -2220,7 +2281,12 @@ export const TUNE = {
         //  without deciding what it weighs") applies to it like anything else. Read through
         //  the SAME generic per-unit loop (`carriedWeightKg`, body.ts) as every other
         //  material — no special case left for it there any more.
-        stonehammer: 1.5
+        stonehammer: 1.5,
+        //  SESSION 4 — a hollowed log. Four timber went into it (4.8 kg of solid stock) and
+        //  most of the middle came out, so it weighs less than the wood it was cut from and
+        //  far more than anything else a survivor pockets. Two of them is 7 kg on your back,
+        //  which is the point: floats get carried to the water, not kept.
+        pontoon: 3.5
     },
     /** [TUNE] Ch.6 — fixed mass in kg of each owned tool. Charged once when owned, not per
      *  use — a carried axe weighs the same whether or not you are swinging it. The flask's
@@ -2338,7 +2404,13 @@ export const TUNE = {
         //  axe/spear/flask/torch ride on, untouched by this migration. This entry exists
         //  only to satisfy `materialBulk`'s own compile-time "every MaterialKind has a
         //  bulk" guarantee, not to add a second count.
-        stonehammer: 0
+        stonehammer: 0,
+        //  SESSION 4 — THE BULKIEST THING IN THE GAME, and by a wide margin. It is a length
+        //  of hollowed trunk: it does not pack, it does not stack, and it does not bend round
+        //  a shoulder. The cable coil at 2.2 was the previous worst and it can at least be
+        //  coiled. This is the honest cost of carrying a float, and it is the reason a
+        //  survivor builds them at the bench and takes them straight down to the water.
+        pontoon: 9
     },
     /** [TUNE] §9 — bulk per tool, same units. */
     //  P0-4 — the spear is the BULKIEST thing a survivor carries and among the lightest.

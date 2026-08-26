@@ -239,6 +239,23 @@ export interface Inventory {
      * never consumed") and this migration must not quietly break.
      */
     stonehammer: number;
+
+    /**
+     * THE PONTOON — a log hollowed, plugged and caulked, and the only thing on this island
+     * that is BUILT to float.
+     *
+     * WHY IT EXISTS. The raft's float slot wanted `buoyant`, and the only things that carried
+     * that tag were a coconut and its emptied husk — so the raft was floated on repurposed
+     * food. That read as a stopgap because it was one, and the fix is not to rename it: it is
+     * to give the island a purpose-built float and let the fruit go back to being fruit.
+     *
+     * IT IS THE BENCH'S FIRST PAYOFF, which is a debt [[D-182]] named and left open in as many
+     * words — *"the bench needs a four-part job to be worth framing, and inventing one is a
+     * design call for the director, not a builder's patch."* Four staged materials is the ONLY
+     * legal way to require the bench (Law 167/219: a workbench opens operations, never
+     * recipes), so the pontoon is the four-part job and the bench is what holds it.
+     */
+    pontoon: number;
 }
 
 /** Every kind of carried material — the key set `Inventory` actually holds. Ch.1 v3's

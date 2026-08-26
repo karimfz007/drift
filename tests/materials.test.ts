@@ -41,15 +41,17 @@ describe('materials — the family/tags schema (Ch.1 v3, D-055)', () => {
     });
 
     it("today's recipe slots stay disjoint, except the one slot documented to want either of two", () => {
-        //  `raft-float` is a NAMED exception, not a fresh hole in the rule. `materials.ts`'s
-        //  own doc comment on `coconut`/`shell` says why out loud: a coconut husk floats and
-        //  an emptied one still does, so `{tag:'buoyant'}` is deliberately satisfied by
-        //  either — that is the whole reason `buoyant` exists as its own tag instead of
-        //  reusing `food` (which would also, wrongly, pull in berries). This is what using
-        //  the REAL `ALL_MATERIAL_KINDS` (see the import-site comment above) surfaces: the
-        //  stale seven-item local list this file used to carry never even included `shell`,
-        //  so this genuine two-material slot has been silently untested since `shell` shipped.
-        const TWO_IS_CORRECT = new Set(['raft/raft-float']);
+        //  THE NAMED EXCEPTION IS GONE, and the rule is now universal.
+        //
+        //  `raft-float` used to be the one slot two materials satisfied: a coconut and its
+        //  emptied husk both floated, which was true and was the whole reason `buoyant` existed
+        //  as its own tag rather than reusing `food`. Session 4 gave the float slot a thing
+        //  BUILT for it and took `buoyant` off the fruit and the husk both, so exactly one
+        //  material satisfies it — and every slot in the game is disjoint again.
+        //
+        //  Left as an empty set rather than deleted: it is cheaper to name a future exception
+        //  here than to rediscover that this test ever allowed one.
+        const TWO_IS_CORRECT = new Set<string>([]);
         for (const recipe of allRecipes()) {
             for (const slot of recipe.slots) {
                 const satisfiers = ALL_MATERIAL_KINDS.filter((kind) => materialSatisfies(kind, slot.require));
@@ -103,6 +105,10 @@ describe('recipes — the null-outcome combination journal (Ch.1 v3, D-055)', ()
         expect(ids).toEqual(['torch', 'backpack', 'axe', 'spear', 'shelter', 'storage', 'stonehammer',
             //  SESSION 1 — the two rungs of §6.1's ladder that are built.
             'workmat', 'workbench',
+            //  SESSION 4 — the pontoon, and it sits BEFORE the raft because it is a raft
+            //  ingredient. The only four-slot recipe in the game, which is what makes it the
+            //  bench's first payoff and the only thing arity can gate.
+            'pontoon',
             'raft', 'fishingline', 'net', 'knap']);
     });
 });

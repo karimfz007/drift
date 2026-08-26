@@ -174,8 +174,26 @@ export const DISCOVERY_ROUTES: DiscoveryRoute[] = [
         //  the wreck. Looking is not a pressure; being out of breath halfway to something is.
         recipeId: 'raft',
         need: (s) => s.capacities.breathWaterConfidence > TUNE.capacityInnateFloor,
-        makings: ['wood', 'fiber', 'coconut'],
-        prompt: 'You have felt how far that water is. Wood floats, and you are holding the cord to bind it.',
+        //  SESSION 4 — the third making is a PONTOON now, not four coconuts. The need is
+        //  untouched, because it was always right: what makes a survivor think about a raft is
+        //  having felt how far that water is.
+        makings: ['wood', 'fiber', 'pontoon'],
+        prompt: 'You have felt how far that water is. A deck, cord to bind it, and something under it that floats.',
+    },
+    {
+        //  THE PONTOON (Session 4) — and the need is the raft's need one step earlier.
+        //
+        //  READ FROM THE BODY, like the raft's own: a survivor who has been in the sea knows
+        //  what will not hold them up. The prompt names a PROBLEM and never the product — the
+        //  pivot law this file's header states — so it wonders about what floats rather than
+        //  announcing "you can make a hollowed float".
+        //
+        //  It sits BEFORE the raft in this list on purpose: routes are read in order, and the
+        //  thing you need first should be the thing you are told about first.
+        recipeId: 'pontoon',
+        need: (s) => s.capacities.breathWaterConfidence > TUNE.capacityInnateFloor,
+        makings: ['wood', 'fiber', 'sharpblade', 'stonehammer'],
+        prompt: 'A log holds a body up until it soaks. Hollowed out and plugged at both ends, it would hold much more.',
     },
     {
         //  More than you can carry. The most physical need in the game, and the one a player

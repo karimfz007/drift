@@ -73,6 +73,9 @@ const TUNE = new Proxy({
     //  P0-C / P0-E — mirrored because the new section cites them. The Proxy below CRASHES on
     //  an unmirrored key rather than yielding undefined, which is what caught these: a check
     //  reading `undefined` would have compared against NaN and passed on nothing.
+    //  SESSION 4 — the joinery the bench asks for, mirrored so the workspace section can cite
+    //  the real constant instead of a literal that would drift away from it.
+    benchJoineryTechnique: 8,
     experimentEnergyCost: 6,
     experimentGameHours: 0.75,
     swimDepthM: 1.35,
@@ -12843,6 +12846,10 @@ async function main() {
         //  own and lying in company — the "passing because of where they sat in the file"
         //  shape this harness has been bitten by before.
         state.tools = { ...state.tools, axe: false };
+        //  SESSION 4 — AND THE HANDS TO FRAME WITH. The bench asks for construction technique
+        //  now, not only for timber. Seeded here so every check below is about the LADDER, and
+        //  proved separately by BENCH 4b/4c, which take the gate away and put it back.
+        state.knowledge.domains.construction.technique = 40;
     `;
 
     // ---- 1 · TWO HANDS HOLD TWO — the gate, and the reason SPOKEN --------------------
@@ -12988,6 +12995,38 @@ async function main() {
     const benchSurfaces = { mat: await drawnByName('workMat'), bench: await drawnByName('workBenchTop') };
     check('BENCH 4 — ...and the RENDER agrees PER SURFACE: the bench is drawn and the mat is not — the silhouette really changed',
         isDrawn(benchSurfaces.bench) && !isDrawn(benchSurfaces.mat), JSON.stringify(benchSurfaces));
+
+    // ---- 4b · THE BENCH ASKS FOR HANDS, NOT ONLY TIMBER (Session 4) ------------------
+    //
+    //  Six timber and a hammer is what a lean-to costs, and it used to be the whole price of
+    //  the first thing on this island that is JOINED rather than piled: legs framed square to
+    //  a surface and pegged true. A survivor who had built nothing could frame one on their
+    //  first afternoon. It asks for construction technique now — the domain this very act
+    //  already trains — and the refusal names the gap rather than the timber.
+    await editSave(`${WORKSPACE_FIXTURE} ${grantBlueprints('workmat', 'workbench')}
+        state.workspace = { built: true, x: 0, y: 96, tier: 'mat', jointWear: 0 };
+        state.knowledge.domains.construction.technique = 5;
+    `);
+    await sleep(700);
+    await approach(0, 96, 20);
+    const greenHands = await live();
+    check('BENCH 4b — THE GATE IS REAL: timber and a hammer alone no longer frame a bench',
+        greenHands.workspace.tier === 'mat',
+        `tier ${greenHands.workspace.tier}`
+        + ` · construction ${greenHands.knowledge.domains.construction.technique.toFixed(2)}`
+        + ` · wood ${greenHands.inventory.wood} · hammer ${greenHands.inventory.stonehammer}`);
+
+    //  ...AND THE SAME SURVIVOR, HAVING BUILT, CAN. Not a fixture flip: the technique is raised
+    //  to exactly what the shipped constant asks and nothing else about the state changes.
+    await editSave(`state.knowledge.domains.construction.technique = ${TUNE.benchJoineryTechnique};`);
+    await sleep(700);
+    await approach(0, 96, 20);
+    const framed = await makeViaSlate('Workbench', ['wood', 'stonehammer']);
+    const afterFraming = await live();
+    check('BENCH 4c — ...and the joinery opens it: the wall is a RUNG, not a dead end',
+        afterFraming.workspace.tier === 'bench',
+        `chose ${JSON.stringify(framed)} · tier ${afterFraming.workspace.tier}`
+        + ` · construction ${afterFraming.knowledge.domains.construction.technique.toFixed(2)}`);
 
     // ---- 5 · THE THIRD RELATION, SPENT ON THE ONE THING THAT NEEDED IT ---------------
     await approach(benchState.workspace.x, benchState.workspace.y, 20);

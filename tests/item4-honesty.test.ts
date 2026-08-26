@@ -41,7 +41,7 @@ const NOW = 1_770_000_000_000;
 function stocked(): GameState {
     const s = createInitialState(NOW);
     s.energy = 100; s.hunger = 100; s.thirst = 100;
-    for (const k of ['wood', 'stone', 'fiber', 'sharpblade', 'coconut'] as const) s.inventory[k] = 60;
+    for (const k of ['wood', 'stone', 'fiber', 'sharpblade', 'coconut', 'pontoon'] as const) s.inventory[k] = 60;
     //  SESSION 1 — "able to attempt it" now includes HAVING SOMEWHERE TO WORK. Law 220 caps
     //  bare hands at two controlled relations, and this file's whole subject is what a success
     //  costs at every arity the gate accepts — three and four included. A survivor staging
@@ -172,7 +172,11 @@ describe('ITEM 4 — every MANUFACTURE verb charges exactly what its recipe decl
     //  The one mapping this needs, written out rather than inferred: which material each slot
     //  tag is actually satisfied by in the shipped costs.
     const MATERIAL_FOR_TAG: Record<string, string | undefined> = {
-        woodwork: 'wood', masonry: 'stone', textile: 'fiber', blade: 'sharpblade', buoyant: 'coconut',
+        woodwork: 'wood', masonry: 'stone', textile: 'fiber', blade: 'sharpblade', buoyant: 'pontoon',
+        //  SESSION 4 — the `tool` slot is a CATALYST and has no cost to charge. `recipeCost`
+        //  deliberately omits it (`spendFromReach` never decrements a staged hammer), so a
+        //  mapping here would make this test demand a charge the design forbids.
+        tool: undefined,
     };
 
     it('knapping — the standing-gate recipe is charged too', () => {
@@ -195,7 +199,7 @@ describe('ITEM 4 — every MANUFACTURE verb charges exactly what its recipe decl
         expect(s.raft.built, 'no raft was made').toBe(true);
         expect(before.wood - s.inventory.wood).toBe(TUNE.raftWoodCost);
         expect(before.fiber - s.inventory.fiber).toBe(TUNE.raftFiberCost);
-        expect(before.coconut - s.inventory.coconut, 'the float was free').toBe(TUNE.raftCoconutCost);
+        expect(before.pontoon - s.inventory.pontoon, 'the float was free').toBe(TUNE.raftFloatCost);
     });
 });
 

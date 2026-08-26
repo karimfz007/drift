@@ -169,6 +169,43 @@ export function allRecipes(): Recipe[] {
             ]
         },
         {
+            //  THE PONTOON (Session 4) — THE ONLY FOUR-SLOT RECIPE IN THE GAME, and that is
+            //  the whole mechanism rather than a flourish.
+            //
+            //  [[D-182]] shipped the bench at four relations and said plainly what it had just
+            //  bought: *"after this change the workbench unlocks nothing that exists today — it
+            //  is headroom, not a payoff... the bench needs a four-part job to be worth
+            //  framing, and inventing one is a design call for the director, not a builder's
+            //  patch."* This is that job, and it is the bench's first and only payoff.
+            //
+            //  FOUR SLOTS IS THE GATE, AND IT IS THE ONLY LEGAL ONE. `relationsFor` gives 2
+            //  bare-handed, 3 at a mat, 4 at a sound bench, and `canExperimentWith` refuses a
+            //  pile bigger than that — so a four-material recipe simply cannot be staged
+            //  anywhere else. Law 167/219 forbids the alternative outright: *a workbench opens
+            //  operations, never recipes*, which rules out a `station` field, a `makerBlocker`
+            //  case, or a bench-side verb. Arity is not a trick for gating; arity IS the gate.
+            //
+            //  AND IT IS NOT `GROUND_WORK`. The shelter, the store, the mat and the raft are
+            //  exempt because they are assembled resting on the ground. A pontoon is a log held
+            //  while it is hollowed and plugged — the two-hand job the bench exists for, and the
+            //  amendment sheet's own example: *"the workbench is the thing that holds what your
+            //  second hand cannot."*
+            id: 'pontoon',
+            //  Turning a material into a thing, which is this domain in its own words. Not
+            //  `construction` — nothing is being raised on a site — and not
+            //  `navigationSeamanship`: a float is fabricated on shore by someone who may never
+            //  have been in a boat. The raft it ends up under is the seamanship.
+            domain: 'harvestingFabrication',
+            slots: [
+                { id: 'pontoon-log', require: { tag: 'woodwork' }, amount: TUNE.pontoonWoodCost },
+                { id: 'pontoon-caulk', require: { tag: 'textile' }, amount: TUNE.pontoonFiberCost },
+                { id: 'pontoon-hollow', require: { tag: 'blade' }, amount: TUNE.pontoonSharpbladeCost },
+                //  THE HAMMER, STAGED AND NEVER SPENT — `spendFromReach`'s catalyst exception,
+                //  the same one `knap` and `workbench` already use. It drives the plugs home.
+                { id: 'pontoon-driver', require: { tag: 'tool' }, amount: 1 }
+            ]
+        },
+        {
             //  THE RAFT (the Maritime Slice). Three positions, and the third one is the
             //  reason there are three.
             //
@@ -195,7 +232,7 @@ export function allRecipes(): Recipe[] {
             slots: [
                 { id: 'raft-deck', require: { tag: 'woodwork' }, amount: TUNE.raftWoodCost },
                 { id: 'raft-lashing', require: { tag: 'textile' }, amount: TUNE.raftFiberCost },
-                { id: 'raft-float', require: { tag: 'buoyant' }, amount: TUNE.raftCoconutCost }
+                { id: 'raft-float', require: { tag: 'buoyant' }, amount: TUNE.raftFloatCost }
             ]
         },
         {
