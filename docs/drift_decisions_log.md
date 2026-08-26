@@ -143,7 +143,35 @@ Two more were state rather than play. `succession.ts` built the successor's boat
 
 **AND THE PREMISE UNDER THE LAYOUT WAS CHECKED RATHER THAN ASSUMED.** `verbCircleLayout.ts` rests its whole rule on a measurement — *"the most that are ever available at once is FIVE"* — taken before an eleventh boat verb existed. It still holds, for a reason worth writing down: `board-boat` requires `!loadKnown` while `cross-boat` and `ferry-boat` both require it, so they can never be offered together. That is now a test rather than a sentence.
 
-**WHAT THIS COST AND WHAT IT BOUGHT.** Two full device sweeps were abandoned mid-run — the first when the fair-challenge gap surfaced, the second when this audit did — because certifying a build that is about to change is theatre. **11 new checks, every one red before its fix and green after.**
+**WHAT THIS COST, AND HOW THE RECORD WAS ACTUALLY OBTAINED.** Two full sweeps were abandoned mid-run — the first when the fair-challenge gap surfaced, the second when this audit did — because certifying a build that is about to change is theatre. **11 new checks, every one red before its fix and green after.**
+
+**THE THIRD FULL SWEEP COMPLETED AND WAS NOT A RECORD**, and the harness said so in its own words before anyone had to judge it:
+
+```
+=== BENCH STALLED DURING THIS RUN — TIMING-SENSITIVE REDS ARE SUSPECT ===
+  48 stall(s) over 90s. Worst: 4102s
+=== FIXTURES THAT DID NOT APPLY ===
+  100 editSave call(s) did not take
+```
+
+The cause was the machine and not the code — **7.9 GB of RAM with 1.1 GB free**, against a run that took 5.4 hours — and the instrumentation this project built for exactly this moment is what turned an ambiguous wall of red into a diagnosis. A hundred fixtures that never applied means a hundred checks that tested a state nobody authored.
+
+**THE SHARDED RUNNER FIXED IT BY BOOTING FRESH.** Thirteen groups, a new browser each, **64 minutes instead of 5.4 hours** — because peak memory is one group's worth rather than seventy-five sections' worth. **G13, which carries this section, is GREEN at 58/58**, and that group covers four neighbouring boat sections as well as the crossing.
+
+**SIX GROUPS ARE RED, AND EVERY ONE OF THE SIXTEEN FAILURES IS OLDER THAN THIS SESSION.** Not argued — re-run. The same six groups at [[D-192]]'s landed commit, before a line of Session 3 existed, return the identical count in every group:
+
+```
+                    at D-192        at D-193
+        G3             2               2
+        G4             4               4
+        G5             1               1
+        G6             2               2
+        G10            2               2
+        G12            5               5
+```
+
+**Zero regressions.** `CUP 3` was bisected the same way — it reproduces exactly at the pre-Session-3 commit — and it is a real defect with two halves worth naming: `boil-water` is refused with an EMPTY reason in the wheel while the hub list carries a real one, so two surfaces disagree and one of them is a silent refusal ([[D-042]], Law 95); and the gate does not see a filled cup. **It is filed rather than fixed here**, because it belongs to the cup work and widening a crossing into it is how sessions stop landing.
+
 
 
 *Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
