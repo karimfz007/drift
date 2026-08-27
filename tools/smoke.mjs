@@ -12996,6 +12996,47 @@ async function main() {
     check('BENCH 4 — ...and the RENDER agrees PER SURFACE: the bench is drawn and the mat is not — the silhouette really changed',
         isDrawn(benchSurfaces.bench) && !isDrawn(benchSurfaces.mat), JSON.stringify(benchSurfaces));
 
+    // ---- 4d · THE REPORTED SCREEN: A LONG-PRESS ON THE MAT ---------------------------
+    //
+    //  REPORTED: holding the mat showed Move and a reading of what it holds, and NO upgrade
+    //  option — not greyed, not refused, absent. It was absent because `workspaceVerbs`
+    //  returned exactly one entry: the bench is a RECIPE, and the only route to framing was
+    //  the Build panel. The act needs you standing at the mat, and the mat said nothing.
+    //
+    //  This drives the director's own gesture rather than the brain's answer to it.
+    await editSave(`${WORKSPACE_FIXTURE} ${grantBlueprints('workmat', 'workbench')}
+        state.workspace = { built: true, x: 0, y: 96, tier: 'mat', jointWear: 0 };
+        state.knowledge.domains.construction.technique = 5;
+    `);
+    await sleep(700);
+    await ensureNoPanel();
+    await approach(0, 96, 25);
+    const matAt = await screenOf(0, 96);
+    let matWheel = { segs: [], labels: [], reasons: [] };
+    if (matAt) {
+        await tapAt(matAt.x, matAt.y, TUNE.tapMaxMs + 260);
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        matWheel = await page.evaluate(() => {
+            const segs = Array.from(document.querySelectorAll('.panel.verb-circle .verb-seg'));
+            return {
+                segs: segs.map((o) => o.dataset.verb + (o.classList.contains('ready') ? '' : ':blocked')),
+                labels: segs.map((o) => (o.querySelector('.verb-label')?.textContent ?? '').trim()),
+                reasons: segs.map((o) => (o.querySelector('.verb-reason')?.textContent ?? '').trim()),
+            };
+        });
+    }
+    check('BENCH 4d — THE MAT OFFERS FRAMING AT ALL: the reported gap, on the screen',
+        matWheel.segs.some((v) => v.startsWith('frame-bench')),
+        `segs [${matWheel.segs.join(' | ')}] · labels [${matWheel.labels.join(' | ')}]`);
+    //  ...AND IT IS SHOWN REFUSED RATHER THAN HIDDEN, which is the whole point: a survivor
+    //  short of the joinery meets the reason instead of an absence.
+    check('BENCH 4e — ...refused, not absent, with D-196 reason where a finger already is',
+        matWheel.segs.some((v) => v === 'frame-bench:blocked'),
+        `segs [${matWheel.segs.join(' | ')}]`);
+    await ensureNoPanel();
+
     // ---- 4b · THE BENCH ASKS FOR HANDS, NOT ONLY TIMBER (Session 4) ------------------
     //
     //  Six timber and a hammer is what a lean-to costs, and it used to be the whole price of

@@ -29,6 +29,7 @@ import {
     buildShelter, buildStorage, makerBlocker, repairStructure,
 } from '../src/brain/state';
 import { atWorkspace, canExperimentWith, combineSlate, recipeDisplayName, relationsFor } from '../src/brain/experiment';
+import { verbsFor } from '../src/brain/verbs';
 import { allRecipes } from '../src/brain/recipes';
 import { migrate, serialize, deserialize } from '../src/brain/save';
 import { reconcile } from '../src/brain/reconcile';
@@ -466,5 +467,81 @@ describe('SESSION 4 — THE SUCCESSOR CASE, which is where the gate bites hardes
             s.player = { x: 0, y: 0 };
         }
         expect(canBuildWorkbench(s), 'a successor could never reframe the bench').toBe(true);
+    });
+});
+
+describe('THE MAT OFFERS ITS OWN UPGRADE — the reported blocker', () => {
+    /**
+     * REPORTED: a long-press on a laid work mat showed `Move` and a reading of what the mat
+     * holds, and NO upgrade option — not greyed, not refused, genuinely absent.
+     *
+     * It was absent because `workspaceVerbs` returned exactly one entry. The bench is a RECIPE,
+     * and `makerBlocker` — where [[D-196]]'s joinery refusal lives — is consulted nowhere but
+     * the Build panel, so the only route to framing was to open that panel and guess the right
+     * two materials. The act is location-bound (`canBuildWorkbench` requires standing at the
+     * workspace) and the object was silent about it.
+     *
+     * [[D-196]] made it acute rather than causing it: that batch wrote a refusal naming the
+     * joinery gap honestly and then left it somewhere almost nobody would find. A refusal that
+     * cannot be reached is the silent refusal [[D-042]] forbids, however well it is worded.
+     */
+    function onAMat(): GameState {
+        const s = ready();
+        expect(buildWorkmat(s, 0, 0)).toBe(true);
+        s.player = { x: 0, y: 0 };
+        return s;
+    }
+
+    it('THE VERB EXISTS AT ALL — a laid mat offers framing, which it did not', () => {
+        const ids = verbsFor(onAMat(), 'workspace').map((v) => v.id);
+        expect(ids, `the mat offered only [${ids.join(' | ')}]`).toContain('frame-bench');
+    });
+
+    it('...and it is SHOWN AND REFUSED when the hands are short, never hidden', () => {
+        //  The half that matters most: the whole point is that the refusal becomes reachable.
+        const s = onAMat();
+        s.knowledge.domains.construction.technique = TUNE.knowledgeInnateFloor;
+        const frame = verbsFor(s, 'workspace').find((v) => v.id === 'frame-bench');
+        expect(frame, 'the verb vanished when it was refused').toBeTruthy();
+        expect(frame!.available).toBe(false);
+        expect(frame!.reason, 'greyed with no reason at all').toBeTruthy();
+        expect(frame!.reason).toMatch(/finer work/i);
+    });
+
+    it('...and when only the MATERIALS are short, it says so rather than greying in silence', () => {
+        //  `makerBlocker` answers for the surface and the hands and deliberately says nothing
+        //  about materials — the Build panel has a shortfall line beside it. The wheel does not.
+        const s = onAMat();
+        s.inventory.wood = 0;
+        const frame = verbsFor(s, 'workspace').find((v) => v.id === 'frame-bench')!;
+        expect(frame.available).toBe(false);
+        expect(frame.reason, 'greyed for no stated reason').toBeTruthy();
+        expect(frame.reason).toMatch(/wood/i);
+
+        const noHammer = onAMat();
+        noHammer.inventory.stonehammer = 0;
+        const f2 = verbsFor(noHammer, 'workspace').find((v) => v.id === 'frame-bench')!;
+        expect(f2.reason).toMatch(/hammer/i);
+    });
+
+    it('it goes LIVE when everything is there, and framing from the mat really frames', () => {
+        const s = onAMat();
+        const frame = verbsFor(s, 'workspace').find((v) => v.id === 'frame-bench')!;
+        expect(frame.available, 'a survivor with timber, a hammer and the hands was refused').toBe(true);
+        expect(frame.reason).toBeNull();
+        expect(buildWorkbench(s)).toBe(true);
+        expect(s.workspace.tier).toBe('bench');
+    });
+
+    it('and it RETIRES: a framed bench does not offer to be framed again', () => {
+        const s = onAMat();
+        buildWorkbench(s);
+        const ids = verbsFor(s, 'workspace').map((v) => v.id);
+        expect(ids, 'the bench offered to become a bench').not.toContain('frame-bench');
+    });
+
+    it('...nor does bare ground with no mat on it', () => {
+        const ids = verbsFor(ready(), 'workspace').map((v) => v.id);
+        expect(ids).not.toContain('frame-bench');
     });
 });

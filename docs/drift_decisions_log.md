@@ -3,6 +3,50 @@
 
 ---
 
+**D-197 · 2026-08-27 — THE MAT HAD NO WAY UP. The bench was a recipe, the act was location-bound to the mat, and the mat said nothing.**
+
+---
+
+**THE REPORT.** A long-press on a laid work mat offered *"Move"*, a reading of what the mat holds, and **no upgrade option at all** — not greyed, not refused, absent.
+
+**IT WAS NOT HIDDEN BELOW A THRESHOLD, and that was the first thing worth ruling out.** `workspaceVerbs` returned exactly ONE entry — `inspect-workspace`, hardcoded `available: false`, carrying a reading. There was never an upgrade verb on the mat, at any technique, in any state. So this is a genuine bug rather than a staging decision, and it predates [[D-196]].
+
+*(The *"Read in full"* the report describes is [[D-195]]'s pip doing its job: the reading — "It holds 3 things steady while you work." — is about forty characters against a box that holds one line, so it clips and raises the pip.)*
+
+**WHY IT WAS MISSING.** The bench is a RECIPE. It is built by staging wood with a hammer in the Build panel, and `makerBlocker` — where D-196's joinery refusal lives — is consulted nowhere but that panel (`game.ts`). Which leaves the worst possible combination:
+
+```
+canBuildWorkbench  requires standingAtWorkspace   the act is location-bound to the mat
+workspaceVerbs     one reading, no verbs          the object was silent about it
+makerBlocker       Build panel only               the refusal was in another room
+```
+
+**[[D-196]] MADE IT ACUTE RATHER THAN CAUSING IT, and that is mine to own.** That batch gave the bench a real joinery gate and a refusal written to name the gap honestly — *"Legs framed square to a surface is finer work than you have done yet"* — and then left that sentence somewhere a survivor reaches only by opening a panel and guessing the right two materials. **A refusal that cannot be reached is the silent refusal [[D-042]] forbids, however well it is worded.**
+
+---
+
+**THE FIX — THE MAT OFFERS ITS OWN UPGRADE.**
+
+`frame-bench`, on the workspace target: shown while there is a mat and no frame on it, **shown-and-refused** when the survivor is short, retiring once framed and never offered on bare ground.
+
+**IT IS NOT A WORKBENCH UNLOCKING A RECIPE**, which Law 167/219 forbids outright. The bench unlocks nothing here — this is the MAT offering the next thing that can be done to the MAT, exactly as the boat offers `shore-up-boat` and `seal-seams` at each rung of its own ladder. The recipe, its cost and its gate are untouched: `Game.MAKERS.workbench` and this verb call the same `buildWorkbench`, and both refusals are the same `makerBlocker`. **A second door onto one act, at the place the act happens** — and `canBuildWorkbench` already required standing there.
+
+**AND THE WHEEL NEEDED A SENTENCE THE PANEL DID NOT.** `makerBlocker('workbench')` answers for the SURFACE and the HANDS and deliberately says nothing about materials, because in the Build panel a shortfall line sits beside it. **The wheel has no such line**, so a survivor short of timber would have met a verb greyed for no stated reason — the same silence one step further in. `benchShortfallNote` names the wood or the hammer.
+
+---
+
+**WHAT THIS COST, RECORDED BECAUSE THE SECTION ITSELF WARNS ABOUT IT.** The device checks went in after `BENCH 4c` and turned `BENCH 5` red: the new block re-establishes a bare mat at technique 5, clobbering the framed bench the axe check inherits. The fixture's own comment describes this exact trap — *"ESTABLISH THE STATE, NEVER INHERIT IT... The check was passing on its own and lying in company."* The answer was ORDER rather than a second fixture: the refused mat belongs BEFORE the gate checks, so the section now reads **mat → refused → framed → the axe comes together**, which is also the order a survivor lives it.
+
+**Fail-then-pass:** removing the verb again reds four checks by name, including the two that assert it is refused rather than absent.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `frame-bench` in `workspaceVerbs` with `benchShortfallNote`; `doFrameBench` in `game.ts`; `BENCH 4d`/`4e` and the reordering of the workspace section.
+
+*Status: standing. D-196's content is testable from the object it belongs to.* — C2
+
+---
+
 **D-196 · 2026-08-26 — THE PONTOON: THE BENCH'S FIRST FOUR-PART JOB, THE FRUIT GOES BACK TO BEING FRUIT, AND THE BENCH ASKS FOR HANDS.**
 
 ---

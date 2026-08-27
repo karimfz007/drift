@@ -31,7 +31,7 @@ import {
 } from './boat';
 import { canCross, crossingBlocker } from './crossing';
 import { DESTINATIONS } from '../data/world';
-import { benchHasRacked, canBoardRaft, canFeedFire, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
+import { benchHasRacked, canBuildWorkbench, makerBlocker, canBoardRaft, canFeedFire, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
 import { boilRefusalFor, hasVessel, canBoil, canFillVessel, canMakeShellCup, shellCupBlocker } from './vessel';
@@ -457,7 +457,59 @@ function workspaceVerbs(state: GameState): VerbOption[] {
                         : `It holds ${TUNE.relationsAtBench} things steady while you work.`)
                     : `It holds ${TUNE.relationsAtMat} things steady while you work.`,
         },
-    ];
+        {
+            //  FRAME IT — THE MAT'S OWN UPGRADE, ON THE MAT.
+            //
+            //  THE DEFECT THIS CLOSES. A long-press on a laid mat offered `Move` and a reading,
+            //  and nothing else — no upgrade, not even a refused one. The bench was reachable
+            //  ONLY by opening the Build panel and staging wood with a hammer, because
+            //  `workbench` is a recipe and `makerBlocker` is consulted nowhere but that panel
+            //  (`game.ts`). So the act was invisible at the one object it belongs to.
+            //
+            //  AND [[D-196]] MADE IT ACUTE. That batch gave the bench a real joinery gate and a
+            //  refusal written to name the gap honestly — and then left that sentence somewhere
+            //  a survivor reaches only by guessing the right two materials in a panel. A
+            //  refusal nobody can find is the silent refusal [[D-042]] forbids, however well it
+            //  is worded.
+            //
+            //  IT IS NOT A WORKBENCH UNLOCKING A RECIPE, which Law 167/219 forbids outright.
+            //  The bench unlocks nothing here: this is the MAT offering the next thing that can
+            //  be done to the MAT, exactly as the boat offers `shore-up-boat` and `seal-seams`
+            //  at each rung of its own ladder. The recipe, its cost and its gate are untouched
+            //  — this is a second door onto the same act, at the place the act happens, and
+            //  `canBuildWorkbench` already required standing here.
+            //
+            //  RETIRES WHEN DONE, like every other one-shot verb: shown only while there is a
+            //  mat and no frame on it. A racked bench is not shown either — that is answered by
+            //  re-laying the surface, which is the mat's own verb and not this one.
+            id: 'frame-bench',
+            label: 'Frame it into a bench',
+            available: canBuildWorkbench(state),
+            reason: makerBlocker(state, 'workbench') ?? benchShortfallNote(state),
+        },
+    ].filter((v) =>
+        //  RETIRES WHEN DONE. Filtered here rather than carried as a `shown` field, because
+        //  that field is `boatVerbs` local shape and not part of `VerbOption` — the ladder
+        //  with ten staged verbs needed one, and a two-verb surface does not.
+        v.id !== 'frame-bench' || (w.built && w.tier === 'mat'));
+}
+
+/**
+ * What the framing still wants, when `makerBlocker` has nothing to say.
+ *
+ * `makerBlocker('workbench')` answers for the SURFACE and the HANDS — no mat, already framed,
+ * not standing here, joinery short. It deliberately says nothing about materials, because in
+ * the Build panel the shortfall line beside it already does. On the wheel there is no such
+ * line, so a survivor short of timber would have met a verb greyed for no stated reason —
+ * which is the same silence this whole verb exists to end, one step further in.
+ */
+function benchShortfallNote(state: GameState): string | null {
+    if (canBuildWorkbench(state)) return null;
+    const missing: string[] = [];
+    if (state.inventory.stonehammer <= 0) missing.push('a stone hammer to drive the pegs');
+    const short = TUNE.workbenchWoodCost - state.inventory.wood;
+    if (short > 0) missing.push(`${short} more wood`);
+    return missing.length > 0 ? `You would need ${missing.join(' and ')}.` : null;
 }
 
 /**

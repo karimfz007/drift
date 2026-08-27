@@ -2391,6 +2391,7 @@ export class Game {
             case 'fill-vessel': this.doFillVessel(); break;
             case 'boil-water': this.doBoil(); break;
             case 'move-structure': this.doArmMove(); break;
+            case 'frame-bench': this.doFrameBench(); break;
             case 'add-materials': this.doAddToSite(); break;
             case 'inspect-boat': this.doInspectBoat(); break;
             case 'survey-hull': this.doSurveyHull(); break;
@@ -3415,6 +3416,25 @@ export class Game {
     }
 
     /** Law 125's rigging route: timber under the bilge, not strength. */
+    /**
+     * FRAME THE MAT INTO A BENCH, from the mat itself.
+     *
+     * The same act the Build panel already performs — `Game.MAKERS.workbench` is this exact
+     * function — reached from the object it happens at. `buildWorkbench` does its own gating,
+     * so this cannot become a second opinion about whether framing is allowed; the refusal
+     * shown on the wheel and the refusal thrown here are both `makerBlocker`.
+     */
+    private doFrameBench(): void {
+        const s = session().state;
+        const blocked = makerBlocker(s, 'workbench');
+        if (blocked) { this.explain(blocked); return; }
+        if (!buildWorkbench(s)) { this.explain('You have not the timber and a hammer for it.'); return; }
+        this.cues.play(CUES.craft);
+        this.floatText('framed');
+        this.showHint('Legs, braced, and a top that will not move. It will hold four things steady now.');
+        session().persist(now());
+        this.lastActivityAt = now();
+    }
     private doShoreUpBoat(): void {
         const s = session().state;
         const blocked = shoreUpBlocker(s);
