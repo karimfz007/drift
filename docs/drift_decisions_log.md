@@ -48,7 +48,7 @@ frame-bench     Frame it into a bench      ->  Upgrade
 
 **AND ONE RED THAT IS NOT THIS BATCH'S.** `CROSS 11`/`CROSS 12` fail on this bench at 32.8 energy. Bisected during [[D-195]] and failing identically at `1b3d811` before any of this work existed: the survivor treads deep water at **0.47 energy per REAL second** while the harness runs an absence probe, two saves, a wheel open and three assertions. Labels cannot touch energy. Named again here rather than quietly carried.
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed on `main` as **`24ddce7`**, confirmed three ways — local `HEAD`, `origin/main` and the served `<meta name="drift-build">` all read `24ddce7`, served build `2026-08-27T11:10:18Z`. CI green. **1840 unit checks.** Device: `THE WORKSPACE` 42/42, `THE BOAT SHOWS ONE RUNG` 24/24 (the wheel now reads `pip More · segs [inspect-boat | survey-hull:blocked]`), `THE VERB CIRCLE SCALES` 20/20.
 
 **Class: OPERATIVE** — shipped: twelve labels in `verbs.ts`; the pip string in `hud.ts`; `CROSS 2`/`CROSS 10`/`LADDER 2` and `crossing.test.ts`'s direction assertions; the label-discipline guard in `boat-stages.test.ts`.
 
