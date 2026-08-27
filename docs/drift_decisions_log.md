@@ -3,6 +3,67 @@
 
 ---
 
+**D-199 · 2026-08-27 — THE LIST COULD ONLY EVER REFUSE. Two reports, one missing channel, and a reading that had been dressed as a denial since it shipped.**
+
+---
+
+**THE TWO REPORTS.** At the boat, a survivor could not tell `Inspect` from `Survey`, and opening `More` did not help. At the mat, `Upgrade` and `Work mat` both drew as blocked and neither said what was needed or what it was.
+
+**QUOTED BEFORE ANYTHING WAS CHANGED**, because guessing at what is unclear is how wording batches go wrong:
+
+```
+BOAT, fresh survivor
+  [READY  ] Inspect   reason: (null - nothing shown at all)
+  [BLOCKED] Survey    reason: "You can see she is holed, but not what holds her
+                               together. You do not know hull work well enough yet..."
+
+MAT, low construction, 40 wood and a hammer in hand
+  [BLOCKED] Work mat  reason: "It holds 3 things steady while you work."
+  [BLOCKED] Upgrade   reason: "Legs framed square to a surface is finer work than
+                               you have done yet. Raise a shelter, build a store..."
+
+MAT, no timber and no hammer
+  [BLOCKED] Upgrade   reason: "...finer work than you have done yet. Raise a shelter,
+                               build a store..."      <- identical. The pack is never named.
+```
+
+---
+
+**ONE SYSTEMIC GAP, AND IT IS COUNTED RATHER THAN ASSERTED.** Across one ordinary state: **28 verbs reachable, 13 of them READY and therefore completely silent.** Zero blocked verbs lack a reason — [[D-042]] holds perfectly well. The gap runs the other way.
+
+`VerbOption` carried exactly ONE text field. `reason` is defined as *"the ONE truest obstacle, when blocked... Null when available."* **So the overflow list could only ever explain why you CANNOT do something.** It had no vocabulary at all for what a verb IS.
+
+Both reports are that one gap wearing different clothes:
+
+- **`Inspect` vs `Survey`** — only one of the two had any text, because the other was usable. There was nothing to compare. Not a wording problem: a missing channel.
+- **`Work mat`** — a DESCRIPTION FORCED INTO THE REFUSAL CHANNEL, because that was the only channel with text. And worse than suspected: it has **no handler anywhere**, cannot be pressed, and can never become available. It was marked `available: false` purely to be non-pressable, and drew identically to a verb the survivor was being denied. **A reading dressed as a denial**, since the day it shipped.
+
+**AND A DEFECT IN MY OWN [[D-197]].** `benchShortfallNote` — the sentence naming the wood and the hammer — is UNREACHABLE whenever the joinery is also short, because `makerBlocker` returns the joinery gap first and short-circuits it. For a fresh survivor that is always. **The materials sentence could not be seen in the one case it was written for**, which the third quote above shows exactly.
+
+---
+
+**THE FIX — TWO FIELDS, AND THE SPLIT RESOLVES LAW 95 RATHER THAN BENDING IT.**
+
+**`detail`** — what this thing IS, shown whatever its state. The REFUSAL keeps the one truest obstacle on the segment, where there is room for one sentence; the DETAIL states the whole requirement in the list, which is the surface with room for it. Both true at once, neither a laundry list:
+
+> *"The hands for it, from building and mending what stands up · 6 wood · a stone hammer to drive the pegs. Framed onto this mat, standing here."* — with a tick against whatever is already in hand, so a long wait reads differently from a short errand.
+
+**`readout`** — this row is a reading, not an action. Not the same as `available: false`: **a blocked verb is something you could do later; a readout is something you never do.** Drawn at full strength with a rule down its left rather than greyed like a denial, and its `reason` is now null because there was never an obstacle there to name.
+
+**THE MUTE-REFUSAL GUARD WAS STRENGTHENED, NOT WAIVED.** `verbs.test.ts` asserted that every blocked segment carries a reason — and `inspect-workspace` had been PASSING it by pretending to be a refusal, because the invariant could not tell a reading from a denial. A readout must now carry no obstacle AND must carry a detail, both asserted, and the branch is witnessed as exercised.
+
+---
+
+**SCOPE, DECIDED FROM THE COUNT RATHER THAN THE COMPLAINT.** Of the thirteen silent ready verbs, only `Inspect` is genuinely ambiguous against a sibling — `Sleep`, `Move`, `Open`, `Feed`, `Cook the meat` explain themselves, and describing them would be noise dressed as diligence. So two verbs gained a description and the mechanism now exists for any that later earn one. **The gap was systemic; the content fix is not, and pretending otherwise would have been its own kind of dishonesty.**
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: `VerbOption.detail`/`VerbOption.readout` and the `CircleOption` mirror; descriptions on `inspect-boat`, `survey-hull`, `inspect-workspace` and `frame-bench` (`benchRequirementNote`); the three-kind row in `showVerbList` and the readout class on the arc; `.verb-row.readout`/`.verb-row-detail`/`.verb-seg.readout` styling; the strengthened guard in `verbs.test.ts` and `BENCH 4f`/`4g`.
+
+*Status: standing. The list answers "what is this" as well as "why not".* — C2
+
+---
+
 **D-198 · 2026-08-27 — THE ARC HOLDS A WORD, NOT A SENTENCE. Twelve labels shortened, the pip renamed, and the reasons deliberately left alone.**
 
 ---

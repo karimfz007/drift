@@ -316,8 +316,21 @@
             max-height: 46vh; overflow-y: auto; }
         .panel.verb-list .verb-row { display: flex; flex-direction: column; gap: 2px; }
         .panel.verb-list .verb-row.blocked { opacity: 0.72; }
+        /*  A READING, NOT A REFUSAL. `inspect-workspace` marked itself unavailable purely to
+            borrow the refusal channel, and came out dimmed like a verb the survivor was being
+            denied — two greyed rows at a mat, one of which was never an action. It is drawn at
+            full strength with a rule down its left instead: present, legible, not an offer.  */
+        .panel.verb-list .verb-row.readout { opacity: 1; border-left: 2px solid var(--edge);
+            padding-left: 10px; }
+        .panel.verb-list .verb-row.readout .verb-row-label { opacity: 0.8; font-weight: 600; }
         .panel.verb-list .verb-row-btn { align-self: flex-start; }
         .panel.verb-list .verb-row-reason { margin: 0; }
+        /*  WHAT A THING IS, above why you cannot have it. Slightly brighter than the reason
+            beneath it: the description is the answer to "what is this", which is the question
+            a survivor opening this list is usually asking first.  */
+        .panel.verb-list .verb-row-detail { margin: 0; opacity: 0.92; }
+        /*  ...and on the arc, a readout is not greyed like a blocked verb either.  */
+        .panel.verb-circle .verb-seg.readout { opacity: 0.9; border-style: dashed; }
         .panel .combine-row { display: flex; flex-direction: column; gap: 6px; align-items: center; }
         .panel .combine-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
         .panel .combine-chip.picked { outline: 2px solid var(--good); color: var(--fg); }

@@ -211,17 +211,31 @@ describe('BLOCKED SEGMENTS STATE THEIR REASON — never hidden, never generic', 
         //  Property, not a spot-check: the invariant is that `available` and `reason` are
         //  exact complements. A blocked segment with a null reason is a grey button that
         //  teaches nothing, which is the thing Ch.2's rule forbids.
+        //  A READOUT IS NOT A REFUSAL, and this is the exemption that STRENGTHENS the rule
+        //  rather than punching a hole in it. `inspect-workspace` used to satisfy this test by
+        //  marking itself unavailable and putting a DESCRIPTION in the reason field — it has no
+        //  handler and can never become available, so it was a reading wearing a refusal's
+        //  clothes, and it passed here precisely because the invariant could not tell them
+        //  apart. A row that is not an action must carry no obstacle (there is none to name)
+        //  and must carry a `detail` instead, which is asserted below rather than waived.
         let blocked = 0;
+        let readouts = 0;
         for (const target of TARGETS) {
             for (const s of [createInitialState(3), atPond(), builtEverything()]) {
                 for (const v of verbsFor(s, target)) {
-                    if (v.available) expect(v.reason).toBeNull();
-                    else { expect(v.reason).toBeTruthy(); blocked++; }
+                    if (v.readout) {
+                        expect(v.reason, `${target}/${v.id}: a reading named an obstacle`).toBeNull();
+                        expect(v.detail, `${target}/${v.id}: a reading that says nothing`).toBeTruthy();
+                        expect(v.available, `${target}/${v.id}: a reading that claims to be doable`).toBe(false);
+                        readouts++;
+                    } else if (v.available) expect(v.reason).toBeNull();
+                    else { expect(v.reason, `${target}/${v.id} is a mute refusal`).toBeTruthy(); blocked++; }
                 }
             }
         }
         //  WITNESS (D-066 a): the sweep must actually have found blocked segments.
         expect(blocked).toBeGreaterThan(6);
+        expect(readouts, 'the readout branch was never exercised').toBeGreaterThan(0);
     });
 
     it('no reason is a generic brush-off — each names a specific obstacle', () => {
@@ -427,5 +441,74 @@ describe('THE UNIVERSAL SEAM — room for Examine, proven while it is still empt
         const s = atPond();
         expect(defaultVerb(s, 'pond')?.id).toBe('drink');
         expect(declaredDefaultVerbId('pond')).toBe('drink');
+    });
+});
+
+describe('THE LIST DESCRIBES, IT DOES NOT ONLY REFUSE', () => {
+    /**
+     * TWO REPORTS, ONE GAP. A survivor could not tell `Inspect` from `Survey` at the boat, and
+     * could not tell what `Upgrade` needed or what `Work mat` even was at the mat. Both are the
+     * same missing thing: `reason` is the ONE TRUEST OBSTACLE and is null whenever a verb is
+     * usable, so the overflow list could only ever explain why you CANNOT do something.
+     *
+     * Counted across one ordinary state when this was written: 28 verbs reachable, 13 of them
+     * READY and therefore completely silent. `detail` is the other half — what a thing IS —
+     * and it is shown whatever the state, so two verbs can finally be compared.
+     */
+    it('the two verbs the report could not tell apart now say what each one is', () => {
+        const s = createInitialState(3);
+        s.player = { x: 14, y: 100 };
+        const boat = verbsFor(s, 'boat');
+        const inspect = boat.find((v) => v.id === 'inspect-boat')!;
+        const survey = boat.find((v) => v.id === 'survey-hull')!;
+
+        //  THE READY ONE IS NO LONGER SILENT. This is the half that was impossible before:
+        //  a usable verb has no reason by law, so it had no text at all.
+        expect(inspect.available).toBe(true);
+        expect(inspect.reason, 'a usable verb must still name no obstacle').toBeNull();
+        expect(inspect.detail, 'Inspect is still a bare button').toBeTruthy();
+
+        //  ...and the two descriptions actually distinguish them: one is free looking, the
+        //  other is work that names faults.
+        expect(inspect.detail!).toMatch(/costs nothing|look/i);
+        expect(survey.detail, 'Survey says only why it is refused').toBeTruthy();
+        expect(survey.detail!).toMatch(/name what is wrong|plank/i);
+        expect(inspect.detail).not.toBe(survey.detail);
+    });
+
+    it('the mat says what it IS and what the upgrade WANTS, concretely', () => {
+        const s = createInitialState(3);
+        s.player = { x: 0, y: 0 };
+        s.workspace = { built: true, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        const rows = verbsFor(s, 'workspace');
+
+        //  "Work mat" is a reading, not an action the survivor is being denied.
+        const mat = rows.find((v) => v.id === 'inspect-workspace')!;
+        expect(mat.readout, 'the reading still claims to be a blocked action').toBe(true);
+        expect(mat.detail).toMatch(/holds/i);
+
+        //  ...and the upgrade names the WHOLE requirement, not just the first missing thing.
+        const up = rows.find((v) => v.id === 'frame-bench')!;
+        expect(up.detail, 'Upgrade does not say what it takes').toBeTruthy();
+        expect(up.detail!, 'the timber is not named').toContain(`${TUNE.workbenchWoodCost} wood`);
+        expect(up.detail!, 'the hammer is not named').toMatch(/hammer/i);
+        expect(up.detail!, 'the experience is not named').toMatch(/hands|building|mending/i);
+    });
+
+    it('...and the whole requirement is stated even when the joinery is the blocker', () => {
+        //  THE DEFECT THIS PINS, from [[D-197]]. `makerBlocker` returns the joinery gap first,
+        //  so `benchShortfallNote` — the sentence naming the wood and the hammer — was
+        //  UNREACHABLE whenever the joinery was also short, which for a fresh survivor is
+        //  always. The refusal keeps Law 95's one obstacle; the detail carries the rest.
+        const s = createInitialState(3);
+        s.player = { x: 0, y: 0 };
+        s.workspace = { built: true, x: 0, y: 0, tier: 'mat', jointWear: 0 };
+        s.inventory.wood = 0;
+        s.inventory.stonehammer = 0;
+        const up = verbsFor(s, 'workspace').find((v) => v.id === 'frame-bench')!;
+
+        expect(up.reason!, 'the refusal stopped naming the truest obstacle').toMatch(/finer work/i);
+        expect(up.detail!, 'the pack was never mentioned').toMatch(/wood/i);
+        expect(up.detail!).toMatch(/hammer/i);
     });
 });

@@ -86,6 +86,36 @@ export interface VerbOption {
      * also what the director asked for in words — *long-press should offer a Move option*.
      */
     holdOnly?: boolean;
+    /**
+     * WHAT THIS VERB IS — shown in the overflow list, available or not.
+     *
+     * THE GAP THIS CLOSES, and it was systemic rather than a wording slip. `reason` is the ONE
+     * TRUEST OBSTACLE and is null whenever a verb is usable, so **the list could only ever
+     * explain why you cannot do something.** Counted across one ordinary state: 28 verbs
+     * reachable, and 13 of them READY and therefore completely silent. A survivor comparing
+     * `Inspect` against `Survey` at the boat saw a bare button beside a paragraph and had no
+     * way to tell what the first one even did.
+     *
+     * IT IS NOT A SECOND REASON. Law 95 still governs the refusal: one obstacle, the truest,
+     * on the segment. This is the OTHER question — what is this, and what does it want — and it
+     * belongs in the list because the list is the surface with room for it. That split is also
+     * what lets a refusal stay short and a description stay complete without either fighting
+     * the other for the same forty characters.
+     */
+    detail?: string;
+    /**
+     * THIS ROW IS A READING, NOT AN ACTION.
+     *
+     * `inspect-workspace` shipped as `available: false` carrying "It holds 3 things steady
+     * while you work." — a DESCRIPTION DRESSED AS A REFUSAL. It has no handler, it can never
+     * become available, and it rendered identically to a verb the survivor was being denied.
+     * Two blocked-looking rows at a mat, one of which was never an action at all, is most of
+     * why the mat read as broken.
+     *
+     * Marking it lets the body draw it as what it is. It is NOT the same as `available: false`:
+     * a blocked verb is something you could do later, and a readout is something you never do.
+     */
+    readout?: boolean;
 }
 
 export type VerbTarget = 'pond' | 'shelter' | 'storage' | 'fire' | 'boar' | 'dropped' | 'raft' | 'fishingspot'
@@ -303,6 +333,13 @@ function boatVerbs(state: GameState): VerbOption[] {
             label: stage === 'B0' ? 'Inspect' : `Inspect (${stage})`,
             available: true,
             reason: null,
+            //  WHAT IT IS, BESIDE THE THING IT IS CONFUSED WITH. Reported: a survivor could not
+            //  tell `Inspect` from `Survey`. They could not, because only one of the two had
+            //  any text — a refusal — and this one was a bare button. The difference is real and
+            //  is worth one sentence: looking is free and tells you what you can SEE; the
+            //  survey is work, needs hull knowledge, and turns what you see into named faults.
+            detail: 'Walk round her and look. Costs nothing, needs nothing, and tells you what'
+                + ' is plain to see. Naming what is actually wrong with her is the survey.',
             shown: true,
         },
         {
@@ -310,6 +347,11 @@ function boatVerbs(state: GameState): VerbOption[] {
             label: 'Survey',
             available: canSurveyHull(state),
             reason: surveyBlocker(state),
+            //  ...AND THE OTHER HALF OF THE SAME COMPARISON. Says what the work BUYS, which is
+            //  the thing a survivor is deciding about; the refusal beside it says why they
+            //  cannot buy it yet.
+            detail: 'Hours over her, plank by plank, until you can name what is wrong rather'
+                + ' than see that something is. It is what opens the repairs.',
             //  Retires itself: once you have been over her plank by plank, you have.
             shown: !b.surveyed,
         },
@@ -446,13 +488,20 @@ function workspaceVerbs(state: GameState): VerbOption[] {
             id: 'inspect-workspace',
             label: w.tier === 'bench' ? (benchHasRacked(state) ? 'Racked bench' : 'Workbench') : 'Work mat',
             available: false,
-            reason: !w.built
+            //  A READING, NOT A REFUSAL — and it was drawn as one, which is most of why the mat
+            //  read as broken. Two greyed rows at a laid mat, and only one of them was ever an
+            //  action: this has no handler, cannot be pressed, and can never become available.
+            //  `reason` is null now because there is no obstacle here to name; the sentence it
+            //  used to carry was a description all along, and it has moved to `detail`.
+            readout: true,
+            reason: null,
+            detail: !w.built
                 ? 'There is no work surface here.'
                 : w.tier === 'bench'
                     ? (benchHasRacked(state)
-                        ? 'The joints have gone slack. Re-lay the surface and frame it again.'
-                        : `It holds ${TUNE.relationsAtBench} things steady while you work.`)
-                    : `It holds ${TUNE.relationsAtMat} things steady while you work.`,
+                        ? 'The joints have gone slack, so it holds nothing steady. Re-lay the surface and frame it again.'
+                        : `A framed bench. It holds ${TUNE.relationsAtBench} things steady while you work — enough for a four-part job.`)
+                    : `A laid mat. It holds ${TUNE.relationsAtMat} things steady while you work; a bench framed onto it would hold ${TUNE.relationsAtBench}.`,
         },
         {
             //  FRAME IT — THE MAT'S OWN UPGRADE, ON THE MAT.
@@ -483,6 +532,20 @@ function workspaceVerbs(state: GameState): VerbOption[] {
             label: 'Upgrade',
             available: canBuildWorkbench(state),
             reason: makerBlocker(state, 'workbench') ?? benchShortfallNote(state),
+            //  THE WHOLE REQUIREMENT, WHICH THE REFUSAL DELIBERATELY DOES NOT GIVE.
+            //
+            //  Law 95 wants ONE obstacle on the segment — the truest — and `makerBlocker`
+            //  returns the joinery gap first. That is right, and it had a cost nobody had
+            //  measured: `benchShortfallNote` was UNREACHABLE whenever the joinery was also
+            //  short, which for a fresh survivor is always. So a survivor with no timber and
+            //  no hammer was told about their hands and never about their pack, and the
+            //  materials sentence I added in [[D-197]] could not be seen in the one case it
+            //  was written for.
+            //
+            //  The split resolves it without touching the law: the REFUSAL names the one
+            //  truest obstacle, and the DETAIL states the whole requirement, concretely, in
+            //  the surface that has room. Both are true at once and neither is a laundry list.
+            detail: benchRequirementNote(state),
         },
     ].filter((v) =>
         //  RETIRES WHEN DONE. Filtered here rather than carried as a `shown` field, because
@@ -500,6 +563,24 @@ function workspaceVerbs(state: GameState): VerbOption[] {
  * line, so a survivor short of timber would have met a verb greyed for no stated reason —
  * which is the same silence this whole verb exists to end, one step further in.
  */
+/**
+ * EVERYTHING FRAMING A BENCH WANTS, said once and concretely.
+ *
+ * Unlike the refusal beside it, this does not stop at the first missing thing — it is the
+ * answer to "what would it take", which is a different question from "why not now". Each
+ * clause names a real amount or a real act, and says which ones are already in hand, so a
+ * survivor can tell a long wait from a short errand.
+ */
+function benchRequirementNote(state: GameState): string {
+    const have = (ok: boolean, text: string) => (ok ? `${text} ✓` : text);
+    const joinery = state.knowledge.domains.construction.technique >= TUNE.benchJoineryTechnique;
+    return [
+        have(joinery, 'The hands for it, from building and mending what stands up'),
+        have(state.inventory.wood >= TUNE.workbenchWoodCost, `${TUNE.workbenchWoodCost} wood`),
+        have(state.inventory.stonehammer > 0, 'a stone hammer to drive the pegs'),
+    ].join(' · ') + '. Framed onto this mat, standing here.';
+}
+
 function benchShortfallNote(state: GameState): string | null {
     if (canBuildWorkbench(state)) return null;
     const missing: string[] = [];

@@ -1630,6 +1630,10 @@ export interface CircleOption {
     reason: string | null;
     /** From the universal tail (`Move`). Keeps its slot on the arc — see `planVerbCircle`. */
     universal?: boolean;
+    /** WHAT THIS IS — shown in the list whatever its state. Mirrors `VerbOption.detail`. */
+    detail?: string;
+    /** A reading rather than an action: never pressable, never drawn as a refusal. */
+    readout?: boolean;
 }
 
 /** The one place the arc’s length is computed, so the plan and the drawing cannot disagree. */
@@ -1659,11 +1663,22 @@ function showVerbList(
     onClose: () => void,
 ): void {
     const el = panel(overlay, 'verb-list');
+    //  THREE KINDS OF ROW, NOT TWO. This list drew `ready` and `blocked` and nothing else,
+    //  which forced two separate defects. A READY verb had no text at all — `reason` is null
+    //  when a verb is usable — so `Inspect` sat beside `Survey` as a bare button next to a
+    //  paragraph, and a survivor comparing them had nothing to compare. And a READING had
+    //  nowhere to live, so `inspect-workspace` marked itself unavailable to borrow the refusal
+    //  channel and came out looking like a verb the survivor was being denied.
+    //
+    //  `detail` says what a thing IS and is shown whatever its state; `reason` stays the one
+    //  truest obstacle and is shown only when there is one. A `readout` row is neither ready
+    //  nor blocked — it is not an action, and it no longer claims to be.
     const rows = options.map((o) => `
-        <div class="verb-row ${o.available ? 'ready' : 'blocked'}" data-verb="${o.id}">
-            ${o.available
+        <div class="verb-row ${o.readout ? 'readout' : o.available ? 'ready' : 'blocked'}" data-verb="${o.id}">
+            ${o.available && !o.readout
                 ? `<button class="quiet verb-row-btn" data-verb="${o.id}" type="button">${o.label}</button>`
                 : `<strong class="verb-row-label">${o.label}</strong>`}
+            ${o.detail ? `<p class="subtitle verb-row-detail">${o.detail}</p>` : ''}
             ${o.reason ? `<p class="subtitle verb-row-reason">${o.reason}</p>` : ''}
         </div>`).join('');
     el.innerHTML = `
@@ -1723,8 +1738,11 @@ export function showVerbCircle(
         //  a class rather than `:has()` because the markup is ours and a selector nobody has to
         //  reason about is worth more than a clever one.
         const showsReason = Boolean(o.reason) && plan.showReasons;
+        //  A READOUT IS NOT A BLOCKED VERB. It is drawn dashed rather than greyed, so a mat does
+        //  not present two identical refusals when only one of them was ever an action.
+        const kind = o.readout ? 'readout' : o.available ? 'ready' : 'blocked';
         return `
-            <button class="verb-seg ${o.available ? 'ready' : 'blocked'}${showsReason ? ' with-reason' : ''}" type="button"
+            <button class="verb-seg ${kind}${showsReason ? ' with-reason' : ''}" type="button"
                     data-verb="${o.id}" ${o.available ? '' : 'disabled'}
                     style="${box} transform: translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)">
                 <span class="verb-label">${o.label}</span>

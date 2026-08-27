@@ -13037,6 +13037,58 @@ async function main() {
         `segs [${matWheel.segs.join(' | ')}]`);
     await ensureNoPanel();
 
+    // ---- 4f · WHAT THE OVERFLOW LIST ACTUALLY SAYS AT THE MAT -------------------------
+    //
+    //  REPORTED, twice: the list refused and never described. `reason` is the ONE TRUEST
+    //  OBSTACLE and is null whenever a verb is usable, so the list could only ever explain
+    //  why you CANNOT do a thing — 13 of 28 reachable verbs were READY and therefore silent.
+    //  And a reading with nowhere to live (`inspect-workspace`) marked itself unavailable to
+    //  borrow the refusal channel, so a mat drew two greyed rows and only one was an action.
+    await editSave(`${WORKSPACE_FIXTURE} ${grantBlueprints('workmat', 'workbench')}
+        state.workspace = { built: true, x: 0, y: 96, tier: 'mat', jointWear: 0 };
+        state.knowledge.domains.construction.technique = 5;
+        state.inventory = { ...state.inventory, wood: 0, stonehammer: 0 };
+    `);
+    await sleep(700);
+    await ensureNoPanel();
+    await approach(0, 96, 25);
+    const matPoint = await screenOf(0, 96);
+    let listRows = [];
+    if (matPoint) {
+        await tapAt(matPoint.x, matPoint.y, TUNE.tapMaxMs + 260);
+        await page.waitForFunction(
+            () => document.querySelector('.panel.verb-circle .verb-seg') !== null, { timeout: 15_000 },
+        ).catch(() => {});
+        //  Open the pip and read the LIST, which is the surface the report is about.
+        listRows = await page.evaluate(async () => {
+            const pip = document.querySelector('.panel.verb-circle .verb-more');
+            if (pip) pip.click();
+            await new Promise((r) => setTimeout(r, 700));
+            return Array.from(document.querySelectorAll('.panel.verb-list .verb-row')).map((row) => ({
+                id: row.dataset.verb,
+                kind: row.classList.contains('readout') ? 'readout'
+                    : row.classList.contains('ready') ? 'ready' : 'blocked',
+                detail: (row.querySelector('.verb-row-detail')?.textContent ?? '').trim(),
+                reason: (row.querySelector('.verb-row-reason')?.textContent ?? '').trim(),
+            }));
+        });
+    }
+    const rowFor = (id) => listRows.find((r) => r.id === id) ?? { kind: null, detail: '', reason: '' };
+    const matRow = rowFor('inspect-workspace');
+    const upRow = rowFor('frame-bench');
+
+    //  A READING IS NOT A REFUSAL, and it no longer draws as one.
+    check('BENCH 4f — "Work mat" reads as a description, not as a denied action',
+        matRow.kind === 'readout' && matRow.detail.length > 10 && matRow.reason === '',
+        `kind ${matRow.kind} · detail "${matRow.detail}" · reason "${matRow.reason}"`);
+    //  ...AND THE UPGRADE STATES THE WHOLE REQUIREMENT, not just the first missing thing.
+    //  The refusal keeps Law 95's one obstacle; the detail carries wood, hammer and hands.
+    check('BENCH 4g — "Upgrade" names what it takes: the hands, the timber AND the hammer',
+        /wood/i.test(upRow.detail) && /hammer/i.test(upRow.detail)
+        && /hands|building|mending/i.test(upRow.detail) && upRow.reason.length > 20,
+        `detail "${upRow.detail}" · reason "${upRow.reason.slice(0, 60)}"`);
+    await ensureNoPanel();
+
     // ---- 4b · THE BENCH ASKS FOR HANDS, NOT ONLY TIMBER (Session 4) ------------------
     //
     //  Six timber and a hammer is what a lean-to costs, and it used to be the whole price of
