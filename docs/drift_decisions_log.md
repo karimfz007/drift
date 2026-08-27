@@ -39,7 +39,7 @@ makerBlocker       Build panel only               the refusal was in another roo
 
 **Fail-then-pass:** removing the verb again reds four checks by name, including the two that assert it is refused rather than absent.
 
-*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+*Witness:* landed on `main` as **`d50dbdd`**, confirmed three ways — local `HEAD`, `origin/main` and the served `<meta name="drift-build">` all read `d50dbdd`, served build `2026-08-27T08:12:21Z`. CI green on both jobs. **1837 unit checks.** Device: `THE WORKSPACE` **42/42**, and the reported gesture is in the log — a long-press on the mat now reads `[inspect-workspace:blocked | frame-bench:blocked | move-structure]` where it read two segments before.
 
 **Class: OPERATIVE** — shipped: `frame-bench` in `workspaceVerbs` with `benchShortfallNote`; `doFrameBench` in `game.ts`; `BENCH 4d`/`4e` and the reordering of the workspace section.
 
