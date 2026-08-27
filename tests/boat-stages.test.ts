@@ -1069,3 +1069,70 @@ describe('A REFUSAL MAY NOT NAME AN ENABLER THIS WORLD DOES NOT CONTAIN', () => 
         expect(surveyBlocker(taught)).toBeNull();
     });
 });
+
+describe('THE ARC HOLDS A WORD, NOT A SENTENCE', () => {
+    /**
+     * The boat is the busiest target in the game — eleven verbs, four segments of arc — and its
+     * labels were phrases: "Look her over", "Prop and crib her", "Take her out on the line".
+     * `.verb-label` is clamped to one line when a reason prints beside it ([[D-195]]), so a
+     * phrase is a phrase the player reads the first two words of.
+     *
+     * ONE WORD WHERE ONE WORD IS HONEST, two where the second carries real information —
+     * "again" is the only qualifier that survived, because a redo genuinely differs from a
+     * first attempt and the check below reads it.
+     *
+     * THE REASON TEXT IS UNTOUCHED. Brevity belongs on the segment, where there is no room;
+     * the refusal keeps every word it needs, and the pip carries it when it will not fit.
+     */
+    const SHORT = 14;
+
+    function labelsAt(target: 'boat' | 'workspace', s: GameState): Array<{ id: string; label: string }> {
+        return verbsFor(s, target).map((v) => ({ id: v.id, label: v.label }));
+    }
+
+    it('every label the boat can show is a word, or a word and a qualifier', () => {
+        //  Walked across the whole ladder, because a label only exists at the rung that shows
+        //  it — a spot check at B0 would never see `Paddle again` or `Return`.
+        const states: GameState[] = [createInitialState(NOW), ready(), stabilized(), repaired()];
+        const surveyed = ready(); surveyHull(surveyed); states.push(surveyed);
+        //  AFLOAT AND BEYOND, built from `repaired()` so the float test has a hull to pass —
+        //  `Board`, `Paddle`, `Moor`, `Cross` and `Return` only exist at B2.
+        const afloat = repaired();
+        afloat.boat = { ...afloat.boat, floatTest: { attempted: true, held: true, tookOnWater: 0.2 } };
+        states.push(afloat);
+        const loaded = { ...afloat, boat: { ...afloat.boat, loadKnown: true, ferried: true } };
+        states.push(loaded as GameState);
+        const away = { ...loaded, boat: { ...loaded.boat, at: 'wreck' as const } };
+        states.push(away as GameState);
+
+        const seen = new Set<string>();
+        for (const s of states) {
+            for (const { id, label } of labelsAt('boat', s)) {
+                seen.add(id);
+                expect(label.length, `${id} is a sentence: "${label}"`).toBeLessThanOrEqual(SHORT);
+                expect(label.split(/\s+/).length, `${id} is a phrase: "${label}"`).toBeLessThanOrEqual(2);
+            }
+        }
+        expect(seen.size, 'the walk did not reach the whole ladder').toBeGreaterThanOrEqual(8);
+    });
+
+    it('...and so is the mat\u2019s, which is where this started', () => {
+        const s = ready();
+        s.workspace = { built: true, x: s.player.x, y: s.player.y, tier: 'mat', jointWear: 0 };
+        const frame = labelsAt('workspace', s).find((v) => v.id === 'frame-bench');
+        expect(frame, 'the mat lost its upgrade again').toBeTruthy();
+        expect(frame!.label).toBe('Upgrade');
+    });
+
+    it('THE REASONS ARE NOT SHORTENED — brevity was for the segment, not the explanation', () => {
+        //  The opposite guard, and it matters: a future author reading "labels must be short"
+        //  could reasonably trim the refusals too, which is exactly what [[D-194]] and
+        //  [[D-195]] spent two batches making longer and more honest.
+        const blind = createInitialState(NOW);
+        blind.player = { x: 14, y: 100 };
+        const survey = verbsFor(blind, 'boat').find((v) => v.id === 'survey-hull');
+        expect(survey!.label).toBe('Survey');
+        expect(survey!.reason!.length, 'the refusal got trimmed with the label')
+            .toBeGreaterThan(60);
+    });
+});

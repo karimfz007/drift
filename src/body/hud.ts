@@ -1788,7 +1788,10 @@ export function showVerbCircle(
         rest.type = 'button';
         rest.dataset.more = String(clipped);
         rest.dataset.clipped = String(clipped);
-        rest.textContent = 'read it in full';
+        //  'More', matching the count-carrying variant above ('3 more') so the pip reads as
+        //  one affordance in one register rather than two differently-worded buttons that
+        //  happen to open the same list.
+        rest.textContent = 'More';
         hub.appendChild(rest);
     }
 

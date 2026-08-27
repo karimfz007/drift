@@ -217,10 +217,13 @@ describe('THE CROSSING — reachability, end to end', () => {
         const s = ready();
         const out = verbsFor(s, 'boat').find((v) => v.id === 'cross-boat');
         expect(out, 'no crossing verb at the boat').toBeDefined();
-        expect(out!.label).toMatch(/out to the wreck/i);
+        //  ONE WORD, NAMING THE DIRECTION. The label used to carry the destination; the arc
+        //  has room for a word, and where the crossing goes is carried by `crossingNote` on the
+        //  hint surface when it is pressed. What must stay true is that the verb turns round.
+        expect(out!.label).toBe('Cross');
         runCrossing(s, 'wreck');
         const home = verbsFor(s, 'boat').find((v) => v.id === 'cross-boat');
-        expect(home!.label, 'the verb did not turn round with her').toMatch(/home/i);
+        expect(home!.label, 'the verb did not turn round with her').toBe('Return');
     });
 });
 

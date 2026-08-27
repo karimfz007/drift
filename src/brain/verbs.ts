@@ -30,7 +30,6 @@ import {
     canFerry, ferryBlocker,
 } from './boat';
 import { canCross, crossingBlocker } from './crossing';
-import { DESTINATIONS } from '../data/world';
 import { benchHasRacked, canBuildWorkbench, makerBlocker, canBoardRaft, canFeedFire, canMakeJournal, canRepairStructure, canThrustAt, isAtPond, isInDisrepair, journalShortfall, leaveRaftIsIntoWater, moveStructureBlocker } from './state';
 import type { MovableKind } from './construction';
 import { canBindWound } from './injury';
@@ -301,14 +300,14 @@ function boatVerbs(state: GameState): VerbOption[] {
         {
             //  ALWAYS. Looking at a boat is never refused and never hidden.
             id: 'inspect-boat',
-            label: stage === 'B0' ? 'Look her over' : `Look her over (${stage})`,
+            label: stage === 'B0' ? 'Inspect' : `Inspect (${stage})`,
             available: true,
             reason: null,
             shown: true,
         },
         {
             id: 'survey-hull',
-            label: 'Survey the hull',
+            label: 'Survey',
             available: canSurveyHull(state),
             reason: surveyBlocker(state),
             //  Retires itself: once you have been over her plank by plank, you have.
@@ -316,14 +315,14 @@ function boatVerbs(state: GameState): VerbOption[] {
         },
         {
             id: 'shore-up-boat',
-            label: `Prop and crib her`,
+            label: 'Prop',
             available: canShoreUp(state),
             reason: shoreUpBlocker(state),
             shown: b.surveyed && !b.supports,
         },
         {
             id: 'dewater-boat',
-            label: 'Bail her out',
+            label: 'Bail',
             available: canDewater(state),
             reason: dewaterBlocker(state),
             shown: b.supports && !b.dewatered,
@@ -333,7 +332,7 @@ function boatVerbs(state: GameState): VerbOption[] {
             //  learns the boat rather than the ladder. Stays visible after it is done, because
             //  better hands can better the work — see `couldImprove`.
             id: 'repair-frames',
-            label: b.structural ? 'Back the frames again' : 'Back the frames',
+            label: b.structural ? 'Frame again' : 'Frame',
             available: canRepairStructure2(state),
             reason: structuralBlocker(state),
             //  VISIBLE THROUGH A FAILED TRIAL, which is the point: the post-trial inspection
@@ -352,7 +351,7 @@ function boatVerbs(state: GameState): VerbOption[] {
         {
             //  WATERTIGHTNESS — a different system, a different verb, a different cost.
             id: 'seal-seams',
-            label: b.seal ? 'Pay the seams again' : 'Pay the seams',
+            label: b.seal ? 'Seal again' : 'Seal',
             available: canSealHull(state),
             reason: sealBlocker(state),
             //  Same rule, the other system: always at B1, and at B2 only when better hands
@@ -365,7 +364,7 @@ function boatVerbs(state: GameState): VerbOption[] {
             //  by both repair handlers the moment either repair lands, so a survivor reaching
             //  for this verb has already been told in plain words what she would do.
             id: 'float-test',
-            label: b.floatTest?.held ? 'Float her again' : 'Float her on a line',
+            label: b.floatTest?.held ? 'Float again' : 'Float',
             available: canFloatTest(state),
             reason: floatTestBlocker(state),
             //  Both systems have had work in them: the trial is the next real thing to do — and
@@ -379,7 +378,7 @@ function boatVerbs(state: GameState): VerbOption[] {
             //  enough to have swum on a line. And it retires once she has told you what she
             //  carries — after that it re-reports what the inspection already says.
             id: 'board-boat',
-            label: 'Get in',
+            label: 'Board',
             available: canBoardBoat(state),
             reason: boardBlocker(state),
             shown: afloat && !b.loadKnown,
@@ -397,9 +396,7 @@ function boatVerbs(state: GameState): VerbOption[] {
             //  manual propulsion was actually exercised, and crossing open water on a hull
             //  nobody has ever paddled is the shortcut Session 3’s own brief forbids.
             id: 'cross-boat',
-            label: b.at === 'shore'
-                ? `Take her out to ${DESTINATIONS.wreck.label}`
-                : 'Bring her home',
+            label: b.at === 'shore' ? 'Cross' : 'Return',
             available: canCross(state, 'wreck'),
             reason: crossingBlocker(state, 'wreck'),
             shown: afloat && b.loadKnown && (b.ferried || b.at !== 'shore'),
@@ -417,14 +414,14 @@ function boatVerbs(state: GameState): VerbOption[] {
             //  busiest afloat rung from four options to three — and three is the width at
             //  which the other refusals on that wheel can print their reasons at all.
             id: 'ferry-boat',
-            label: b.ferried ? 'Take her out again' : 'Take her out on the line',
+            label: b.ferried ? 'Paddle again' : 'Paddle',
             available: canFerry(state),
             reason: ferryBlocker(state),
             shown: afloat && b.loadKnown,
         },
         {
             id: 'moor-boat',
-            label: 'Make her fast',
+            label: 'Moor',
             available: canMoor(state),
             reason: moorBlocker(state),
             shown: afloat && !b.moored,
@@ -483,7 +480,7 @@ function workspaceVerbs(state: GameState): VerbOption[] {
             //  mat and no frame on it. A racked bench is not shown either — that is answered by
             //  re-laying the surface, which is the mat's own verb and not this one.
             id: 'frame-bench',
-            label: 'Frame it into a bench',
+            label: 'Upgrade',
             available: canBuildWorkbench(state),
             reason: makerBlocker(state, 'workbench') ?? benchShortfallNote(state),
         },

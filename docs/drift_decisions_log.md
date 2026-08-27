@@ -3,6 +3,59 @@
 
 ---
 
+**D-198 · 2026-08-27 — THE ARC HOLDS A WORD, NOT A SENTENCE. Twelve labels shortened, the pip renamed, and the reasons deliberately left alone.**
+
+---
+
+**WHY THE LABELS WERE PHRASES.** The boat's verbs were written as narration — *"Look her over"*, *"Prop and crib her"*, *"Take her out on the line"* — and they read beautifully in a file. On the arc they are something else: `.verb-label` is clamped to ONE LINE whenever a reason prints beside it ([[D-195]]), and the segment is a fixed 48 px box between 96 and 116 px wide. **A phrase is a phrase the player reads the first two words of.**
+
+```
+inspect-boat    Look her over              ->  Inspect   /  Inspect (B1)
+survey-hull     Survey the hull            ->  Survey
+shore-up-boat   Prop and crib her          ->  Prop
+dewater-boat    Bail her out               ->  Bail
+repair-frames   Back the frames            ->  Frame     /  Frame again
+seal-seams      Pay the seams              ->  Seal      /  Seal again
+float-test      Float her on a line        ->  Float     /  Float again
+board-boat      Get in                     ->  Board
+cross-boat      Take her out to the wreck  ->  Cross     /  Return
+ferry-boat      Take her out on the line   ->  Paddle    /  Paddle again
+moor-boat       Make her fast              ->  Moor
+frame-bench     Frame it into a bench      ->  Upgrade
+```
+
+**TWO CHOICES THAT DEPART FROM THE OBVIOUS ONE, both for the same reason — a label must stay honest about what the act does.**
+
+**`repair-frames` is FRAME, not "Repair".** The boat has TWO repairs, and calling the structural one *Repair* while the watertightness one stayed *Seal* would have made the generic word win the more specific job. **Frame / Seal** names both and pairs them: structure against water-tightness, which is exactly the split `boat.ts`'s five-systems table already draws.
+
+**`cross-boat` is CROSS / RETURN, and this is the one place the rule costs something real.** The label can no longer say WHERE. That is acceptable today because there is one destination and `crossingNote` names it the moment the verb is pressed — but **if a second destination ever ships, this label has to grow back**, and that is written into the code rather than left to be rediscovered. `crossing.test.ts` and `CROSS 2`/`CROSS 10` now assert the DIRECTION the verb points, which was always the real invariant.
+
+**"AGAIN" IS THE ONLY QUALIFIER THAT SURVIVED**, because a redo genuinely differs from a first attempt and a device check reads it — `/^repair-frames=.*again/i` has been asserting that since Session 2 and still passes untouched.
+
+---
+
+**THE PIP IS ONE STRING AND IT WAS ALREADY CENTRAL.** Confirmed before changing anything: `showVerbCircle` in `hud.ts` is the only place in the game that creates `.verb-more`. [[D-195]]'s clipped-sentence pip read *"read it in full"* beside a count-carrying sibling reading *"3 more"* — two differently-worded buttons opening the same list. It reads **"More"** now, so the pip is one affordance in one register.
+
+---
+
+**THE REASONS ARE UNTOUCHED, AND A GUARD SAYS SO OUT LOUD.** Brevity belongs on the SEGMENT, where there is no room. [[D-194]] and [[D-195]] spent two batches making refusals longer and more honest, and a future author reading *"labels must be short"* could reasonably trim those too. So the same test that caps a label asserts the survey refusal stays over sixty characters.
+
+**THE DISCIPLINE IS A TEST, NOT A STYLE NOTE.** `THE ARC HOLDS A WORD, NOT A SENTENCE` walks the whole boat ladder — B0 through a moored B2 and a boat standing off the wreck — and caps every label it can reach at fourteen characters and two words. Fail-then-pass: restoring two old labels reds three checks by name.
+
+---
+
+**A REGRESSION THIS BATCH CAUSED IN ITSELF, worth recording because it is the shape these batches keep producing.** Renaming the pip turned `LADDER 2` red — that check, written in D-195, asserted the pip's text matched `/full/i`. **A check that pins a string is a check that must move when the string does**, and the device run is what said so rather than a guess. Now `/more/i`.
+
+**AND ONE RED THAT IS NOT THIS BATCH'S.** `CROSS 11`/`CROSS 12` fail on this bench at 32.8 energy. Bisected during [[D-195]] and failing identically at `1b3d811` before any of this work existed: the survivor treads deep water at **0.47 energy per REAL second** while the harness runs an absence probe, two saves, a wheel open and three assertions. Labels cannot touch energy. Named again here rather than quietly carried.
+
+*Witness:* pending — filled with the landed SHA and the three-way confirmation once this is on `main`.
+
+**Class: OPERATIVE** — shipped: twelve labels in `verbs.ts`; the pip string in `hud.ts`; `CROSS 2`/`CROSS 10`/`LADDER 2` and `crossing.test.ts`'s direction assertions; the label-discipline guard in `boat-stages.test.ts`.
+
+*Status: standing. The rule is stated by its reason — a clamped one-line segment — rather than as a style edict, so it generalises to any target that gets busy.* — C2
+
+---
+
 **D-197 · 2026-08-27 — THE MAT HAD NO WAY UP. The bench was a recipe, the act was location-bound to the mat, and the mat said nothing.**
 
 ---

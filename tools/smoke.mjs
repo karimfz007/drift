@@ -15189,7 +15189,7 @@ async function main() {
     //  rest mid-word — no ellipsis, and at two options no pip either, so the clause naming the
     //  way past the refusal was unreachable. Something IS hidden; the pip is now correct.
     check('LADDER 2 — no VERB is hidden at two options: the pip is about the sentence, not the wheel',
-        kit.segs.length === 2 && (kit.pip === null || /full/i.test(kit.pip)),
+        kit.segs.length === 2 && (kit.pip === null || /more/i.test(kit.pip)),
         `pip ${String(kit.pip)} · segs [${kit.segs.join(' | ')}]`);
     //  THE HEART OF THE REPORT. `survey-hull` is refused — correctly, she cannot read a hull
     //  at technique 5 — and at two segments the wheel is 116px wide, which is where the
@@ -16012,8 +16012,12 @@ async function main() {
     const wheel = await boatWheel(CROSS_BOAT.x, CROSS_BOAT.y);
     const i = wheel.segs.findIndex((v) => v.startsWith('cross-boat'));
     const label = wheel.labels[i] ?? '';
-    check('CROSS 2 — the crossing is offered at her, and named for where it goes',
-        i >= 0 && !wheel.segs[i].endsWith(':blocked') && /out to the wreck/i.test(label),
+    //  THE LABEL IS ONE WORD NOW, so it names the DIRECTION rather than the destination —
+    //  the arc has room for a word, and where the crossing goes is carried by the note the
+    //  press puts on the hint surface. What has to be true here is that the verb is offered,
+    //  live, and pointing OUT rather than home.
+    check('CROSS 2 — the crossing is offered at her, live, and pointing out',
+        i >= 0 && !wheel.segs[i].endsWith(':blocked') && /^cross$/i.test(label),
         `segs [${wheel.segs.join(' | ')}] · label "${label}"`);
     //  The note lives on the hint surface the moment it is pressed; the arc carries the label.
     //  What must be true here is that the wheel is not crowded past the point of saying it.
@@ -16098,7 +16102,7 @@ async function main() {
     const homeWheel = await boatWheel(out.player.x, out.player.y);
     const hi = homeWheel.segs.findIndex((v) => v.startsWith('cross-boat'));
     check('CROSS 10 — she is reachable from the water, and the verb has turned round',
-        hi >= 0 && /home/i.test(homeWheel.labels[hi] ?? ''),
+        hi >= 0 && /^return$/i.test(homeWheel.labels[hi] ?? ''),
         `segs [${homeWheel.segs.join(' | ')}] · label "${homeWheel.labels[hi] ?? ''}"`);
 
     //  ---- THE SHORE VERBS DO NOT FOLLOW HER OUT (Session 3 audit) --------------------
